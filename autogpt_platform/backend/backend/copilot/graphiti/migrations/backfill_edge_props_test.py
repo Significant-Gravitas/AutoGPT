@@ -36,6 +36,24 @@ async def test_backfill_one_user_counts_updated(_stub_driver):
     _stub_driver.close.assert_awaited_once()
 
 
+def test_backfill_query_sets_all_defaultable_fields_idempotently():
+    """#13389: backfill must default the three Cypher-filterable fields
+    (status/source_kind/scope), idempotently (coalesce so re-runs and
+    real values are never clobbered), with temporal-aware status so an
+    already-expired edge isn't mislabeled 'active'."""
+    q = mig.BACKFILL_QUERY
+    assert "e.source_kind = coalesce(e.source_kind, 'user_asserted')" in q
+    assert "e.scope = coalesce(e.scope, 'real:global')" in q
+    assert "coalesce(" in q and "e.status" in q
+    # status is gated on expired_at ONLY (the reliable already-retired
+    # signal); invalid_at is excluded because it can be future-dated.
+    assert "WHEN e.expired_at IS NOT NULL THEN 'superseded'" in q
+    assert "e.invalid_at" not in q
+    # confidence/provenance legitimately stay NULL — not forced.
+    assert "e.confidence =" not in q
+    assert "e.provenance =" not in q
+
+
 @pytest.mark.asyncio
 async def test_backfill_one_user_no_records_returns_zero(_stub_driver):
     """Empty result set (no edges needed backfilling)."""

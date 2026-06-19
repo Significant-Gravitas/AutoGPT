@@ -32,10 +32,34 @@ from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 logger = logging.getLogger(__name__)
 
 
+# Backfill the three MemoryFact attributes that have meaningful,
+# Cypher-filterable defaults (``status``, ``source_kind``, ``scope``).
+# ``confidence`` and ``provenance`` legitimately default to NULL, so we
+# leave them unset rather than inventing values. Each property is
+# ``coalesce``-guarded so the query is idempotent AND a partial prior run
+# (or a real value already set by ``mark_edges_superseded``) is never
+# clobbered.
+#
+# ``status`` is temporal-aware, gated on ``expired_at`` ONLY: graphiti
+# stamps ``expired_at = now()`` exactly when an edge is actually
+# invalidated, so it's the reliable "already retired" signal — such an
+# edge defaults to ``'superseded'`` rather than being mislabeled
+# ``'active'``. We deliberately do NOT trigger on ``invalid_at``:
+# ``invalid_at`` is parsed from LLM-extracted dates and can be
+# FUTURE-dated (a fact true now but with a known end date), so a
+# currently-valid edge would otherwise be wrongly marked superseded.
+# (Pre-existing edges carry no demotion ``status`` because native graphiti
+# invalidation only sets the temporal fields — exactly the 25 edges
+# observed on the dev canary, all of which have ``expired_at`` set.)
 BACKFILL_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
-WHERE e.status IS NULL
-SET e.status = 'active'
+WHERE e.status IS NULL OR e.source_kind IS NULL OR e.scope IS NULL
+SET e.source_kind = coalesce(e.source_kind, 'user_asserted'),
+    e.scope = coalesce(e.scope, 'real:global'),
+    e.status = coalesce(
+        e.status,
+        CASE WHEN e.expired_at IS NOT NULL THEN 'superseded' ELSE 'active' END
+    )
 RETURN count(e) AS updated
 """
 

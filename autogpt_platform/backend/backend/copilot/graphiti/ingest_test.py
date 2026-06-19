@@ -386,3 +386,145 @@ class TestWorkerIdleTimeout:
         # After idle timeout the worker should have cleaned up.
         assert user_id not in state.user_queues
         assert user_id not in state.user_workers
+
+
+class TestStampEdgeMetadata:
+    """#13389: dream-envelope metadata is stamped onto the edges a dream
+    episode newly created, gated on the ``episodes == [episode_uuid]``
+    dedup-safety invariant so user-authored edges are never clobbered."""
+
+    def _edge(self, uuid: str, episodes: list[str], expired_at=None, invalid_at=None):
+        return SimpleNamespace(
+            uuid=uuid,
+            episodes=episodes,
+            expired_at=expired_at,
+            invalid_at=invalid_at,
+        )
+
+    def _result(self, episode_uuid: str, edges):
+        return SimpleNamespace(episode=SimpleNamespace(uuid=episode_uuid), edges=edges)
+
+    def _client(self):
+        client = SimpleNamespace()
+        client.driver = SimpleNamespace(execute_query=AsyncMock())
+        return client
+
+    @pytest.mark.asyncio
+    async def test_stamps_only_sole_sourced_edges(self) -> None:
+        """The core safety test: only edges whose ``episodes`` is exactly
+        [this episode] get stamped. A dedup-merge (extra uuid) and an
+        invalidated pre-existing edge are both skipped — they may be
+        user-authored, and stamping would overwrite their provenance."""
+        client = self._client()
+        result = self._result(
+            "ep-1",
+            [
+                self._edge("new", ["ep-1"]),  # freshly created → stamp
+                self._edge("merged", ["ep-1", "old-ep"]),  # dedup merge → skip
+                self._edge("invalidated", ["other-ep"]),  # predates → skip
+            ],
+        )
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, {"status": "active"}, "abc"
+        )
+        client.driver.execute_query.assert_awaited_once()
+        kwargs = client.driver.execute_query.await_args.kwargs
+        assert kwargs["uuids"] == ["new"]
+        assert kwargs["gid"] == "user_abc"
+
+    @pytest.mark.asyncio
+    async def test_skips_self_expired_brand_new_edge(self) -> None:
+        """A brand-new edge graphiti self-expired in the same add_episode
+        (episodes==[uuid] but expired_at/invalid_at set) must NOT be stamped
+        with a live status — that would contradict its temporal fields."""
+        client = self._client()
+        result = self._result(
+            "ep-1",
+            [
+                self._edge("live", ["ep-1"]),  # new + temporally live → stamp
+                self._edge("expired", ["ep-1"], expired_at="2026-06-18T00:00:00Z"),
+                self._edge("invalid", ["ep-1"], invalid_at="2026-06-18T00:00:00Z"),
+            ],
+        )
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, {"status": "active"}, "abc"
+        )
+        kwargs = client.driver.execute_query.await_args.kwargs
+        assert kwargs["uuids"] == ["live"]
+
+    @pytest.mark.asyncio
+    async def test_no_new_edges_skips_query_entirely(self) -> None:
+        """A dream fact that only merged into existing edges produces no
+        sole-sourced target → no Cypher runs at all."""
+        client = self._client()
+        result = self._result("ep-1", [self._edge("merged", ["ep-1", "old"])])
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, {"status": "active"}, "abc"
+        )
+        client.driver.execute_query.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_sets_all_five_envelope_fields(self) -> None:
+        client = self._client()
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
+        meta = {
+            "status": "tentative",
+            "source_kind": "assistant_derived",
+            "scope": "real:global",
+            "confidence": 0.8,
+            "provenance": "dream:p1:recombine:2026",
+        }
+        await ingest._stamp_edge_metadata(client, "user_abc", result, meta, "abc")
+        kwargs = client.driver.execute_query.await_args.kwargs
+        for k, v in meta.items():
+            assert kwargs[k] == v
+
+    @pytest.mark.asyncio
+    async def test_stamp_failure_is_swallowed(self) -> None:
+        """A stamp failure must not propagate — the edge still exists with
+        graphiti defaults; ingestion must not be failed by a metadata miss."""
+        client = self._client()
+        client.driver.execute_query = AsyncMock(side_effect=RuntimeError("boom"))
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
+        # Should not raise.
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, {"status": "active"}, "abc"
+        )
+
+
+class TestEnqueueEpisodeEdgeMetadata:
+    @pytest.mark.asyncio
+    async def test_edge_metadata_rides_payload_sidecar(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            w.return_value = q
+            meta = {"status": "active", "provenance": "dream:p1"}
+            await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="s",
+                name="dream_ep",
+                episode_body="{}",
+                is_json=True,
+                edge_metadata=meta,
+            )
+            payload = q.get_nowait()
+            assert payload["_edge_metadata"] == meta
+
+    @pytest.mark.asyncio
+    async def test_default_sidecar_is_none_for_non_dream_writes(self) -> None:
+        """Conversation turns / memory-store calls pass no edge_metadata →
+        sidecar is None → worker skips stamping → no behavior change."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            w.return_value = q
+            await ingest.enqueue_episode(
+                user_id="abc", session_id="s", name="ep", episode_body="hi"
+            )
+            payload = q.get_nowait()
+            assert payload["_edge_metadata"] is None

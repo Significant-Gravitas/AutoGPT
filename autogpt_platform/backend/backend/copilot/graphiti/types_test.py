@@ -92,12 +92,23 @@ def test_edge_types_include_memoryfact():
 
 def test_edge_type_map_spans_full_cartesian_product():
     """Every (entity, entity) pair maps to MemoryFact — the audit's
-    'one edge type, narrow entity vocabulary' shape."""
-    # Six entity types × six entity types = 36 pairs.
-    assert len(EDGE_TYPE_MAP) == len(ENTITY_TYPES) ** 2
+    'one edge type, narrow entity vocabulary' shape. Plus the
+    ('Entity','Entity') wildcard, so the cartesian pairs + 1 catch-all."""
+    # Six entity types × six entity types = 36 pairs, + the wildcard = 37.
+    assert len(EDGE_TYPE_MAP) == len(ENTITY_TYPES) ** 2 + 1
     for src in ENTITY_TYPES:
         for tgt in ENTITY_TYPES:
             assert EDGE_TYPE_MAP.get((src, tgt)) == ["MemoryFact"]
+
+
+def test_edge_type_map_has_entity_wildcard_catchall():
+    """#13389 regression: graphiti-core resolves edge types against the
+    base ``Entity`` label (it appends 'Entity' to both endpoints'
+    label sets, so ('Entity','Entity') is in every edge's label_tuples
+    — see graphiti_core/utils/maintenance/edge_operations.py). Without
+    this wildcard key, edges touching an Entity-only node never resolve
+    to MemoryFact and persist with NONE of the custom attributes."""
+    assert EDGE_TYPE_MAP[("Entity", "Entity")] == ["MemoryFact"]
 
 
 def test_person_entity_has_optional_role_and_email():
