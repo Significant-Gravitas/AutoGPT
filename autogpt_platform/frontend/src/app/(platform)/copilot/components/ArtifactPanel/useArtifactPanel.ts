@@ -11,6 +11,7 @@ export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
+  const showFilesTab = useCopilotUIStore((s) => s.showFilesTab);
   const artifactPanelWidth = useCopilotUIStore((s) => s.artifactPanelWidth);
   const setArtifactPanelWidth = useCopilotUIStore(
     (s) => s.setArtifactPanelWidth,
@@ -88,6 +89,7 @@ export function useArtifactPanel() {
     setIsSourceView,
     clearArtifactPreview,
     goBackArtifact,
+    showFilesTab,
     canCopy,
     handleCopy,
     handleDownload,

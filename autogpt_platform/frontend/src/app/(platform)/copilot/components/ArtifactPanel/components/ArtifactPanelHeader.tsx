@@ -1,10 +1,16 @@
 "use client";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftIcon,
   CopyIcon,
   DownloadSimpleIcon,
+  FolderIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
@@ -22,6 +28,7 @@ interface Props {
   onClose: () => void;
   onCopy: () => void;
   onDownload: () => void;
+  onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
 }
 
@@ -35,15 +42,19 @@ function HeaderButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={title}
+          className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -58,6 +69,7 @@ export function ArtifactPanelHeader({
   onClose,
   onCopy,
   onDownload,
+  onOpenFiles,
   onSourceToggle,
 }: Props) {
   const Icon = classification.icon;
@@ -99,6 +111,9 @@ export function ArtifactPanelHeader({
         )}
         <HeaderButton onClick={onDownload} title="Download">
           <DownloadSimpleIcon size={16} />
+        </HeaderButton>
+        <HeaderButton onClick={onOpenFiles} title="All files">
+          <FolderIcon size={16} />
         </HeaderButton>
         <HeaderButton onClick={onClose} title="Close">
           <XIcon size={16} />
