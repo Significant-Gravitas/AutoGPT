@@ -362,6 +362,27 @@ class MessageHandler:
                 link_url=session_url,
             )
 
+        async def _on_setup_dropped(
+            session_id: str,
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal active_session_id, buffer, sent_any_content
+            active_session_id = session_id
+            # Drain pending text first so the notice doesn't jump ahead of the
+            # message it follows.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            await adapter.send_message(
+                target_id,
+                _setup_dropped_message(),
+                mentionable_users=ctx.mentionable_users,
+            )
+
         started_at = time.monotonic()
         reply_chars = 0
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
@@ -374,6 +395,7 @@ class MessageHandler:
                 platform_server_id=ctx.server_id,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
+                on_setup_dropped=_on_setup_dropped,
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
@@ -611,6 +633,14 @@ def _copilot_session_url(session_id: str) -> str | None:
     if not base_url:
         return None
     return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
+
+
+def _setup_dropped_message() -> str:
+    return (
+        "⚠️ AutoPilot tried to send you a sign-in link, but the data arrived "
+        "corrupted so the button couldn't be shown. Please ask it to try that "
+        "step again."
+    )
 
 
 def _setup_required_message(setup_output: dict[str, Any]) -> str:

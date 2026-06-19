@@ -114,8 +114,16 @@ prices from Amazon and email me daily").
 
 ### REQUIRED: AgentInputBlock and AgentOutputBlock
 
-Every agent MUST include at least one AgentInputBlock and one AgentOutputBlock.
-These define the agent's interface — what it accepts and what it produces.
+Every agent MUST include one AgentOutputBlock and a way to be started: EITHER
+at least one AgentInputBlock OR a webhook trigger block (never both). These
+define the agent's interface — what it accepts and what it produces.
+
+- **Regular agent**: include at least one AgentInputBlock for the values the
+  user provides at runtime.
+- **Triggered agent**: include a webhook trigger block instead — it is started
+  by an external event, so it needs NO AgentInputBlock. Do NOT add a throwaway
+  AgentInputBlock alongside a trigger; the trigger block already provides the
+  agent's entry point and event payload. See "Setting Up Webhook Triggers".
 
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
@@ -139,8 +147,9 @@ These define the agent's interface — what it accepts and what it produces.
 - Optional: `title`, `description`, `format` (Jinja2 template)
 - Create one AgentOutputBlock per distinct result to show the user
 
-Without these blocks, the agent has no interface and the user cannot provide
-inputs or see outputs. NEVER skip them.
+Without an output block the user cannot see results, and without an input or
+trigger block the agent cannot be started. NEVER skip the output block, and
+always include either an input block or a trigger block.
 
 Specialized input subclasses (`AgentDropdownInputBlock`,
 `AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
@@ -361,6 +370,70 @@ A minimal agent with input, processing, and output:
   input_default: {"name": "summary", "title": "Summary"},
   input: "value" linked from Node 2's output)
 
+### Setting Up Webhook Triggers
+
+A **webhook trigger** runs an agent automatically when an external HTTP event
+arrives. The agent must contain a webhook trigger block (surfaced by
+`find_block(..., for_agent_generation=true)`); such an agent can only be
+triggered, not run manually.
+
+**To set up a webhook trigger:** call `setup_agent_webhook_trigger` with the
+agent's `library_agent_id` and the trigger block's `trigger_config` (the trigger
+block's configuration inputs). Read those fields from the agent's
+`trigger_info.config_schema`, which `find_library_agent` returns for any
+webhook-trigger agent — you do **not** need to fetch or parse the full graph
+(`include_graph`) for this. Config is usually empty for a generic webhook. The
+call creates a triggered preset.
+
+**Configure the trigger through the tool, NOT by editing the graph.** The trigger
+block's config (e.g. GitHub `repo` and `events`) is *not* set on the trigger node
+via `create_agent`/`edit_agent` — leave those inputs unset in the graph.
+`edit_agent` will reject any change to a trigger node's config fields and point
+you back here. The config is stored per-trigger on the **preset** and applied to
+the trigger node each time the webhook fires, so one agent can have several
+triggers (e.g. different repos) each configured independently. Always supply
+config via `setup_agent_webhook_trigger`'s `trigger_config` — never by editing
+the node.
+
+**Credentials must be chosen explicitly.** For provider webhooks (e.g. GitHub)
+the webhook is registered under a specific account, so always ask the user which
+connected account to use — never assume or auto-pick, even if only one exists.
+Call `setup_agent_webhook_trigger` without `credentials` first: it returns a
+setup card listing the available accounts per credential field. Ask the user
+which to use, then call again with `credentials={<field_name>: <credential_id>}`.
+If a field has no connected account, that **same card lets the user connect
+one** — do NOT also call `connect_integration` (that just shows a second,
+duplicate card).
+
+**Trigger config must come from the user, not a guess.** If the tool returns
+`trigger_config_required`, the trigger block needs configuration you must
+collect from the user (e.g. a GitHub repo and which events to subscribe to). Use
+the returned `config_schema` to know the fields and options, **ask the user for
+the actual values — never invent them (e.g. don't make up a repository name)** —
+then call again with `trigger_config` filled in.
+
+**Two kinds of webhook:**
+
+- **Manual-setup (generic) webhooks:** the result card shows the ingress URL with
+  a copy button for the user to paste into their external service (e.g. Typeform,
+  Zapier).
+- **Provider webhooks (e.g. GitHub):** registered automatically once the account
+  is chosen — no URL handoff is needed.
+
+To retrieve a webhook URL later, use `list_agent_triggers` — it returns the
+`webhook_url` for each webhook trigger.
+
+**Manual UI fallback** (if the user prefers to do it themselves): Library → open
+the agent → "+ New Task" → enter config → "Set up Trigger" → "Triggers" tab →
+copy the webhook URL. The URL is **not** shown in the Builder.
+
+**Managing triggers & presets after setup:** a webhook trigger is a preset — use
+`list_presets` to find it, then `update_preset` (rename / pause-resume via
+`is_active` / reconfigure) or `delete_preset`. Webhook triggers fire
+automatically on their event and **can't** be run on demand;
+`run_agent(preset_id=…)` runs only **non-webhook** presets (and `save_as_preset`
+saves a run as one). See each tool's description for arguments.
+
 ### Building Trigger Agents
 
 A **trigger agent** is a scheduled agent that watches for changes in an
@@ -411,7 +484,9 @@ triggers. No explicit linking is needed.
   all triggers configured for that agent — both trigger agents
   (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
   before adding a new trigger (to avoid duplicates) or before deleting
-  one (to find the right ID).
+  one (to find the right ID). For `kind="webhook"` triggers it also
+  returns the `webhook_url` — give that to the user verbatim if they need
+  to (re)configure their external service.
 
 **Managing schedules:**
 

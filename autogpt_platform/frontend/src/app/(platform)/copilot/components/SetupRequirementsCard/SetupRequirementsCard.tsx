@@ -22,6 +22,7 @@ import {
   buildExpectedInputsSchema,
   buildPreviewRunMessage,
   buildRunMessage,
+  buildTriggerSetupMessage,
   buildSiblingInputsFromCredentials,
   checkAllCredentialsComplete,
   checkAllInputsComplete,
@@ -45,12 +46,15 @@ import {
  * - `inputsMode = "preview"`: renders inputs as a read-only list
  *   (name • type, Required/Optional badge). Used by run_agent because graph
  *   inputs are set in the graph definition, not from the chat.
+ * - `inputsMode = "trigger"`: like "preview", but `Proceed` carries the chosen
+ *   credential IDs back so the webhook is registered under the account the user
+ *   explicitly picked. Used by setup_agent_webhook_trigger.
  */
 interface Props {
   output: SetupRequirementsResponse;
   retryInstruction?: string;
   credentialsLabel?: string;
-  inputsMode?: "edit" | "preview";
+  inputsMode?: "edit" | "preview" | "trigger";
   onComplete?: () => void;
 }
 
@@ -187,14 +191,17 @@ export function SetupRequirementsCard({
         .markConnected({ sessionID, providers: requestedProviders });
     }
     onComplete?.();
-    const message = isEditMode
-      ? buildRunMessage(
-          needsCredentials,
-          needsInputs,
-          inputValues,
-          retryInstruction,
-        )
-      : buildPreviewRunMessage(needsCredentials);
+    const message =
+      inputsMode === "trigger"
+        ? buildTriggerSetupMessage(inputCredentials)
+        : isEditMode
+          ? buildRunMessage(
+              needsCredentials,
+              needsInputs,
+              inputValues,
+              retryInstruction,
+            )
+          : buildPreviewRunMessage(needsCredentials);
     onSend(message);
     if (isEditMode) setInputValues({});
   }

@@ -26,6 +26,10 @@ import { ExecutionStartedCard } from "./components/ExecutionStartedCard/Executio
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
+import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
 
 export interface RunAgentToolPart {
   type: string;
@@ -45,8 +49,14 @@ export function RunAgentTool({ part }: Props) {
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunAgentToolOutput(part);
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput(part.output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
   const isError =
     part.state === "output-error" ||
+    isCorrupted ||
     (!!output && isRunAgentErrorOutput(output));
   const isOutputAvailable = part.state === "output-available" && !!output;
 
@@ -84,11 +94,18 @@ export function RunAgentTool({ part }: Props) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
-              text={text}
+              text={isCorrupted ? "Agent result could not be displayed" : text}
               className={isError ? "text-red-500" : undefined}
             />
           </div>
         )}
+
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-red-500">
+          The result data arrived corrupted, so any sign-in or setup card it
+          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+        </p>
+      )}
 
       {isStreaming && !output && (
         <ToolAccordion
