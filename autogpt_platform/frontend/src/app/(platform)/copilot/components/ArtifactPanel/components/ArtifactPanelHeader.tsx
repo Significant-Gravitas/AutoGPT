@@ -53,7 +53,7 @@ function HeaderButton({
           {children}
         </button>
       </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
+      <TooltipContent side="bottom">{title}</TooltipContent>
     </Tooltip>
   );
 }
