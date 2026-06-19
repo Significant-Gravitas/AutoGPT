@@ -1174,6 +1174,25 @@ class TestFetchReferencedConversations:
         assert result[0].messages[0].text == "bump the version"
 
     @pytest.mark.asyncio
+    async def test_uses_message_author_when_member_cache_is_empty(self):
+        # The bot runs without the privileged members intent, so
+        # guild.get_member can return None. message.author is the authoritative
+        # Member for guild messages and must be used instead.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("general", 111, [_prior(1, "A", "hi there")])
+        client.get_channel.return_value = ref
+        message = _incoming(111, 555)
+        message.guild.get_member = MagicMock(return_value=None)  # cache miss
+        message.author = MagicMock(spec=discord.Member, id=42)
+
+        result = await adapter._fetch_referenced_conversations(
+            message, "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "hi there"
+
+    @pytest.mark.asyncio
     async def test_fetches_specific_message_in_current_channel(self):
         # A permalink to a specific message in the channel the user is posting
         # in is a real "read this exact message" request, not redundant context.

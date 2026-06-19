@@ -670,7 +670,15 @@ class DiscordAdapter(PlatformAdapter):
         """
         if message.guild is None:
             return ()
-        requester = message.guild.get_member(message.author.id)
+        # ``message.author`` IS the guild Member (the gateway attaches it to the
+        # event); ``get_member`` only reads the cache, which is empty without the
+        # privileged members intent — so prefer the author and fall back to the
+        # cache only if it somehow isn't a Member (e.g. a webhook).
+        requester = (
+            message.author
+            if isinstance(message.author, discord.Member)
+            else message.guild.get_member(message.author.id)
+        )
         if requester is None:
             return ()
         targets = extract_referenced_targets(
