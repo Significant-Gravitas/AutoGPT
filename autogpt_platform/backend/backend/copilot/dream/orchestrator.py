@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid as uuidlib
 from datetime import datetime, timezone
 
@@ -96,6 +97,117 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
+# Intra-pass near-duplicate write rejection (#13387). The consolidate
+# prompt asks the model to merge near-duplicates, but a single pass still
+# emits the same fact phrased 2-3 ways ("Nick uses Terminus on iPhone for
+# CLI work" / "Nick wants Terminus on iPhone to show more ASCII"). This is
+# a CONSERVATIVE, deterministic backstop: it only collapses writes that are
+# near-identical by content-word overlap, keeping the longest (most
+# specific) of each cluster. It deliberately does NOT do semantic
+# (embedding) merging or compare against the user's EXISTING active facts —
+# both need real-data threshold tuning + edge-merge design and are tracked
+# as the follow-up P2 dedup pass. High threshold so distinct facts about
+# the same entity ("prefers Python" vs "prefers Rust") are never merged.
+_DEDUP_JACCARD_THRESHOLD = 0.7
+# A short fact whose content words are (nearly) all contained in a longer
+# fact is a duplicate the longer one subsumes — even when the longer fact's
+# extra detail drags Jaccard below the threshold ("Nick uses Terminus on
+# iPhone for CLI" ⊂ "…for CLI and wants more ASCII"). Set high (0.9): for
+# facts under ~10 words it effectively requires the shorter to be a strict
+# SUBSET of the longer, so a single distinguishing word keeps them apart
+# ("deployed the AUTH service" vs "deployed the BILLING service" → 4/5=0.8,
+# NOT merged). Only applied when the smaller fact has enough words to be
+# specific, so 1-2 word fragments don't spuriously match.
+_DEDUP_CONTAINMENT_THRESHOLD = 0.9
+_DEDUP_CONTAINMENT_MIN_TOKENS = 3
+_DEDUP_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "to",
+        "of",
+        "and",
+        "or",
+        "is",
+        "are",
+        "was",
+        "were",
+        "for",
+        "on",
+        "in",
+        "at",
+        "by",
+        "with",
+        "that",
+        "this",
+        "it",
+        "their",
+        "they",
+        "them",
+        "his",
+        "her",
+        "its",
+        "as",
+        "be",
+        "has",
+        "have",
+        "had",
+        "s",
+        "so",
+        "more",
+        "user",
+        "users",
+    }
+)
+
+
+def _content_tokens(content: str) -> frozenset[str]:
+    """Lowercased alphanumeric content words, minus a small stopword set.
+    ``user`` is a stopword because nearly every fact begins with it."""
+    return frozenset(
+        t
+        for t in re.findall(r"[a-z0-9]+", content.lower())
+        if t not in _DEDUP_STOPWORDS
+    )
+
+
+def _near_duplicate(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Two content-word sets are near-duplicate when their Jaccard overlap
+    is high, OR the smaller (sufficiently specific) set is nearly contained
+    in the larger one."""
+    if not a or not b:
+        return False
+    inter = len(a & b)
+    union = len(a | b)
+    if union and inter / union >= _DEDUP_JACCARD_THRESHOLD:
+        return True
+    smaller = min(len(a), len(b))
+    if smaller < _DEDUP_CONTAINMENT_MIN_TOKENS:
+        return False
+    return inter / smaller >= _DEDUP_CONTAINMENT_THRESHOLD
+
+
+def _dedupe_near_duplicate_writes(writes: list) -> tuple[list, int]:
+    """Collapse near-duplicate writes, keeping the longest of each cluster.
+
+    Greedy by content length (desc) so the most specific phrasing survives;
+    output preserves the writes' original order. Returns (kept, dropped)."""
+    by_len_desc = sorted(
+        range(len(writes)), key=lambda i: len(writes[i].content), reverse=True
+    )
+    kept_idx: list[int] = []
+    kept_tokens: list[frozenset[str]] = []
+    for i in by_len_desc:
+        toks = _content_tokens(writes[i].content)
+        if any(_near_duplicate(toks, kt) for kt in kept_tokens):
+            continue
+        kept_idx.append(i)
+        kept_tokens.append(toks)
+    kept = [writes[i] for i in sorted(kept_idx)]
+    return kept, len(writes) - len(kept)
+
+
 def _clamp_operations(
     ops: DreamOperations,
     active_fact_count: int,
@@ -145,8 +257,18 @@ def _clamp_operations(
         demotion_cap = 0
     elif active_fact_count > 0:
         demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
+
+    # Collapse intra-pass near-duplicate writes before the cap slice so the
+    # cap counts distinct facts, not paraphrases of one (#13387).
+    writes, w_dropped = _dedupe_near_duplicate_writes(ops.writes)
+    if w_dropped:
+        logger.info(
+            "Dream clamp: collapsed %d near-duplicate write(s) into their "
+            "canonical (longest) phrasing",
+            w_dropped,
+        )
     return DreamOperations(
-        writes=ops.writes[:MAX_WRITES_PER_PASS],
+        writes=writes[:MAX_WRITES_PER_PASS],
         proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
         demotions=demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations[
