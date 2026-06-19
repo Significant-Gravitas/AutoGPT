@@ -765,8 +765,7 @@ async def update_graph_in_library(
         if created_graph.webhook_input_node:
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
-                graph_id=created_graph.id,
-                new_version=created_graph.version,
+                new_graph=created_graph,
             )
 
     return created_graph, library_agent
@@ -1976,8 +1975,7 @@ async def set_preset_webhook(
 
 async def migrate_webhook_presets_to_new_version(
     user_id: str,
-    graph_id: str,
-    new_version: int,
+    new_graph: graph_db.GraphModel,
 ) -> int:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
@@ -1987,37 +1985,81 @@ async def migrate_webhook_presets_to_new_version(
     to point to the new active version, so that existing webhook URLs
     continue to trigger the latest agent version.
 
-    Presets pinned to a newer version than ``new_version`` (e.g. manually
-    pinned to a future/specific version) are intentionally left untouched.
+    A preset is only migrated when the new version's trigger is *compatible*
+    with the webhook the preset is already attached to — i.e. same provider
+    and webhook type. If the new version swaps or reconfigures the trigger
+    (e.g. v1 used a Telegram trigger, v2 uses a GitHub trigger), migrating the
+    preset would feed events from the old webhook into an incompatible trigger
+    node, silently breaking the integration. Such presets are left pinned to
+    their current version (where their webhook still works) and flagged for
+    reconfiguration.
+
+    Presets pinned to a newer version than the new one (e.g. manually pinned to
+    a future/specific version) are intentionally left untouched.
 
     Only migrates presets that:
     - Belong to the user
     - Are attached to a webhook (webhookId is not null)
     - Are not deleted
     - Are for the given graph and pinned to a strictly older version
+    - Have a webhook whose provider and type match the new version's trigger
 
     Args:
         user_id: The owner of the presets.
-        graph_id: The graph ID whose presets should be migrated.
-        new_version: The newly activated graph version to migrate presets to.
+        new_graph: The newly activated graph version to migrate presets to.
 
     Returns:
         The number of presets migrated.
     """
-    count = await prisma.models.AgentPreset.prisma().update_many(
+    trigger_node = new_graph.webhook_input_node
+    if not (trigger_node and (webhook_config := trigger_node.block.webhook_config)):
+        # New version has no webhook trigger to migrate presets onto.
+        return 0
+
+    candidates = await prisma.models.AgentPreset.prisma().find_many(
         where={
             "userId": user_id,
-            "agentGraphId": graph_id,
-            "agentGraphVersion": {"lt": new_version},
+            "agentGraphId": new_graph.id,
+            "agentGraphVersion": {"lt": new_graph.version},
             "webhookId": {"not": None},
             "isDeleted": False,
         },
-        data={"agentGraphVersion": new_version},
+        include={"Webhook": True},
+    )
+
+    compatible_ids = [
+        preset.id
+        for preset in candidates
+        if preset.Webhook
+        and preset.Webhook.provider == webhook_config.provider.value
+        and preset.Webhook.webhookType == webhook_config.webhook_type
+    ]
+
+    for preset in candidates:
+        if preset.id in compatible_ids:
+            continue
+        webhook = preset.Webhook
+        logger.warning(
+            f"Not migrating preset #{preset.id} for graph #{new_graph.id} to "
+            f"v{new_graph.version}: its webhook "
+            f"({webhook.provider if webhook else None}/"
+            f"{webhook.webhookType if webhook else None}) is incompatible with "
+            f"the new trigger ({webhook_config.provider.value}/"
+            f"{webhook_config.webhook_type}). Preset left pinned to "
+            f"v{preset.agentGraphVersion}; trigger needs reconfiguration."
+        )
+
+    if not compatible_ids:
+        return 0
+
+    count = await prisma.models.AgentPreset.prisma().update_many(
+        where={"id": {"in": compatible_ids}},
+        data={"agentGraphVersion": new_graph.version},
     )
     if count > 0:
         logger.info(
-            f"Migrated {count} webhook preset(s) for graph #{graph_id} "
-            f"to version {new_version} (user #{user_id})"
+            f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
+            f"to version {new_graph.version} (user #{user_id})"
         )
     return count
 

@@ -1741,8 +1741,7 @@ async def update_graph(
         if new_graph_version.webhook_input_node:
             await library_db.migrate_webhook_presets_to_new_version(
                 user_id=user_id,
-                graph_id=graph_id,
-                new_version=new_graph_version.version,
+                new_graph=new_graph_version,
             )
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
@@ -1805,8 +1804,7 @@ async def set_graph_active_version(
     if new_active_graph.webhook_input_node:
         await library_db.migrate_webhook_presets_to_new_version(
             user_id=user_id,
-            graph_id=graph_id,
-            new_version=new_active_version,
+            new_graph=new_active_graph,
         )
 
 
