@@ -42,6 +42,7 @@ from .models import (
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     _sub_session_link,
+    list_sub_workspace_files,
     response_from_outcome,
 )
 
@@ -215,12 +216,22 @@ class GetSubSessionResultTool(BaseTool):
                 progress=progress,
             )
 
+        # On completion, read the authoritative workspace-file manifest from the
+        # sub's session. This covers the cold-poll / already-terminal path where
+        # ``result.tool_calls`` reflects only the last persisted message and so
+        # would miss files the sub wrote in earlier turns (SECRT-2377).
+        workspace_files = (
+            await list_sub_workspace_files(user_id, inner_session_id)
+            if outcome == "completed"
+            else None
+        )
         return response_from_outcome(
             outcome=outcome,
             result=result,
             inner_session_id=inner_session_id,
             parent_session_id=session.session_id,
             elapsed=elapsed,
+            workspace_files=workspace_files,
         )
 
 
