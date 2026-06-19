@@ -1105,6 +1105,32 @@ def _referenced_channel(
     return channel
 
 
+def _referenced_thread(
+    guild_id: int,
+    priors: list[MagicMock],
+    *,
+    is_private: bool = True,
+    is_member: bool = True,
+    manage_threads: bool = False,
+) -> MagicMock:
+    thread = MagicMock(spec=discord.Thread)
+    thread.name = "secret-thread"
+    thread.guild = MagicMock(id=guild_id)
+    thread.history = MagicMock(return_value=_AsyncHistory(priors))
+    thread.is_private = MagicMock(return_value=is_private)
+    perms = MagicMock(
+        view_channel=True, read_message_history=True, manage_threads=manage_threads
+    )
+    thread.permissions_for = MagicMock(return_value=perms)
+    if is_member:
+        thread.fetch_member = AsyncMock(return_value=MagicMock())
+    else:
+        thread.fetch_member = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "not a member")
+        )
+    return thread
+
+
 def _prior(author_id: int, display_name: str, content: str) -> MagicMock:
     msg = MagicMock()
     msg.author = MagicMock(id=author_id, display_name=display_name)
@@ -1146,6 +1172,64 @@ class TestFetchReferencedConversations:
         assert result[0].title == "Release v0.6.61"
         assert result[0].channel_id == "222"
         assert result[0].messages[0].text == "bump the version"
+
+    @pytest.mark.asyncio
+    async def test_fetches_specific_message_in_current_channel(self):
+        # A permalink to a specific message in the channel the user is posting
+        # in is a real "read this exact message" request, not redundant context.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("autopilot", 111, [_prior(1, "A", "the answer")])
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 222),  # current channel == the linked channel
+            "https://discord.com/channels/111/222/333",
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "the answer"
+
+    @pytest.mark.asyncio
+    async def test_skips_private_thread_when_requester_not_member(self):
+        # The bot is in the private thread, but the requester isn't — its
+        # content must not leak to them.
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(111, [_prior(1, "A", "secret")], is_member=False)
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_reads_private_thread_when_requester_is_member(self):
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(111, [_prior(1, "A", "secret")], is_member=True)
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "secret"
+
+    @pytest.mark.asyncio
+    async def test_reads_private_thread_with_manage_threads(self):
+        # manage_threads grants access like it does in the Discord client.
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(
+            111, [_prior(1, "A", "secret")], is_member=False, manage_threads=True
+        )
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
 
     @pytest.mark.asyncio
     async def test_skips_cross_guild_reference(self):

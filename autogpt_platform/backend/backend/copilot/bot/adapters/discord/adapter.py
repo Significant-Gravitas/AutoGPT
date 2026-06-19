@@ -29,7 +29,11 @@ from ..base import (
     ReferencedConversation,
 )
 from . import commands, config, intro
-from .references import extract_referenced_channel_ids, replace_referenced_links
+from .references import (
+    ReferenceTarget,
+    extract_referenced_targets,
+    replace_referenced_links,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,9 @@ _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 MAX_REFERENCED_CONVERSATIONS = 3
 REFERENCED_HISTORY_LIMIT = 200
 REFERENCED_CHAR_BUDGET = 8000
+# When a link names a specific message, fetch that message plus a little of the
+# conversation leading up to it (rather than the channel's latest activity).
+REFERENCED_MESSAGE_CONTEXT = 15
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -666,49 +673,80 @@ class DiscordAdapter(PlatformAdapter):
         requester = message.guild.get_member(message.author.id)
         if requester is None:
             return ()
-        channel_ids = extract_referenced_channel_ids(
+        targets = extract_referenced_targets(
             text,
             exclude_channel_id=str(message.channel.id),
             limit=MAX_REFERENCED_CONVERSATIONS,
         )
         conversations: list[ReferencedConversation] = []
-        for channel_id in channel_ids:
-            convo = await self._fetch_one_referenced(
-                message.guild, requester, channel_id
-            )
+        for target in targets:
+            convo = await self._fetch_one_referenced(message.guild, requester, target)
             if convo is not None:
                 conversations.append(convo)
         return tuple(conversations)
 
     async def _fetch_one_referenced(
-        self, guild: discord.Guild, requester: discord.Member, channel_id: str
+        self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
     ) -> Optional[ReferencedConversation]:
-        channel = await self._resolve_channel(channel_id)
+        channel = await self._resolve_channel(target.channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return None
         if channel.guild.id != guild.id:
             # Cross-guild reference — don't read content from another server.
             return None
-        # Gate on the requester's own access, not the bot's: a private channel
-        # the bot can read must stay hidden from a user who couldn't read it.
-        perms = channel.permissions_for(requester)
-        if not (perms.view_channel and perms.read_message_history):
+        if not await self._can_requester_read(channel, requester):
             return None
         try:
-            messages = await self._budgeted_history(
-                channel.history(limit=REFERENCED_HISTORY_LIMIT, oldest_first=False),
-                REFERENCED_CHAR_BUDGET,
-            )
+            if target.message_id is not None:
+                # A permalink to a specific message: read that message and the
+                # turns leading up to it (``before`` the next snowflake includes
+                # the message itself), so "what was said here <link>" works even
+                # for an older message not in the channel's latest activity.
+                history = channel.history(
+                    limit=REFERENCED_MESSAGE_CONTEXT,
+                    before=discord.Object(id=int(target.message_id) + 1),
+                    oldest_first=False,
+                )
+            else:
+                history = channel.history(
+                    limit=REFERENCED_HISTORY_LIMIT, oldest_first=False
+                )
+            messages = await self._budgeted_history(history, REFERENCED_CHAR_BUDGET)
         except (discord.Forbidden, discord.HTTPException):
             logger.warning(
-                "Could not fetch referenced channel %s", channel_id, exc_info=True
+                "Could not fetch referenced channel %s",
+                target.channel_id,
+                exc_info=True,
             )
             return None
         if not messages:
             return None
         return ReferencedConversation(
-            title=channel.name, channel_id=channel_id, messages=messages
+            title=channel.name, channel_id=target.channel_id, messages=messages
         )
+
+    async def _can_requester_read(
+        self, channel: "discord.TextChannel | discord.Thread", requester: discord.Member
+    ) -> bool:
+        """Whether ``requester`` may read ``channel`` themselves.
+
+        Channel-level ``view_channel`` + ``read_message_history`` is the base
+        gate. For a *private* thread that is not enough — Discord requires the
+        member to actually be in the thread (``manage_threads`` bypasses, as it
+        does in the client), so check membership explicitly to avoid leaking a
+        private thread the bot happens to be in.
+        """
+        perms = channel.permissions_for(requester)
+        if not (perms.view_channel and perms.read_message_history):
+            return False
+        if isinstance(channel, discord.Thread) and channel.is_private():
+            if perms.manage_threads:
+                return True
+            try:
+                await channel.fetch_member(requester.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return False
+        return True
 
 
 def _truncate_to_budget(text: str, limit: int) -> str:
