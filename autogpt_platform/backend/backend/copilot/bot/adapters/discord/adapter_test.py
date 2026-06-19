@@ -953,6 +953,38 @@ class TestReplyContext:
         assert ctx.referenced_conversations == ()
         assert "https://discord.com/channels/111/222/333" in ctx.text
 
+    @pytest.mark.asyncio
+    async def test_links_inside_forwarded_message_are_not_fetched(self):
+        # A link that only appears in a forwarded message is quoted context,
+        # not the user's request — it must not be fetched or rewritten.
+        adapter, client = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> look at this"  # no link of its own
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = [
+            _snapshot("see https://discord.com/channels/111/222/333")
+        ]
+        msg.reference = None
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        client.get_channel.assert_not_called()
+        assert ctx.referenced_conversations == ()
+        assert "[Forwarded message]" in ctx.text
+        assert "https://discord.com/channels/111/222/333" in ctx.text
+
 
 # ── Proactive output (backend → platform) ──────────────────────────────
 

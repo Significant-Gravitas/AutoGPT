@@ -427,23 +427,22 @@ class DiscordAdapter(PlatformAdapter):
             if channel_type == "thread" and bot_mentioned:
                 thread_history = await self._thread_history(message)
 
-            message_text = self._message_text(message)
-            # Scan only the user's own message for references — links inside a
-            # replied-to message are quoted context, not the user's request, so
-            # reference handling runs before reply context is prepended.
-            referenced = await self._fetch_referenced_conversations(
-                message, message_text
-            )
+            own_text = self._strip_mentions(message)
+            # Scan ONLY the user's own typed message for references. Links inside
+            # a forwarded or replied-to message are quoted context, not the
+            # user's request, so they must not be auto-fetched or rewritten.
+            referenced = await self._fetch_referenced_conversations(message, own_text)
             if referenced:
                 # Swap the raw channel links/mentions for readable "#name"
                 # tokens — the fetched content is supplied under those names, so
                 # this stops the model from treating the paste as a URL it must
                 # open (and then claiming it can't access Discord).
-                message_text = replace_referenced_links(
-                    message_text, {c.channel_id: c.title for c in referenced}
+                own_text = replace_referenced_links(
+                    own_text, {c.channel_id: c.title for c in referenced}
                 )
-            # Reply context is added last so its own links stay untouched —
-            # neither fetched nor rewritten.
+            # Fold in forwarded content and the replied-to message as quoted
+            # context — both verbatim, with their links left untouched.
+            message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             ctx = MessageContext(
                 platform="discord",
@@ -513,7 +512,14 @@ class DiscordAdapter(PlatformAdapter):
         message entirely, so the LLM acts on just the comment and can badly
         misread the request. Stitch the forwarded content back in here.
         """
-        own = self._strip_mentions(message)
+        return self._compose_with_forward(message, self._strip_mentions(message))
+
+    def _compose_with_forward(self, message: discord.Message, own: str) -> str:
+        """Fold any forwarded snapshot content onto the user's own text.
+
+        Kept separate from reference scanning so forwarded content (quoted, not
+        the user's request) is never mined for channel links to auto-fetch.
+        """
         forwarded = self._forwarded_text(message)
         if not forwarded:
             return own
