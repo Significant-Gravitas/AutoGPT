@@ -105,4 +105,4 @@ class FirecrawlScrapeBlock(Block):
             elif f == ScrapeFormat.CHANGE_TRACKING:
                 yield "change_tracking", scrape_result.change_tracking
             elif f == ScrapeFormat.JSON:
-                yield "json", scrape_result.json
+                yield "json_data", scrape_result.json
