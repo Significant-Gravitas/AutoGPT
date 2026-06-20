@@ -90,6 +90,10 @@ describe("useCronSchedulerDialog", () => {
       { wrapper: makeWrapper("?flowID=g&flowVersion=1") },
     );
 
+    act(() => {
+      result.current.setScheduleName("Test Schedule");
+    });
+
     await act(async () => {
       await result.current.handleCreateSchedule();
     });
@@ -97,8 +101,39 @@ describe("useCronSchedulerDialog", () => {
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Invalid schedule",
+        description: "Please enter a valid cron expression",
         variant: "destructive",
       }),
     );
+  });
+
+  test("empty schedule name shows destructive toast and skips the mutation", async () => {
+    const { result } = renderHook(
+      () =>
+        useCronSchedulerDialog({
+          open: true,
+          setOpen: vi.fn(),
+          inputs: {},
+          credentials: {},
+        }),
+      { wrapper: makeWrapper("?flowID=g&flowVersion=1") },
+    );
+
+    act(() => {
+      result.current.setCronExpression("0 9 * * *");
+    });
+
+    await act(async () => {
+      await result.current.handleCreateSchedule();
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Invalid schedule",
+        description: "Please enter a schedule name",
+        variant: "destructive",
+      }),
+    );
+    expect(result.current.scheduleNameError).toBe("Schedule name is required");
   });
 });
