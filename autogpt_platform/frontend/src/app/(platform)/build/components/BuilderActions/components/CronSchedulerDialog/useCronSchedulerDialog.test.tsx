@@ -79,6 +79,9 @@ describe("useCronSchedulerDialog", () => {
   });
 
   test("empty cron expression shows destructive toast and skips the mutation", async () => {
+    const createScheduleMock = vi.fn();
+    server.use(getPostV1CreateExecutionScheduleMockHandler(createScheduleMock));
+
     const { result } = renderHook(
       () =>
         useCronSchedulerDialog({
@@ -105,9 +108,13 @@ describe("useCronSchedulerDialog", () => {
         variant: "destructive",
       }),
     );
+    expect(createScheduleMock).not.toHaveBeenCalled();
   });
 
   test("empty schedule name shows destructive toast and skips the mutation", async () => {
+    const createScheduleMock = vi.fn();
+    server.use(getPostV1CreateExecutionScheduleMockHandler(createScheduleMock));
+
     const { result } = renderHook(
       () =>
         useCronSchedulerDialog({
@@ -135,5 +142,6 @@ describe("useCronSchedulerDialog", () => {
       }),
     );
     expect(result.current.scheduleNameError).toBe("Schedule name is required");
+    expect(createScheduleMock).not.toHaveBeenCalled();
   });
 });
