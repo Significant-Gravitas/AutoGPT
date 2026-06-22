@@ -1,9 +1,11 @@
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.enums
+import prisma.fields
 import prisma.models
 import pytest
 
@@ -957,8 +959,10 @@ def _executor_node(graph_id: str | None, node_id: str = "n") -> prisma.models.Ag
         agentBlockId=db._AGENT_EXECUTOR_BLOCK_ID,
         agentGraphId="trig-graph",
         agentGraphVersion=1,
-        constantInput=json.dumps(payload),  # type: ignore
-        metadata="{}",  # type: ignore
+        # Prisma Json fields validate from a raw JSON string and parse it, so
+        # cast str -> fields.Json (a plain dict raises a Json validation error).
+        constantInput=cast(prisma.fields.Json, json.dumps(payload)),
+        metadata=cast(prisma.fields.Json, "{}"),
     )
 
 
