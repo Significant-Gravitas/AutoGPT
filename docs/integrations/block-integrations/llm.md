@@ -45,6 +45,48 @@ Optionally provide your own images via input_media_urls, or let the AI generate 
 
 ---
 
+## AI Agent Evaluator
+
+### What it is
+Uses an LLM as a strong judge to evaluate an agent's output against a rubric, expected answers, and design, returning scores and improvement suggestions.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| goal | The goal or task the agent was supposed to accomplish. | str | Yes |
+| agent_output | The actual output produced by the agent that should be evaluated. | str | Yes |
+| expected_output | (Optional) The expected/reference answer to compare the output against. | str | No |
+| agent_design | (Optional) A description or JSON of the agent's graph structure to assess design quality. | str | No |
+| criteria | (Optional) Custom rubric. If empty, a strong default rubric is used, adapted to the inputs provided. | List[EvaluationCriterion] | No |
+| pass_threshold | Minimum overall score (0-100) required for the output to be considered passing. | float | No |
+| model | The language model to use as the evaluator (judge). | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the evaluation could not be completed. | str |
+| overall_score | Weighted overall score from 0 to 100. | float |
+| passed | Whether the overall score meets the pass threshold. | bool |
+| criteria_scores | Per-criterion results: name, score, weight, and reasoning. | List[Dict[str, Any]] |
+| strengths | What the agent did well. | List[str] |
+| weaknesses | Shortcomings and problems found in the output. | List[str] |
+| suggestions | Concrete, actionable suggestions to make the agent stronger. | List[str] |
+| summary | A concise overall assessment of the agent's output. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## AI Condition
 
 ### What it is
