@@ -35,11 +35,9 @@ function resetCopilotStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
     },
   });
 }
@@ -284,7 +282,7 @@ describe("ChatContainer", () => {
       expect(wrapper?.className).toContain("max-w-3xl");
     });
 
-    it("resets the panel state when sessionId changes", () => {
+    it("clears the artifact preview when sessionId changes", () => {
       mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
@@ -297,12 +295,16 @@ describe("ChatContainer", () => {
         <ChatContainer {...baseProps} sessionId="s1" />,
       );
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_B_ID);
 
       rerender(<ChatContainer {...baseProps} sessionId="s2" />);
 
+      // `isOpen` is shared with ContextPanel and intentionally left alone
+      // on session switches; the drawer hides via activeArtifact being null.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
       const wrapper = screen.getByTestId(
@@ -332,18 +334,22 @@ describe("ChatContainer", () => {
       expect(panel.history).toEqual([]);
     });
 
-    it("closes the panel on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
+    it("clears artifact preview on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
       mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_A_ID);
 
       const { unmount } = render(<ChatContainer {...baseProps} />);
       unmount();
 
+      // The drawer's visibility is gated on activeArtifact, so clearing it
+      // is what prevents a resurrection on nav-away. `isOpen` belongs to
+      // ContextPanel and must not be flipped here.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
     });
@@ -353,11 +359,9 @@ describe("ChatContainer", () => {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          isMinimized: false,
-          isMaximized: false,
-          width: 600,
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
+          activeTab: "files",
         },
       });
 
@@ -366,7 +370,12 @@ describe("ChatContainer", () => {
 
       render(<ChatContainer {...baseProps} />);
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+      // The drawer is gated on activeArtifact — clearing it is enough to
+      // suppress the stale preview. `isOpen` is owned by ContextPanel and
+      // is no longer flipped by the unmount cleanup.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact,
+      ).toBeNull();
       const wrapper = screen.getByTestId(
         "chat-messages-container",
       ).parentElement;

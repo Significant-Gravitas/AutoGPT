@@ -120,7 +120,7 @@ class ExaWebhookManager(BaseWebhooksManager):
         api_key = credentials.api_key.get_secret_value()
 
         # Create webhook via Exa API
-        response = await Requests().post(
+        response = await Requests(raise_for_status=False).post(
             "https://api.exa.ai/v0/webhooks",
             headers={"x-api-key": api_key},
             json={
@@ -135,7 +135,7 @@ class ExaWebhookManager(BaseWebhooksManager):
 
         if not response.ok:
             error_data = response.json()
-            raise Exception(f"Failed to create Exa webhook: {error_data}")
+            raise ValueError(f"Exa returned error: {error_data}")
 
         webhook_data = response.json()
 

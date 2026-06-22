@@ -138,6 +138,26 @@ class TestToolOutputStash:
         assert pop_pending_tool_output("b") == "beta"
         assert pop_pending_tool_output("a") == "alpha"
 
+    def test_same_tool_different_input_not_swapped(self):
+        """OPEN-3158: parallel calls to the same tool with different inputs
+        keep their own output regardless of stash vs pop order."""
+        # Stashed in completion order (beta first), popped in call order.
+        stash_pending_tool_output("web_search", "beta-out", {"query": "beta"})
+        stash_pending_tool_output("web_search", "alpha-out", {"query": "alpha"})
+        assert pop_pending_tool_output("web_search", {"query": "alpha"}) == "alpha-out"
+        assert pop_pending_tool_output("web_search", {"query": "beta"}) == "beta-out"
+
+    def test_same_input_key_order_insensitive(self):
+        """Dict key ordering must not change the composite key."""
+        stash_pending_tool_output("t", "out", {"a": 1, "b": 2})
+        assert pop_pending_tool_output("t", {"b": 2, "a": 1}) == "out"
+
+    def test_empty_input_falls_back_to_name_key(self):
+        """Falsy input uses the name-only key, so a name-only pop still finds
+        it (back-compat for tools called with no meaningful args)."""
+        stash_pending_tool_output("t", "out", {})
+        assert pop_pending_tool_output("t") == "out"
+
     def test_reset_pending_tool_outputs_drops_orphans(self):
         """A retry attempt must not inherit stashed outputs from a rolled-back
         attempt — orphaned entries shift the name-keyed FIFO off-by-one and

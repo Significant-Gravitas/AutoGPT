@@ -15,14 +15,17 @@ from discord import app_commands
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.text import split_at_boundary
 
 from ..base import (
+    ChannelInfo,
     ChannelType,
     FileAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
     PlatformAdapter,
+    PostedRef,
 )
 from . import commands, config, intro
 
@@ -199,6 +202,113 @@ class DiscordAdapter(PlatformAdapter):
         except discord.HTTPException:
             logger.exception("Failed to rename thread %s", thread_id)
             return False
+
+    # -- Proactive output --
+
+    async def list_text_channels(
+        self, server_ids: tuple[str, ...]
+    ) -> list[ChannelInfo]:
+        wanted = set(server_ids)
+        channels: list[ChannelInfo] = []
+        for guild in self._client.guilds:
+            if str(guild.id) not in wanted:
+                continue
+            me = guild.me
+            for channel in guild.text_channels:
+                # Only surface channels the bot can actually post in, so the
+                # picker upstream never offers a target that would 403 on send.
+                # If the bot member isn't cached (`me is None`) we can't check,
+                # so we surface the channel and let the eventual send fail
+                # loudly rather than hide everything.
+                if me is not None and not channel.permissions_for(me).send_messages:
+                    continue
+                channels.append(
+                    ChannelInfo(
+                        id=str(channel.id),
+                        name=channel.name,
+                        server_id=str(guild.id),
+                        server_name=guild.name,
+                    )
+                )
+        return channels
+
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+        channel = await self._resolve_channel(channel_id)
+        # Guild channels and threads carry `.guild`; DM/group channels don't,
+        # so they resolve to None (never authorized for a server post).
+        if isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
+            return str(channel.guild.id)
+        return None
+
+    async def post_channel_message(
+        self, channel_id: str, text: str
+    ) -> Optional[PostedRef]:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            logger.warning("Cannot post to non-messageable channel %s", channel_id)
+            return None
+        try:
+            first = await self._send_chunked(channel, text)
+        except discord.HTTPException:
+            logger.exception("Failed to post message to channel %s", channel_id)
+            return None
+        if first is None:
+            return None
+        return PostedRef(id=str(first.id), url=first.jump_url)
+
+    async def create_channel_thread(
+        self, channel_id: str, name: str, text: str
+    ) -> Optional[PostedRef]:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.TextChannel):
+            logger.warning("Cannot create thread in non-text channel %s", channel_id)
+            return None
+        try:
+            thread = await channel.create_thread(
+                name=name[:100],
+                type=discord.ChannelType.public_thread,
+            )
+        except discord.HTTPException:
+            logger.exception("Failed to create thread in channel %s", channel_id)
+            return None
+        # The thread now exists on Discord. Surface its ref even if posting the
+        # body fails, so the caller reports partial success and doesn't retry
+        # into a duplicate thread.
+        try:
+            await self._send_chunked(thread, text)
+        except discord.HTTPException:
+            logger.exception(
+                "Thread %s created but posting its content failed", thread.id
+            )
+        return PostedRef(id=str(thread.id), url=thread.jump_url)
+
+    async def _send_chunked(
+        self, channel: discord.abc.Messageable, text: str
+    ) -> Optional[discord.Message]:
+        """Send ``text`` to ``channel``, splitting at natural boundaries to stay
+        under Discord's per-message cap. Returns the first message sent (the one
+        callers permalink to), or ``None`` if there was nothing to send.
+
+        Raises only if the *first* chunk fails — once anything is delivered, a
+        later-chunk failure stops the send and keeps the partial result rather
+        than discarding what already posted (a retry would duplicate it).
+        """
+        remaining = text.strip()
+        first: Optional[discord.Message] = None
+        while remaining:
+            chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
+            if not chunk:
+                break
+            try:
+                msg = await channel.send(chunk, tts=False)
+            except discord.HTTPException:
+                if first is None:
+                    raise
+                logger.exception("Dropping trailing chunk after partial send")
+                break
+            if first is None:
+                first = msg
+        return first
 
     # -- Internal --
 
