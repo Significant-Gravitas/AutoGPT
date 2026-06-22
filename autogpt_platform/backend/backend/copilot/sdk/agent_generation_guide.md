@@ -161,6 +161,13 @@ descriptions; read and follow those when `find_block` surfaces a match.
 
 ### Key Rules
 
+- **Prefer pure logic over AI**: AI blocks (text generation, orchestrators)
+  cost orders of magnitude more than deterministic blocks. When a task has an
+  equivalent non-AI solution — e.g. parsing, filtering, math, string formatting,
+  date handling, conditionals, code execution — use the deterministic block
+  (e.g. `CodeExecutionBlock`, `ConditionBlock`) instead of an LLM. Reserve AI
+  for what genuinely needs it (open-ended reasoning, summarization, generation).
+  Don't spend the user's money on AI for work plain logic can do.
 - **Name & description**: Include `name` and `description` in the agent JSON
   when creating a new agent, or when editing and the agent's purpose changed.
   Without these the agent gets a generic default name.
