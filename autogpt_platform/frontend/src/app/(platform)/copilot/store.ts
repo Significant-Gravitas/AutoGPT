@@ -161,6 +161,8 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   openContextPanelForFiles: () => void;
   openContextPanelForProgress: () => void;
+  autoOpenArtifact: (ref: ArtifactRef) => void;
+  showFilesTab: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
   // decides whether to auto-open. Much simpler than message-scanning.
@@ -402,6 +404,39 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         isOpen: true,
         activeTab: "progress",
+        activeArtifact: null,
+        history: [],
+      },
+    }));
+  },
+
+  // Auto-open path for sessions that already have generated files: surfaces the
+  // last generated file directly in the Artifact panel. Respects the user's
+  // explicit close, mirroring openContextPanelForFiles' guard.
+  autoOpenArtifact: (ref) => {
+    if (_autoOpenUserClosed) return;
+    if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        activeArtifact: ref,
+        history: [],
+      },
+    }));
+  },
+  // Explicit user action (Artifact panel folder button): always opens the
+  // Context panel on the Files tab, dropping any open artifact preview.
+  showFilesTab: () => {
+    if (isClient) {
+      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "files");
+    }
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        activeTab: "files",
         activeArtifact: null,
         history: [],
       },

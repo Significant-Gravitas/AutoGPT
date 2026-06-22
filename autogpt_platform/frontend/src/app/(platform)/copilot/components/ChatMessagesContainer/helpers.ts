@@ -29,7 +29,8 @@ export type MessagePart = UIMessage<
 
 export type RenderSegment =
   | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] };
+  | { kind: "collapsed-group"; parts: ToolUIPart[] }
+  | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
 
 const CUSTOM_TOOL_TYPES = new Set([
   "tool-ask_question",
@@ -133,38 +134,71 @@ export function buildRenderSegments(
   baseIndex = 0,
 ): RenderSegment[] {
   const segments: RenderSegment[] = [];
-  let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingTools: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingReasoning: Array<{ part: MessagePart; index: number }> | null =
+    null;
 
-  function flushGroup() {
-    if (!pendingGroup) return;
-    if (pendingGroup.length >= 2) {
+  function flushTools() {
+    if (!pendingTools) return;
+    if (pendingTools.length >= 2) {
       segments.push({
         kind: "collapsed-group",
-        parts: pendingGroup.map((p) => p.part),
+        parts: pendingTools.map((p) => p.part),
       });
     } else {
-      for (const p of pendingGroup) {
+      for (const p of pendingTools) {
         segments.push({ kind: "part", part: p.part, index: p.index });
       }
     }
-    pendingGroup = null;
+    pendingTools = null;
+  }
+
+  // Native reasoning parts (one per agentic turn) are always emitted as a
+  // reasoning-group — including a lone part. This folds a multi-step task's
+  // consecutive reasoning into one collapsed block instead of a stacked wall of
+  // "Reasoning" accordions, and gives the run a single stable identity
+  // (`reasoning-group` keyed by its first index) so a single block doesn't
+  // remount — losing its open/closed state — the moment a second consecutive
+  // block arrives and turns it into a group.
+  function flushReasoning() {
+    if (!pendingReasoning) return;
+    segments.push({
+      kind: "reasoning-group",
+      parts: pendingReasoning.map((p) => p.part),
+      index: pendingReasoning[0].index,
+    });
+    pendingReasoning = null;
   }
 
   parts.forEach((part, i) => {
     const absoluteIndex = baseIndex + i;
+
+    // `step-start` markers delimit turns in multi-step agentic streams and
+    // render as nothing. Treat them as transparent: skipping them (rather than
+    // flushing) keeps the reasoning blocks on either side in a single run, which
+    // is exactly the consecutive-reasoning case this grouping targets.
+    if (part.type === "step-start") return;
+
     const isGenericCompletedTool =
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
-      if (!pendingGroup) pendingGroup = [];
-      pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
+      flushReasoning();
+      if (!pendingTools) pendingTools = [];
+      pendingTools.push({ part: part as ToolUIPart, index: absoluteIndex });
+    } else if (part.type === "reasoning") {
+      flushTools();
+      if (!pendingReasoning) pendingReasoning = [];
+      pendingReasoning.push({ part, index: absoluteIndex });
     } else {
-      flushGroup();
+      flushTools();
+      flushReasoning();
       segments.push({ kind: "part", part, index: absoluteIndex });
     }
   });
 
-  flushGroup();
+  flushTools();
+  flushReasoning();
   return segments;
 }
 

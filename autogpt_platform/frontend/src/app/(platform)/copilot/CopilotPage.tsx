@@ -118,8 +118,10 @@ function MainArea({
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}
-          <LowCreditBanner className="px-4 pt-4" />
-          <NotificationBanner />
+          <div className="flex flex-col gap-3 px-4 pt-4 empty:hidden">
+            <LowCreditBanner />
+            <NotificationBanner />
+          </div>
           <CopilotChatHost
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
