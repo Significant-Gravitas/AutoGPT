@@ -1,3 +1,5 @@
+from pydantic import ValidationError
+
 from backend.blocks._base import (
     BlockCategory,
     BlockOutput,
@@ -14,6 +16,7 @@ from backend.blocks.agent_evaluator_helpers import (
     default_criteria,
     evaluation_response_format,
     normalize_criteria_scores,
+    parse_criterion_evaluations,
     validate_criteria_names,
     weighted_overall,
 )
@@ -188,23 +191,27 @@ class AIAgentEvaluatorBlock(AIBlockBase):
             self._build_llm_input(input_data, criteria), credentials
         )
 
-        criteria_evaluations = evaluation.get("criteria_evaluations")
-        if not isinstance(criteria_evaluations, list) or not criteria_evaluations:
+        raw_evaluations = evaluation.get("criteria_evaluations")
+        if not isinstance(raw_evaluations, list) or not raw_evaluations:
             yield "error", "Evaluator did not return any criterion scores."
             return
 
-        name_error = validate_criteria_names(criteria_evaluations, criteria)
+        try:
+            evaluations = parse_criterion_evaluations(raw_evaluations)
+        except ValidationError:
+            yield "error", "Evaluator returned malformed criterion scores."
+            return
+
+        name_error = validate_criteria_names(evaluations, criteria)
         if name_error:
             yield "error", name_error
             return
 
-        overall_score = weighted_overall(criteria_evaluations, criteria)
+        overall_score = weighted_overall(evaluations, criteria)
 
         yield "overall_score", overall_score
         yield "passed", overall_score >= input_data.pass_threshold
-        yield "criteria_scores", normalize_criteria_scores(
-            criteria_evaluations, criteria
-        )
+        yield "criteria_scores", normalize_criteria_scores(evaluations, criteria)
         yield "strengths", [str(s) for s in evaluation.get("strengths", [])]
         yield "weaknesses", [str(w) for w in evaluation.get("weaknesses", [])]
         yield "suggestions", [str(s) for s in evaluation.get("suggestions", [])]

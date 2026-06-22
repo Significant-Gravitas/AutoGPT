@@ -1,12 +1,14 @@
 from backend.blocks.agent_evaluator_helpers import (
     MAX_SCORE,
     MIN_SCORE,
+    CriterionEvaluation,
     EvaluationCriterion,
     build_user_prompt,
     clamp_score,
     default_criteria,
     evaluation_response_format,
     normalize_criteria_scores,
+    parse_criterion_evaluations,
     validate_criteria_names,
     weighted_overall,
 )
@@ -38,14 +40,26 @@ def test_clamp_score_invalid_returns_min():
     assert clamp_score("not-a-number") == MIN_SCORE
 
 
+def test_parse_criterion_evaluations_clamps_and_defaults():
+    parsed = parse_criterion_evaluations(
+        [
+            {"name": "A", "score": 200, "reasoning": "too high"},
+            {"name": "B"},  # missing score/reasoning -> defaults
+        ]
+    )
+    assert parsed[0].score == MAX_SCORE
+    assert parsed[1].score == MIN_SCORE
+    assert parsed[1].reasoning == ""
+
+
 def test_weighted_overall_uses_weights():
     criteria = [
         EvaluationCriterion(name="A", weight=1.0),
         EvaluationCriterion(name="B", weight=3.0),
     ]
     evaluations = [
-        {"name": "A", "score": 100},
-        {"name": "B", "score": 60},
+        CriterionEvaluation(name="A", score=100),
+        CriterionEvaluation(name="B", score=60),
     ]
     # (100*1 + 60*3) / 4 = 70
     assert weighted_overall(evaluations, criteria) == 70.0
@@ -57,7 +71,7 @@ def test_weighted_overall_empty_returns_min():
 
 def test_validate_criteria_names_match():
     criteria = [EvaluationCriterion(name="Goal Achievement")]
-    evaluations = [{"name": "goal achievement", "score": 90}]
+    evaluations = [CriterionEvaluation(name="goal achievement", score=90)]
     assert validate_criteria_names(evaluations, criteria) is None
 
 
@@ -66,7 +80,7 @@ def test_validate_criteria_names_missing():
         EvaluationCriterion(name="Goal Achievement"),
         EvaluationCriterion(name="Completeness"),
     ]
-    evaluations = [{"name": "Goal Achievement", "score": 90}]
+    evaluations = [CriterionEvaluation(name="Goal Achievement", score=90)]
     error = validate_criteria_names(evaluations, criteria)
     assert error is not None
     assert "missing criteria" in error
@@ -75,19 +89,34 @@ def test_validate_criteria_names_missing():
 def test_validate_criteria_names_unexpected():
     criteria = [EvaluationCriterion(name="Goal Achievement")]
     evaluations = [
-        {"name": "Goal Achievement", "score": 90},
-        {"name": "Hallucinated Criterion", "score": 50},
+        CriterionEvaluation(name="Goal Achievement", score=90),
+        CriterionEvaluation(name="Hallucinated Criterion", score=50),
     ]
     error = validate_criteria_names(evaluations, criteria)
     assert error is not None
     assert "unexpected criteria" in error
 
 
+def test_validate_criteria_names_duplicate():
+    criteria = [
+        EvaluationCriterion(name="Goal Achievement"),
+        EvaluationCriterion(name="Completeness"),
+    ]
+    evaluations = [
+        CriterionEvaluation(name="Goal Achievement", score=90),
+        CriterionEvaluation(name="Goal Achievement", score=10),
+        CriterionEvaluation(name="Completeness", score=80),
+    ]
+    error = validate_criteria_names(evaluations, criteria)
+    assert error is not None
+    assert "duplicate criteria" in error
+
+
 def test_normalize_criteria_scores():
     criteria = [EvaluationCriterion(name="Goal Achievement", weight=2.0)]
-    evaluations = [
-        {"name": "Goal Achievement", "score": 200, "reasoning": "great"},
-    ]
+    evaluations = parse_criterion_evaluations(
+        [{"name": "Goal Achievement", "score": 200, "reasoning": "great"}]
+    )
     normalized = normalize_criteria_scores(evaluations, criteria)
     assert normalized == [
         {
@@ -100,7 +129,8 @@ def test_normalize_criteria_scores():
 
 
 def test_normalize_criteria_scores_unknown_name_default_weight():
-    normalized = normalize_criteria_scores([{"name": "Unknown", "score": 10}], [])
+    evaluations = [CriterionEvaluation(name="Unknown", score=10)]
+    normalized = normalize_criteria_scores(evaluations, [])
     assert normalized[0]["weight"] == 1.0
     assert normalized[0]["reasoning"] == ""
 

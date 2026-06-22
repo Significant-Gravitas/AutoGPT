@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Per-criterion scores are expressed on a 0-100 scale: easy for the LLM to
 # reason about and intuitive when surfaced to users.
@@ -20,8 +20,16 @@ SYSTEM_PROMPT = (
 )
 
 
+def clamp_score(value: Any) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return MIN_SCORE
+    return max(MIN_SCORE, min(MAX_SCORE, score))
+
+
 class EvaluationCriterion(BaseModel):
-    """A single dimension the evaluator scores the agent on."""
+    """A single dimension the evaluator scores the agent on (the rubric entry)."""
 
     name: str = Field(description="Short name of the criterion, e.g. 'Accuracy'.")
     description: str = Field(
@@ -33,6 +41,24 @@ class EvaluationCriterion(BaseModel):
         ge=0,
         description="Relative importance of this criterion in the overall score.",
     )
+
+
+class CriterionEvaluation(BaseModel):
+    """The judge LLM's score for a single rubric criterion."""
+
+    name: str = ""
+    score: float = MIN_SCORE
+    reasoning: str = ""
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def _clamp(cls, value: Any) -> float:
+        return clamp_score(value)
+
+
+def parse_criterion_evaluations(raw: list) -> list[CriterionEvaluation]:
+    """Parse the LLM's raw criterion payloads into validated models."""
+    return [CriterionEvaluation.model_validate(item) for item in raw]
 
 
 def default_criteria(
@@ -75,34 +101,31 @@ def default_criteria(
     return criteria
 
 
-def clamp_score(value: Any) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return MIN_SCORE
-    return max(MIN_SCORE, min(MAX_SCORE, score))
-
-
 def validate_criteria_names(
-    criteria_evaluations: list[dict], criteria: list[EvaluationCriterion]
+    evaluations: list[CriterionEvaluation], criteria: list[EvaluationCriterion]
 ) -> str | None:
-    """Reject responses whose criterion names don't match the rubric.
+    """Reject responses whose criterion names don't match the rubric one-to-one.
 
     A mismatch would silently skew the weighted score: missing criteria drop
-    their weight from the denominator, and unexpected/misspelled names fall back
-    to weight 1.0. Returns an error message when invalid, otherwise ``None``.
+    their weight from the denominator, unexpected/misspelled names fall back to
+    weight 1.0, and duplicates get double-counted. Requiring no missing, no
+    unexpected, and no duplicate names enforces exactly one score per criterion.
+    Returns an error message when invalid, otherwise ``None``.
     """
     expected = {c.name.strip().lower() for c in criteria}
-    returned = {
-        str(evaluation.get("name", "")).strip().lower()
-        for evaluation in criteria_evaluations
-    }
+    returned_names = [e.name.strip().lower() for e in evaluations]
+    returned = set(returned_names)
+    duplicates = sorted(
+        {name for name in returned_names if name and returned_names.count(name) > 1}
+    )
     missing = expected - returned
     unexpected = returned - expected
-    if not missing and not unexpected:
+    if not duplicates and not missing and not unexpected:
         return None
 
     problems = []
+    if duplicates:
+        problems.append(f"duplicate criteria: {duplicates}")
     if missing:
         problems.append(f"missing criteria: {sorted(missing)}")
     if unexpected:
@@ -111,16 +134,15 @@ def validate_criteria_names(
 
 
 def weighted_overall(
-    criteria_evaluations: list[dict], criteria: list[EvaluationCriterion]
+    evaluations: list[CriterionEvaluation], criteria: list[EvaluationCriterion]
 ) -> float:
     """Compute the weighted average so the score is deterministic, not LLM math."""
     weight_by_name = {c.name.strip().lower(): c.weight for c in criteria}
     total_weight = 0.0
     weighted_sum = 0.0
-    for evaluation in criteria_evaluations:
-        name = str(evaluation.get("name", "")).strip().lower()
-        weight = weight_by_name.get(name, 1.0)
-        weighted_sum += clamp_score(evaluation.get("score")) * weight
+    for evaluation in evaluations:
+        weight = weight_by_name.get(evaluation.name.strip().lower(), 1.0)
+        weighted_sum += evaluation.score * weight
         total_weight += weight
     if total_weight == 0:
         return MIN_SCORE
@@ -128,19 +150,17 @@ def weighted_overall(
 
 
 def normalize_criteria_scores(
-    criteria_evaluations: list[dict], criteria: list[EvaluationCriterion]
+    evaluations: list[CriterionEvaluation], criteria: list[EvaluationCriterion]
 ) -> list[dict]:
     weight_by_name = {c.name.strip().lower(): c.weight for c in criteria}
     return [
         {
-            "name": str(evaluation.get("name", "")),
-            "score": clamp_score(evaluation.get("score")),
-            "weight": weight_by_name.get(
-                str(evaluation.get("name", "")).strip().lower(), 1.0
-            ),
-            "reasoning": str(evaluation.get("reasoning", "")),
+            "name": evaluation.name,
+            "score": evaluation.score,
+            "weight": weight_by_name.get(evaluation.name.strip().lower(), 1.0),
+            "reasoning": evaluation.reasoning,
         }
-        for evaluation in criteria_evaluations
+        for evaluation in evaluations
     ]
 
 
@@ -180,7 +200,7 @@ def evaluation_response_format() -> dict[str, str]:
     """The JSON schema description the judge LLM must populate."""
     return {
         "criteria_evaluations": (
-            "An array of objects, one per criterion listed, each with: "
+            "An array of objects, exactly one per criterion listed, each with: "
             "'name' (string, matching the criterion name exactly), "
             "'score' (integer 0-100), and 'reasoning' (string justifying the score)."
         ),

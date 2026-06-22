@@ -52,7 +52,9 @@ Uses an LLM as a strong judge to evaluate an agent's output against a rubric, ex
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block acts as an LLM-as-judge. It builds a structured evaluation prompt from the `goal`, the `agent_output`, and (when provided) the `expected_output` reference answer and the `agent_design`, then asks the model to score the output against a rubric. If no custom `criteria` are supplied, a strong default rubric is used (Goal Achievement, Completeness, Relevance, Coherence), automatically adding an "Accuracy vs Reference" criterion when an expected answer is given and a "Design Quality" criterion when a design is given.
+
+The model returns one score (0-100) and a justification per criterion. The block parses that payload into validated models and rejects responses with missing, duplicate, or unexpected criterion names, so a malformed judge response can't silently skew the result. The `overall_score` is then computed deterministically in code as the weighted average of the per-criterion scores (using each criterion's `weight`), and `passed` is set by comparing it to `pass_threshold`. On an empty or malformed response the block yields an `error` instead of a score.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -82,7 +84,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Agent quality gating**: Score an agent's output against its goal and only continue the workflow (or publish the result) when `passed` is true, blocking low-quality runs automatically.
+
+**Regression testing against reference answers**: Provide an `expected_output` for known test cases and track the "Accuracy vs Reference" score over time to catch quality regressions when an agent or prompt changes.
+
+**Iterative agent improvement**: Feed the `weaknesses` and `suggestions` back to the builder (or another agent) to refine prompts and block wiring until the `overall_score` clears the desired `pass_threshold`.
 <!-- END MANUAL -->
 
 ---
