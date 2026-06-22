@@ -13,8 +13,9 @@
 UPDATE "StoreListingVersion"
 SET "imageUrls" = ARRAY(
     SELECT url
-    FROM unnest("imageUrls") AS url
+    FROM unnest("imageUrls") WITH ORDINALITY AS u(url, ord)
     WHERE url NOT LIKE '%picsum.photos%'
+    ORDER BY ord
 )
 WHERE EXISTS (
     SELECT 1 FROM unnest("imageUrls") AS url WHERE url LIKE '%picsum.photos%'
