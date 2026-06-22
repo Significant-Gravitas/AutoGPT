@@ -11,7 +11,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
-import { AgentImageFallback } from "../AgentImageFallback/AgentImageFallback";
 
 interface Props {
   agentName: string;
@@ -80,7 +79,10 @@ export function StoreCard({
             />
           </>
         ) : (
-          <AgentImageFallback seed={agentGraphID || agentSlug || agentName} />
+          <div
+            className="absolute inset-0 rounded-xl"
+            style={{ backgroundColor: "rgb(216, 208, 255)" }}
+          />
         )}
       </div>
 

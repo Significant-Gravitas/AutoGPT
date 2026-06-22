@@ -16,7 +16,6 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
-import { AgentImageFallback } from "../AgentImageFallback/AgentImageFallback";
 
 interface Props {
   agent: StoreAgent;
@@ -63,7 +62,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <AgentImageFallback seed={agent.slug || agent.agent_name} />
+          <div className="absolute inset-0 rounded-xl bg-violet-50" />
         )}
       </div>
 
