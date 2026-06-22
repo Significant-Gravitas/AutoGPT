@@ -17,9 +17,9 @@ describe("useOnboardingWizardStore", () => {
       expect(state.otherPainPoint).toBe("");
     });
 
-    it("defaults to yearly billing", () => {
+    it("defaults to monthly billing", () => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
-        "yearly",
+        "monthly",
       );
       expect(useOnboardingWizardStore.getState().hasUserSelectedBilling).toBe(
         false,

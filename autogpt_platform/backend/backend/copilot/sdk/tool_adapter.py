@@ -94,8 +94,9 @@ _STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
 
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
-# Keyed by tool_name → full output string. Consumed (popped) by the
-# response adapter when it builds StreamToolOutputAvailable.
+# Keyed by a (tool_name + canonical input) composite — see ``_output_key`` —
+# → FIFO of full output strings. Consumed (popped) by the response adapter
+# when it builds StreamToolOutputAvailable.
 _pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
     "pending_tool_outputs",
     default=None,  # type: ignore[arg-type]
@@ -173,41 +174,89 @@ def reset_tool_failure_counters() -> None:
     _consecutive_tool_failures.set({})
 
 
-def pop_pending_tool_output(tool_name: str) -> str | None:
-    """Pop and return the oldest stashed output for *tool_name*.
+def reset_pending_tool_outputs() -> None:
+    """Drop stashed tool outputs left over from a previous stream attempt.
+
+    The stash is a per-call FIFO (see ``_output_key``), not keyed by
+    tool_call_id. A rolled-back attempt that executed tools but never consumed
+    their results leaves orphaned entries, so on the retry every
+    ``pop_pending_tool_output`` for that key returns the stale first-attempt
+    output — shifting all
+    subsequent pops off-by-one and attaching wrong payloads to the frontend's
+    ``StreamToolOutputAvailable`` events (e.g. a ``setup_requirements`` card
+    silently replaced by an older result). Called at the top of each retry
+    attempt, where no tool call can be in flight.
+    """
+    _pending_tool_outputs.set({})
+
+
+def _output_key(tool_name: str, tool_input: Any = None) -> str:
+    """Build the stash key correlating a tool call to its output.
+
+    Tool *name* alone is insufficient (OPEN-3158): the model can issue two
+    parallel calls to the same tool in one turn (e.g. two ``web_search``
+    queries).  Their outputs are stashed in completion order but consumed in
+    tool-result order — with a name-only key those orders diverge and the
+    outputs attach to the wrong ``tool_call_id``, swapping the two cards in
+    the UI.  Including a canonical serialization of the call's input
+    disambiguates the common case where the two calls differ.
+
+    The in-process MCP handler never sees the SDK ``tool_use_id`` (only the
+    arguments), so the input is the most specific key available on the stash
+    side.  Empty/falsy input falls back to the name-only key: such calls
+    can't be disambiguated, and two identical calls produce interchangeable
+    outputs so a swap between them is not user-visible.
+    """
+    if not tool_input:
+        return tool_name
+    try:
+        canonical = json.dumps(tool_input, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        canonical = str(tool_input)
+    return f"{tool_name}\x00{canonical}"
+
+
+def pop_pending_tool_output(tool_name: str, tool_input: Any = None) -> str | None:
+    """Pop and return the oldest stashed output for a tool call.
 
     The SDK CLI may truncate large tool results (writing them to disk and
     replacing the content with a file reference). This stash keeps the
     original MCP output so the response adapter can forward it to the
     frontend for proper widget rendering.
 
-    Uses a FIFO queue per tool name so duplicate calls to the same tool
-    in one turn each get their own output.
+    Matched by ``_output_key(tool_name, tool_input)`` so parallel calls to
+    the same tool with different inputs each get their own output instead of
+    being swapped.  Falls back to a FIFO queue when several calls share the
+    same key.
 
-    Returns ``None`` if nothing was stashed for *tool_name*.
+    Returns ``None`` if nothing was stashed for this call.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return None
-    queue = pending.get(tool_name)
+    key = _output_key(tool_name, tool_input)
+    queue = pending.get(key)
     if not queue:
-        pending.pop(tool_name, None)
+        pending.pop(key, None)
         return None
     value = queue.pop(0)
     if not queue:
-        del pending[tool_name]
+        del pending[key]
     return value
 
 
-def stash_pending_tool_output(tool_name: str, output: Any) -> None:
+def stash_pending_tool_output(
+    tool_name: str, output: Any, tool_input: Any = None
+) -> None:
     """Stash tool output for later retrieval by the response adapter.
 
-    Used by the PostToolUse hook to capture SDK built-in tool outputs
-    (WebSearch, Read, etc.) that aren't available through the MCP stash
-    mechanism in ``_execute_tool_sync``.
+    Used by the MCP truncating wrapper and the PostToolUse hook (for SDK
+    built-in tools like WebSearch/Read that aren't available through the MCP
+    stash mechanism in ``_execute_tool_sync``).
 
-    Appends to a FIFO queue per tool name so multiple calls to the same
-    tool in one turn are all preserved.
+    Keyed by ``_output_key(tool_name, tool_input)`` so the response adapter
+    can pop the output belonging to a *specific* tool call rather than the
+    next one for that tool name — see ``_output_key`` for why this matters.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
@@ -219,7 +268,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
             text = json.dumps(output)
         except (TypeError, ValueError):
             text = str(output)
-    pending.setdefault(tool_name, []).append(text)
+    pending.setdefault(_output_key(tool_name, tool_input), []).append(text)
     # Signal any waiters that new output is available.
     event = _stash_event.get(None)
     if event is not None:
@@ -755,7 +804,10 @@ def _make_truncating_wrapper(
         if not truncated.get("isError"):
             text = _text_from_mcp_result(truncated)
             if text:
-                stash_pending_tool_output(tool_name, text)
+                # Key by the model's ORIGINAL args (pre file-ref expansion) so
+                # it matches the ToolUseBlock.input the response adapter pops
+                # with — see ``_output_key`` (OPEN-3158).
+                stash_pending_tool_output(tool_name, text, original_args)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act

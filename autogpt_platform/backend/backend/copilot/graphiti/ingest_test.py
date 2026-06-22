@@ -194,6 +194,77 @@ class TestEnqueueEpisode:
             assert result is False
 
     @pytest.mark.asyncio
+    async def test_enqueue_episode_rejects_oversized_body_without_queueing(
+        self,
+    ) -> None:
+        """A body over MAX_EPISODE_BODY_BYTES is rejected (False) before any
+        worker or queue is touched — degraded dream writes must not reach
+        FalkorDB or the extraction LLM."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="runaway_consolidated_fact",
+                episode_body="x" * (ingest.MAX_EPISODE_BODY_BYTES + 1),
+                is_json=True,
+            )
+            assert result is False
+            mock_worker.assert_not_awaited()
+            assert q.empty()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_accepts_body_at_exact_size_cap(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="cap_sized_ep",
+                episode_body="x" * ingest.MAX_EPISODE_BODY_BYTES,
+            )
+            assert result is True
+            assert not q.empty()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_size_cap_counts_bytes_not_chars(self) -> None:
+        """Multi-byte UTF-8 content is measured in encoded bytes, so a
+        char-count under the cap can still be rejected."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            # "é" encodes to 2 bytes — half the cap in chars, just over in bytes.
+            body = "é" * (ingest.MAX_EPISODE_BODY_BYTES // 2 + 1)
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="multibyte_ep",
+                episode_body=body,
+            )
+            assert result is False
+            assert q.empty()
+
+    @pytest.mark.asyncio
     async def test_enqueue_episode_json_mode(self) -> None:
         with (
             patch.object(ingest, "derive_group_id", return_value="user_abc"),

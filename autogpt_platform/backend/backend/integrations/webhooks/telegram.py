@@ -204,7 +204,7 @@ class TelegramWebhooksManager(BaseWebhooksManager):
 
         if not result.get("ok"):
             error_desc = result.get("description", "Unknown error")
-            raise ValueError(f"Failed to set Telegram webhook: {error_desc}")
+            raise ValueError(f"Telegram returned error: {error_desc}")
 
         # Telegram doesn't return a webhook ID, use empty string
         config = {
