@@ -4,15 +4,19 @@ import {
   buildRenderSegments,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
+  getMessageArtifacts,
+  getMostRecentArtifact,
   isCompletedToolPart,
   isInteractiveToolPart,
   isReasoningToolPart,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
-import type { FileUIPart } from "ai";
+import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import type { TodoItem } from "../../ContextPanel/components/ProgressTab/helpers";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -20,6 +24,10 @@ function textPart(text: string): MessagePart {
 
 function reasoningPart(text: string): MessagePart {
   return { type: "reasoning", text, state: "done" } as MessagePart;
+}
+
+function stepStartPart(): MessagePart {
+  return { type: "step-start" } as MessagePart;
 }
 
 function toolPart(
@@ -234,6 +242,92 @@ describe("buildRenderSegments", () => {
     if (segments[0].kind === "part") {
       expect(segments[0].index).toBe(5);
     }
+  });
+
+  it("collapses consecutive reasoning parts into one reasoning-group", () => {
+    const parts = [
+      reasoningPart("Thinking step 1"),
+      reasoningPart("Thinking step 2"),
+      reasoningPart("Thinking step 3"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(3);
+    }
+  });
+
+  it("wraps a single reasoning part in a reasoning-group for stable identity", () => {
+    const parts = [reasoningPart("Lone thought")];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(1);
+    }
+  });
+
+  it("breaks reasoning groups around interleaved text", () => {
+    const parts = [
+      reasoningPart("a"),
+      reasoningPart("b"),
+      textPart("Status update"),
+      reasoningPart("c"),
+      reasoningPart("d"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(3);
+    expect(segments[0].kind).toBe("reasoning-group");
+    expect(segments[1].kind).toBe("part");
+    expect(segments[2].kind).toBe("reasoning-group");
+  });
+
+  it("does not merge reasoning parts and generic tools together", () => {
+    const parts = [
+      reasoningPart("a"),
+      reasoningPart("b"),
+      toolPart("generic_a", "output-available"),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(2);
+    expect(segments[0].kind).toBe("reasoning-group");
+    expect(segments[1].kind).toBe("collapsed-group");
+  });
+
+  it("uses the first part's absolute index as the reasoning-group index", () => {
+    const parts = [reasoningPart("a"), reasoningPart("b")];
+    const segments = buildRenderSegments(parts, 3);
+    expect(segments).toHaveLength(1);
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].index).toBe(3);
+    }
+  });
+
+  it("treats step-start markers as transparent so reasoning stays grouped", () => {
+    const parts = [
+      reasoningPart("turn 1"),
+      stepStartPart(),
+      reasoningPart("turn 2"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(2);
+    }
+  });
+
+  it("treats step-start markers as transparent within tool groups", () => {
+    const parts = [
+      toolPart("generic_a", "output-available"),
+      stepStartPart(),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("collapsed-group");
   });
 });
 
@@ -578,6 +672,26 @@ describe("splitReasoningAndResponse", () => {
     expect(result.response[0]).toBe(corruptedRunBlock);
   });
 
+  it("pins the trigger-setup card even when reasoning follows it", () => {
+    // Regression: setup_agent_webhook_trigger emits a trigger_setup card, then
+    // the model adds a trailing reasoning part before its text reply. The card
+    // must stay pinned to the response so it never gets buried in "Show steps".
+    const triggerSetup = toolPart(
+      "setup_agent_webhook_trigger",
+      "output-available",
+      JSON.stringify({ type: "trigger_setup", message: "Trigger is set up." }),
+    );
+    const parts = [
+      triggerSetup,
+      reasoningPart("The webhook trigger has been set up successfully..."),
+      textPart("The webhook trigger is live!"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([parts[1]]);
+    expect(result.response).toHaveLength(2);
+    expect(result.response[0]).toBe(triggerSetup);
+  });
+
   it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
     const okRunBlock = toolPart(
       "run_block",
@@ -766,5 +880,148 @@ describe("filePartToArtifactRef with custom pattern", () => {
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
     const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
+  });
+});
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+const FILE_A = "550e8400-e29b-41d4-a716-446655440000";
+const FILE_B = "660e8400-e29b-41d4-a716-446655440111";
+
+function message(role: Message["role"], parts: MessagePart[]): Message {
+  return { id: `m-${role}`, role, parts } as unknown as Message;
+}
+
+function filePart(fileId: string, filename: string): MessagePart {
+  return {
+    type: "file",
+    filename,
+    mediaType: "image/png",
+    url: `/api/proxy/api/workspace/files/${fileId}/download`,
+  } as unknown as MessagePart;
+}
+
+describe("getMessageArtifacts", () => {
+  it("collects file-part artifacts before text artifacts", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "from-file.png"),
+      textPart(`Here is [doc](workspace://${FILE_B})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out.map((a) => a.id)).toEqual([FILE_A, FILE_B]);
+    expect(out[0].title).toBe("from-file.png");
+  });
+
+  it("does not double-count a file referenced as both a file part and in text", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "rich.png"),
+      textPart(`[again](workspace://${FILE_A})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out).toHaveLength(1);
+    // File-part metadata wins over the text-derived entry.
+    expect(out[0].title).toBe("rich.png");
+  });
+
+  it("marks user-uploaded files with the user-upload origin", () => {
+    const msg = message("user", [filePart(FILE_A, "upload.png")]);
+    expect(getMessageArtifacts(msg)[0].origin).toBe("user-upload");
+  });
+});
+
+describe("getMostRecentArtifact", () => {
+  it("returns null when there are no artifacts", () => {
+    expect(
+      getMostRecentArtifact([message("assistant", [textPart("hi")])]),
+    ).toBeNull();
+  });
+
+  it("returns the last file-part artifact scanning from the end", () => {
+    const messages = [
+      message("assistant", [filePart(FILE_A, "old.png")]),
+      message("assistant", [filePart(FILE_B, "new.png")]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_B);
+  });
+
+  it("finds the most recent text-derived artifact", () => {
+    const messages = [
+      message("assistant", [textPart(`[a](workspace://${FILE_A})`)]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_A);
+  });
+
+  it("filters by origin when requested", () => {
+    const messages = [
+      message("user", [filePart(FILE_A, "upload.png")]),
+      message("assistant", [textPart(`[b](workspace://${FILE_B})`)]),
+    ];
+    // Only agent-origin artifacts are eligible; the latest such one wins.
+    expect(getMostRecentArtifact(messages, { origin: "agent" })?.id).toBe(
+      FILE_B,
+    );
+    expect(getMostRecentArtifact(messages, { origin: "user-upload" })?.id).toBe(
+      FILE_A,
+    );
+  });
+});
+
+describe("shouldShowTaskListNotice", () => {
+  const activeTodos: TodoItem[] = [
+    { content: "Step 1", status: "in_progress" },
+    { content: "Step 2", status: "pending" },
+  ] as TodoItem[];
+  const completedTodos: TodoItem[] = [
+    { content: "Step 1", status: "completed" },
+  ] as TodoItem[];
+
+  it("returns true when the flag, streaming and an in-progress task list all line up", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when the context panel is disabled", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: false,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when the chat is not streaming", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: false,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when there is no task list yet", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when every todo is already completed", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: completedTodos,
+      }),
+    ).toBe(false);
   });
 });

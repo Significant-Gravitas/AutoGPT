@@ -105,7 +105,7 @@ export function useAgentSelectStep({
               id: agent.graph_id,
               version: agent.graph_version,
               lastEdited: agent.last_edited.toLocaleDateString(),
-              imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+              imageSrc: agent.agent_image || "",
               description: agent.description || "",
               recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
             }),

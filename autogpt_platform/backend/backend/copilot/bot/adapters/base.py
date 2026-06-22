@@ -44,6 +44,32 @@ class FileAttachment(BaseModel):
     content: bytes
 
 
+class ChannelInfo(BaseModel):
+    """A channel the bot can post to, scoped to a server it's connected to.
+
+    Returned by ``list_text_channels`` so the proactive-output path (and the
+    copilot tool above it) can resolve a human channel reference like
+    ``#announcements`` to a concrete ``id`` and present a picker.
+    """
+
+    id: str
+    name: str
+    server_id: str
+    server_name: Optional[str] = None
+
+
+class PostedRef(BaseModel):
+    """Pointer to something the bot just created on the platform.
+
+    ``url`` is a best-effort permalink (Discord ``jump_url``) so callers can
+    surface a clickable link in their confirmation; platforms without
+    permalinks leave it ``None``.
+    """
+
+    id: str
+    url: Optional[str] = None
+
+
 @dataclass
 class MessageContext:
     """Everything the core handler needs to know about an incoming message."""
@@ -177,5 +203,55 @@ class PlatformAdapter(ABC):
 
         Callers must ensure ``len(file.content) <= max_attachment_bytes`` —
         the handler enforces that upstream via the workspace fetch path.
+        """
+        ...
+
+    # -- Proactive output (backend → platform) ----------------------------
+    # These power scheduled / autopilot-initiated posts, where the bot speaks
+    # without a triggering user message. Authorization (which servers a user
+    # may post to) is enforced one layer up; adapters here only translate an
+    # already-authorized request into platform API calls.
+
+    @abstractmethod
+    async def list_text_channels(
+        self, server_ids: tuple[str, ...]
+    ) -> list[ChannelInfo]:
+        """List the text channels the bot can post to across ``server_ids``.
+
+        Only channels the bot can actually send in should be returned, so the
+        caller's picker never offers a channel the post would fail on.
+        """
+        ...
+
+    @abstractmethod
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+        """Return the server (guild) ID a channel belongs to, or ``None``.
+
+        Used to authorize a post target given a raw channel ID without
+        enumerating every channel first.
+        """
+        ...
+
+    @abstractmethod
+    async def post_channel_message(
+        self, channel_id: str, text: str
+    ) -> Optional[PostedRef]:
+        """Post a standalone message to ``channel_id``.
+
+        Distinct from ``send_message`` (the streaming-reply path): this
+        returns a ``PostedRef`` so proactive callers can report what was
+        created. Returns ``None`` if the channel can't be posted to.
+        """
+        ...
+
+    @abstractmethod
+    async def create_channel_thread(
+        self, channel_id: str, name: str, text: str
+    ) -> Optional[PostedRef]:
+        """Create a standalone thread in ``channel_id`` and post ``text`` in it.
+
+        "Standalone" = not anchored to a pre-existing message (unlike
+        ``create_thread``). Returns the thread's ``PostedRef``, or ``None`` if
+        the platform/channel doesn't support it.
         """
         ...
