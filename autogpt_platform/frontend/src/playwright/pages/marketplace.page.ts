@@ -1,9 +1,18 @@
 import { expect, Page } from "@playwright/test";
+import path from "path";
 import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
 const DETERMINISTIC_MARKETPLACE_AGENT_SEARCH = "E2E Calculator Agent";
+
+// Small local PNG uploaded during the publish flow to satisfy the "at least one
+// image is required" rule. Uses a local fixture (not the AI generate_image
+// endpoint) so the test stays hermetic in CI.
+const THUMBNAIL_FIXTURE_PATH = path.join(
+  __dirname,
+  "../assets/test-thumbnail.png",
+);
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -245,6 +254,16 @@ export class MarketplacePage extends BasePage {
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
     await this.page.getByRole("option", { name: "Other" }).click();
+
+    // Upload a thumbnail so the "at least one image is required" rule passes.
+    await publishAgentModal.getByRole("button", { name: /Thumbnails/ }).click();
+    await publishAgentModal
+      .locator("#image-upload")
+      .setInputFiles(THUMBNAIL_FIXTURE_PATH);
+    await expect(
+      publishAgentModal.getByTestId("thumbnail-remove-0"),
+      "uploaded thumbnail should appear before submitting",
+    ).toBeVisible({ timeout: 15000 });
 
     await publishAgentModal
       .getByRole("button", { name: /Experience details/ })

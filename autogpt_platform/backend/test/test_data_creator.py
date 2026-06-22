@@ -4,16 +4,10 @@ Test Data Creator for AutoGPT Platform
 This script creates test data for the AutoGPT platform database.
 
 Image/Video URL Domains Used:
-- Images: picsum.photos (for all image URLs - avatars, store listing images, etc.)
+- Images: none. Avatars and store listing images are seeded empty so the
+  frontend renders its built-in solid-color/boring-avatars fallback, avoiding
+  any external image dependency (e.g. picsum.photos).
 - Videos: youtube.com (for store listing video URLs)
-
-Add these domains to your Next.js config:
-```javascript
-// next.config.js
-images: {
-  domains: ['picsum.photos'],
-}
-```
 """
 
 import asyncio
@@ -71,15 +65,6 @@ MAX_EXECUTIONS_PER_GRAPH = (
 )
 MIN_REVIEWS_PER_VERSION = 1  # Each version will have between 1-3 reviews
 MAX_REVIEWS_PER_VERSION = 5  # Total reviews depends on number of versions created
-
-
-def get_image():
-    """Generate a consistent image URL using picsum.photos service."""
-    width = random.choice([200, 300, 400, 500, 600, 800])
-    height = random.choice([200, 300, 400, 500, 600, 800])
-    # Use a random seed to get different images
-    seed = random.randint(1, 1000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 def get_video_url():
@@ -195,7 +180,7 @@ async def main():
                 username=faker.unique.user_name(),
                 description=faker.text(),
                 links=[faker.url() for _ in range(3)],
-                avatarUrl=get_image(),
+                avatarUrl=None,
             )
         )
         profiles.append(profile)
@@ -226,7 +211,7 @@ async def main():
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
                     "creatorId": creator_profile.id if creator_profile else None,
-                    "imageUrl": get_image() if random.random() < 0.5 else None,
+                    "imageUrl": None,
                     "useGraphIsActiveVersion": random.choice([True, False]),
                     "isFavorite": random.choice([True, False]),
                     "isCreatedByUser": random.choice([True, False]),
@@ -414,7 +399,7 @@ async def main():
                 "name": graph.name or faker.sentence(nb_words=3),
                 "subHeading": faker.sentence(),
                 "videoUrl": get_video_url() if random.random() < 0.3 else None,
-                "imageUrls": [get_image() for _ in range(3)],
+                "imageUrls": [],
                 "description": faker.text(),
                 "categories": [faker.word() for _ in range(3)],
                 "isFeatured": random.choice([True, False]),
