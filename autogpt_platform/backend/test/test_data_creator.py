@@ -180,7 +180,8 @@ async def main():
                 username=faker.unique.user_name(),
                 description=faker.text(),
                 links=[faker.url() for _ in range(3)],
-                avatarUrl=None,
+                # Empty (not None) — Creator view requires non-null avatar_url.
+                avatarUrl="",
             )
         )
         profiles.append(profile)

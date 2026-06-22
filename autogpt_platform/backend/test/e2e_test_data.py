@@ -572,7 +572,10 @@ class TestDataCreator:
                         + str(random.randint(100, 999)),  # Ensure uniqueness
                         "description": faker.text(max_nb_chars=200),
                         "links": [faker.url() for _ in range(random.randint(1, 3))],
-                        "avatarUrl": None,
+                        # Empty (not None): the Creator view types avatar_url as
+                        # non-nullable, so null breaks /api/store/creators. Empty
+                        # string renders the frontend's fallback avatar.
+                        "avatarUrl": "",
                         "isFeatured": is_featured,
                     },
                 )
@@ -610,7 +613,8 @@ class TestDataCreator:
                             "username": E2E_MARKETPLACE_CREATOR_USERNAME,
                             "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
                             "links": ["https://example.com/e2e-marketplace"],
-                            "avatarUrl": None,
+                            # Empty (not None) — Creator view requires non-null avatar_url.
+                            "avatarUrl": "",
                             "isFeatured": True,
                         },
                     )
