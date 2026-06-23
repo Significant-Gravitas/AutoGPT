@@ -9,7 +9,12 @@ import pytest
 from backend.platform_linking.models import WorkspaceArtifact
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
+from .adapters.base import (
+    ChannelType,
+    MessageContext,
+    MessageHistoryEntry,
+    ReferencedConversation,
+)
 from .bot_backend import LinkTokenResult, ResolveResult
 from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
@@ -25,6 +30,7 @@ def _ctx(
     text: str = "hello bot",
     bot_mentioned: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
+    referenced_conversations: tuple[ReferencedConversation, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -37,6 +43,7 @@ def _ctx(
         text=text,
         bot_mentioned=bot_mentioned,
         thread_history=thread_history,
+        referenced_conversations=referenced_conversations,
     )
 
 
@@ -318,7 +325,8 @@ class TestThreadAdoption:
                     MessageHistoryEntry("Alice", "u-1", "I think option A"),
                     MessageHistoryEntry("Bob", "u-2", "Option B is safer"),
                 ),
-            )
+            ),
+            include_thread_history=True,
         )
 
         assert "Recent thread context" in text
@@ -326,6 +334,45 @@ class TestThreadAdoption:
         assert "I think option A" in text
         assert "Current message" in text
         assert "what should we do?" in text
+
+    @pytest.mark.asyncio
+    async def test_channel_mention_enqueues_referenced_conversation(self):
+        # A plain channel @mention (include_thread_history is False here) that
+        # references another conversation must still carry that fetched content
+        # into the enqueued prompt. Regression guard: the handler previously
+        # only rendered referenced conversations when pulling thread history,
+        # so channel mentions silently dropped them.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="channel",
+                    bot_mentioned=True,
+                    text="summarize the linked thread",
+                    referenced_conversations=(
+                        ReferencedConversation(
+                            title="Random Fact About Something",
+                            channel_id="c-1",
+                            messages=(
+                                MessageHistoryEntry("Krz", "u-2", "did you know X"),
+                            ),
+                        ),
+                    ),
+                ),
+                adapter,
+            )
+
+        enqueue.assert_awaited_once()
+        message_text = enqueue.await_args.args[3]
+        assert "[Content of #Random Fact About Something]" in message_text
+        assert "did you know X" in message_text
+        assert "can't open links or access Discord" in message_text
 
 
 class TestBatching:
@@ -820,3 +867,57 @@ class TestDeliverArtifact:
         adapter.send_file.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
         assert "x.png" in adapter.send_message.await_args.args[1]
+
+
+class TestMessageTextReferencedConversations:
+    def test_no_context_returns_bare_text(self):
+        handler = MessageHandler(_api())
+        assert (
+            handler._message_text(_ctx(text="hi"), include_thread_history=False) == "hi"
+        )
+
+    def test_referenced_conversation_is_rendered_with_access_instruction(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="find my mentions",
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="Release v0.6.61",
+                    channel_id="c-1",
+                    messages=(
+                        MessageHistoryEntry("Krz", "u-2", "remember to bump version"),
+                        MessageHistoryEntry("Nick", "u-3", "and tag the release"),
+                    ),
+                ),
+            ),
+        )
+        # include_thread_history=False on purpose: a plain channel @mention must
+        # still surface referenced conversations (the bug this guards against).
+        out = handler._message_text(ctx, include_thread_history=False)
+        assert "[Content of #Release v0.6.61]" in out
+        # Firm instruction so the model answers from the supplied content instead
+        # of claiming it can't access the platform.
+        assert "can't open links or access Discord" in out
+        assert "remember to bump version" in out
+        assert "and tag the release" in out
+        assert "[Current message]\nfind my mentions" in out
+
+    def test_referenced_and_thread_history_both_rendered(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="now",
+            thread_history=(MessageHistoryEntry("Alice", "u-1", "earlier point"),),
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="other-thread",
+                    channel_id="c-9",
+                    messages=(MessageHistoryEntry("Bob", "u-9", "linked content"),),
+                ),
+            ),
+        )
+        out = handler._message_text(ctx, include_thread_history=True)
+        assert "linked content" in out
+        assert "Recent thread context" in out
+        assert "earlier point" in out
+        # Referenced block precedes the immediate thread context.
+        assert out.index("linked content") < out.index("earlier point")
