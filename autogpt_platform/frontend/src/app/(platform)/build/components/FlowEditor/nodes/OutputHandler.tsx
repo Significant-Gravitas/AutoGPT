@@ -12,7 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { getTypeDisplayInfo } from "./helpers";
+import { getTypeDisplayInfo, augmentOutputSchemaWithEdges } from "./helpers";
 import { BlockUIType } from "../../types";
 import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
@@ -27,7 +27,8 @@ export const OutputHandler = ({
   uiType: BlockUIType;
 }) => {
   const { isOutputConnected } = useEdgeStore();
-  const properties = outputSchema?.properties || {};
+  const edges = useEdgeStore((state) => state.edges);
+  const properties = augmentOutputSchemaWithEdges(outputSchema, nodeId, edges);
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
   const [expandedObjects, setExpandedObjects] = useState<
