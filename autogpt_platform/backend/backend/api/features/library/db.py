@@ -1985,14 +1985,16 @@ async def migrate_webhook_presets_to_new_version(
     to point to the new active version, so that existing webhook URLs
     continue to trigger the latest agent version.
 
-    A preset is only migrated when the new version's trigger is *compatible*
-    with the webhook the preset is already attached to — i.e. same provider
-    and webhook type. If the new version swaps or reconfigures the trigger
-    (e.g. v1 used a Telegram trigger, v2 uses a GitHub trigger), migrating the
-    preset would feed events from the old webhook into an incompatible trigger
-    node, silently breaking the integration. Such presets are left pinned to
-    their current version (where their webhook still works) and flagged for
-    reconfiguration.
+    A preset is only migrated when the new version's trigger is the *same block*
+    as the trigger of the version the preset is currently pinned to. The block
+    id determines the provider, webhook type and resource/event formats the
+    webhook was registered for, so an identical block id guarantees the existing
+    webhook still matches. If the new version swaps or reconfigures the trigger
+    (e.g. v1 used a Telegram trigger, v2 uses a GitHub trigger, or a GitHub "on
+    PR" trigger becomes a GitHub "on issue" trigger), migrating the preset would
+    feed events from the old webhook into an incompatible trigger node, silently
+    breaking the integration. Such presets are left pinned to their current
+    version (where their webhook still works) and flagged for reconfiguration.
 
     Presets pinned to a newer version than the new one (e.g. manually pinned to
     a future/specific version) are intentionally left untouched.
@@ -2002,7 +2004,7 @@ async def migrate_webhook_presets_to_new_version(
     - Are attached to a webhook (webhookId is not null)
     - Are not deleted
     - Are for the given graph and pinned to a strictly older version
-    - Have a webhook whose provider and type match the new version's trigger
+    - Are pinned to a version whose trigger block matches the new version's
 
     Args:
         user_id: The owner of the presets.
@@ -2011,8 +2013,8 @@ async def migrate_webhook_presets_to_new_version(
     Returns:
         The number of presets migrated.
     """
-    trigger_node = new_graph.webhook_input_node
-    if not (trigger_node and (webhook_config := trigger_node.block.webhook_config)):
+    new_trigger_node = new_graph.webhook_input_node
+    if not (new_trigger_node and new_trigger_node.block.webhook_config):
         # New version has no webhook trigger to migrate presets onto.
         return 0
 
@@ -2024,29 +2026,38 @@ async def migrate_webhook_presets_to_new_version(
             "webhookId": {"not": None},
             "isDeleted": False,
         },
-        include={"Webhook": True},
     )
+    if not candidates:
+        return 0
+
+    # Resolve the trigger block of each pinned version once. A preset is
+    # compatible only if its pinned version uses the same trigger block as the
+    # new version — that's what guarantees the registered webhook still matches.
+    old_trigger_block_by_version: dict[int, str | None] = {}
+    for version in {preset.agentGraphVersion for preset in candidates}:
+        old_graph = await graph_db.get_graph(new_graph.id, version, user_id=user_id)
+        old_trigger_node = old_graph.webhook_input_node if old_graph else None
+        old_trigger_block_by_version[version] = (
+            old_trigger_node.block_id if old_trigger_node else None
+        )
 
     compatible_ids = {
         preset.id
         for preset in candidates
-        if preset.Webhook
-        and preset.Webhook.provider == webhook_config.provider.value
-        and preset.Webhook.webhookType == webhook_config.webhook_type
+        if old_trigger_block_by_version.get(preset.agentGraphVersion)
+        == new_trigger_node.block_id
     }
 
     for preset in candidates:
         if preset.id in compatible_ids:
             continue
-        webhook = preset.Webhook
         logger.warning(
             f"Not migrating preset #{preset.id} for graph #{new_graph.id} to "
-            f"v{new_graph.version}: its webhook "
-            f"({webhook.provider if webhook else None}/"
-            f"{webhook.webhookType if webhook else None}) is incompatible with "
-            f"the new trigger ({webhook_config.provider.value}/"
-            f"{webhook_config.webhook_type}). Preset left pinned to "
-            f"v{preset.agentGraphVersion}; trigger needs reconfiguration."
+            f"v{new_graph.version}: its trigger block "
+            f"({old_trigger_block_by_version.get(preset.agentGraphVersion)}) "
+            f"differs from the new trigger block ({new_trigger_node.block_id}). "
+            f"Preset left pinned to v{preset.agentGraphVersion}; trigger needs "
+            f"reconfiguration."
         )
 
     if not compatible_ids:

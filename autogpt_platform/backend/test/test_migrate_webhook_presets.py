@@ -25,14 +25,13 @@ def mock_prisma():
 
 def _make_graph(
     *,
-    provider: str = "github",
-    webhook_type: str = "repo",
+    block_id: str = "trigger-block-a",
     has_trigger: bool = True,
     has_config: bool = True,
     graph_id: str = "graph-abc",
     version: int = 5,
 ):
-    """Stand-in for a GraphModel whose trigger block has a webhook_config."""
+    """Stand-in for a GraphModel whose trigger node has a block_id + config."""
     graph = MagicMock()
     graph.id = graph_id
     graph.version = version
@@ -42,45 +41,48 @@ def _make_graph(
         # Trigger node present but without a webhook_config (defensive branch).
         graph.webhook_input_node.block.webhook_config = None
     else:
-        config = MagicMock()
-        config.provider.value = provider
-        config.webhook_type = webhook_type
-        graph.webhook_input_node.block.webhook_config = config
+        node = MagicMock()
+        node.block_id = block_id
+        node.block.webhook_config = MagicMock()  # truthy
+        graph.webhook_input_node = node
     return graph
 
 
-def _make_preset(
-    preset_id: str,
-    *,
-    provider: str = "github",
-    webhook_type: str = "repo",
-    version: int = 1,
-    has_webhook: bool = True,
-):
-    """Stand-in for a prisma AgentPreset row with its Webhook relation."""
+def _make_preset(preset_id: str, *, version: int = 1):
+    """Stand-in for a prisma AgentPreset row."""
     preset = MagicMock()
     preset.id = preset_id
     preset.agentGraphVersion = version
-    if has_webhook:
-        webhook = MagicMock()
-        webhook.provider = provider
-        webhook.webhookType = webhook_type
-        preset.Webhook = webhook
-    else:
-        preset.Webhook = None
     return preset
 
 
+def _patch_old_graphs(mocker, block_id_by_version: dict[int, str | None]):
+    """Patch graph_db.get_graph to return old versions with given trigger blocks.
+
+    A ``None`` value simulates a version that is missing or has no trigger node.
+    """
+
+    async def fake_get_graph(graph_id, version, user_id):
+        block_id = block_id_by_version.get(version)
+        if block_id is None:
+            return None
+        return _make_graph(block_id=block_id, version=version)
+
+    return mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph",
+        side_effect=fake_get_graph,
+    )
+
+
 @pytest.mark.asyncio
-async def test_migrate_updates_compatible_presets(mock_prisma):
-    graph = _make_graph(provider="github", webhook_type="repo", version=5)
+async def test_migrate_updates_compatible_presets(mock_prisma, mocker):
+    """Presets whose pinned version uses the same trigger block are migrated."""
+    graph = _make_graph(block_id="trigger-a", version=5)
     mock_prisma.find_many = AsyncMock(
-        return_value=[
-            _make_preset("p1", provider="github", webhook_type="repo"),
-            _make_preset("p2", provider="github", webhook_type="repo"),
-        ]
+        return_value=[_make_preset("p1", version=1), _make_preset("p2", version=1)]
     )
     mock_prisma.update_many = AsyncMock(return_value=2)
+    _patch_old_graphs(mocker, {1: "trigger-a"})
 
     count = await migrate_webhook_presets_to_new_version(
         user_id="user-123", new_graph=graph
@@ -95,7 +97,6 @@ async def test_migrate_updates_compatible_presets(mock_prisma):
             "webhookId": {"not": None},
             "isDeleted": False,
         },
-        include={"Webhook": True},
     )
     mock_prisma.update_many.assert_called_once_with(
         where={
@@ -109,15 +110,12 @@ async def test_migrate_updates_compatible_presets(mock_prisma):
 
 
 @pytest.mark.asyncio
-async def test_migrate_skips_incompatible_provider(mock_prisma):
+async def test_migrate_skips_different_trigger_provider(mock_prisma, mocker):
     """v1 used a Telegram trigger, v2 uses a GitHub trigger -> do not migrate."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=5)
-    mock_prisma.find_many = AsyncMock(
-        return_value=[
-            _make_preset("p1", provider="telegram", webhook_type="bot"),
-        ]
-    )
+    graph = _make_graph(block_id="github-on-pr", version=5)
+    mock_prisma.find_many = AsyncMock(return_value=[_make_preset("p1", version=1)])
     mock_prisma.update_many = AsyncMock(return_value=0)
+    _patch_old_graphs(mocker, {1: "telegram-on-message"})
 
     count = await migrate_webhook_presets_to_new_version(
         user_id="user-123", new_graph=graph
@@ -128,15 +126,12 @@ async def test_migrate_skips_incompatible_provider(mock_prisma):
 
 
 @pytest.mark.asyncio
-async def test_migrate_skips_incompatible_webhook_type_same_provider(mock_prisma):
-    """Same provider, different webhook type (repo vs org) -> do not migrate."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=5)
-    mock_prisma.find_many = AsyncMock(
-        return_value=[
-            _make_preset("p1", provider="github", webhook_type="org"),
-        ]
-    )
+async def test_migrate_skips_different_trigger_same_provider(mock_prisma, mocker):
+    """Same provider, different trigger block (on-PR vs on-issue) -> do not migrate."""
+    graph = _make_graph(block_id="github-on-issue", version=5)
+    mock_prisma.find_many = AsyncMock(return_value=[_make_preset("p1", version=1)])
     mock_prisma.update_many = AsyncMock(return_value=0)
+    _patch_old_graphs(mocker, {1: "github-on-pr"})
 
     count = await migrate_webhook_presets_to_new_version(
         user_id="user-123", new_graph=graph
@@ -147,17 +142,18 @@ async def test_migrate_skips_incompatible_webhook_type_same_provider(mock_prisma
 
 
 @pytest.mark.asyncio
-async def test_migrate_only_updates_compatible_in_mixed_set(mock_prisma):
+async def test_migrate_only_updates_compatible_in_mixed_set(mock_prisma, mocker):
     """Compatible presets migrate; incompatible ones are left pinned."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=7)
+    graph = _make_graph(block_id="trigger-a", version=7)
     mock_prisma.find_many = AsyncMock(
         return_value=[
-            _make_preset("ok1", provider="github", webhook_type="repo"),
-            _make_preset("bad", provider="telegram", webhook_type="bot"),
-            _make_preset("ok2", provider="github", webhook_type="repo"),
+            _make_preset("ok1", version=1),
+            _make_preset("bad", version=2),
+            _make_preset("ok2", version=1),
         ]
     )
     mock_prisma.update_many = AsyncMock(return_value=2)
+    _patch_old_graphs(mocker, {1: "trigger-a", 2: "trigger-b"})
 
     count = await migrate_webhook_presets_to_new_version(
         user_id="user-123", new_graph=graph
@@ -208,13 +204,14 @@ async def test_migrate_returns_zero_when_trigger_has_no_webhook_config(mock_pris
 
 
 @pytest.mark.asyncio
-async def test_migrate_excludes_preset_with_missing_webhook(mock_prisma, caplog):
-    """A preset whose Webhook relation is None is skipped, not migrated."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=5)
-    mock_prisma.find_many = AsyncMock(
-        return_value=[_make_preset("orphan", has_webhook=False)]
-    )
+async def test_migrate_skips_preset_when_old_version_unavailable(
+    mock_prisma, mocker, caplog
+):
+    """If the pinned version can't be loaded, treat as incompatible (no downgrade)."""
+    graph = _make_graph(block_id="trigger-a", version=5)
+    mock_prisma.find_many = AsyncMock(return_value=[_make_preset("orphan", version=1)])
     mock_prisma.update_many = AsyncMock(return_value=0)
+    _patch_old_graphs(mocker, {1: None})  # get_graph returns None
 
     with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
         count = await migrate_webhook_presets_to_new_version(
@@ -229,10 +226,11 @@ async def test_migrate_excludes_preset_with_missing_webhook(mock_prisma, caplog)
 
 
 @pytest.mark.asyncio
-async def test_migrate_returns_zero_when_no_candidates(mock_prisma):
+async def test_migrate_returns_zero_when_no_candidates(mock_prisma, mocker):
     graph = _make_graph(version=3)
     mock_prisma.find_many = AsyncMock(return_value=[])
     mock_prisma.update_many = AsyncMock()
+    get_graph_mock = _patch_old_graphs(mocker, {})
 
     count = await migrate_webhook_presets_to_new_version(
         user_id="user-123", new_graph=graph
@@ -240,19 +238,18 @@ async def test_migrate_returns_zero_when_no_candidates(mock_prisma):
 
     assert count == 0
     mock_prisma.update_many.assert_not_called()
+    get_graph_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_migrate_logs_when_presets_are_migrated(mock_prisma, caplog):
+async def test_migrate_logs_when_presets_are_migrated(mock_prisma, mocker, caplog):
     """Exercise the ``count > 0`` log branch."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=4)
+    graph = _make_graph(block_id="trigger-a", version=4)
     mock_prisma.find_many = AsyncMock(
-        return_value=[
-            _make_preset("p1", provider="github", webhook_type="repo"),
-            _make_preset("p2", provider="github", webhook_type="repo"),
-        ]
+        return_value=[_make_preset("p1", version=1), _make_preset("p2", version=1)]
     )
     mock_prisma.update_many = AsyncMock(return_value=2)
+    _patch_old_graphs(mocker, {1: "trigger-a"})
 
     with caplog.at_level(logging.INFO, logger="backend.api.features.library.db"):
         count = await migrate_webhook_presets_to_new_version(
@@ -266,15 +263,12 @@ async def test_migrate_logs_when_presets_are_migrated(mock_prisma, caplog):
 
 
 @pytest.mark.asyncio
-async def test_migrate_warns_on_incompatible_preset(mock_prisma, caplog):
+async def test_migrate_warns_on_incompatible_preset(mock_prisma, mocker, caplog):
     """Incompatible presets emit a warning explaining why they were skipped."""
-    graph = _make_graph(provider="github", webhook_type="repo", version=5)
-    mock_prisma.find_many = AsyncMock(
-        return_value=[
-            _make_preset("bad", provider="telegram", webhook_type="bot"),
-        ]
-    )
+    graph = _make_graph(block_id="github-on-pr", version=5)
+    mock_prisma.find_many = AsyncMock(return_value=[_make_preset("bad", version=1)])
     mock_prisma.update_many = AsyncMock(return_value=0)
+    _patch_old_graphs(mocker, {1: "telegram-on-message"})
 
     with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
         count = await migrate_webhook_presets_to_new_version(
