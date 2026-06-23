@@ -118,6 +118,78 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 
 ---
 
+## JSON Decoder
+
+### What it is
+Decodes a JSON string into the value or data structure, it represents, e.g. an object, list, string, or number.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`. 
+
+If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| json_str | The JSON string to decode. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| data | The value as decoded from the JSON string. | Data |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**API Response Processing**: Parse JSON responses from external APIs into structured data for further processing in your workflow.
+
+**Configuration Loading**: Decode JSON-formatted configuration strings into accessible dictionary settings for your agents.
+
+**Webhook Payload Parsing**: Extract nested fields from incoming JSON webhook payloads for dynamic decision-making.
+<!-- END MANUAL -->
+
+---
+
+## JSON Encoder
+
+### What it is
+Encodes any value or data structure into a JSON string.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block serializes standard Python structures (like `dict`, `list`, `str`, `int`, `float`, `bool`, and `None`) into a valid JSON string using the project's optimized `orjson`-based encoder. It safely handles nested structures, automatically converting Python equivalents to their JSON counterparts (e.g., `{"a": 1}` remains an object, and `None` is translated to `null`).
+
+Before outputting, the block validates JSON-serializability. If an unsupported type is provided—such as custom objects, `datetime`, or `set`s without custom serialization—it raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. For edge cases like large numeric precision or non-serializable types, it is recommended to pre-convert these values into strings or dictionaries before passing them to the encoder.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| data | The data structure/value (object, list, string, etc.) to encode into a JSON string. | Data | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| json_str | The JSON string representation of the input data. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**API Request Formatting**: Convert Python dictionaries into JSON strings for POST/PUT request bodies.
+
+**Data Export**: Serialize structured workflow data into JSON format for saving to files or persistent storage.
+
+**Log Structured Data**: Encode complex data structures into JSON strings for structured logging and debugging output.
+<!-- END MANUAL -->
+
+---
+
 ## Persist Information
 
 ### What it is
