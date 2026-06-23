@@ -63,6 +63,19 @@ class PlatformLinkingManager(AppService):
         return await platform_linking_db().get_link_token_status(token)
 
     @expose
+    async def list_user_server_ids(self, platform: Platform, user_id: str) -> list[str]:
+        """Bot-scoped: the platform server IDs ``user_id`` has linked.
+
+        Deliberately returns only the IDs (not full ``PlatformLinkInfo``) so the
+        bot client stays a narrow surface — the user-facing ``list_server_links``
+        stays off the bot client. Backs proactive-output authorization.
+        """
+        links = await platform_linking_db().list_server_links(user_id)
+        return [
+            link.platform_server_id for link in links if link.platform == platform.value
+        ]
+
+    @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
 
@@ -126,6 +139,9 @@ class PlatformLinkingManagerClient(AppServiceClient):
     )
     get_link_token_status = endpoint_to_async(
         PlatformLinkingManager.get_link_token_status
+    )
+    list_user_server_ids = endpoint_to_async(
+        PlatformLinkingManager.list_user_server_ids
     )
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
     refresh_server_link_name = endpoint_to_async(
