@@ -37,7 +37,9 @@ from backend.data.model import (
     TransactionHistory,
 )
 from backend.data.model import User as AppUser
-from backend.data.model import UserTransaction
+from backend.data.model import (
+    UserTransaction,
+)
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async

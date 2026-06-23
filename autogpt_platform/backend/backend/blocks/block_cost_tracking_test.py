@@ -438,7 +438,9 @@ class TestUnrealTextToSpeechBlockCostTracking:
         from backend.blocks.text_to_speech_block import (
             TEST_CREDENTIALS_INPUT as TTS_CREDS_INPUT,
         )
-        from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+        from backend.blocks.text_to_speech_block import (
+            UnrealTextToSpeechBlock,
+        )
 
         block = UnrealTextToSpeechBlock()
         test_text = "Hello, world!"
@@ -471,7 +473,9 @@ class TestUnrealTextToSpeechBlockCostTracking:
         from backend.blocks.text_to_speech_block import (
             TEST_CREDENTIALS_INPUT as TTS_CREDS_INPUT,
         )
-        from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+        from backend.blocks.text_to_speech_block import (
+            UnrealTextToSpeechBlock,
+        )
 
         block = UnrealTextToSpeechBlock()
 
@@ -510,7 +514,9 @@ class TestGoogleMapsSearchBlockCostTracking:
         from backend.blocks.google_maps import (
             TEST_CREDENTIALS_INPUT as MAPS_CREDS_INPUT,
         )
-        from backend.blocks.google_maps import GoogleMapsSearchBlock
+        from backend.blocks.google_maps import (
+            GoogleMapsSearchBlock,
+        )
 
         block = GoogleMapsSearchBlock()
 
@@ -545,7 +551,9 @@ class TestGoogleMapsSearchBlockCostTracking:
         from backend.blocks.google_maps import (
             TEST_CREDENTIALS_INPUT as MAPS_CREDS_INPUT,
         )
-        from backend.blocks.google_maps import GoogleMapsSearchBlock
+        from backend.blocks.google_maps import (
+            GoogleMapsSearchBlock,
+        )
 
         block = GoogleMapsSearchBlock()
         accumulated: list[NodeExecutionStats] = []
