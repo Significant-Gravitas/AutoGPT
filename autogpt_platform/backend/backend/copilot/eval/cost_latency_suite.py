@@ -31,9 +31,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Sequence
 
-from pydantic.dataclasses import dataclass
-
 from backend.copilot.dream.schemas import DreamPassResult
+from pydantic.dataclasses import dataclass
 
 from .metrics import latency_summary, mean
 

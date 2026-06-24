@@ -130,8 +130,8 @@ def optimize_block_descriptions() -> dict[str, int]:
             )
 
         from backend.copilot.tools.agent_generator.blocks import (
-            reset_block_caches,  # local to avoid circular import
-        )
+            reset_block_caches,
+        )  # local to avoid circular import
 
         reset_block_caches()
 

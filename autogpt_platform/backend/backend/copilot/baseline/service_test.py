@@ -2,7 +2,6 @@ import logging
 from os import getenv
 
 import pytest
-
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.model import (
     create_chat_session,

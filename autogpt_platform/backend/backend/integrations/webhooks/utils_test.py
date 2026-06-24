@@ -1,11 +1,10 @@
 from urllib.parse import urlparse
 
 import fastapi
-from fastapi.routing import APIRoute
-
 from backend.api.features.integrations.router import router as integrations_router
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import utils as webhooks_utils
+from fastapi.routing import APIRoute
 
 
 def test_webhook_ingress_url_matches_route(monkeypatch) -> None:

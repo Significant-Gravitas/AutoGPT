@@ -4,18 +4,6 @@ import platform
 from enum import Enum
 from typing import Any, Optional
 
-import fastapi
-import fastapi.responses
-import pydantic
-import starlette.middleware.cors
-import uvicorn
-from autogpt_libs.auth import add_auth_responses_to_openapi
-from autogpt_libs.auth import verify_settings as verify_auth_settings
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.routing import APIRoute
-from prisma.errors import PrismaError
-
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
@@ -52,6 +40,13 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+import fastapi
+import fastapi.responses
+import pydantic
+import starlette.middleware.cors
+import uvicorn
+from autogpt_libs.auth import add_auth_responses_to_openapi
+from autogpt_libs.auth import verify_settings as verify_auth_settings
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
@@ -73,6 +68,10 @@ from backend.util.exceptions import (
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.routing import APIRoute
+from prisma.errors import PrismaError
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router

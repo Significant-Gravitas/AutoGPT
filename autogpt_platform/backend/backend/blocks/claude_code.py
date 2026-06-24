@@ -3,9 +3,6 @@ import shlex
 import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
-from e2b import AsyncSandbox as BaseAsyncSandbox
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -25,6 +22,8 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from e2b import AsyncSandbox as BaseAsyncSandbox
+from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext

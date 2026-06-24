@@ -4,7 +4,6 @@ import time
 from unittest.mock import Mock, patch
 
 import pytest
-
 from backend.util.retry import (
     ALERT_RATE_LIMIT_SECONDS,
     _alert_rate_limiter,

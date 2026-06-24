@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 
+from backend.util.cache import cached
+from backend.util.retry import conn_retry
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -15,9 +17,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
-
-from backend.util.cache import cached
-from backend.util.retry import conn_retry
 
 load_dotenv()
 

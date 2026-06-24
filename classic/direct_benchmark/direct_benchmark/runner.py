@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 from autogpt.agent_factory.configurators import create_agent
 from autogpt.agents.agent import Agent
 from autogpt.app.config import ConfigBuilder
-
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 

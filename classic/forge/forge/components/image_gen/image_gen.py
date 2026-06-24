@@ -8,10 +8,6 @@ from pathlib import Path
 from typing import Iterator, Literal, Optional
 
 import requests
-from openai import OpenAI
-from PIL import Image
-from pydantic import BaseModel, SecretStr
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
@@ -19,6 +15,9 @@ from forge.file_storage import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
 from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
+from openai import OpenAI
+from PIL import Image
+from pydantic import BaseModel, SecretStr
 
 logger = logging.getLogger(__name__)
 

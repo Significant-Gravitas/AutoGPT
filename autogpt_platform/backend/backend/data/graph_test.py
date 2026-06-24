@@ -3,12 +3,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+import backend.api.features.store.model as store
 import fastapi.exceptions
 import prisma
 import pytest
-from pytest_snapshot.plugin import Snapshot
-
-import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
@@ -30,6 +28,7 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.test import SpinTestServer
+from pytest_snapshot.plugin import Snapshot
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -14,11 +14,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message import ChatCompletionMessage
-
 from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
@@ -31,6 +26,10 @@ from backend.executor.simulator import (
     prepare_dry_run,
     simulate_block,
 )
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 # ---------------------------------------------------------------------------
 # Helpers

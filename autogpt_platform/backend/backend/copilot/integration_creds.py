@@ -24,14 +24,13 @@ a shared cache (e.g. Redis) should be used instead.
 import logging
 from typing import cast
 
-from cachetools import TTLCache
-
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 

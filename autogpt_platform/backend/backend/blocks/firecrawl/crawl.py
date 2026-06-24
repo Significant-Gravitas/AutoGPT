@@ -1,8 +1,5 @@
 from typing import Any
 
-from firecrawl import FirecrawlApp
-from firecrawl.v2.types import ScrapeOptions
-
 from backend.blocks.firecrawl._api import ScrapeFormat
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
@@ -15,6 +12,8 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from firecrawl import FirecrawlApp
+from firecrawl.v2.types import ScrapeOptions
 
 from ._config import firecrawl
 from ._format_utils import convert_to_format_options

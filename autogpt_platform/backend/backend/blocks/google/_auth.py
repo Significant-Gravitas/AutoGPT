@@ -1,10 +1,9 @@
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
+from pydantic import SecretStr
 
 # --8<-- [start:GoogleOAuthIsConfigured]
 secrets = Secrets()

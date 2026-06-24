@@ -7,9 +7,8 @@ invite URL. New platforms slot in by adding a row + their config check below.
 
 from urllib.parse import urlencode
 
-from pydantic import BaseModel, ConfigDict
-
 from backend.copilot.bot.adapters.discord import config as discord_config
+from pydantic import BaseModel, ConfigDict
 
 
 class PlatformMeta(BaseModel):

@@ -6,9 +6,8 @@ import fastapi.testclient
 import prisma.enums
 import pytest
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot
-
 from backend.api.features.store.db import StoreAgentsSortOptions
+from pytest_snapshot.plugin import Snapshot
 
 from . import model as store_model
 from . import routes as store_routes

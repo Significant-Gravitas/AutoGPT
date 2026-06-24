@@ -4,10 +4,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
+from pydantic import SecretStr
 
 from ._test_data import make_session
 from .models import (
@@ -1084,17 +1083,22 @@ async def test_agptfile_ref_expanded_before_mcp_call():
     schema = {"type": "object", "properties": {"content": {"type": "string"}}}
     tool_schema = _make_tool_schema("notion-update-page", schema)
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
-        new_callable=AsyncMock,
-        return_value=expanded,
-    ) as mock_expand:
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
+            new_callable=AsyncMock,
+            return_value=expanded,
+        ) as mock_expand,
+    ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[tool_schema])
         mock_client.call_tool = AsyncMock(
@@ -1130,16 +1134,21 @@ async def test_agptfile_expansion_failure_returns_error():
     tool = RunMCPToolTool()
     session = make_session(_USER_ID)
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
-        new_callable=AsyncMock,
-        side_effect=FileRefExpansionError("missing.md not found"),
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
+            new_callable=AsyncMock,
+            side_effect=FileRefExpansionError("missing.md not found"),
+        ),
     ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[])
@@ -1167,12 +1176,16 @@ async def test_no_agptfile_ref_skips_schema_lookup():
     session = make_session(_USER_ID)
     raw_args = {"url": "https://example.com"}
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[])

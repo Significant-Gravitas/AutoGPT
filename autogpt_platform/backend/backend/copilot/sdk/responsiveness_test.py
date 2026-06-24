@@ -11,7 +11,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.model import ChatMessage, ChatSession
 
 from .service import _fetch_graphiti_context

@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data.graph import GraphTriggerInfo
 
 from .agent_search import _enrich_agents_with_graph, search_agents

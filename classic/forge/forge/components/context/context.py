@@ -2,15 +2,14 @@ import contextlib
 from pathlib import Path
 from typing import Iterator
 
-from pydantic import BaseModel, Field
-from typing_extensions import Annotated
-
 from forge.agent.protocols import CommandProvider, MessageProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
 from forge.llm.providers import ChatMessage
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import InvalidArgumentError
+from pydantic import BaseModel, Field
+from typing_extensions import Annotated
 
 from .context_item import ContextItem, FileContextItem, FolderContextItem
 

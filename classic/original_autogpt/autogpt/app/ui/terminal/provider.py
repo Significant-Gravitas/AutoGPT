@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 import click
 from colorama import Fore, Style
-
 from forge.logging.utils import print_attribute
 from forge.permissions import ApprovalScope
 
@@ -140,7 +139,6 @@ class TerminalUIProvider(UIProvider):
             speak_mode: Whether to use text-to-speech.
         """
         from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
-
         from forge.models.utils import ModelWithSummary
 
         thoughts_text = self._remove_ansi_escape(
@@ -298,7 +296,7 @@ class TerminalUIProvider(UIProvider):
 
     def _remove_ansi_escape(self, s: str) -> str:
         """Remove ANSI escape sequences from a string."""
-        return s.replace("\x1B", "")
+        return s.replace("\x1b", "")
 
     async def prompt_finish_continuation(
         self,

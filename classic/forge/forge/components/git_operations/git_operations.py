@@ -1,10 +1,6 @@
 from pathlib import Path
 from typing import Iterator, Optional
 
-from git.exc import GitCommandError, InvalidGitRepositoryError
-from git.repo import Repo
-from pydantic import BaseModel, SecretStr
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
@@ -12,6 +8,9 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
+from git.exc import GitCommandError, InvalidGitRepositoryError
+from git.repo import Repo
+from pydantic import BaseModel, SecretStr
 
 
 class GitOperationsConfiguration(BaseModel):
@@ -99,9 +98,7 @@ class GitOperationsComponent(
             if self.config.github_api_key
             else None
         )
-        auth_repo_url = f"//{self.config.github_username}:" f"{api_key}@".join(
-            split_url
-        )
+        auth_repo_url = f"//{self.config.github_username}:{api_key}@".join(split_url)
         try:
             Repo.clone_from(url=auth_repo_url, to_path=clone_path)
         except Exception as e:

@@ -1,10 +1,9 @@
 import logging
 from typing import TYPE_CHECKING, Optional, cast
 
-from pydantic import JsonValue
-
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Config
+from pydantic import JsonValue
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -147,12 +146,11 @@ async def setup_webhook_for_block(
 
 
 async def migrate_legacy_triggered_graphs():
-    from prisma.models import AgentGraph
-
     from backend.api.features.library.db import create_preset
     from backend.api.features.library.model import LibraryAgentPresetCreatable
     from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
     from backend.data.model import is_credentials_field_name
+    from prisma.models import AgentGraph
 
     triggered_graphs = [
         GraphModel.from_db(_graph)

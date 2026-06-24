@@ -1,7 +1,6 @@
 import pytest
-from pydantic import SecretStr
-
 from backend.data.model import HostScopedCredentials, NodeExecutionStats
+from pydantic import SecretStr
 
 
 class TestHostScopedCredentials:

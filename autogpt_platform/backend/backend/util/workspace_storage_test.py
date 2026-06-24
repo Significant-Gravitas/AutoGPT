@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-
 from backend.util.workspace_storage import GCSWorkspaceStorage, LocalWorkspaceStorage
 
 

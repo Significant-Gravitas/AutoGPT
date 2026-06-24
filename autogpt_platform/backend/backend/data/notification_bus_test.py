@@ -8,7 +8,6 @@ fields survive the Redis round-trip.
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.api.model import NotificationPayload
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,

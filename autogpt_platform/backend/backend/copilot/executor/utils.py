@@ -7,8 +7,6 @@ Defines two exchanges and queues following the graph executor pattern:
 
 import logging
 
-from pydantic import BaseModel
-
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
     TurnSlot,
@@ -20,6 +18,7 @@ from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

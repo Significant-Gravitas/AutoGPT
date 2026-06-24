@@ -9,9 +9,6 @@ from unittest.mock import Mock
 import httpx
 import orjson
 import pytest
-from prisma.errors import DataError, UniqueViolationError
-from pydantic import TypeAdapter
-
 from backend.data.model import User
 from backend.util.exceptions import GraphValidationError
 from backend.util.service import (
@@ -24,6 +21,8 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
+from prisma.errors import DataError, UniqueViolationError
+from pydantic import TypeAdapter
 
 TEST_SERVICE_PORT = 8765
 
@@ -172,7 +171,6 @@ class TestDynamicClientConnectionHealing:
                     self._connection_failure_count >= 3
                     and current_time - self._last_client_reset > 30
                 ):
-
                     # Clear cached clients to force recreation on next access
                     if hasattr(self, "sync_client"):
                         delattr(self, "sync_client")

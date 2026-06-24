@@ -3,9 +3,6 @@ import logging
 import uuid
 
 import pytest
-from fastapi import HTTPException
-from ldclient import LDClient
-
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
@@ -14,6 +11,8 @@ from backend.util.feature_flag import (
     is_feature_enabled,
     mock_flag_variation,
 )
+from fastapi import HTTPException
+from ldclient import LDClient
 
 
 @pytest.fixture

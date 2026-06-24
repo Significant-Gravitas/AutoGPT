@@ -13,9 +13,8 @@ transparently routed via ``DatabaseManagerAsyncClient``.
 import logging
 from datetime import datetime, timezone
 
-from prisma.models import BotEvent, BotGuild
-
 from backend.platform_linking.models import BotEventInput, BotGuildInput, Platform
+from prisma.models import BotEvent, BotGuild
 
 logger = logging.getLogger(__name__)
 

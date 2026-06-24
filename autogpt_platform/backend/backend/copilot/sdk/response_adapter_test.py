@@ -3,18 +3,6 @@
 import asyncio
 
 import pytest
-from claude_agent_sdk import (
-    AssistantMessage,
-    ResultMessage,
-    StreamEvent,
-    SystemMessage,
-    TextBlock,
-    ThinkingBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-)
-
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -32,6 +20,17 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+)
+from claude_agent_sdk import (
+    AssistantMessage,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
 )
 
 from .compaction import compaction_events

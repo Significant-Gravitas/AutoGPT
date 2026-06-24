@@ -10,7 +10,6 @@ import json
 from typing import Any
 
 import pytest
-
 from backend.copilot import pending_messages as pm_module
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,

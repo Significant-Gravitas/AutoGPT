@@ -13,7 +13,6 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from forge.llm.providers._openai_base import BaseOpenAIChatProvider
 from forge.llm.providers.anthropic import (
     ANTHROPIC_CHAT_MODELS,

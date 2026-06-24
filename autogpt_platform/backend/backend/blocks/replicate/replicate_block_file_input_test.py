@@ -14,7 +14,6 @@ base64 into the inputs dict by hand:
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.blocks.replicate._auth import TEST_CREDENTIALS_INPUT
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.data.execution import ExecutionContext

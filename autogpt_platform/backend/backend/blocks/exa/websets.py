@@ -3,6 +3,17 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
 
+from backend.sdk import (
+    APIKeyCredentials,
+    BaseModel,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+    CredentialsMetaInput,
+    SchemaField,
+)
 from exa_py import AsyncExa, Exa
 from exa_py.websets.types import (
     CreateCriterionParameters,
@@ -25,18 +36,6 @@ from exa_py.websets.types import (
     WebsetStatus,
 )
 from pydantic import Field
-
-from backend.sdk import (
-    APIKeyCredentials,
-    BaseModel,
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-    CredentialsMetaInput,
-    SchemaField,
-)
 
 from ._config import exa
 from .helpers import merge_exa_cost

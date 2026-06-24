@@ -10,12 +10,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import CreditTransactionType
-from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
+from prisma.enums import CreditTransactionType
+from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 
 credit_system = UserCredit()
 

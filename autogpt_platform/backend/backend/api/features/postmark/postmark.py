@@ -1,9 +1,6 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Security
-from fastapi.responses import JSONResponse
-
 from backend.api.utils.api_key_auth import APIKeyAuthenticator
 from backend.data.user import (
     get_user_by_email,
@@ -11,6 +8,8 @@ from backend.data.user import (
     unsubscribe_user_by_token,
 )
 from backend.util.settings import Settings
+from fastapi import APIRouter, Body, HTTPException, Query, Security
+from fastapi.responses import JSONResponse
 
 from .models import (
     PostmarkBounceEnum,
@@ -57,7 +56,7 @@ async def postmark_webhook_handler(
     webhook: Annotated[
         PostmarkWebhook,
         Body(discriminator="RecordType"),
-    ]
+    ],
 ):
     logger.info(f"Received webhook from Postmark: {webhook}")
     match webhook:

@@ -4,7 +4,6 @@ import logging
 from typing import Optional
 
 from autogpt.app.config import AppConfig
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.logging.utils import print_attribute

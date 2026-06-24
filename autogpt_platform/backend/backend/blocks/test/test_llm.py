@@ -4,11 +4,10 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import backend.blocks.llm as llm
 import httpx
 import openai
 import pytest
-
-import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -50,10 +49,9 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_llm_call_anthropic_returns_cache_tokens(self):
         """Test that llm_call returns cache read/creation tokens from Anthropic."""
-        from pydantic import SecretStr
-
         import backend.blocks.llm as llm
         from backend.data.model import APIKeyCredentials
+        from pydantic import SecretStr
 
         anthropic_creds = APIKeyCredentials(
             id="test-anthropic-id",

@@ -89,7 +89,8 @@ class JSONSchema(BaseModel):
         return properties
 
     def validate_object(
-        self, object: object  # noqa: A002 - shadows builtin intentionally
+        self,
+        object: object,  # noqa: A002 - shadows builtin intentionally
     ) -> tuple[bool, list[ValidationError]]:
         """
         Validates an object or a value against the JSONSchema.

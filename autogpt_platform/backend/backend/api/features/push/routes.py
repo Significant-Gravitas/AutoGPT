@@ -1,9 +1,6 @@
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_user
-from fastapi import APIRouter, HTTPException, Security
-from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST
-
 from backend.api.features.push.model import (
     PushSubscribeRequest,
     PushUnsubscribeRequest,
@@ -15,6 +12,8 @@ from backend.data.push_subscription import (
     validate_push_endpoint,
 )
 from backend.util.settings import Settings
+from fastapi import APIRouter, HTTPException, Security
+from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST
 
 router = APIRouter()
 _settings = Settings()

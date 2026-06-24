@@ -6,14 +6,13 @@ import zipfile
 from pathlib import Path
 from typing import Iterator, Optional
 
-from pydantic import BaseModel, Field
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.file_storage.base import FileStorage
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

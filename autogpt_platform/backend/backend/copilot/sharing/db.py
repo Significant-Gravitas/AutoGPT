@@ -13,18 +13,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sentry_sdk
-from prisma.enums import SharedVia
-from prisma.errors import ForeignKeyViolationError, UniqueViolationError
-from prisma.models import AgentGraph, AgentGraphExecution, ChatLinkedShare
-from prisma.models import ChatMessage as PrismaChatMessage
-from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import (
-    SharedChatFile,
-    SharedExecutionFile,
-    UserWorkspace,
-    UserWorkspaceFile,
-)
-
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
@@ -42,6 +30,17 @@ from backend.data.db import transaction
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from backend.util import type as type_utils
+from prisma.enums import SharedVia
+from prisma.errors import ForeignKeyViolationError, UniqueViolationError
+from prisma.models import AgentGraph, AgentGraphExecution, ChatLinkedShare
+from prisma.models import ChatMessage as PrismaChatMessage
+from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import (
+    SharedChatFile,
+    SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -4,10 +4,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from prisma.enums import NotificationType
-
 from backend.data.notifications import AgentRunData, NotificationEventModel
 from backend.notifications.notifications import NotificationManager
+from prisma.enums import NotificationType
 
 
 class TestNotificationErrorHandling:
@@ -79,18 +78,23 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test that 406 inactive recipient error stops ALL processing for that user."""
-        with patch("backend.notifications.notifications.logger"), patch(
-            "backend.notifications.notifications.set_user_email_verification",
-            new_callable=AsyncMock,
-        ) as mock_set_verification, patch(
-            "backend.notifications.notifications.disable_all_user_notifications",
-            new_callable=AsyncMock,
-        ) as mock_disable_all, patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link"
-        ) as mock_unsub_link:
-
+        with (
+            patch("backend.notifications.notifications.logger"),
+            patch(
+                "backend.notifications.notifications.set_user_email_verification",
+                new_callable=AsyncMock,
+            ) as mock_set_verification,
+            patch(
+                "backend.notifications.notifications.disable_all_user_notifications",
+                new_callable=AsyncMock,
+            ) as mock_disable_all,
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link"
+            ) as mock_unsub_link,
+        ):
             # Create batch of 5 notifications
             notifications = []
             for i in range(5):
@@ -171,12 +175,15 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test that 422 error permanently removes the malformed notification from batch and continues with others."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link"
-        ) as mock_unsub_link:
-
+        with (
+            patch("backend.notifications.notifications.logger") as mock_logger,
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link"
+            ) as mock_unsub_link,
+        ):
             # Create batch of 5 notifications
             notifications = []
             for i in range(5):
@@ -274,12 +281,15 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test that oversized notifications are permanently removed from batch but others continue."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link"
-        ) as mock_unsub_link:
-
+        with (
+            patch("backend.notifications.notifications.logger") as mock_logger,
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link"
+            ) as mock_unsub_link,
+        ):
             # Create batch of 5 notifications
             notifications = []
             for i in range(5):
@@ -376,12 +386,15 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test that generic API errors keep notifications in batch for retry while others continue."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link"
-        ) as mock_unsub_link:
-
+        with (
+            patch("backend.notifications.notifications.logger") as mock_logger,
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link"
+            ) as mock_unsub_link,
+        ):
             # Create batch of 5 notifications
             notifications = []
             for i in range(5):
@@ -489,12 +502,15 @@ class TestNotificationErrorHandling:
         self, notification_manager, sample_batch_event
     ):
         """Test successful batch processing where all notifications are sent without errors."""
-        with patch("backend.notifications.notifications.logger") as mock_logger, patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link"
-        ) as mock_unsub_link:
-
+        with (
+            patch("backend.notifications.notifications.logger") as mock_logger,
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link"
+            ) as mock_unsub_link,
+        ):
             # Create batch of 5 notifications
             notifications = []
             for i in range(5):
@@ -681,11 +697,14 @@ class TestConsumerRetryWithBackoff:
         )
         manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
 
-        with patch(
-            "backend.notifications.notifications.get_database_manager_async_client"
-        ) as mock_db_client, patch(
-            "backend.notifications.notifications.generate_unsubscribe_link",
-            return_value="unsub",
+        with (
+            patch(
+                "backend.notifications.notifications.get_database_manager_async_client"
+            ) as mock_db_client,
+            patch(
+                "backend.notifications.notifications.generate_unsubscribe_link",
+                return_value="unsub",
+            ),
         ):
             mock_db = MagicMock()
             mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")

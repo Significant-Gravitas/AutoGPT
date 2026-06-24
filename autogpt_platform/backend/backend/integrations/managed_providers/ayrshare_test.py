@@ -3,14 +3,13 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
     _migrate_legacy_or_create_profile_key,
     settings_available,
 )
+from pydantic import SecretStr
 
 _USER_ID = "user-ayrshare-test"
 

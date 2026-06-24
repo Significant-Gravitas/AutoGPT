@@ -10,9 +10,6 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from prisma.errors import UniqueViolationError
-from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
-
 from backend.copilot.db import get_chat_session_metadata
 from backend.data.db import transaction
 from backend.data.workspace import get_workspace, get_workspace_file
@@ -25,6 +22,8 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
+from prisma.errors import UniqueViolationError
+from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 
 from .models import (
     ConfirmLinkResponse,
@@ -534,8 +533,7 @@ async def fetch_workspace_artifact(
         # DB row exists but the storage blob is gone — genuinely unexpected,
         # so keep this one at warning level.
         logger.warning(
-            "fetch_workspace_artifact: file %s db row present but storage "
-            "blob missing",
+            "fetch_workspace_artifact: file %s db row present but storage blob missing",
             file_id,
         )
         return None

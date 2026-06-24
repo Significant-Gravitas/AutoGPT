@@ -1,4 +1,4 @@
-""" GTTS Voice. """
+"""GTTS Voice."""
 
 from __future__ import annotations
 

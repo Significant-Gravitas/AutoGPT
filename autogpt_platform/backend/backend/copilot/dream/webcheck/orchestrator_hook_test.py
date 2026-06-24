@@ -12,7 +12,6 @@ Guards the contract the dream orchestrator depends on:
 from __future__ import annotations
 
 import pytest
-
 from backend.copilot.dream.fetch import FactRow
 
 from .orchestrator_hook import verify_stale_candidates

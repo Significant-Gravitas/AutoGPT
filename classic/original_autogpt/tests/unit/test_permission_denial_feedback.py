@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from autogpt.agents.agent import Agent
-
 from forge.models.action import ActionInterruptedByHuman
 
 

@@ -14,10 +14,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Generator, Literal, TextIO, overload
 
+from forge.models.config import SystemConfiguration
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-
-from forge.models.config import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 

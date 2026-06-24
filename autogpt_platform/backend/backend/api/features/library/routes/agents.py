@@ -1,11 +1,10 @@
 from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
+from backend.data.onboarding import complete_onboarding_step
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 from prisma.enums import OnboardingStep
-
-from backend.data.onboarding import complete_onboarding_step
 
 from .. import db as library_db
 from .. import model as library_model

@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.sdk.tool_adapter import SDK_DISALLOWED_TOOLS
 

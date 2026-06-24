@@ -11,8 +11,6 @@ import logging
 from typing import Any
 
 import prisma
-from prisma.enums import ContentType
-
 from backend.api.features.search.embeddings import (
     backfill_all_content_types,
     build_searchable_text,
@@ -21,6 +19,7 @@ from backend.api.features.search.embeddings import (
     get_content_embedding,
     store_content_embedding,
 )
+from prisma.enums import ContentType
 
 logger = logging.getLogger(__name__)
 

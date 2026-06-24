@@ -21,6 +21,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
+from pydantic import BaseModel
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData

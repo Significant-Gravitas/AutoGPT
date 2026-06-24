@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
 from backend.util.exceptions import DatabaseError

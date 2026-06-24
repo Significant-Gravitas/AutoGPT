@@ -4,9 +4,6 @@ from datetime import datetime
 from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, HTTPException, Security
-from pydantic import BaseModel, Field
-
 from backend.blocks.llm import LlmModel
 from backend.data.analytics import (
     AccuracyTrendsResponse,
@@ -26,6 +23,8 @@ from backend.executor.activity_status_generator import (
 )
 from backend.executor.manager import get_db_async_client
 from backend.util.settings import Settings
+from fastapi import APIRouter, HTTPException, Security
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 settings = Settings()

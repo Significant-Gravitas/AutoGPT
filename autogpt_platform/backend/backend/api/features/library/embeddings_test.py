@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.features.library.embeddings import (
     _build_searchable_text,
     _run_embedding,

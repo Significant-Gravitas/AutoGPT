@@ -4,7 +4,6 @@ import io
 import json
 
 import pytest
-
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
     infer_format_from_uri,

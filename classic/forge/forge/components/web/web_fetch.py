@@ -12,14 +12,13 @@ from urllib.parse import urljoin
 import httpx
 import trafilatura
 from bs4 import BeautifulSoup, Tag
-from pydantic import BaseModel
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +264,8 @@ class WebFetchComponent(
             )
         else:
             content = trafilatura.extract(
-                html, **extract_kwargs  # type: ignore[arg-type]
+                html,
+                **extract_kwargs,  # type: ignore[arg-type]
             )
 
         if not content:

@@ -17,14 +17,13 @@ import time
 from typing import Any
 
 import prisma
-from prisma.enums import ContentType
-from tiktoken import encoding_for_model
-
 from backend.api.features.search.content_handlers import CONTENT_HANDLERS
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
 from backend.util.settings import Settings
+from prisma.enums import ContentType
+from tiktoken import encoding_for_model
 
 logger = logging.getLogger(__name__)
 

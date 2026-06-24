@@ -11,10 +11,9 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
-
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
+from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
@@ -1425,9 +1424,8 @@ class TestEmptyToolCallNoArgException:
         same as a non-empty AssistantMessage. This proves
         ``get_agent_building_guide`` mid-session won't trip the
         circuit-breaker after 5 invocations across a long session."""
-        from claude_agent_sdk import AssistantMessage, ToolUseBlock
-
         from backend.copilot.sdk.service import _check_empty_tool_breaker
+        from claude_agent_sdk import AssistantMessage, ToolUseBlock
 
         msg = AssistantMessage(
             content=[

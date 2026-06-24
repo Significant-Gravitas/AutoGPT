@@ -8,13 +8,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel
-
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext

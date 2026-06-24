@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Optional
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.config import AppConfig
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage

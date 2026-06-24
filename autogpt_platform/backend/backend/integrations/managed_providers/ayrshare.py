@@ -34,14 +34,13 @@ from __future__ import annotations
 import logging
 import secrets
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.ayrshare import AyrshareClient
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.managed_credentials import ManagedCredentialProvider
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.enums import CreditTransactionType, SubscriptionTier
-from prisma.models import CreditTransaction, UserBalance
-
 from backend.data.credit import (
     UserCredit,
     _datafast_metadata,
@@ -21,6 +18,8 @@ from backend.data.credit import (
 )
 from backend.data.user import DEFAULT_USER_ID
 from backend.util.json import SafeJson
+from prisma.enums import CreditTransactionType, SubscriptionTier
+from prisma.models import CreditTransaction, UserBalance
 
 
 @pytest.fixture

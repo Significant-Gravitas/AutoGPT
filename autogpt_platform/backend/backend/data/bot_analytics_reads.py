@@ -11,9 +11,8 @@ rows. There is no message content or user identity anywhere in the schema.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel, Field
-
 from backend.data.db import query_raw_with_schema
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

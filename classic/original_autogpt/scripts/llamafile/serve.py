@@ -156,7 +156,7 @@ def report_download_progress(chunk_number: int, chunk_size: int, total_size: int
         bar = "#" * int(40 * percent)
         print(
             f"\rDownloading: [{bar:<40}] {percent:.0%}"
-            f" - {downloaded_size/1e6:.1f}/{total_size/1e6:.1f} MB",
+            f" - {downloaded_size / 1e6:.1f}/{total_size / 1e6:.1f} MB",
             end="",
         )
 

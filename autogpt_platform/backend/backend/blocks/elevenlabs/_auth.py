@@ -2,10 +2,9 @@
 
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

@@ -5,7 +5,6 @@ from typing import Any
 
 import feedparser
 import pydantic
-
 from backend.blocks._base import (
     Block,
     BlockCategory,

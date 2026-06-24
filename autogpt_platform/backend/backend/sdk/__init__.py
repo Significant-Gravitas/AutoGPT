@@ -6,15 +6,12 @@ Usage: from backend.sdk import *
 
 This module provides:
 - All block base classes and types
-- All credential and authentication components  
+- All credential and authentication components
 - All cost tracking components
 - All webhook components
 - All utility functions
 - Auto-registration decorators
 """
-
-# Third-party imports
-from pydantic import BaseModel, Field, SecretStr
 
 # === CORE BLOCK SYSTEM ===
 from backend.blocks._base import (
@@ -50,6 +47,9 @@ from backend.sdk.registry import AutoRegistry, BlockConfiguration
 # === UTILITIES ===
 from backend.util import json
 from backend.util.request import Requests
+
+# Third-party imports
+from pydantic import BaseModel, Field, SecretStr
 
 # === OPTIONAL IMPORTS WITH TRY/EXCEPT ===
 # Webhooks

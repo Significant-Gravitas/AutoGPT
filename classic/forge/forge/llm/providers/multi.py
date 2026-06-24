@@ -85,14 +85,16 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
 
     def count_tokens(self, text: str, model_name: ModelName) -> int:
         return self.get_model_provider(model_name).count_tokens(
-            text=text, model_name=model_name  # type: ignore
+            text=text,
+            model_name=model_name,  # type: ignore
         )
 
     def count_message_tokens(
         self, messages: ChatMessage | list[ChatMessage], model_name: ModelName
     ) -> int:
         return self.get_model_provider(model_name).count_message_tokens(
-            messages=messages, model_name=model_name  # type: ignore
+            messages=messages,
+            model_name=model_name,  # type: ignore
         )
 
     async def create_chat_completion(
@@ -168,7 +170,8 @@ class MultiProvider(BaseChatModelProvider[ModelName, ModelProviderSettings]):
                     )
 
             self._provider_instances[provider_name] = _provider = Provider(
-                settings=settings, logger=self._logger  # type: ignore
+                settings=settings,
+                logger=self._logger,  # type: ignore
             )
             _provider._budget = self._budget  # Object binding not preserved by Pydantic
             self._logger.debug(f"Initialized {Provider.__name__}!")

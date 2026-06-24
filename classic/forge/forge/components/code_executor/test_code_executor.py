@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from forge.file_storage.base import FileStorage
 from forge.utils.exceptions import InvalidArgumentError, OperationNotAllowedError
 

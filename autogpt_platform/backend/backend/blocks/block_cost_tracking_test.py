@@ -7,9 +7,8 @@ to verify provider cost is correctly extracted and reported.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from pydantic import SecretStr
 
 # ---------------------------------------------------------------------------
 # Helpers

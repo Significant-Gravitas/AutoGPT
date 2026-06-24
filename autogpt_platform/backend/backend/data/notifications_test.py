@@ -6,12 +6,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
-from prisma.actions import UserNotificationBatchActions
-from prisma.enums import NotificationType
-from prisma.errors import UniqueViolationError
-from prisma.models import NotificationEvent, User, UserNotificationBatch
-from pydantic import ValidationError
-
 from backend.data.notifications import (
     AgentApprovalData,
     AgentRejectionData,
@@ -23,6 +17,11 @@ from backend.data.notifications import (
     get_user_notification_oldest_message_in_batch,
 )
 from backend.util.test import SpinTestServer
+from prisma.actions import UserNotificationBatchActions
+from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
+from prisma.models import NotificationEvent, User, UserNotificationBatch
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 

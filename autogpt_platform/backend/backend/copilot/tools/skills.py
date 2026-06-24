@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
 from backend.copilot.service import strip_server_injected_tags

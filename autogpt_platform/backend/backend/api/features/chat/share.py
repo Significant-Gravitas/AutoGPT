@@ -15,10 +15,6 @@ import logging
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Body, HTTPException, Path, Response, Security
-from pydantic import BaseModel
-from starlette.status import HTTP_204_NO_CONTENT
-
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.copilot.sharing import db as share_db
 from backend.copilot.sharing.models import SharedChatMessagesPage, SharedChatSession
@@ -26,6 +22,9 @@ from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
 from backend.data.workspace import get_workspace_file_by_id
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
+from fastapi import APIRouter, Body, HTTPException, Path, Response, Security
+from pydantic import BaseModel
+from starlette.status import HTTP_204_NO_CONTENT
 
 logger = logging.getLogger(__name__)
 settings = Settings()

@@ -15,9 +15,8 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel
-
 from backend.util import json
+from pydantic import BaseModel
 
 from .transcript import STRIPPABLE_TYPES
 

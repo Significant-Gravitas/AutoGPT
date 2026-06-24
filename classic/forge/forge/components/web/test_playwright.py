@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-
 from forge.llm.providers.multi import MultiProvider
 
 from . import BrowsingError, WebPlaywrightComponent

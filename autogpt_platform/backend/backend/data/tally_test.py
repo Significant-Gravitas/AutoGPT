@@ -5,7 +5,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,

@@ -8,13 +8,12 @@ incorrect balance capping behavior.
 from uuid import uuid4
 
 import pytest
-from prisma.enums import CreditTransactionType
-from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction, User, UserBalance
-
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
+from prisma.enums import CreditTransactionType
+from prisma.errors import UniqueViolationError
+from prisma.models import CreditTransaction, User, UserBalance
 
 
 async def create_test_user(user_id: str) -> None:

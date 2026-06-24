@@ -6,10 +6,9 @@ import enum
 from dataclasses import dataclass, field
 from typing import Any, Literal, Type, Union, get_args, get_origin
 
+from forge.models.config import _get_field_metadata
 from pydantic import BaseModel, SecretStr
 from pydantic.fields import FieldInfo
-
-from forge.models.config import _get_field_metadata
 
 
 @dataclass
@@ -150,7 +149,6 @@ def get_all_configurable_settings() -> dict[str, SettingInfo]:
         Dict mapping environment variable names to SettingInfo
     """
     from autogpt.app.config import AppConfig
-
     from forge.llm.providers.anthropic import AnthropicCredentials
     from forge.llm.providers.groq import GroqCredentials
     from forge.llm.providers.openai import OpenAICredentials

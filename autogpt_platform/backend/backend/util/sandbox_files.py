@@ -12,15 +12,13 @@ import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from e2b import AsyncSandbox as BaseAsyncSandbox
-
     from backend.executor.utils import ExecutionContext
+    from e2b import AsyncSandbox as BaseAsyncSandbox
 
 logger = logging.getLogger(__name__)
 

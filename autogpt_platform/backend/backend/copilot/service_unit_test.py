@@ -16,11 +16,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message import ChatCompletionMessage
-from openai.types.completion_usage import CompletionUsage
-
 from backend.copilot.service import (
     _fallback_title_from_message,
     _generate_session_title,
@@ -28,6 +23,10 @@ from backend.copilot.service import (
     _title_usage_from_response,
     _update_title_async,
 )
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
+from openai.types.completion_usage import CompletionUsage
 
 
 def _build_completion(

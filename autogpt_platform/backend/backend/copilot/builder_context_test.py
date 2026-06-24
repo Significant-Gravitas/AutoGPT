@@ -13,7 +13,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.builder_context import (
     BUILDER_BLOCKED_TOOLS,
     BUILDER_CONTEXT_TAG,

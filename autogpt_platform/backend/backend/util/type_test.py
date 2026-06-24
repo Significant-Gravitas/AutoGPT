@@ -1,8 +1,7 @@
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel
-
 from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, convert
+from pydantic import BaseModel
 
 
 def test_type_conversion():

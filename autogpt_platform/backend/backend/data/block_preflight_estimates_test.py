@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from backend.data import block_preflight_estimates as bpe
 
 

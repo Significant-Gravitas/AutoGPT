@@ -11,14 +11,13 @@ import mimetypes
 import uuid
 from typing import Optional
 
-from prisma.errors import UniqueViolationError
-
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+from prisma.errors import UniqueViolationError
 
 
 def format_bytes(n: int) -> str:

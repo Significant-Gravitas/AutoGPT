@@ -1,8 +1,6 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -11,6 +9,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from pydantic import BaseModel
 
 from ._api import get_api
 from ._auth import (

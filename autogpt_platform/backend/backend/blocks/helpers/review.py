@@ -6,11 +6,10 @@ Used by both the dedicated HumanInTheLoopBlock and blocks that require human rev
 import logging
 from typing import Any, Optional
 
-from prisma.enums import ReviewStatus
-from pydantic import BaseModel
-
 from backend.data.human_review import ReviewResult
 from backend.util.clients import get_database_manager_async_client
+from prisma.enums import ReviewStatus
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

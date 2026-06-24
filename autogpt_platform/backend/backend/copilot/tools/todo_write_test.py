@@ -1,7 +1,6 @@
 """Tests for TodoWriteTool."""
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse, TodoItem, TodoWriteResponse
 from backend.copilot.tools.todo_write import TodoWriteTool

@@ -6,8 +6,6 @@ Covers the typed OpenRouter delta parser, the stateful emitter, and the
 parser relies on is exercised end-to-end.
 """
 
-from openai.types.chat.chat_completion_chunk import ChoiceDelta
-
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     OpenRouterDeltaExtension,
@@ -22,6 +20,7 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamReasoningStart,
 )
+from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
 
 def _delta(**extra) -> ChoiceDelta:

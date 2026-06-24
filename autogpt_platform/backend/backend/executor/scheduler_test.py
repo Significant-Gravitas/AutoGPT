@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import pytz
 from apscheduler.triggers.cron import CronTrigger
-
 from backend.api.model import CreateGraph
 from backend.data import db
 from backend.executor.scheduler import (

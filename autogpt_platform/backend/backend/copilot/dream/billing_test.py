@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 
 from . import billing as billing_mod
@@ -25,14 +24,16 @@ from .schemas import PhaseUsage
 
 @pytest.mark.asyncio
 async def test_check_dream_budget_allows_under_cap_user():
-    with patch.object(
-        billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
-    ), patch.object(
-        billing_mod,
-        "get_global_rate_limits",
-        new=AsyncMock(return_value=(1_000_000, 5_000_000, None)),
-    ), patch.object(
-        billing_mod, "check_rate_limit", new=AsyncMock(return_value=None)
+    with (
+        patch.object(
+            billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+        patch.object(
+            billing_mod,
+            "get_global_rate_limits",
+            new=AsyncMock(return_value=(1_000_000, 5_000_000, None)),
+        ),
+        patch.object(billing_mod, "check_rate_limit", new=AsyncMock(return_value=None)),
     ):
         ok, reason = await billing_mod.check_dream_budget("u1")
     assert (ok, reason) == (True, None)
@@ -50,16 +51,20 @@ async def test_check_dream_budget_skips_paywalled_user_as_insufficient_credits()
 @pytest.mark.asyncio
 async def test_check_dream_budget_skips_when_user_is_over_daily_cap():
     reset_at = datetime(2026, 5, 22, tzinfo=timezone.utc)
-    with patch.object(
-        billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
-    ), patch.object(
-        billing_mod,
-        "get_global_rate_limits",
-        new=AsyncMock(return_value=(0, 0, None)),
-    ), patch.object(
-        billing_mod,
-        "check_rate_limit",
-        new=AsyncMock(side_effect=RateLimitExceeded("daily", reset_at)),
+    with (
+        patch.object(
+            billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+        patch.object(
+            billing_mod,
+            "get_global_rate_limits",
+            new=AsyncMock(return_value=(0, 0, None)),
+        ),
+        patch.object(
+            billing_mod,
+            "check_rate_limit",
+            new=AsyncMock(side_effect=RateLimitExceeded("daily", reset_at)),
+        ),
     ):
         ok, reason = await billing_mod.check_dream_budget("u1")
     assert (ok, reason) == (False, "insufficient_credits")
@@ -68,16 +73,20 @@ async def test_check_dream_budget_skips_when_user_is_over_daily_cap():
 @pytest.mark.asyncio
 async def test_check_dream_budget_fails_closed_on_redis_brownout():
     """Redis unreadable → orchestrator must NOT bill on it; fail closed."""
-    with patch.object(
-        billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
-    ), patch.object(
-        billing_mod,
-        "get_global_rate_limits",
-        new=AsyncMock(return_value=(1_000_000, 5_000_000, None)),
-    ), patch.object(
-        billing_mod,
-        "check_rate_limit",
-        new=AsyncMock(side_effect=RateLimitUnavailable()),
+    with (
+        patch.object(
+            billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+        patch.object(
+            billing_mod,
+            "get_global_rate_limits",
+            new=AsyncMock(return_value=(1_000_000, 5_000_000, None)),
+        ),
+        patch.object(
+            billing_mod,
+            "check_rate_limit",
+            new=AsyncMock(side_effect=RateLimitUnavailable()),
+        ),
     ):
         ok, reason = await billing_mod.check_dream_budget("u1")
     assert (ok, reason) == (False, "rate_limit_unavailable")
@@ -122,10 +131,13 @@ async def test_record_phase_cost_tags_sync_baseline_provider_from_transport():
     ``cost_log_provider`` — the cloud OpenRouter case still labels
     rows as ``open_router`` so existing dashboards stay correct."""
     spy = AsyncMock()
-    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
-        billing_mod,
-        "routing_kwargs_for_chat_transport",
-        return_value=_routing_kwargs("open_router"),
+    with (
+        patch.object(billing_mod, "persist_and_record_usage", new=spy),
+        patch.object(
+            billing_mod,
+            "routing_kwargs_for_chat_transport",
+            return_value=_routing_kwargs("open_router"),
+        ),
     ):
         await billing_mod.record_phase_cost(
             user_id="u1",
@@ -149,10 +161,13 @@ async def test_record_phase_cost_tags_sync_baseline_provider_ollama_under_local(
     admin platform-costs dashboard distinguishes them from OR cloud
     spend. Previously hard-coded to ``open_router``."""
     spy = AsyncMock()
-    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
-        billing_mod,
-        "routing_kwargs_for_chat_transport",
-        return_value=_routing_kwargs("ollama"),
+    with (
+        patch.object(billing_mod, "persist_and_record_usage", new=spy),
+        patch.object(
+            billing_mod,
+            "routing_kwargs_for_chat_transport",
+            return_value=_routing_kwargs("ollama"),
+        ),
     ):
         await billing_mod.record_phase_cost(
             user_id="u1",
@@ -169,10 +184,13 @@ async def test_record_phase_cost_tags_sync_baseline_provider_anthropic_under_sub
     rows as ``anthropic`` so dream + chat spend roll up together
     under one provider on the admin dashboard."""
     spy = AsyncMock()
-    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
-        billing_mod,
-        "routing_kwargs_for_chat_transport",
-        return_value=_routing_kwargs("anthropic"),
+    with (
+        patch.object(billing_mod, "persist_and_record_usage", new=spy),
+        patch.object(
+            billing_mod,
+            "routing_kwargs_for_chat_transport",
+            return_value=_routing_kwargs("anthropic"),
+        ),
     ):
         await billing_mod.record_phase_cost(
             user_id="u1",

@@ -3,9 +3,6 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import WebSocket, WebSocketDisconnect
-from pytest_snapshot.plugin import Snapshot
-
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
 from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
@@ -17,6 +14,8 @@ from backend.api.ws_api import (
     websocket_router,
 )
 from backend.data.user import DEFAULT_USER_ID
+from fastapi import WebSocket, WebSocketDisconnect
+from pytest_snapshot.plugin import Snapshot
 
 
 @pytest.fixture
@@ -462,9 +461,8 @@ def test_get_connection_manager_singleton() -> None:
 async def test_lifespan_connects_and_disconnects_prisma(mocker) -> None:
     """Lifespan must both connect() and disconnect() db — the subscribe path
     resolves graph_id via Prisma so a missing connect() is the regression bug."""
-    from fastapi import FastAPI
-
     from backend.api.ws_api import lifespan
+    from fastapi import FastAPI
 
     mock_db = mocker.patch("backend.api.ws_api.db")
     mock_db.connect = AsyncMock()
@@ -480,9 +478,8 @@ async def test_lifespan_connects_and_disconnects_prisma(mocker) -> None:
 @pytest.mark.asyncio
 async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
     """If the app raises inside the yield, Prisma must still disconnect."""
-    from fastapi import FastAPI
-
     from backend.api.ws_api import lifespan
+    from fastapi import FastAPI
 
     mock_db = mocker.patch("backend.api.ws_api.db")
     mock_db.connect = AsyncMock()
@@ -507,9 +504,8 @@ def test_health_endpoint_returns_ok() -> None:
     # TestClient triggers lifespan — stub it out so Prisma isn't hit.
     from contextlib import asynccontextmanager
 
-    from fastapi.testclient import TestClient
-
     import backend.api.ws_api as ws_api
+    from fastapi.testclient import TestClient
 
     @asynccontextmanager
     async def _noop_lifespan(app):

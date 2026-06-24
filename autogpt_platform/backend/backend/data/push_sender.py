@@ -7,13 +7,12 @@ import re
 import time
 import uuid
 
-from cachetools import TTLCache
-from pywebpush import WebPushException, webpush
-
 from backend.api.model import NotificationPayload
 from backend.data.push_subscription import PushSubscriptionDTO, validate_push_endpoint
 from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import Settings
+from cachetools import TTLCache
+from pywebpush import WebPushException, webpush
 
 logger = logging.getLogger(__name__)
 

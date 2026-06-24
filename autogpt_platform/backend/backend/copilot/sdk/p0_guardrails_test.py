@@ -3,10 +3,9 @@
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
-
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import is_transient_api_error
+from pydantic import ValidationError
 
 
 def _make_config(**overrides) -> ChatConfig:

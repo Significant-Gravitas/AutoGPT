@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 import fastapi
 import pytest
 import starlette.datastructures
-
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions

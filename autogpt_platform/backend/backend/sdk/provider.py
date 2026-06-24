@@ -5,8 +5,6 @@ Provider configuration class that holds all provider-related settings.
 import uuid
 from typing import Any, Callable, List, Optional, Set, Type
 
-from pydantic import BaseModel, SecretStr
-
 from backend.blocks._base import BlockCost
 from backend.data.model import (
     APIKeyCredentials,
@@ -19,6 +17,7 @@ from backend.data.model import (
 )
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
+from pydantic import BaseModel, SecretStr
 
 
 class OAuthConfig(BaseModel):

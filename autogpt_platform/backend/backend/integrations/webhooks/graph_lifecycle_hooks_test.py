@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
     _before_graph_activate,

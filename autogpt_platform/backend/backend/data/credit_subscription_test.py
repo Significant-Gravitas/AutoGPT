@@ -7,10 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import SubscriptionTier
-from prisma.errors import PrismaError, UniqueViolationError
-from prisma.models import User
-
 from backend.data.credit import (
     UserCredit,
     _is_stripe_reconcilable,
@@ -29,6 +25,9 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
+from prisma.enums import SubscriptionTier
+from prisma.errors import PrismaError, UniqueViolationError
+from prisma.models import User
 
 
 class _CacheClearable(Protocol):
@@ -4226,10 +4225,9 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
 async def test_grant_credits_writes_grant_not_top_up():
     """grant_credits writes a GRANT row and never touches Stripe — TOP_UP is
     reserved for actual user-initiated Stripe checkouts."""
-    from prisma.enums import CreditTransactionType
-
     from backend.data.credit import UserCredit
     from backend.util.json import SafeJson
+    from prisma.enums import CreditTransactionType
 
     credit_system = UserCredit()
     add_tx_mock = AsyncMock(return_value=(1500, "grant-txkey"))
@@ -4281,9 +4279,8 @@ async def test_admin_get_user_history_excludes_inactive_by_default():
 @pytest.mark.asyncio
 async def test_admin_get_user_history_include_inactive_omits_filter():
     """include_inactive=True surfaces phantom rows for debugging abandoned checkouts."""
-    from prisma.enums import CreditTransactionType
-
     from backend.data.credit import admin_get_user_history
+    from prisma.enums import CreditTransactionType
 
     prisma_mock = MagicMock(
         find_many=AsyncMock(return_value=[]),

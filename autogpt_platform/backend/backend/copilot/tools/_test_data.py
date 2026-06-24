@@ -5,9 +5,6 @@ from os import getenv
 
 import pytest
 import pytest_asyncio
-from prisma.types import ProfileCreateInput
-from pydantic import SecretStr
-
 from backend.api.features.store import db as store_db
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
@@ -19,6 +16,8 @@ from backend.data.graph import Graph, Link, Node, create_graph
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
+from prisma.types import ProfileCreateInput
+from pydantic import SecretStr
 
 _logger = logging.getLogger(__name__)
 

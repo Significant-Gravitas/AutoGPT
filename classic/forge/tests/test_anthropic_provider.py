@@ -3,8 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from forge.llm.providers.anthropic import (
     ANTHROPIC_CHAT_MODELS,
     AnthropicCredentials,
@@ -23,6 +21,7 @@ from forge.llm.providers.schema import (
     ToolResultMessage,
 )
 from forge.models.json_schema import JSONSchema
+from pydantic import SecretStr
 
 
 # ---------------------------------------------------------------------------

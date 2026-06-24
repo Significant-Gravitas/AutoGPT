@@ -1,4 +1,4 @@
-""" MacOS TTS Voice. """
+"""MacOS TTS Voice."""
 
 from __future__ import annotations
 

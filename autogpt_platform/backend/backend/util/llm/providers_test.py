@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import pytest
-
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
@@ -101,20 +100,24 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.responses = _StubResponses()
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers.extract_responses_content",
-            return_value="",
-        ), patch(
-            "backend.util.llm.providers.extract_responses_tool_calls",
-            return_value=[],
-        ), patch(
-            "backend.util.llm.providers.extract_responses_usage",
-            return_value=(1, 1),
-        ), patch(
-            "backend.util.llm.providers.extract_responses_reasoning",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=[],
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
         ):
             await _call_openai_responses(
                 model="gpt-4o",
@@ -156,20 +159,24 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.responses = _StubResponses()
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers.extract_responses_content",
-            return_value="",
-        ), patch(
-            "backend.util.llm.providers.extract_responses_tool_calls",
-            return_value=[],
-        ), patch(
-            "backend.util.llm.providers.extract_responses_usage",
-            return_value=(1, 1),
-        ), patch(
-            "backend.util.llm.providers.extract_responses_reasoning",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=[],
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
         ):
             await _call_openai_responses(
                 model="gpt-4o",
@@ -214,20 +221,24 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.chat = SimpleNamespace(completions=_StubCompletions())
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers._extract_openai_compat_cache_tokens",
-            return_value=(0, 0),
-        ), patch(
-            "backend.util.llm.providers.extract_openai_tool_calls",
-            return_value=None,
-        ), patch(
-            "backend.util.llm.providers.extract_openai_reasoning",
-            return_value=None,
-        ), patch(
-            "backend.util.llm.providers.extract_openrouter_cost",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers._extract_openai_compat_cache_tokens",
+                return_value=(0, 0),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost",
+                return_value=None,
+            ),
         ):
             await _call_openai_compat(
                 base_url="https://openrouter.ai/api/v1",
@@ -265,9 +276,10 @@ class TestExecutionModeStubs:
                 completion_tokens=1,
             )
         )
-        with patch(
-            "backend.util.llm.providers._dispatch_sync", new=sync_mock
-        ), caplog.at_level("WARNING"):
+        with (
+            patch("backend.util.llm.providers._dispatch_sync", new=sync_mock),
+            caplog.at_level("WARNING"),
+        ):
             await call_provider(
                 provider="anthropic",
                 model="claude-sonnet-4-6",
@@ -1357,8 +1369,8 @@ class TestDefaults:
 # ---------------------------------------------------------------------------
 
 
-from backend.util.llm.providers import (  # noqa: E402
-    BatchResultRow,
+from backend.util.llm.providers import (
+    BatchResultRow,  # noqa: E402
     BatchSubmissionRef,
     download_batch_results,
     poll_batch,
@@ -1763,7 +1775,6 @@ class TestCallProviderStream:
         actually drop it from create_kwargs (not pass it as the omit
         sentinel which would still register as 'present' on the dict)."""
         import openai
-
         from backend.util.llm.providers import call_provider_stream
 
         client = MagicMock()

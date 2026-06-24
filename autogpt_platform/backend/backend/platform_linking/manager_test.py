@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.exceptions import LinkTokenExpiredError
 
 from .db import confirm_server_link, confirm_user_link

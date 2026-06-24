@@ -5,11 +5,10 @@ Tests OpenAPI schema generation and authentication response handling.
 
 from unittest import mock
 
-from fastapi import FastAPI
-from fastapi.openapi.utils import get_openapi
-
 from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
 from autogpt_libs.auth.jwt_utils import bearer_jwt_auth
+from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 
 
 def test_add_auth_responses_to_openapi_basic():
@@ -17,9 +16,8 @@ def test_add_auth_responses_to_openapi_basic():
     app = FastAPI(title="Test App", version="1.0.0")
 
     # Add some test endpoints with authentication
-    from fastapi import Depends
-
     from autogpt_libs.auth.dependencies import requires_user
+    from fastapi import Depends
 
     @app.get("/protected", dependencies=[Depends(requires_user)])
     def protected_endpoint():
@@ -62,9 +60,8 @@ def test_add_auth_responses_to_openapi_with_security():
     app = FastAPI()
 
     # Mock endpoint with security
-    from fastapi import Security
-
     from autogpt_libs.auth.dependencies import get_user_id
+    from fastapi import Security
 
     @app.get("/secured")
     def secured_endpoint(user_id: str = Security(get_user_id)):
@@ -128,9 +125,8 @@ def test_add_auth_responses_to_openapi_existing_responses():
     """Test handling endpoints that already have responses defined."""
     app = FastAPI()
 
-    from fastapi import Security
-
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from fastapi import Security
 
     @app.get(
         "/with-responses",
@@ -195,10 +191,9 @@ def test_add_auth_responses_to_openapi_multiple_security_schemes():
     """Test endpoints with multiple security requirements."""
     app = FastAPI()
 
-    from fastapi import Security
-
     from autogpt_libs.auth.dependencies import requires_admin_user, requires_user
     from autogpt_libs.auth.models import User
+    from fastapi import Security
 
     @app.get("/multi-auth")
     def multi_auth(
@@ -253,9 +248,8 @@ def test_add_auth_responses_to_openapi_all_http_methods():
     """Test that all HTTP methods are handled correctly."""
     app = FastAPI()
 
-    from fastapi import Security
-
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from fastapi import Security
 
     @app.get("/resource")
     def get_resource(jwt: dict = Security(get_jwt_payload)):
@@ -332,10 +326,9 @@ def test_endpoint_without_responses_section():
     """Test endpoint that has security but no responses section initially."""
     app = FastAPI()
 
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
     from fastapi import Security
     from fastapi.openapi.utils import get_openapi as original_get_openapi
-
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     # Create endpoint
     @app.get("/no-responses")
@@ -409,9 +402,8 @@ def test_openapi_schema_persistence():
     """Test that modifications to OpenAPI schema persist correctly."""
     app = FastAPI()
 
-    from fastapi import Security
-
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from fastapi import Security
 
     @app.get("/test")
     def test_endpoint(jwt: dict = Security(get_jwt_payload)):

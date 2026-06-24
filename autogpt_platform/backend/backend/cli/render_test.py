@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import click
 import pytest
-
 from backend.cli.chat import _parse_seq_range, _render_message, _render_session
 
 

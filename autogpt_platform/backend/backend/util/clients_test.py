@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from backend.util.clients import (
     _get_local_openai_client,
     get_openai_client,

@@ -15,7 +15,6 @@ import os
 from typing import Any
 
 import pytest
-
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     ChatMessage,

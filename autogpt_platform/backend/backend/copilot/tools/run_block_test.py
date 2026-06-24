@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions

@@ -20,7 +20,6 @@ from typing import Any, Dict, List
 
 import prisma.enums as prisma_enums
 import prisma.models as prisma_models
-from faker import Faker
 
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
@@ -37,6 +36,7 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
+from faker import Faker
 
 faker = Faker()
 

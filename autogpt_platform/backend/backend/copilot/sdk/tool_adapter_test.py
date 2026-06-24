@@ -6,14 +6,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mcp.types import ListToolsRequest, ToolAnnotations
-
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
+from mcp.types import ListToolsRequest, ToolAnnotations
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,

@@ -16,7 +16,6 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
 from backend.data.graph import get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
@@ -193,7 +192,7 @@ async def test_preview_queries_store_listing_version_not_store_agent() -> None:
 
     with (
         patch(
-            "backend.api.features.store.db.prisma.models" ".StoreListingVersion.prisma",
+            "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
         ) as mock_slv_prisma,
         patch(
             "backend.api.features.store.db.prisma.models.StoreAgent.prisma",
@@ -237,8 +236,7 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
             ".StoreListingVersion.prisma",
         ) as mock_prisma,
         patch(
-            "backend.api.features.library._add_to_library.graph_db"
-            ".get_graph_as_admin",
+            "backend.api.features.library._add_to_library.graph_db.get_graph_as_admin",
             new_callable=AsyncMock,
             return_value=mock_graph_model,
         ) as mock_admin,
@@ -274,8 +272,7 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
             ".StoreListingVersion.prisma",
         ) as mock_prisma,
         patch(
-            "backend.api.features.library._add_to_library.graph_db"
-            ".get_graph_as_admin",
+            "backend.api.features.library._add_to_library.graph_db.get_graph_as_admin",
             new_callable=AsyncMock,
         ) as mock_admin,
         patch(

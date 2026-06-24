@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import discord
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +18,7 @@ from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
+from pydantic import SecretStr
 
 from ._auth import (
     TEST_BOT_CREDENTIALS,

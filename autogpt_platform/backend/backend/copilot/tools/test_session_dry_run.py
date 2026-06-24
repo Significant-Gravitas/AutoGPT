@@ -11,7 +11,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse, MCPToolOutputResponse
 from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool

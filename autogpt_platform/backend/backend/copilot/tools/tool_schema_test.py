@@ -11,7 +11,6 @@ import json
 from typing import Any, cast
 
 import pytest
-
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Character budget (~4 chars/token heuristic, targeting ~8000 tokens).

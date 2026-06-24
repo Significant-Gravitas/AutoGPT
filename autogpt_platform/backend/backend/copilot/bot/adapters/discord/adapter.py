@@ -11,11 +11,10 @@ import re
 from typing import Optional
 
 import discord
-from discord import app_commands
-
 from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.text import split_at_boundary
+from discord import app_commands
 
 from ..base import (
     ChannelInfo,

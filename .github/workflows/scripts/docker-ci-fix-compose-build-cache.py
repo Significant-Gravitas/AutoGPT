@@ -8,7 +8,6 @@ import argparse
 
 import yaml
 
-
 DEFAULT_BRANCH = "dev"
 CACHE_BUILDS_FOR_COMPONENTS = ["backend", "frontend"]
 

@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
 from backend.data.block_cost_config import BLOCK_COSTS

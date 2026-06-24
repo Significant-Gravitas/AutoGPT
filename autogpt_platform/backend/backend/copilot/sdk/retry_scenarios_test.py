@@ -25,7 +25,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.transcript import (
     TranscriptDownload,
     _flatten_assistant_content,
@@ -1269,10 +1268,9 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, TextBlock
-
         from backend.copilot.response_model import StreamError
         from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from claude_agent_sdk import AssistantMessage, TextBlock
 
         session = self._make_session()
         original_transcript = _build_transcript(
@@ -1455,10 +1453,9 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import ResultMessage
-
         from backend.copilot.response_model import StreamError, StreamStart
         from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from claude_agent_sdk import ResultMessage
 
         session = self._make_session()
         success_result = self._make_result_message()
@@ -1531,10 +1528,9 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import ResultMessage
-
         from backend.copilot.response_model import StreamError, StreamStart
         from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from claude_agent_sdk import ResultMessage
 
         session = self._make_session()
         success_result = self._make_result_message()
@@ -1620,10 +1616,9 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
-
         from backend.copilot.response_model import StreamError, StreamStart
         from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         session = self._make_session()
         success_result = self._make_result_message()
@@ -1720,14 +1715,13 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage
-
         from backend.copilot.response_model import (
             StreamError,
             StreamStart,
             StreamStatus,
         )
         from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from claude_agent_sdk import AssistantMessage, ResultMessage
 
         session = self._make_session()
         result_msg = self._make_result_message()

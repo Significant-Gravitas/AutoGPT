@@ -8,9 +8,7 @@ from cx_Freeze import Executable, setup  # type: ignore
 packages = [
     m.name
     for m in iter_modules()
-    if m.ispkg
-    and m.module_finder
-    and ("poetry" in m.module_finder.path)  # type: ignore
+    if m.ispkg and m.module_finder and ("poetry" in m.module_finder.path)  # type: ignore
 ]
 
 # set the icon based on the platform

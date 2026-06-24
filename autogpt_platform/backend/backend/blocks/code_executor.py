@@ -1,10 +1,5 @@
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
-from e2b_code_interpreter import AsyncSandbox
-from e2b_code_interpreter import Result as E2BExecutionResult
-from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
-from pydantic import BaseModel, Field, JsonValue, SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -27,6 +22,10 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from e2b_code_interpreter import AsyncSandbox
+from e2b_code_interpreter import Result as E2BExecutionResult
+from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
+from pydantic import BaseModel, Field, JsonValue, SecretStr
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext

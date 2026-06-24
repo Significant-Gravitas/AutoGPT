@@ -5,7 +5,6 @@ import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.platform_linking.models import WorkspaceArtifact
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 

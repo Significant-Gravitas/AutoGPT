@@ -8,9 +8,8 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from croniter import croniter
-
 from backend.data.model import USER_TIMEZONE_NOT_SET
+from croniter import croniter
 
 logger = logging.getLogger(__name__)
 

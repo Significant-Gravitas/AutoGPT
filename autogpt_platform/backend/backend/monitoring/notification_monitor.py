@@ -2,10 +2,9 @@
 
 import logging
 
+from backend.util.clients import get_notification_manager_client
 from prisma.enums import NotificationType
 from pydantic import BaseModel
-
-from backend.util.clients import get_notification_manager_client
 
 logger = logging.getLogger(__name__)
 

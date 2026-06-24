@@ -15,17 +15,16 @@ in ``_reconcile_one``), so a steady-state run does no DB writes.
 import logging
 
 import stripe
-from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
-from prisma.models import User
-from pydantic import BaseModel
-
 from backend.data.credit import (
     alert_tier_reconciliation_discrepancy,
     build_price_to_tier_map,
     log_tier_reconciliation_discrepancy,
     set_subscription_tier,
 )
+from fastapi.concurrency import run_in_threadpool
+from prisma.enums import SubscriptionTier
+from prisma.models import User
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

@@ -2,13 +2,6 @@ import logging
 from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
-from pydantic import SecretStr
-from youtube_transcript_api._api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import NoTranscriptFound
-from youtube_transcript_api._transcripts import FetchedTranscript
-from youtube_transcript_api.formatters import TextFormatter
-from youtube_transcript_api.proxies import WebshareProxyConfig
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -23,6 +16,12 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
+from youtube_transcript_api._api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import NoTranscriptFound
+from youtube_transcript_api._transcripts import FetchedTranscript
+from youtube_transcript_api.formatters import TextFormatter
+from youtube_transcript_api.proxies import WebshareProxyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +93,9 @@ class TranscribeYoutubeVideoBlock(Block):
                     {"text": "Never gonna give you up"},
                     {"text": "Never gonna let you down"},
                 ],
-                "format_transcript": lambda transcript: "Never gonna give you up\nNever gonna let you down",
+                "format_transcript": lambda transcript: (
+                    "Never gonna give you up\nNever gonna let you down"
+                ),
             },
         )
 

@@ -1,6 +1,3 @@
-from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +15,8 @@ from backend.blocks.todoist._auth import (
 )
 from backend.blocks.todoist._types import Colors
 from backend.data.model import SchemaField
+from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 
 class TodoistListProjectsBlock(Block):
@@ -160,7 +159,7 @@ class TodoistCreateProjectBlock(Block):
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "Test Project"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={"create_project": lambda *args, **kwargs: (True)},
+            test_mock={"create_project": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -346,7 +345,7 @@ class TodoistUpdateProjectBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={"update_project": lambda *args, **kwargs: (True)},
+            test_mock={"update_project": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -426,7 +425,7 @@ class TodoistDeleteProjectBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={"delete_project": lambda *args, **kwargs: (True)},
+            test_mock={"delete_project": lambda *args, **kwargs: True},
         )
 
     @staticmethod

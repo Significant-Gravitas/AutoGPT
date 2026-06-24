@@ -15,8 +15,6 @@ from logging import Logger
 from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar
 
 import distro
-from pydantic import BaseModel, ConfigDict, Field
-
 from forge.agent.execution_context import (
     ExecutionContext,
     SubAgentHandle,
@@ -35,6 +33,7 @@ from forge.llm.providers.schema import (
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     pass
@@ -419,8 +418,7 @@ class BaseMultiStepPromptStrategy(ABC):
 
         if handle.status not in (SubAgentStatus.PENDING, SubAgentStatus.RUNNING):
             raise RuntimeError(
-                f"Sub-agent {handle.agent_id} is not runnable "
-                f"(status={handle.status})"
+                f"Sub-agent {handle.agent_id} is not runnable (status={handle.status})"
             )
 
         max_cycles = max_cycles or self.config.sub_agent_max_cycles

@@ -9,12 +9,11 @@ import asyncio
 from uuid import uuid4
 
 import pytest
+from backend.data.credit import POSTGRES_INT_MIN, UserCredit
+from backend.util.test import SpinTestServer
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
-
-from backend.data.credit import POSTGRES_INT_MIN, UserCredit
-from backend.util.test import SpinTestServer
 
 
 async def create_test_user(user_id: str) -> None:

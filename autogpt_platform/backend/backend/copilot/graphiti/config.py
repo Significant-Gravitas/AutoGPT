@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 
+from backend.util.clients import OPENROUTER_BASE_URL
 from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
@@ -10,8 +11,6 @@ from pydantic_settings import (
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
-
-from backend.util.clients import OPENROUTER_BASE_URL
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 

@@ -15,10 +15,9 @@ import math
 import re
 import threading
 
-from openai.types.completion_usage import PromptTokensDetails
-
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
+from openai.types.completion_usage import PromptTokensDetails
 
 from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage

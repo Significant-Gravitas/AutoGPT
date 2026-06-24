@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional, TypeVar
 
+from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 from pydantic import BaseModel
 from pydantic.json_schema import (
     DEFAULT_REF_TEMPLATE,
     GenerateJsonSchema,
     JsonSchemaMode,
 )
-
-from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 
 from .utils import ModelWithSummary
 

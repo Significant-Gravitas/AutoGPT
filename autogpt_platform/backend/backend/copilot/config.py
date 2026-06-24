@@ -5,6 +5,8 @@ import os
 from typing import Literal
 from urllib.parse import urlparse
 
+from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.llm.providers import ProviderLiteral
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -14,9 +16,6 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from backend.util.clients import OPENROUTER_BASE_URL
-from backend.util.llm.providers import ProviderLiteral
 
 logger = logging.getLogger(__name__)
 

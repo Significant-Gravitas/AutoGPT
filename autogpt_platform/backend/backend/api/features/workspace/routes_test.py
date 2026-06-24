@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
-
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
 

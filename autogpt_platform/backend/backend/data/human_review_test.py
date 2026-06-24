@@ -3,8 +3,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from prisma.enums import ReviewStatus
-
 from backend.data.human_review import (
     get_or_create_human_review,
     get_pending_reviews_for_execution,
@@ -12,6 +10,7 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
+from prisma.enums import ReviewStatus
 
 
 @pytest.fixture

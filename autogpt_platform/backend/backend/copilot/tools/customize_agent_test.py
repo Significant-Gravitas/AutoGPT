@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.customize_agent import CustomizeAgentTool
 from backend.copilot.tools.models import AgentPreviewResponse, ErrorResponse
 

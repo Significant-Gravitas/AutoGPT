@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot import turn_queue
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 

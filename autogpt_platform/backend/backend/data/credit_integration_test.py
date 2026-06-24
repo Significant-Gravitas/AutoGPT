@@ -6,9 +6,6 @@ which would have caught the CreditTransactionType enum casting bug.
 """
 
 import pytest
-from prisma.enums import CreditTransactionType
-from prisma.models import CreditTransaction, User, UserBalance
-
 from backend.data.credit import (
     AutoTopUpConfig,
     DisabledUserCredit,
@@ -19,6 +16,8 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.util.json import SafeJson
+from prisma.enums import CreditTransactionType
+from prisma.models import CreditTransaction, User, UserBalance
 
 
 @pytest.fixture

@@ -5,10 +5,6 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from prisma.enums import AgentExecutionStatus
-from prisma.errors import UniqueViolationError
-from prisma.models import AgentGraph, AgentGraphExecution, User
-
 from backend.data import generate_data
 from backend.data.generate_data import (
     _resolve_agent_name,
@@ -16,6 +12,9 @@ from backend.data.generate_data import (
 )
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
+from prisma.enums import AgentExecutionStatus
+from prisma.errors import UniqueViolationError
+from prisma.models import AgentGraph, AgentGraphExecution, User
 
 logger = logging.getLogger(__name__)
 

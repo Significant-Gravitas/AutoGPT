@@ -10,15 +10,14 @@ handled separately (e.g., via API key quotas).
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Security
-from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
-
 from backend.api.external.middleware import require_permission
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
 from backend.data.auth.base import APIAuthorizationInfo
+from fastapi import APIRouter, Security
+from prisma.enums import APIKeyPermission
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

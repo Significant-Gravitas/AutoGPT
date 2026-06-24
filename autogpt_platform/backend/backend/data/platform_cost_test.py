@@ -4,9 +4,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma import Json
-
 from backend.util.json import SafeJson
+from prisma import Json
 
 from .platform_cost import (
     PlatformCostEntry,

@@ -10,7 +10,6 @@ import json as stdlib_json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.baseline.service import (
     _append_gap_to_builder,
     _load_prior_transcript,

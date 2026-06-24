@@ -20,8 +20,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock, ThinkingBlock
-
 from backend.copilot.response_model import (
     StreamStartStep,
     StreamTextDelta,
@@ -35,6 +33,7 @@ from backend.copilot.transcript import (
     _transcript_to_messages,
 )
 from backend.util import json
+from claude_agent_sdk import AssistantMessage, TextBlock, ThinkingBlock
 
 from .conftest import build_structured_transcript
 from .response_adapter import SDKResponseAdapter

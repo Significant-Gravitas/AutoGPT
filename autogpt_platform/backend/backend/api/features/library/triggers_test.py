@@ -5,7 +5,6 @@ import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.features.library.triggers import (
     delete_preset_with_webhook_cleanup,
     setup_triggered_preset,

@@ -14,9 +14,6 @@ from collections.abc import Iterable
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
-from claude_agent_sdk import create_sdk_mcp_server, tool
-from mcp.types import ToolAnnotations
-
 from backend.copilot.context import (
     _current_permissions,
     _current_project_dir,
@@ -37,6 +34,8 @@ from backend.copilot.sdk.file_ref import (
 from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
+from claude_agent_sdk import create_sdk_mcp_server, tool
+from mcp.types import ToolAnnotations
 
 from .e2b_file_tools import (
     E2B_FILE_TOOL_NAMES,
@@ -57,9 +56,8 @@ from .e2b_file_tools import (
 )
 
 if TYPE_CHECKING:
-    from e2b import AsyncSandbox
-
     from backend.copilot.permissions import CopilotPermissions
+    from e2b import AsyncSandbox
 
 logger = logging.getLogger(__name__)
 

@@ -4,13 +4,12 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import BaseModel
-
 from backend.data.event_bus import (
     AsyncRedisEventBus,
     RedisEventBus,
     _assert_no_wildcard,
 )
+from pydantic import BaseModel
 
 
 class SampleEvent(BaseModel):

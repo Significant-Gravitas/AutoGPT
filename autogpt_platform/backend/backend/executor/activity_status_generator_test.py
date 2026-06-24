@@ -8,17 +8,16 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message import ChatCompletionMessage
-
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
     generate_activity_status_for_execution,
 )
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 
 def _make_usage(

@@ -3,11 +3,10 @@
 import logging
 from typing import Any
 
-from prisma.enums import ContentType
-
 from backend.api.features.search.hybrid_search import HybridSearchRow
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
+from prisma.enums import ContentType
 
 from .base import BaseTool
 from .models import (

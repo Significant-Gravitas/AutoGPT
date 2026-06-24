@@ -11,11 +11,6 @@ from enum import Enum
 from io import StringIO
 from typing import Optional, Union
 
-from exa_py import AsyncExa
-from exa_py.websets.types import CreateImportResponse
-from exa_py.websets.types import Import as SdkImport
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -26,6 +21,10 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from exa_py import AsyncExa
+from exa_py.websets.types import CreateImportResponse
+from exa_py.websets.types import Import as SdkImport
+from pydantic import BaseModel
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT

@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
-
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     CopilotTurnJobArgs,

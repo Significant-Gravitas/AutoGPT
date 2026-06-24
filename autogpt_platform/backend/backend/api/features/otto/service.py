@@ -3,11 +3,10 @@ import logging
 from typing import Optional
 
 import aiohttp
-from fastapi import HTTPException
-
 from backend.blocks import get_block
 from backend.data import graph as graph_db
 from backend.util.settings import Settings
+from fastapi import HTTPException
 
 from .models import ApiResponse, ChatRequest, GraphData
 

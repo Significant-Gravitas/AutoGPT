@@ -13,8 +13,6 @@ Verifies the refactored run_model correctly:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks._base import BlockCostType
 from backend.blocks.replicate.replicate_block import (
     _REPLICATE_USD_PER_SEC,
@@ -22,6 +20,7 @@ from backend.blocks.replicate.replicate_block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import NodeExecutionStats
+from pydantic import SecretStr
 
 
 def test_registered_as_cost_usd_150():

@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Callable, Iterator, Optional
 
-from pydantic import BaseModel
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import AfterExecute, AfterParse, MessageProvider
 from forge.llm.prompting.utils import indent
@@ -12,6 +10,7 @@ from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.multi import ModelName
 from forge.llm.providers.openai import OpenAIModelName
 from forge.llm.providers.schema import ToolResultMessage
+from pydantic import BaseModel
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 

@@ -1,5 +1,4 @@
 import pytest
-
 from backend.blocks.io import AgentTableInputBlock
 from backend.util.test import execute_block_test
 

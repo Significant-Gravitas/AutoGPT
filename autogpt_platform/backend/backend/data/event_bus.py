@@ -11,13 +11,12 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel
-from redis.asyncio.client import PubSub as AsyncPubSub
-from redis.client import PubSub
-
 from backend.data import redis_client as redis
 from backend.util import json
 from backend.util.settings import Settings
+from pydantic import BaseModel
+from redis.asyncio.client import PubSub as AsyncPubSub
+from redis.client import PubSub
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as AsyncRedis

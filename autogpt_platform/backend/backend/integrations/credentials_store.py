@@ -7,8 +7,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
-from pydantic import SecretStr
-
 from backend.data.db import prisma
 from backend.data.model import (
     APIKeyCredentials,
@@ -21,6 +19,7 @@ from backend.data.model import (
 from backend.data.redis_client import get_redis_async
 from backend.util.cache import thread_cached
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 settings = Settings()
 logger = logging.getLogger(__name__)
@@ -542,7 +541,7 @@ class IntegrationCredentialsStore:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
-        (code_challenge, code_verifier) = self._generate_code_challenge()
+        code_challenge, code_verifier = self._generate_code_challenge()
 
         state = OAuthState(
             token=token,

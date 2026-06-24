@@ -1,7 +1,6 @@
 """Unit tests for PerplexityBlock model fallback behavior."""
 
 import pytest
-
 from backend.blocks.perplexity import (
     TEST_CREDENTIALS_INPUT,
     PerplexityBlock,

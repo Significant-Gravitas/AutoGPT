@@ -10,10 +10,6 @@ routes.py stays free of Redis/Lua details.
 import logging
 from typing import TYPE_CHECKING, Callable
 
-from fastapi import HTTPException
-from pydantic import BaseModel
-from redis.exceptions import RedisClusterException, RedisError
-
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
@@ -35,6 +31,9 @@ from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import resolve_workspace_files
+from fastapi import HTTPException
+from pydantic import BaseModel
+from redis.exceptions import RedisClusterException, RedisError
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession

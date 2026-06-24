@@ -1,8 +1,6 @@
 import logging
 from urllib.parse import urlparse
 
-from typing_extensions import TypedDict
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -11,6 +9,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from typing_extensions import TypedDict
 
 from ._api import convert_comment_url_to_api_endpoint, get_api
 from ._auth import (
@@ -798,7 +797,9 @@ class GithubUnassignIssueBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Issue unassigned successfully")],
             test_mock={
-                "unassign_issue": lambda *args, **kwargs: "Issue unassigned successfully"
+                "unassign_issue": lambda *args, **kwargs: (
+                    "Issue unassigned successfully"
+                )
             },
         )
 

@@ -4,8 +4,6 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks.http import (
     HttpCredentials,
     HttpMethod,
@@ -14,6 +12,7 @@ from backend.blocks.http import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
 from backend.util.request import Response
+from pydantic import SecretStr
 
 
 def make_test_context(

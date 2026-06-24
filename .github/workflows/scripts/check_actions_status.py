@@ -1,9 +1,10 @@
 import json
 import os
-import requests
 import sys
 import time
 from typing import Dict, List, Tuple
+
+import requests
 
 CHECK_INTERVAL = 30
 

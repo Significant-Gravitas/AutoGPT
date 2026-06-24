@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.copilot.moonshot import (
     is_moonshot_model,
     moonshot_supports_cache_control,

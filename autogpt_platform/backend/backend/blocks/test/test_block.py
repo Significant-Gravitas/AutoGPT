@@ -1,7 +1,6 @@
 from typing import Any, Type
 
 import pytest
-
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockSchemaInput
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock

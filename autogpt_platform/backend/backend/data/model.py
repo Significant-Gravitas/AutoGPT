@@ -21,6 +21,10 @@ from typing import (
 )
 from uuid import uuid4
 
+from backend.integrations.providers import ProviderName
+from backend.util.json import loads as json_loads
+from backend.util.request import parse_url
+from backend.util.settings import Secrets
 from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
 from pydantic import (
     BaseModel,
@@ -39,11 +43,6 @@ from pydantic_core import (
     core_schema,
 )
 from typing_extensions import TypedDict
-
-from backend.integrations.providers import ProviderName
-from backend.util.json import loads as json_loads
-from backend.util.request import parse_url
-from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime

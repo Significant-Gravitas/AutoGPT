@@ -13,9 +13,8 @@ This breaks OrchestratorBlock agent mode tool execution.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import TypeAdapter
-
 from backend.data.block import CompletedBlockOutput
+from pydantic import TypeAdapter
 
 
 @pytest.mark.asyncio

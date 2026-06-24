@@ -7,15 +7,14 @@ Handles webhook registration and validation for Telegram bots.
 import hmac
 import logging
 
-from fastapi import HTTPException, Request
-from strenum import StrEnum
-
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.request import Requests
 from backend.util.settings import Config
+from fastapi import HTTPException, Request
+from strenum import StrEnum
 
 from ._base import BaseWebhooksManager
 from .utils import webhook_ingress_url

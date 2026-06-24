@@ -3,10 +3,9 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from backend.copilot.graphiti.flex_client import FlexOpenAIClient
 from graphiti_core.llm_client import LLMConfig
 from pydantic import BaseModel
-
-from backend.copilot.graphiti.flex_client import FlexOpenAIClient
 
 
 class _DummyResponseModel(BaseModel):

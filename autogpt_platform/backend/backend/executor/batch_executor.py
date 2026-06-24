@@ -32,8 +32,6 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field, field_validator
-
 from backend.util.llm.providers import (
     BatchResultRow,
     ProviderLiteral,
@@ -42,6 +40,7 @@ from backend.util.llm.providers import (
 )
 from backend.util.service import AppService, UnhealthyServiceError
 from backend.util.settings import Config
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 

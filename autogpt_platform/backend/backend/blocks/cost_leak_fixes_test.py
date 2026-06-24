@@ -9,12 +9,11 @@ block surfaces immediately.
 from unittest.mock import patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks._base import BlockCostType
 from backend.blocks.ai_condition import AIConditionBlock
 from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from pydantic import SecretStr
 
 # -------- AIConditionBlock registration --------
 

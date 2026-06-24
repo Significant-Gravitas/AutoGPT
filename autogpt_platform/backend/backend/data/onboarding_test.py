@@ -2,9 +2,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from prisma.enums import OnboardingStep
-
 from backend.data.onboarding import _reward_user, format_onboarding_for_extraction
+from prisma.enums import OnboardingStep
 
 
 def test_format_onboarding_for_extraction_basic():

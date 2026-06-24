@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.features.library import model as library_model
 from backend.copilot.tools.manage_folders import (
     CreateFolderTool,

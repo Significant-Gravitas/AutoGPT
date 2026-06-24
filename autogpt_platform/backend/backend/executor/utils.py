@@ -7,8 +7,6 @@ from collections import defaultdict
 from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast
 
-from pydantic import BaseModel, JsonValue, ValidationError
-
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -56,6 +54,7 @@ from backend.util.exceptions import (
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
+from pydantic import BaseModel, JsonValue, ValidationError
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")

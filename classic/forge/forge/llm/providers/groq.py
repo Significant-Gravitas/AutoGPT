@@ -5,9 +5,8 @@ import logging
 from typing import Any, Optional
 
 import tiktoken
-from pydantic import SecretStr
-
 from forge.models.config import UserConfigurable
+from pydantic import SecretStr
 
 from ._openai_base import BaseOpenAIChatProvider
 from .schema import (

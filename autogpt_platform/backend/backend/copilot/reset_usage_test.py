@@ -6,11 +6,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-
 from backend.api.features.chat.routes import reset_copilot_usage
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 from backend.util.exceptions import InsufficientBalanceError
+from fastapi import HTTPException
 
 
 # Minimal config mock matching ChatConfig fields used by the endpoint.

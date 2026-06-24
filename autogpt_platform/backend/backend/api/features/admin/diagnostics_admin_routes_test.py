@@ -1,14 +1,12 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
+import backend.api.features.admin.diagnostics_admin_routes as diagnostics_admin_routes
 import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma.enums import AgentExecutionStatus
-
-import backend.api.features.admin.diagnostics_admin_routes as diagnostics_admin_routes
 from backend.data.diagnostics import (
     AgentDiagnosticsSummary,
     ExecutionDiagnosticsSummary,
@@ -19,6 +17,7 @@ from backend.data.diagnostics import (
     ScheduleHealthMetrics,
 )
 from backend.data.execution import GraphExecutionMeta
+from prisma.enums import AgentExecutionStatus
 
 app = fastapi.FastAPI()
 app.include_router(diagnostics_admin_routes.router)

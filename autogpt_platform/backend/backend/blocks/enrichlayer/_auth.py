@@ -6,10 +6,9 @@ This module provides credential types and test credentials for the Enrichlayer A
 
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
 
 # Define the type of credentials input expected for Enrichlayer API
 EnrichlayerCredentialsInput = CredentialsMetaInput[

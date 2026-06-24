@@ -2,7 +2,6 @@
 CompactionTracker state machine."""
 
 import pytest
-
 from backend.copilot.constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (

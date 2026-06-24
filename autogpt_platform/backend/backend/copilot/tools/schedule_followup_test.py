@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.schedule_followup import (
     ScheduleCreatedResponse,
@@ -283,10 +282,13 @@ async def test_returns_feature_disabled_when_flag_off(tool):
         side_effect=AssertionError("scheduler must not be touched when flag off")
     )
 
-    with patch(
-        f"{_TOOL_PATH}.is_followups_feature_enabled",
-        new=AsyncMock(return_value=False),
-    ), patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client):
+    with (
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client),
+    ):
         result = await tool._execute(
             user_id=_USER,
             session=session,

@@ -122,7 +122,7 @@ class CreateAgentTool(BaseTool):
         if not nodes:
             return ErrorResponse(
                 message=(
-                    "The agent JSON has no nodes. " "An agent needs at least one block."
+                    "The agent JSON has no nodes. An agent needs at least one block."
                 ),
                 error="empty_agent",
                 session_id=session_id,

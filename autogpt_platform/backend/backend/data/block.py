@@ -1,10 +1,9 @@
 import logging
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
+from backend.util import json
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
-
-from backend.util import json
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema

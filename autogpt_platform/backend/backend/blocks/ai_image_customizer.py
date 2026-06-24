@@ -2,10 +2,6 @@ import asyncio
 from enum import Enum
 from typing import Literal
 
-from pydantic import SecretStr
-from replicate.client import Client as ReplicateClient
-from replicate.helpers import FileOutput
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -22,6 +18,9 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.file import MediaFileType, store_media_file
+from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
+from replicate.helpers import FileOutput
 
 
 class GeminiImageModel(str, Enum):

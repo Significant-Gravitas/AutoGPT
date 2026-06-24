@@ -12,7 +12,6 @@ import json
 import os
 
 import pytest
-
 from backend.blocks.mcp.client import MCPClient
 
 # Public MCP server that requires no authentication

@@ -8,9 +8,8 @@ import sentry_sdk
 import tenacity
 import tiktoken
 from anthropic import APIConnectionError, APIStatusError
-from pydantic import SecretStr
-
 from forge.models.config import UserConfigurable
+from pydantic import SecretStr
 
 from .schema import (
     AssistantChatMessage,
@@ -577,7 +576,8 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         @self._retry_api_request
         async def _create_chat_completion_with_retry() -> Message:
             return await self._client.messages.create(
-                model=model, **completion_kwargs  # type: ignore
+                model=model,
+                **completion_kwargs,  # type: ignore
             )
 
         response = await _create_chat_completion_with_retry()

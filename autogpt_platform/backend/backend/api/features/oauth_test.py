@@ -23,14 +23,13 @@ import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from backend.api.rest_api import app
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
-
-from backend.api.rest_api import app
 
 keysmith = APIKeySmith()
 

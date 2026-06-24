@@ -9,7 +9,6 @@ These tests use the real database but mock OpenAI calls.
 from unittest.mock import patch
 
 import pytest
-
 from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,

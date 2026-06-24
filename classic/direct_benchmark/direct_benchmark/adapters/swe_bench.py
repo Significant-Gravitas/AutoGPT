@@ -314,8 +314,7 @@ class SWEBenchAdapter(BenchmarkAdapter):
                 "success": False,
                 "score": 0.0,
                 "error": (
-                    "swebench package not installed. "
-                    "Install with: pip install swebench"
+                    "swebench package not installed. Install with: pip install swebench"
                 ),
             }
 
@@ -395,7 +394,7 @@ class SWEBenchAdapter(BenchmarkAdapter):
                 "success": False,
                 "score": 0.0,
                 "error": (
-                    "Modal package not installed. " "Install with: pip install modal"
+                    "Modal package not installed. Install with: pip install modal"
                 ),
             }
 

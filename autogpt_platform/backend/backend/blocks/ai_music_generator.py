@@ -3,9 +3,6 @@ import logging
 from enum import Enum
 from typing import Literal
 
-from pydantic import SecretStr
-from replicate.client import Client as ReplicateClient
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +17,8 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +141,9 @@ class AIMusicGeneratorBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, music_gen_model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
+                "run_model": lambda api_key, music_gen_model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: (
+                    "https://replicate.com/output/generated-audio-url.wav"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )

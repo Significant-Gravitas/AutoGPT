@@ -11,7 +11,6 @@ from collections.abc import AsyncGenerator, AsyncIterator
 
 import pytest
 import pytest_asyncio
-
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamFinish,

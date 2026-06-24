@@ -12,9 +12,6 @@ try:
 except ImportError:
     from typing_extensions import NotRequired
 
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletionMessageParam
-
 from backend.blocks import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
@@ -23,6 +20,8 @@ from backend.executor.cost_tracking import schedule_platform_cost_log
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam
 
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient

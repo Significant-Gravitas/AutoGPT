@@ -1,15 +1,14 @@
-"""                                                                                       
-Slack Bot credentials handling.                                                           
-                  
+"""
+Slack Bot credentials handling.
+
 Slack bots use a Bot Token (xoxb-...) obtained from the Slack API dashboard.
 """
 
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
 
 SlackCredentials = APIKeyCredentials
 SlackCredentialsInput = CredentialsMetaInput[

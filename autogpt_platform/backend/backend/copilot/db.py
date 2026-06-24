@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sentry_sdk
+from backend.data import db
+from backend.util.json import SafeJson, sanitize_string
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -18,9 +20,6 @@ from prisma.types import (
     FindManyChatMessageArgsFromChatSession,
 )
 from pydantic import BaseModel
-
-from backend.data import db
-from backend.util.json import SafeJson, sanitize_string
 
 from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
 from .model import get_chat_session as get_chat_session_cached

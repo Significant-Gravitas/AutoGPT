@@ -2,9 +2,6 @@ from datetime import datetime
 from typing import List, Literal, Optional, Union, cast
 
 import tweepy
-from pydantic import BaseModel
-from tweepy.client import Response
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -43,6 +40,8 @@ from backend.blocks.twitter._types import (
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.model import SchemaField
+from pydantic import BaseModel
+from tweepy.client import Response
 
 
 class Media(BaseModel):

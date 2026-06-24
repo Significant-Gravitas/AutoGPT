@@ -25,8 +25,6 @@ from enum import Enum
 from logging import Logger
 from typing import Optional, Union
 
-from pydantic import Field
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -41,6 +39,7 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import Field
 
 from .base import (
     BaseMultiStepPromptStrategy,
@@ -452,7 +451,7 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
         )
 
         planning_msg = ChatMessage.user(
-            f"{self.config.planner_instruction}\n\n" f'Task:\n"""{task}"""'
+            f'{self.config.planner_instruction}\n\nTask:\n"""{task}"""'
         )
 
         return ChatPrompt(
@@ -484,7 +483,7 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
         )
 
         extraction_msg = ChatMessage.user(
-            f"{self.config.variable_extraction_instruction}\n\n" f'Task:\n"""{task}"""'
+            f'{self.config.variable_extraction_instruction}\n\nTask:\n"""{task}"""'
         )
 
         return ChatPrompt(

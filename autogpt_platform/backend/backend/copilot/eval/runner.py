@@ -36,11 +36,10 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
+from backend.copilot.dream.schemas import DreamPassResult
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 from pydantic_core import to_jsonable_python
-
-from backend.copilot.dream.schemas import DreamPassResult
 
 from .cost_latency_suite import run_cost_latency_suite
 from .datasets import ALL_STALENESS_FIXTURES, StalenessFixture

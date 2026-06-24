@@ -9,7 +9,6 @@ Covers:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import (
     ExecutionMode,

@@ -1,7 +1,3 @@
-from fastapi import HTTPException, Security, status
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
-from prisma.enums import APIKeyPermission
-
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -10,6 +6,9 @@ from backend.data.auth.oauth import (
     OAuthAccessTokenInfo,
     validate_access_token,
 )
+from fastapi import HTTPException, Security, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from prisma.enums import APIKeyPermission
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)

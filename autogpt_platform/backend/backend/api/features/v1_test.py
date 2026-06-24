@@ -8,9 +8,6 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import starlette.datastructures
-from fastapi import HTTPException, UploadFile
-from pytest_snapshot.plugin import Snapshot
-
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
@@ -21,6 +18,8 @@ from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
+from fastapi import HTTPException, UploadFile
+from pytest_snapshot.plugin import Snapshot
 
 from .v1 import upload_file, v1_router
 
@@ -622,14 +621,13 @@ def test_executions_cost_summary_returns_payload(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """The /executions/cost-summary route returns the aggregated payload."""
-    from prisma.enums import AgentExecutionStatus
-
     from backend.data.execution_cost_summary import (
         UserAgentCostRollup,
         UserDailyCost,
         UserExecutionCostSummary,
         UserTopRun,
     )
+    from prisma.enums import AgentExecutionStatus
 
     summary = UserExecutionCostSummary(
         total_cents=4200,
@@ -743,9 +741,7 @@ def test_executions_cost_summary_rejects_inverted_window(
     )
 
     response = client.get(
-        "/executions/cost-summary"
-        "?since=2026-05-15T00:00:00Z"
-        "&until=2026-05-01T00:00:00Z"
+        "/executions/cost-summary?since=2026-05-15T00:00:00Z&until=2026-05-01T00:00:00Z"
     )
 
     assert response.status_code == 422

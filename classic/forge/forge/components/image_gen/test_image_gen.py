@@ -5,13 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from PIL import Image
-from pydantic import SecretStr, ValidationError
-
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
 from forge.file_storage.base import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
+from PIL import Image
+from pydantic import SecretStr, ValidationError
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 

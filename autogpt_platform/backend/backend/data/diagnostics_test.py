@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data.diagnostics import (
     _calculate_total_runs,
     _detect_orphaned_schedules,

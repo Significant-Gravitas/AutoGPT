@@ -6,10 +6,9 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search import service
 from backend.api.features.search.model import GlobalSearchResponse
+from prisma.enums import ContentType
 
 
 def _patch_hybrid(return_value):

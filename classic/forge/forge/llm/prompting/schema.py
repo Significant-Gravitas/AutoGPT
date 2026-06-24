@@ -1,12 +1,11 @@
 import enum
 
-from pydantic import BaseModel, Field
-
 from forge.llm.providers.schema import (
     ChatMessage,
     ChatMessageDict,
     CompletionModelFunction,
 )
+from pydantic import BaseModel, Field
 
 
 class LanguageModelClassification(str, enum.Enum):

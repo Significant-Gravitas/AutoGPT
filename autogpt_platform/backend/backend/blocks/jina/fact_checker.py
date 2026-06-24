@@ -1,8 +1,6 @@
 from typing import List
 from urllib.parse import quote
 
-from typing_extensions import TypedDict
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -17,6 +15,7 @@ from backend.blocks.jina._auth import (
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
+from typing_extensions import TypedDict
 
 
 class Reference(TypedDict):

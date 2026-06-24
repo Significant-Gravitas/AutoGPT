@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.copilot.config import ChatConfig
 
 from . import client as client_mod

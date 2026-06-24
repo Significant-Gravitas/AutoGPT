@@ -33,10 +33,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-from langfuse import get_client
-
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util import json
+from langfuse import get_client
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession

@@ -1,9 +1,6 @@
 import logging
 from enum import Enum
 
-from stagehand import AsyncStagehand
-from stagehand.types.session_act_params import Options as ActOptions
-
 from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
@@ -22,6 +19,8 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from stagehand import AsyncStagehand
+from stagehand.types.session_act_params import Options as ActOptions
 
 logger = logging.getLogger(__name__)
 

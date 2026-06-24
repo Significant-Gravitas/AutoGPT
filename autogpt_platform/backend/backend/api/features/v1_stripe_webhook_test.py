@@ -7,13 +7,12 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import stripe
-from prisma.enums import SubscriptionTier
-
 from backend.data.credit import (
     _expire_open_subscription_sessions,
     reconcile_stripe_tier_for_user,
     sync_tier_from_checkout_session,
 )
+from prisma.enums import SubscriptionTier
 
 from .v1 import _claim_stripe_event, _release_stripe_event, v1_router
 

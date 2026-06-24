@@ -3,8 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.copilot.integration_creds import (
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
@@ -18,6 +16,7 @@ from backend.copilot.integration_creds import (
     invalidate_user_provider_cache,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from pydantic import SecretStr
 
 _USER = "user-integration-creds-test"
 _PROVIDER = "github"

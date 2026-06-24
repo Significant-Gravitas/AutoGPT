@@ -1,8 +1,6 @@
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -19,6 +17,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.request import DEFAULT_USER_AGENT
+from pydantic import SecretStr
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):

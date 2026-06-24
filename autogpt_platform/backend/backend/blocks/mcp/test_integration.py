@@ -12,12 +12,11 @@ from unittest.mock import patch
 
 import pytest
 from aiohttp import web
-from pydantic import SecretStr
-
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient
 from backend.blocks.mcp.test_server import create_test_mcp_app
 from backend.data.model import OAuth2Credentials
+from pydantic import SecretStr
 
 MOCK_USER_ID = "test-user-integration"
 

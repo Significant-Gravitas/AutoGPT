@@ -12,11 +12,6 @@ import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.exceptions import AMQPChannelError, AMQPConnectionError
-from pika.spec import Basic, BasicProperties
-from prometheus_client import Gauge, start_http_server
-
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -25,6 +20,10 @@ from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import AMQPChannelError, AMQPConnectionError
+from pika.spec import Basic, BasicProperties
+from prometheus_client import Gauge, start_http_server
 
 from .processor import execute_copilot_turn, init_worker
 from .utils import (

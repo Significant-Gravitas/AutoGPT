@@ -4,9 +4,8 @@ import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal
 
-from openai.types.chat import ChatCompletionToolParam
-
 from backend.copilot.tracking import track_tool_called
+from openai.types.chat import ChatCompletionToolParam
 
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool

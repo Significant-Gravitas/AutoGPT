@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.platform_info import PlatformInfoTool

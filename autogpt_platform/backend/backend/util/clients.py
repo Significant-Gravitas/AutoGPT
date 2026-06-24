@@ -13,9 +13,6 @@ settings = Settings()
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
-    from openai import AsyncOpenAI
-    from supabase import AClient, Client
-
     from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
@@ -30,6 +27,8 @@ if TYPE_CHECKING:
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
     from backend.platform_linking.manager import PlatformLinkingManagerClient
+    from openai import AsyncOpenAI
+    from supabase import AClient, Client
 
 
 @thread_cached
@@ -193,8 +192,6 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     ``prefer_openrouter`` kwarg, so we don't end up with two equivalent
     ``AsyncOpenAI`` instances pointed at the same endpoint.
     """
-    from openai import AsyncOpenAI
-
     # Reuse the module-level ``ChatConfig`` singleton from
     # ``copilot.sdk.env`` rather than constructing a fresh one — that
     # config object already exists for the SDK env builder, runs the full
@@ -203,6 +200,7 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     # ``backend.copilot.config`` imports ``OPENROUTER_BASE_URL`` from this
     # module — a top-level import would create a cycle.
     from backend.copilot.sdk.env import config as chat_cfg
+    from openai import AsyncOpenAI
 
     return AsyncOpenAI(
         api_key=chat_cfg.api_key,
@@ -241,11 +239,10 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     feature" sentinel will instead exercise the local path — that is the
     intended behaviour for this PR.
     """
-    from openai import AsyncOpenAI
-
     # Local transport takes precedence so a stray ``OPENAI_API_KEY`` set
     # for some other reason can't override an explicit ``CHAT_USE_LOCAL=true``.
     from backend.copilot.sdk.env import config as chat_cfg
+    from openai import AsyncOpenAI
 
     if chat_cfg.transport.name == "local":
         return _get_local_openai_client()

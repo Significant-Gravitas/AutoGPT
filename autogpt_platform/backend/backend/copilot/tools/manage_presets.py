@@ -10,8 +10,6 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
@@ -19,6 +17,7 @@ from backend.util.exceptions import (
     NotFoundError,
     WebhookRegistrationError,
 )
+from pydantic import BaseModel
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase

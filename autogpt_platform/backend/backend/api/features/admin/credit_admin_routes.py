@@ -3,10 +3,6 @@ import typing
 from datetime import datetime, timezone
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, Body, HTTPException, Query, Security
-from prisma.enums import CreditTransactionType
-from pydantic import BaseModel
-
 from backend.data.credit import (
     CREDIT_EXPORT_MAX_DAYS,
     admin_export_user_history,
@@ -20,6 +16,9 @@ from backend.data.platform_cost import (
     get_copilot_weekly_usage_for_export,
 )
 from backend.util.json import SafeJson
+from fastapi import APIRouter, Body, HTTPException, Query, Security
+from prisma.enums import CreditTransactionType
+from pydantic import BaseModel
 
 from .model import AddUserCreditsResponse, UserHistoryResponse
 

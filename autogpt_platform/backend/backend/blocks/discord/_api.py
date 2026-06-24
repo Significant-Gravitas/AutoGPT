@@ -5,10 +5,9 @@ Discord API helper functions for making authenticated requests.
 import logging
 from typing import Optional
 
-from pydantic import BaseModel
-
 from backend.data.model import OAuth2Credentials
 from backend.util.request import Requests
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

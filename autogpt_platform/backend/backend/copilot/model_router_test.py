@@ -4,7 +4,6 @@ import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_router import _config_default, resolve_model
 

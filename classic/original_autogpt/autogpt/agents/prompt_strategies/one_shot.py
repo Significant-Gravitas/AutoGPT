@@ -6,8 +6,6 @@ import re
 from logging import Logger
 
 import distro
-from pydantic import Field
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -23,6 +21,7 @@ from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import Field
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 

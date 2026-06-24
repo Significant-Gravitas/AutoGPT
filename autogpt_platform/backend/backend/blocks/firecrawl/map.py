@@ -1,7 +1,5 @@
 from typing import Any
 
-from firecrawl import FirecrawlApp
-
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
@@ -13,6 +11,7 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from firecrawl import FirecrawlApp
 
 from ._config import firecrawl
 

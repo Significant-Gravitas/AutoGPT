@@ -4,8 +4,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
-
 from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
@@ -20,6 +18,7 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from fastapi import HTTPException
 
 # ── check_pending_call_rate ────────────────────────────────────────────
 

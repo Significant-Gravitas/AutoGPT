@@ -5,8 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
-
 from backend.blocks.autopilot import (
     AutoPilotBlock,
     _build_and_validate_permissions,
@@ -15,6 +13,7 @@ from backend.blocks.autopilot import (
 )
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.execution import ExecutionContext
+from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -260,9 +259,12 @@ class TestAutoPilotBlockRunPermissions:
                 {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             )
 
-        with patch.object(
-            AutoPilotBlock, "create_session", new=AsyncMock(return_value="test-sid")
-        ), patch.object(AutoPilotBlock, "execute_copilot", new=fake_execute_copilot):
+        with (
+            patch.object(
+                AutoPilotBlock, "create_session", new=AsyncMock(return_value="test-sid")
+            ),
+            patch.object(AutoPilotBlock, "execute_copilot", new=fake_execute_copilot),
+        ):
             inp = _make_input(tools=["run_block"], tools_exclude=False)
             outputs = await self._collect_outputs(block, inp)
 

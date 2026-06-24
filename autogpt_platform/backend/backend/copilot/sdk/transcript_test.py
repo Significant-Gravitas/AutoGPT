@@ -5,7 +5,6 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util import json
 
 from .transcript import (

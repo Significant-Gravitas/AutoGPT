@@ -7,7 +7,6 @@ This test suite verifies webhook blocks and webhook manager integration.
 from enum import Enum
 
 import pytest
-
 from backend.integrations.providers import ProviderName
 from backend.sdk import (
     APIKeyCredentials,
@@ -388,8 +387,9 @@ class TestWebhookManagerIntegration:
                 manager_class = managers.get("integrated_webhooks")
 
                 yield "status", "configured"
-                yield "manager_type", (
-                    manager_class.__name__ if manager_class else "none"
+                yield (
+                    "manager_type",
+                    (manager_class.__name__ if manager_class else "none"),
                 )
 
         # Test the block

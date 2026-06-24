@@ -1,7 +1,6 @@
 import time
 
 import pytest
-
 from backend.util.decorator import async_error_logged, error_logged, time_measured
 from backend.util.retry import continuous_retry
 

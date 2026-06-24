@@ -1,6 +1,7 @@
 from typing import cast
 
 import pytest
+from backend.util.exceptions import NotFoundError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
@@ -12,8 +13,6 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     Function,
 )
 from pytest_mock import MockerFixture
-
-from backend.util.exceptions import NotFoundError
 
 from .model import (
     ChatMessage,

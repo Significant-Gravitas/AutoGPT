@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AutoPilotBlock
@@ -39,9 +38,10 @@ async def test_terminal_transition_cascades_running_children(terminal_status):
     """When a graph_exec moves to a terminal state, its still-RUNNING child
     node_execs must be batch-updated to FAILED in the same call so we never
     leak the 'parent terminal, child running' invariant."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
+    with (
+        patch("backend.data.execution.AgentGraphExecution") as mock_graph,
+        patch("backend.data.execution.AgentNodeExecution") as mock_node,
+    ):
         mock_graph.prisma.return_value.update_many = AsyncMock()
         mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
             return_value=MagicMock()
@@ -66,9 +66,10 @@ async def test_terminal_transition_cascades_running_children(terminal_status):
 @pytest.mark.asyncio
 async def test_non_terminal_transition_does_not_cascade():
     """Mid-flight status changes (RUNNING/QUEUED/REVIEW) must leave child rows alone."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
+    with (
+        patch("backend.data.execution.AgentGraphExecution") as mock_graph,
+        patch("backend.data.execution.AgentNodeExecution") as mock_node,
+    ):
         mock_graph.prisma.return_value.update_many = AsyncMock()
         mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
             return_value=MagicMock()
@@ -91,9 +92,10 @@ async def test_non_terminal_transition_does_not_cascade():
 async def test_cascade_can_be_disabled_explicitly():
     """`cascade_running_children=False` is the escape hatch for callers that
     need to mark a graph terminal without touching children (e.g. resume flows)."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
+    with (
+        patch("backend.data.execution.AgentGraphExecution") as mock_graph,
+        patch("backend.data.execution.AgentNodeExecution") as mock_node,
+    ):
         mock_graph.prisma.return_value.update_many = AsyncMock()
         mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
             return_value=MagicMock()
@@ -124,11 +126,13 @@ async def test_cascade_records_terminal_status_in_node_error():
         captured["stats"] = stats
         return {"executionStatus": status}
 
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node, patch(
-        "backend.data.execution._get_update_status_data",
-        side_effect=fake_get_update_status_data,
+    with (
+        patch("backend.data.execution.AgentGraphExecution") as mock_graph,
+        patch("backend.data.execution.AgentNodeExecution") as mock_node,
+        patch(
+            "backend.data.execution._get_update_status_data",
+            side_effect=fake_get_update_status_data,
+        ),
     ):
         mock_graph.prisma.return_value.update_many = AsyncMock()
         mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(

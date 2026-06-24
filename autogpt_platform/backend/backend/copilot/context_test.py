@@ -7,7 +7,6 @@ import tempfile
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.copilot.context import (
     SDK_PROJECTS_DIR,
     _current_project_dir,
@@ -254,10 +253,7 @@ class TestSdkToolResultRedirectHint:
     def test_absolute_sdk_path_in_bash_command(self):
         from backend.copilot.context import sdk_tool_result_redirect_hint
 
-        cmd = (
-            "cat /root/.claude/projects/-tmp-abc/def/tool-results/"
-            "toolu_x.json | jq ."
-        )
+        cmd = "cat /root/.claude/projects/-tmp-abc/def/tool-results/toolu_x.json | jq ."
         msg = sdk_tool_result_redirect_hint(cmd)
         assert (
             "Offending fragment: '/root/.claude/projects/-tmp-abc/def/"

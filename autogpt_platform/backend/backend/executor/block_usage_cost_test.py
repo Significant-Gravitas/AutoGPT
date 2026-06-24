@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.code_executor import (
     ExecuteCodeBlock,

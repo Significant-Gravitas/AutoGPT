@@ -17,7 +17,6 @@ triggers with the corrected watermark but NOT with the inflated (buggy) one.
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.copilot.sdk.service import _build_query_message
 
 

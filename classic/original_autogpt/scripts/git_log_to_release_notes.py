@@ -6,10 +6,9 @@ from typing import Optional
 
 import click
 from autogpt.app.utils import coroutine
-from git import Repo, TagReference
-
 from forge.llm.providers import ChatMessage, MultiProvider
 from forge.llm.providers.anthropic import AnthropicModelName
+from git import Repo, TagReference
 
 
 @click.command()
@@ -132,7 +131,6 @@ Do not mention the changes in the example when writing your release notes!
 
 if __name__ == "__main__":
     import dotenv
-
     from forge.logging.config import configure_logging
 
     configure_logging(debug=True)

@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.bot.adapters.base import ChannelInfo
 from backend.copilot.bot.outbound import DeliveryResult
 from backend.copilot.tools.chat_platform import (

@@ -18,10 +18,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
-from pydantic.dataclasses import dataclass
-
 from backend.copilot.dream.fetch import FactRow
 from backend.copilot.dream.staleness import STALENESS_THRESHOLD, score_staleness
+from pydantic.dataclasses import dataclass
 
 from .datasets import StalenessFixture
 
@@ -84,8 +83,7 @@ def run_staleness_suite(
         else:
             false_negative += 1
             failures.append(
-                f"FN score={score:.2f}: {fixture.fact_text!r} "
-                f"(stale fact not flagged)"
+                f"FN score={score:.2f}: {fixture.fact_text!r} (stale fact not flagged)"
             )
 
     total_flagged = true_positive + false_positive

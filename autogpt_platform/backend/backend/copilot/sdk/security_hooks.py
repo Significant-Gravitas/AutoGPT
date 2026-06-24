@@ -10,14 +10,13 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from claude_agent_sdk.types import HookEvent, HookMatcher
-
 from backend.copilot.context import (
     get_execution_context,
     is_allowed_local_path,
     is_sdk_tool_path,
 )
 from backend.copilot.pending_messages import drain_and_format_for_injection
+from claude_agent_sdk.types import HookEvent, HookMatcher
 
 from .tool_adapter import (
     BLOCKED_TOOLS,

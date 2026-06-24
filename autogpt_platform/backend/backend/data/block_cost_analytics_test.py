@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.data.block_cost_analytics import (
     ANALYTICS_MAX_DAYS,
     compute_block_cost_estimates,

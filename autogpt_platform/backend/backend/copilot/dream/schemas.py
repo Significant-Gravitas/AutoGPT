@@ -14,9 +14,8 @@ import logging
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
-
 from backend.copilot.graphiti.memory_model import MemoryKind
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
 

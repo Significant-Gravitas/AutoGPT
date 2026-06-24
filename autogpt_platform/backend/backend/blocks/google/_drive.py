@@ -1,8 +1,7 @@
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from backend.data.model import SchemaField
+from pydantic import BaseModel, ConfigDict, Field
 
 AttachmentView = Literal[
     "DOCS",

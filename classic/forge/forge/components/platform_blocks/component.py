@@ -268,7 +268,7 @@ class PlatformBlocksComponent(
             "agent_slug": JSONSchema(
                 type=JSONSchema.Type.STRING,
                 description=(
-                    "Agent slug from find_agent results " "(e.g. 'username/agent-name')"
+                    "Agent slug from find_agent results (e.g. 'username/agent-name')"
                 ),
                 required=True,
             ),

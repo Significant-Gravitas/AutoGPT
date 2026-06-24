@@ -14,9 +14,8 @@ from typing import (
     overload,
 )
 
-from pydantic import BaseModel
-
 from backend.util.logging import TruncatedLogger
+from pydantic import BaseModel
 
 
 class TimingInfo(BaseModel):

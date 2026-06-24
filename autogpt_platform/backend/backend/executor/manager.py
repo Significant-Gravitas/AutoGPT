@@ -10,14 +10,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic, BasicProperties
-from prometheus_client import Gauge, start_http_server
-from redis.asyncio.lock import Lock as AsyncRedisLock
-from sentry_sdk.api import capture_exception as _sentry_capture_exception
-from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
-
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
@@ -72,6 +64,13 @@ from backend.util.retry import (
     send_rate_limited_discord_alert,
 )
 from backend.util.settings import Settings
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic, BasicProperties
+from prometheus_client import Gauge, start_http_server
+from redis.asyncio.lock import Lock as AsyncRedisLock
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 
 from . import billing
 from .activity_status_generator import generate_activity_status_for_execution
@@ -837,7 +836,9 @@ class ExecutionProcessor:
             return
 
         if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
-            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
+            log_metadata.info(
+                f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}"
+            )
             exec_meta.status = ExecutionStatus.RUNNING
             send_execution_update(
                 db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)

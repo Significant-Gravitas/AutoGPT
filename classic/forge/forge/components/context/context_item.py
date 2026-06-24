@@ -3,10 +3,9 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
-
 from forge.file_storage.base import FileStorage
 from forge.utils.file_operations import decode_textual_file
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

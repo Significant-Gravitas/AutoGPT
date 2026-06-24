@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.service import SESSION_CONTEXT_TAG, sanitize_user_supplied_context
 from backend.copilot.tools.session_context import (
     _MAX_LISTED_FOLLOWUPS,
@@ -147,7 +146,7 @@ async def test_cron_followup_renders_cron_expression():
 
     assert "pending_followups: 1" in ctx
     assert (
-        '- "Daily summary" (cron `0 9 * * *`, next fire ' "2026-05-23T09:00:00+00:00)"
+        '- "Daily summary" (cron `0 9 * * *`, next fire 2026-05-23T09:00:00+00:00)'
     ) in ctx
 
 
@@ -349,12 +348,15 @@ async def test_build_session_context_skips_scheduler_when_followups_disabled():
     class _FakeClient:
         get_execution_schedules = scheduler_spy
 
-    with patch(
-        "backend.copilot.tools.session_context.is_followups_feature_enabled",
-        new=AsyncMock(return_value=False),
-    ), patch(
-        "backend.copilot.tools.session_context.get_scheduler_client",
-        return_value=_FakeClient(),
+    with (
+        patch(
+            "backend.copilot.tools.session_context.is_followups_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.tools.session_context.get_scheduler_client",
+            return_value=_FakeClient(),
+        ),
     ):
         result = await build_session_context(session_id="sess-1", user_id="user-1")
 

@@ -1,10 +1,9 @@
 from enum import Enum
 from typing import Any, Optional
 
+from backend.data.model import SchemaField
 from pydantic import BaseModel as OriginalBaseModel
 from pydantic import ConfigDict
-
-from backend.data.model import SchemaField
 
 
 class BaseModel(OriginalBaseModel):

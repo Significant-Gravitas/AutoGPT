@@ -7,7 +7,6 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.features.library.db import migrate_webhook_presets_to_new_version
 
 # Patch prisma.models.AgentPreset.prisma per the project-wide convention used

@@ -12,10 +12,9 @@ with warnings.catch_warnings():
     )
     import aioclamd
 
+from backend.util.settings import Settings
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()

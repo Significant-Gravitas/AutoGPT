@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Optional
 import prisma.enums
 import prisma.models
 import pydantic
-
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
 from backend.data.model import (
     CredentialsMetaInput,

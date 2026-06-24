@@ -1,7 +1,6 @@
 """Tests for split_camelcase (now in backend.util.text)."""
 
 import pytest
-
 from backend.util.text import split_camelcase
 
 # ---------------------------------------------------------------------------

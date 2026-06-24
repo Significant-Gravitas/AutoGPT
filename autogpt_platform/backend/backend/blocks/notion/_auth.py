@@ -1,10 +1,9 @@
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
+from pydantic import SecretStr
 
 secrets = Secrets()
 NOTION_OAUTH_IS_CONFIGURED = bool(

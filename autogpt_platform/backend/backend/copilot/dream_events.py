@@ -20,10 +20,9 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import Field
-
 from backend.copilot.dream.schemas import DreamOperationsSnapshot
 from backend.copilot.response_model import ResponseType, StreamBaseResponse
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 

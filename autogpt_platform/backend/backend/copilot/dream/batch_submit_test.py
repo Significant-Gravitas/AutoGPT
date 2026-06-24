@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.dream.batch_submit import (
     input_bundle_key,
     persist_input_bundle,
@@ -74,9 +73,11 @@ async def test_enqueue_failure_cancels_orphaned_batch_and_reraises():
     enqueue = AsyncMock(side_effect=RuntimeError("redis down"))
     cancel = AsyncMock(return_value=True)
 
-    with patch("backend.copilot.dream.batch_submit.call_provider", call), patch(
-        "backend.copilot.dream.batch_submit.enqueue_pending", enqueue
-    ), patch("backend.copilot.dream.batch_submit.cancel_batch", cancel):
+    with (
+        patch("backend.copilot.dream.batch_submit.call_provider", call),
+        patch("backend.copilot.dream.batch_submit.enqueue_pending", enqueue),
+        patch("backend.copilot.dream.batch_submit.cancel_batch", cancel),
+    ):
         with pytest.raises(RuntimeError, match="redis down"):
             await submit_phase(
                 user_id="u1",
@@ -106,9 +107,11 @@ async def test_successful_enqueue_does_not_cancel():
     enqueue = AsyncMock(return_value=None)
     cancel = AsyncMock()
 
-    with patch("backend.copilot.dream.batch_submit.call_provider", call), patch(
-        "backend.copilot.dream.batch_submit.enqueue_pending", enqueue
-    ), patch("backend.copilot.dream.batch_submit.cancel_batch", cancel):
+    with (
+        patch("backend.copilot.dream.batch_submit.call_provider", call),
+        patch("backend.copilot.dream.batch_submit.enqueue_pending", enqueue),
+        patch("backend.copilot.dream.batch_submit.cancel_batch", cancel),
+    ):
         ref = await submit_phase(
             user_id="u1",
             pass_id="p1",

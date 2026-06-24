@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -12,6 +10,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import OAuth2Credentials, SchemaField
+from pydantic import BaseModel
 
 from ._api import NotionClient, extract_page_title, parse_rich_text
 from ._auth import (

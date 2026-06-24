@@ -6,7 +6,6 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
 from backend.data.platform_cost import CostLogRow, PlatformCostDashboard
 
 from .platform_cost_routes import router as platform_cost_router

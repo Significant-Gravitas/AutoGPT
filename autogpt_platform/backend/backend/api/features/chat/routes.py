@@ -8,10 +8,6 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -111,6 +107,9 @@ from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 settings = Settings()
 

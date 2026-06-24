@@ -17,8 +17,6 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
-
 from forge.logging.utils import fmt_kwargs
 from forge.models.config import (
     Configurable,
@@ -33,6 +31,7 @@ from forge.models.providers import (
     ProviderCredentials,
     ResourceType,
 )
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 if TYPE_CHECKING:
     from jsonschema import ValidationError
@@ -138,7 +137,7 @@ class CompletionModelFunction(BaseModel):
 
     def fmt_line(self) -> str:
         params = ", ".join(
-            f"{name}{'?' if not p.required else ''}: " f"{p.typescript_type}"
+            f"{name}{'?' if not p.required else ''}: {p.typescript_type}"
             for name, p in self.parameters.items()
         )
         return f"{self.name}: {self.description}. Params: ({params})"

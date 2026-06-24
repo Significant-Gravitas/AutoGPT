@@ -7,8 +7,6 @@ without requiring API keys, database connections, or network access.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types.chat import ChatCompletionToolParam
-
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
@@ -43,6 +41,7 @@ from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+from openai.types.chat import ChatCompletionToolParam
 
 
 class TestBaselineStreamState:

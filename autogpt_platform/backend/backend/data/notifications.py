@@ -3,6 +3,9 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
+from backend.util.exceptions import DatabaseError
+from backend.util.json import SafeJson
+from backend.util.logging import TruncatedLogger
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.errors import UniqueViolationError
@@ -22,10 +25,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-
-from backend.util.exceptions import DatabaseError
-from backend.util.json import SafeJson
-from backend.util.logging import TruncatedLogger
 
 from .db import transaction
 

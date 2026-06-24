@@ -6,8 +6,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from openai.types.chat import ChatCompletionUserMessageParam
-
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -17,6 +15,7 @@ from backend.data.understanding import (
 from backend.util.clients import get_openai_client
 from backend.util.request import Requests
 from backend.util.settings import Settings
+from openai.types.chat import ChatCompletionUserMessageParam
 
 logger = logging.getLogger(__name__)
 

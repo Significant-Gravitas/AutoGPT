@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.config import ChatConfig
 
 from .config import GraphitiConfig, is_enabled_for_user

@@ -37,8 +37,6 @@ import json
 import logging
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ValidationError
-
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
@@ -46,6 +44,7 @@ from backend.util.llm.providers import (
     ProviderResponse,
     call_provider,
 )
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 

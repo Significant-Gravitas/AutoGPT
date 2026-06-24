@@ -4,6 +4,7 @@ import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
+from backend.util.data import get_data_path
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -18,8 +19,6 @@ from pydantic_settings import (
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
-
-from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 

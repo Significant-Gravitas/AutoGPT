@@ -10,10 +10,9 @@ import logging
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from backend.util.json import dumps as json_dumps
 from backend.util.truncate import truncate
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

@@ -4,13 +4,12 @@ import json
 import logging
 from typing import Any, Iterator, Literal, Optional
 
-from pydantic import BaseModel, Field
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import DataProcessingError
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

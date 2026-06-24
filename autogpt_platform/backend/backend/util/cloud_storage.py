@@ -10,11 +10,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 import aiohttp
-from gcloud.aio import storage as async_gcs_storage
-from google.cloud import storage as gcs_storage
-
 from backend.util.gcs_utils import download_with_fresh_session, generate_signed_url
 from backend.util.settings import Config
+from gcloud.aio import storage as async_gcs_storage
+from google.cloud import storage as gcs_storage
 
 logger = logging.getLogger(__name__)
 

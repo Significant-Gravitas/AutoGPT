@@ -8,7 +8,6 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-
 from backend.util import json
 
 # ---------------------------------------------------------------------------

@@ -8,23 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import posthog
 import stripe
-from fastapi.concurrency import run_in_threadpool
-from prisma.enums import (
-    CreditRefundRequestStatus,
-    CreditTransactionType,
-    NotificationType,
-    OnboardingStep,
-    SubscriptionTier,
-)
-from prisma.errors import PrismaError, UniqueViolationError
-from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-from prisma.types import (
-    CreditRefundRequestCreateInput,
-    CreditTransactionWhereInput,
-    UserUpdateInput,
-)
-from pydantic import BaseModel
-
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
@@ -49,6 +32,22 @@ from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
+from fastapi.concurrency import run_in_threadpool
+from prisma.enums import (
+    CreditRefundRequestStatus,
+    CreditTransactionType,
+    NotificationType,
+    OnboardingStep,
+    SubscriptionTier,
+)
+from prisma.errors import PrismaError, UniqueViolationError
+from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionWhereInput,
+    UserUpdateInput,
+)
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from backend.blocks._base import Block, BlockCost

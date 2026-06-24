@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List
 if TYPE_CHECKING:
     pass
 
-from pydantic import SecretStr
-
 from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
@@ -20,6 +18,7 @@ from backend.sdk import (
 )
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType
+from pydantic import SecretStr
 
 from ._config import bannerbear
 

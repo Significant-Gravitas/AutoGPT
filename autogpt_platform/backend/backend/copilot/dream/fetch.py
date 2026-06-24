@@ -16,12 +16,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel, Field
-
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.data.db_accessors import chat_db
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

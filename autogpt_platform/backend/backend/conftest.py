@@ -3,9 +3,8 @@ import os
 
 import pytest
 import pytest_asyncio
-from dotenv import load_dotenv
-
 from backend.util.logging import configure_logging
+from dotenv import load_dotenv
 
 load_dotenv()
 

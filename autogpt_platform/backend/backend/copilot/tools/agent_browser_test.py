@@ -8,7 +8,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.model import ChatSession
 
 from .agent_browser import (

@@ -5,7 +5,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
@@ -1069,12 +1068,15 @@ async def test_list_user_skills_uses_metadata_fast_path(mocker):
 
     with _patch_skills_path(fake_manager):
         # Disable cache for this test so we exercise the workspace path.
-        with patch(
-            "backend.copilot.tools.skills._read_skills_cache",
-            new=AsyncMock(return_value=None),
-        ), patch(
-            "backend.copilot.tools.skills._write_skills_cache",
-            new=AsyncMock(),
+        with (
+            patch(
+                "backend.copilot.tools.skills._read_skills_cache",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.tools.skills._write_skills_cache",
+                new=AsyncMock(),
+            ),
         ):
             skills = await list_user_skills("user-1")
 
@@ -1098,12 +1100,15 @@ async def test_list_user_skills_falls_back_to_read_without_metadata(mocker):
     # metadata dict left empty → triggers the fallback path.
 
     with _patch_skills_path(fake_manager):
-        with patch(
-            "backend.copilot.tools.skills._read_skills_cache",
-            new=AsyncMock(return_value=None),
-        ), patch(
-            "backend.copilot.tools.skills._write_skills_cache",
-            new=AsyncMock(),
+        with (
+            patch(
+                "backend.copilot.tools.skills._read_skills_cache",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.tools.skills._write_skills_cache",
+                new=AsyncMock(),
+            ),
         ):
             skills = await list_user_skills("user-1")
 
@@ -1128,12 +1133,15 @@ async def test_list_user_skills_returns_redis_cache_when_warm():
     fake_redis = MagicMock()
     fake_redis.get = AsyncMock(return_value=json.dumps(cached_payload))
     fake_redis.set = AsyncMock()
-    with patch(
-        "backend.copilot.tools.skills.get_redis_async",
-        new=AsyncMock(return_value=fake_redis),
-    ), patch(
-        "backend.copilot.tools.skills._get_user_skill_manager",
-        new=AsyncMock(side_effect=AssertionError("cache hit must skip workspace")),
+    with (
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=fake_redis),
+        ),
+        patch(
+            "backend.copilot.tools.skills._get_user_skill_manager",
+            new=AsyncMock(side_effect=AssertionError("cache hit must skip workspace")),
+        ),
     ):
         skills = await list_user_skills("user-1")
 
@@ -1184,15 +1192,20 @@ async def test_build_skills_context_normal_when_flag_enabled():
     fake_manager.files["/skills/x/SKILL.md"] = render_skill_markdown(
         ParsedSkill(name="x", description="ok", body="b")
     ).encode()
-    with _patch_skills_path(fake_manager), patch(
-        "backend.copilot.tools.skills.is_skills_feature_enabled",
-        new=AsyncMock(return_value=True),
-    ), patch(
-        "backend.copilot.tools.skills._read_skills_cache",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "backend.copilot.tools.skills._write_skills_cache",
-        new=AsyncMock(),
+    with (
+        _patch_skills_path(fake_manager),
+        patch(
+            "backend.copilot.tools.skills.is_skills_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.tools.skills._write_skills_cache",
+            new=AsyncMock(),
+        ),
     ):
         result = await build_skills_context("user-1")
 

@@ -8,10 +8,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import pytest
-from fastapi import WebSocket
-
 import backend.data.redis_client as redis_client
+import pytest
 from backend.api.conn_manager import (
     ConnectionManager,
     _graph_execs_channel_key,
@@ -27,6 +25,7 @@ from backend.data.execution import (
     exec_channel,
     graph_all_channel,
 )
+from fastapi import WebSocket
 
 
 def _has_live_cluster() -> bool:

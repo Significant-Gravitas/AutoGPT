@@ -1,5 +1,4 @@
 import pytest
-
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 

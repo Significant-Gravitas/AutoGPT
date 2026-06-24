@@ -4,7 +4,6 @@ from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.data.execution import ExecutionContext
@@ -219,17 +218,19 @@ async def test_orchestrator_tracks_llm_stats():
 
     # Mock the _create_tool_node_signatures method to avoid database calls
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=[],
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
     ):
-
         # Create test input
         input_data = OrchestratorBlock.Input(
             prompt="Should I continue with this task?",
@@ -322,17 +323,19 @@ async def test_orchestrator_parameter_validation():
     mock_response_with_typo.reasoning = None
     mock_response_with_typo.raw_response = {"role": "assistant", "content": None}
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_with_typo,
-    ) as mock_llm_call, patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=mock_tool_functions,
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_with_typo,
+        ) as mock_llm_call,
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=mock_tool_functions,
+        ),
     ):
-
         input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
@@ -389,17 +392,19 @@ async def test_orchestrator_parameter_validation():
     mock_response_missing_required.reasoning = None
     mock_response_missing_required.raw_response = {"role": "assistant", "content": None}
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_missing_required,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=mock_tool_functions,
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_missing_required,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=mock_tool_functions,
+        ),
     ):
-
         input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
@@ -449,17 +454,19 @@ async def test_orchestrator_parameter_validation():
     mock_response_valid.reasoning = None
     mock_response_valid.raw_response = {"role": "assistant", "content": None}
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_valid,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=mock_tool_functions,
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_valid,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=mock_tool_functions,
+        ),
     ):
-
         input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
@@ -513,17 +520,19 @@ async def test_orchestrator_parameter_validation():
     mock_response_all_params.reasoning = None
     mock_response_all_params.raw_response = {"role": "assistant", "content": None}
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_all_params,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=mock_tool_functions,
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_all_params,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=mock_tool_functions,
+        ),
     ):
-
         input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
@@ -634,13 +643,14 @@ async def test_orchestrator_raw_response_conversion():
 
     # Mock llm_call to return different responses on different calls
 
-    with patch(
-        "backend.blocks.llm.llm_call", new_callable=AsyncMock
-    ) as mock_llm_call, patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=mock_tool_functions,
+    with (
+        patch("backend.blocks.llm.llm_call", new_callable=AsyncMock) as mock_llm_call,
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=mock_tool_functions,
+        ),
     ):
         # First call returns response that will trigger retry due to validation error
         # Second call returns successful response
@@ -710,15 +720,18 @@ async def test_orchestrator_raw_response_conversion():
         "I'll help you with that."  # Ollama returns string
     )
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_ollama,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=[],  # No tools for this test
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_ollama,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=[],  # No tools for this test
+        ),
     ):
         input_data = OrchestratorBlock.Input(
             prompt="Simple prompt",
@@ -766,15 +779,18 @@ async def test_orchestrator_raw_response_conversion():
         "content": "Test response",
     }  # Dict format
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response_dict,
-    ), patch.object(
-        OrchestratorBlock,
-        "_create_tool_node_signatures",
-        new_callable=AsyncMock,
-        return_value=[],
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response_dict,
+        ),
+        patch.object(
+            OrchestratorBlock,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
     ):
         input_data = OrchestratorBlock.Input(
             prompt="Another test",
@@ -890,18 +906,21 @@ async def test_orchestrator_agent_mode():
 
     # No longer need mock_execute_node since we use execution_processor.on_node_execution
 
-    with patch("backend.blocks.llm.llm_call", llm_call_mock), patch.object(
-        block, "_create_tool_node_signatures", return_value=mock_tool_signatures
-    ), patch(
-        "backend.blocks.orchestrator.get_database_manager_async_client",
-        return_value=mock_db_client,
-    ), patch(
-        "backend.executor.manager.async_update_node_execution_status",
-        new_callable=AsyncMock,
-    ), patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager"
+    with (
+        patch("backend.blocks.llm.llm_call", llm_call_mock),
+        patch.object(
+            block, "_create_tool_node_signatures", return_value=mock_tool_signatures
+        ),
+        patch(
+            "backend.blocks.orchestrator.get_database_manager_async_client",
+            return_value=mock_db_client,
+        ),
+        patch(
+            "backend.executor.manager.async_update_node_execution_status",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.integrations.creds_manager.IntegrationCredentialsManager"),
     ):
-
         # Create a mock execution context
 
         mock_execution_context = ExecutionContext(
@@ -1019,14 +1038,16 @@ async def test_orchestrator_traditional_mode_default():
         }
     ]
 
-    with patch(
-        "backend.blocks.llm.llm_call",
-        new_callable=AsyncMock,
-        return_value=mock_response,
-    ), patch.object(
-        block, "_create_tool_node_signatures", return_value=mock_tool_signatures
+    with (
+        patch(
+            "backend.blocks.llm.llm_call",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ),
+        patch.object(
+            block, "_create_tool_node_signatures", return_value=mock_tool_signatures
+        ),
     ):
-
         # Test default behavior (traditional mode)
         input_data = OrchestratorBlock.Input(
             prompt="Test prompt",

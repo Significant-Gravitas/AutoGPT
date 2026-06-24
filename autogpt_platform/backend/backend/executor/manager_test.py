@@ -1,12 +1,11 @@
 import logging
 from unittest.mock import AsyncMock, patch
 
+import backend.api.features.library.model
+import backend.api.features.store.model
 import fastapi.responses
 import prisma
 import pytest
-
-import backend.api.features.library.model
-import backend.api.features.store.model
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
@@ -302,7 +301,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     assert len(graph_exec.node_executions) == 8
     # The last 3 executions will be a+b=4+5=9
     for i, exec_data in enumerate(graph_exec.node_executions[-3:]):
-        logger.info(f"Checking execution {i+1} of last 3: {exec_data}")
+        logger.info(f"Checking execution {i + 1} of last 3: {exec_data}")
         assert exec_data.status == execution.ExecutionStatus.COMPLETED
         assert exec_data.output_data == {"result": [9]}
     logger.info("Completed test_static_input_link_on_graph")

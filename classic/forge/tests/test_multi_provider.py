@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from forge.llm.providers.anthropic import AnthropicModelName
 from forge.llm.providers.groq import GroqModelName
 from forge.llm.providers.multi import CHAT_MODELS, MultiProvider

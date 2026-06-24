@@ -7,9 +7,8 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from pytest_snapshot.plugin import Snapshot
-
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
+from pytest_snapshot.plugin import Snapshot
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 

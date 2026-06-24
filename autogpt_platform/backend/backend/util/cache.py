@@ -21,10 +21,9 @@ from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
-from redis.cluster import ClusterNode, RedisCluster
-
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
+from redis.cluster import ClusterNode, RedisCluster
 
 P = ParamSpec("P")
 R = TypeVar("R")

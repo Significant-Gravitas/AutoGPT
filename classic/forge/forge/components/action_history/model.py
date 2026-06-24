@@ -4,13 +4,12 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Generic
 
-from pydantic import BaseModel, Field
-
 from forge.content_processing.text import summarize_text
 from forge.llm.prompting.utils import format_numbered_list, indent
 from forge.llm.providers.multi import ModelName
 from forge.models.action import ActionResult, AnyProposal
 from forge.models.utils import ModelWithSummary
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from forge.llm.providers import MultiProvider

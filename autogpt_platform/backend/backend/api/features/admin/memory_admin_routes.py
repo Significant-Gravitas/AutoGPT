@@ -17,11 +17,6 @@ from typing import Annotated, Any, Literal
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from redis.exceptions import ResponseError
-
 from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
@@ -37,6 +32,10 @@ from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.util.clients import get_scheduler_client
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from redis.exceptions import ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -995,7 +994,7 @@ async def rebuild_communities(
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Community rebuild scheduling failed: " f"{type(exc).__name__}: {exc}"
+                f"Community rebuild scheduling failed: {type(exc).__name__}: {exc}"
             ),
         )
 

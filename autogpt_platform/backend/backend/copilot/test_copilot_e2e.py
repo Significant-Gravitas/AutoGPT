@@ -17,7 +17,6 @@ import os
 from uuid import uuid4
 
 import pytest
-
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import (
     StreamError,

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aio_pika
 import pytest
-
 from backend.copilot.executor.utils import (
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,

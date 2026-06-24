@@ -2,13 +2,12 @@ import asyncio
 import logging
 from datetime import datetime
 
-from pydantic import BaseModel, Field
-
 from backend.data.db import query_raw_with_schema
 from backend.data.graph import get_graph_metadata
 from backend.data.model import UserExecutionSummaryStats
 from backend.util.exceptions import DatabaseError
 from backend.util.logging import TruncatedLogger
+from pydantic import BaseModel, Field
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[SummaryData]")
 

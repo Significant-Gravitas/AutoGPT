@@ -1,9 +1,5 @@
 from typing import Literal, Union
 
-from pydantic import BaseModel
-from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +16,9 @@ from backend.blocks.todoist._auth import (
     TodoistCredentialsInput,
 )
 from backend.data.model import SchemaField
+from pydantic import BaseModel
+from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 
 class TaskId(BaseModel):

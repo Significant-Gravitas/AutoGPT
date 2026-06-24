@@ -18,7 +18,6 @@ runaway-demotion footgun.
 """
 
 import pytest
-
 from backend.copilot.tools.graphiti_forget import (
     _retract_edges,
     _soft_delete_edges,

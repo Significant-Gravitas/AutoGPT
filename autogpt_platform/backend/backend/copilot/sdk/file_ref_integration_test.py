@@ -16,7 +16,6 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.sdk.file_ref import (
     FileRef,
     expand_file_refs_in_args,

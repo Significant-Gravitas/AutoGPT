@@ -1,7 +1,6 @@
 """Tests for TodoComponent."""
 
 import pytest
-
 from forge.components.todo import TodoComponent, TodoConfiguration
 
 

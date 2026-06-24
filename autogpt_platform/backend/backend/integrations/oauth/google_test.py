@@ -11,12 +11,11 @@ Credentials and then called .before_request() on it.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic import SecretStr
-from pytest_mock import MockerFixture
-
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.google import GoogleOAuthHandler
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
+from pytest_mock import MockerFixture
 
 
 def _handler() -> GoogleOAuthHandler:

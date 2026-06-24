@@ -1,8 +1,6 @@
 from typing import Literal
 
 import googlemaps
-from pydantic import BaseModel, SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +16,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from pydantic import BaseModel, SecretStr
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

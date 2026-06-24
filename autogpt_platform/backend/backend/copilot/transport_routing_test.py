@@ -11,7 +11,6 @@ so regressions in either side surface immediately.
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.copilot.config import ChatConfig
 from backend.copilot.transport_routing import (
     ProviderRoutingKwargs,

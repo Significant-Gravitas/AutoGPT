@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, List, Self
 
 import prisma.enums
 import pydantic
-
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:

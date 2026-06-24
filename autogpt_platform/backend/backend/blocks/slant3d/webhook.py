@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -11,6 +9,7 @@ from backend.blocks._base import (
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
 from backend.util.settings import AppEnvironment, BehaveAs, Settings
+from pydantic import BaseModel
 
 from ._api import (
     TEST_CREDENTIALS,

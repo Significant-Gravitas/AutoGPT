@@ -29,7 +29,6 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.agent_browser import BrowserActTool, BrowserNavigateTool
 from backend.copilot.tools.models import (

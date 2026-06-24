@@ -28,6 +28,8 @@ import json
 import os
 import sys
 
+from backend.copilot.response_model import StreamError
+from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from claude_agent_sdk import (
     AssistantMessage,
     ContentBlock,
@@ -39,9 +41,6 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
 )
-
-from backend.copilot.response_model import StreamError
-from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 
 
 def _block_from_dict(b: dict) -> ContentBlock | None:

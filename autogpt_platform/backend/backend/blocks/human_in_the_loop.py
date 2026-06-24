@@ -1,8 +1,6 @@
 import logging
 from typing import Any
 
-from prisma.enums import ReviewStatus
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -15,6 +13,7 @@ from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data.execution import ExecutionContext
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
+from prisma.enums import ReviewStatus
 
 logger = logging.getLogger(__name__)
 

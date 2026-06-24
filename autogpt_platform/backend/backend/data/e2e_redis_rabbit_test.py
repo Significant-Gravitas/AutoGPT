@@ -10,9 +10,8 @@ import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
-import pytest
-
 import backend.data.redis_client as redis_client
+import pytest
 from backend.api.model import NotificationPayload
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,

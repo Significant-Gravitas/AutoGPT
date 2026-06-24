@@ -3,8 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from tiktoken import encoding_for_model
-
 from backend.util import json
 from backend.util.prompt import (
     DEFAULT_TOKEN_THRESHOLD,
@@ -19,6 +17,7 @@ from backend.util.prompt import (
     get_compression_target,
     get_context_window,
 )
+from tiktoken import encoding_for_model
 
 
 class TestMsgTokens:

@@ -5,7 +5,6 @@ import pathlib
 
 import click
 import psutil
-
 from backend.util.process import AppProcess
 
 from .chat import chat

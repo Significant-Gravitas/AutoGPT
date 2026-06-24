@@ -31,9 +31,8 @@ def redis_client():
     cluster-aware routing as prod — a plain client against a sharded
     cluster bounces on ``MOVED`` for any key hashing to a non-owned slot.
     """
-    from redis.cluster import ClusterNode, RedisCluster
-
     from backend.data.redis_client import HOST, PASSWORD, PORT, _address_remap
+    from redis.cluster import ClusterNode, RedisCluster
 
     client = RedisCluster(
         startup_nodes=[ClusterNode(HOST, PORT)],

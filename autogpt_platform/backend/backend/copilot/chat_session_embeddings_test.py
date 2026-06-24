@@ -4,13 +4,12 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.copilot.chat_session_embeddings import (
     _run_embedding,
     delete_chat_session_embedding,
     schedule_chat_session_embedding,
 )
+from prisma.enums import ContentType
 
 
 @pytest.mark.asyncio

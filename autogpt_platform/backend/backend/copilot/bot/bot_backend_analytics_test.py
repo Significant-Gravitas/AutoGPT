@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
-
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.platform_linking.models import BotEventInput, BotGuildInput, Platform
 

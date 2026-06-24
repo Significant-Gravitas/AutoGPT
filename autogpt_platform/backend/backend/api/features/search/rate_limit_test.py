@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import pytest
-
 from backend.api.features.search import rate_limit
 
 

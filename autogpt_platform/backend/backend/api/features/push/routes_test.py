@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import fastapi
 import fastapi.testclient
 import pytest
-
 from backend.api.features.push.routes import router
 
 app = fastapi.FastAPI()

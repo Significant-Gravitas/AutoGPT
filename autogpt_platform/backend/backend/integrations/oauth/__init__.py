@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel
-
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
+from pydantic import BaseModel
 
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler

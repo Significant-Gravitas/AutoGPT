@@ -2,10 +2,9 @@ import asyncio
 import random
 from datetime import datetime
 
+from backend.data.db import query_raw_with_schema
 from faker import Faker
 from prisma import Prisma
-
-from backend.data.db import query_raw_with_schema
 
 faker = Faker()
 
@@ -27,13 +26,11 @@ async def check_cron_job(db):
             return False
 
         # Check if the refresh job exists
-        job_check = await query_raw_with_schema(
-            """
+        job_check = await query_raw_with_schema("""
             SELECT jobname, schedule, command 
             FROM cron.job 
             WHERE jobname = 'refresh-store-views'
-        """
-        )
+        """)
 
         if job_check:
             job = job_check[0]
@@ -57,35 +54,29 @@ async def get_materialized_view_counts(db):
     print("-" * 40)
 
     # Get counts from mv_agent_run_counts
-    agent_runs = await query_raw_with_schema(
-        """
+    agent_runs = await query_raw_with_schema("""
         SELECT COUNT(*) as total_agents, 
                SUM(run_count) as total_runs,
                MAX(run_count) as max_runs,
                MIN(run_count) as min_runs
         FROM {schema_prefix}mv_agent_run_counts
-    """
-    )
+    """)
 
     # Get counts from mv_review_stats
-    review_stats = await query_raw_with_schema(
-        """
+    review_stats = await query_raw_with_schema("""
         SELECT COUNT(*) as total_listings,
                SUM(review_count) as total_reviews,
                AVG(avg_rating) as overall_avg_rating
         FROM {schema_prefix}mv_review_stats
-    """
-    )
+    """)
 
     # Get sample data from StoreAgent view
-    store_agents = await query_raw_with_schema(
-        """
+    store_agents = await query_raw_with_schema("""
         SELECT COUNT(*) as total_store_agents,
                AVG(runs) as avg_runs,
                AVG(rating) as avg_rating
         FROM {schema_prefix}"StoreAgent"
-    """
-    )
+    """)
 
     agent_run_data = agent_runs[0] if agent_runs else {}
     review_data = review_stats[0] if review_stats else {}
@@ -172,7 +163,7 @@ async def add_test_data(db):
                     "storeListingId": listing.id,
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
-                    "name": f"Test Agent {i+1}",
+                    "name": f"Test Agent {i + 1}",
                     "subHeading": faker.catch_phrase(),
                     "description": faker.paragraph(nb_sentences=5),
                     "imageUrls": [faker.image_url()],
@@ -245,9 +236,7 @@ async def compare_counts(before, after):
     print("🔍 Agent run changes:")
     before_runs = before["agent_runs"].get("total_runs") or 0
     after_runs = after["agent_runs"].get("total_runs") or 0
-    print(
-        f"   Total runs: {before_runs} → {after_runs} " f"(+{after_runs - before_runs})"
-    )
+    print(f"   Total runs: {before_runs} → {after_runs} (+{after_runs - before_runs})")
 
     # Compare reviews
     print("\n🔍 Review changes:")

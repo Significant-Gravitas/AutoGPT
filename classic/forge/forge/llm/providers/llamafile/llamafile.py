@@ -5,15 +5,14 @@ from pathlib import Path
 from typing import Any, Iterator, Literal, Optional, Sequence, cast
 
 import requests
+from forge.json.parsing import json_loads
+from forge.models.config import UserConfigurable
 from openai.types.chat import (
     ChatCompletionMessage,
     ChatCompletionMessageParam,
     CompletionCreateParams,
 )
 from pydantic import SecretStr
-
-from forge.json.parsing import json_loads
-from forge.models.config import UserConfigurable
 
 from .._openai_base import BaseOpenAIChatProvider
 from ..schema import (

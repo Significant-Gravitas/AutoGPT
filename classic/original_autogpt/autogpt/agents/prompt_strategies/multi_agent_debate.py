@@ -22,8 +22,6 @@ from enum import Enum
 from logging import Logger
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -38,6 +36,7 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import BaseModel, Field
 
 from .base import BaseMultiStepPromptStrategy, BasePromptStrategyConfiguration
 

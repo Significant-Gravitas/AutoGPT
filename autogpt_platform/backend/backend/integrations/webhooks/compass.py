@@ -1,11 +1,10 @@
 import logging
 
-from fastapi import Request
-from strenum import StrEnum
-
 from backend.data import integrations
 from backend.integrations.providers import ProviderName
 from backend.sdk import Credentials
+from fastapi import Request
+from strenum import StrEnum
 
 from ._manual_base import ManualWebhookManagerBase
 

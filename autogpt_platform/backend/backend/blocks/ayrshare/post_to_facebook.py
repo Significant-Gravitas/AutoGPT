@@ -125,7 +125,10 @@ class PostToFacebookBlock(Block):
         """Post to Facebook with Facebook-specific options."""
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Convert datetime to ISO format if provided

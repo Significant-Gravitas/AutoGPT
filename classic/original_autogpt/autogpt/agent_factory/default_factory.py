@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, cast
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-
 from forge.agent.execution_context import AgentFactory, ExecutionContext
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile

@@ -5,7 +5,6 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from forge.llm.providers._openai_base import (
     BaseOpenAIChatProvider,
     format_function_def_for_openai,

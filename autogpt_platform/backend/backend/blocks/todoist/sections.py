@@ -1,6 +1,3 @@
-from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -17,6 +14,8 @@ from backend.blocks.todoist._auth import (
     TodoistCredentialsInput,
 )
 from backend.data.model import SchemaField
+from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 
 class TodoistListSectionsBlock(Block):
@@ -285,7 +284,7 @@ class TodoistDeleteSectionBlock(Block):
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "section_id": "7025"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={"delete_section": lambda *args, **kwargs: (True)},
+            test_mock={"delete_section": lambda *args, **kwargs: True},
         )
 
     @staticmethod

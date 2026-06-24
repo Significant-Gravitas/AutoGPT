@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.api.features.library.search import (
     _extract_lexical_keywords,
     hybrid_search_library_agents,

@@ -1,6 +1,9 @@
 import logging
 from typing import Optional
 
+from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
+from backend.util.request import Requests
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )
@@ -8,10 +11,6 @@ from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
-
-from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 

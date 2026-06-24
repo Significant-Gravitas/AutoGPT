@@ -1,7 +1,6 @@
 """Tests for AskQuestionTool."""
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.ask_question import AskQuestionTool
 from backend.copilot.tools.models import ClarificationNeededResponse

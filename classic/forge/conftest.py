@@ -2,7 +2,6 @@ import uuid
 from pathlib import Path
 
 import pytest
-
 from forge.file_storage.base import FileStorage, FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 

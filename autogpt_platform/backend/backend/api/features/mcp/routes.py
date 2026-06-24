@@ -10,9 +10,6 @@ from typing import Annotated, Any
 
 import fastapi
 from autogpt_libs.auth import get_user_id
-from fastapi import Security
-from pydantic import BaseModel, Field, SecretStr
-
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
@@ -26,6 +23,8 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.request import HTTPClientError, Requests, validate_url_host
 from backend.util.settings import Settings
+from fastapi import Security
+from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 

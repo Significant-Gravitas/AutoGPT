@@ -371,9 +371,9 @@ class BenchmarkUI:
                 if result.success:
                     status = Text("\u2713", style="green")
                 elif result.timed_out and result.score >= 0.9:
-                    status = Text("\u29D6", style="yellow")  # Hourglass - would pass
+                    status = Text("\u29d6", style="yellow")  # Hourglass - would pass
                 elif result.timed_out:
-                    status = Text("\u29D6", style="yellow")  # Hourglass
+                    status = Text("\u29d6", style="yellow")  # Hourglass
                 else:
                     status = Text("\u2717", style="red")
 

@@ -1,6 +1,5 @@
 import pytest
 from aiohttp import web
-
 from backend.util.request import _is_ip_blocked, pin_url, validate_url_host
 
 

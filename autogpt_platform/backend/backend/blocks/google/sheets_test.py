@@ -9,7 +9,6 @@ credentials must surface a clean, user-facing ``BlockExecutionError``
 """
 
 import pytest
-
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError

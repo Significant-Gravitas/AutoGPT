@@ -1,12 +1,11 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
-
 from backend.blocks._base import BlockSchemaInput
 from backend.data.model import CredentialsMetaInput, SchemaField
 from backend.integrations.ayrshare import AyrshareClient
 from backend.util.exceptions import MissingConfigError
+from pydantic import BaseModel, Field
 
 from ._config import ayrshare
 

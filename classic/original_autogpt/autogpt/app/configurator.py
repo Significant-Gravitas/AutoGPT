@@ -7,7 +7,6 @@ from typing import Literal, Optional
 
 import click
 from autogpt.app.config import GPT_3_MODEL, AppConfig
-
 from forge.llm.providers import ModelName, MultiProvider
 
 logger = logging.getLogger(__name__)
@@ -64,7 +63,7 @@ async def apply_overrides_to_config(
 
 
 async def check_models(
-    *models: tuple[ModelName, Literal["smart_llm", "fast_llm"]]
+    *models: tuple[ModelName, Literal["smart_llm", "fast_llm"]],
 ) -> tuple[ModelName, ...]:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     multi_provider = MultiProvider()

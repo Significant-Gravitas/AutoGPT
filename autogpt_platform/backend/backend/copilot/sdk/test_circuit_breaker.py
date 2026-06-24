@@ -1,7 +1,6 @@
 """Tests for the tool call circuit breaker in tool_adapter.py."""
 
 import pytest
-
 from backend.copilot.sdk.tool_adapter import (
     _MAX_CONSECUTIVE_TOOL_FAILURES,
     _check_circuit_breaker,

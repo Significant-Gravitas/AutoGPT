@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-
 from backend.copilot.tools.graphiti_forget import (
     _hard_delete_edges,
     _retract_edges,

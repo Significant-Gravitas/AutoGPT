@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from forge.utils.exceptions import NotFoundError
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import (
@@ -20,8 +21,6 @@ from sqlalchemy.orm import (
     relationship,
     sessionmaker,
 )
-
-from forge.utils.exceptions import NotFoundError
 
 from ..models.artifact import Artifact
 from ..models.pagination import Pagination

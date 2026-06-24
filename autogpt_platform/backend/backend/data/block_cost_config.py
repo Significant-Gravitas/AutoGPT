@@ -1,14 +1,14 @@
 import math
 from typing import TYPE_CHECKING, Type
 
-from pydantic import BaseModel
-
 from backend.blocks._base import Block, BlockCost, BlockCostType, TokenRateDisplay
 from backend.data.block import BlockInput
 from backend.data.model import APIKeyCredentials
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from backend.data.model import NodeExecutionStats
+
 from backend.blocks.ai_condition import AIConditionBlock
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel

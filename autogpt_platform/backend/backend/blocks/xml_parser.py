@@ -1,8 +1,7 @@
-from gravitasml.parser import Parser
-from gravitasml.token import Token, tokenize
-
 from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import SchemaField
+from gravitasml.parser import Parser
+from gravitasml.token import Token, tokenize
 
 
 class XMLParserBlock(Block):

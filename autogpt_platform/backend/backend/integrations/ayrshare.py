@@ -5,11 +5,10 @@ import logging
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
-
 from backend.util.exceptions import MissingConfigError
 from backend.util.request import Requests
 from backend.util.settings import Settings
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

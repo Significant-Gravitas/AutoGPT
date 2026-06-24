@@ -3,10 +3,9 @@
 import logging
 from datetime import datetime, timezone
 
+from backend.util.request import validate_url_host
 from prisma.models import PushSubscription
 from pydantic import BaseModel
-
-from backend.util.request import validate_url_host
 
 logger = logging.getLogger(__name__)
 

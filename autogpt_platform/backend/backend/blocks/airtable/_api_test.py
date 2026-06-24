@@ -2,7 +2,6 @@ from os import getenv
 from uuid import uuid4
 
 import pytest
-
 from backend.sdk import APIKeyCredentials, SecretStr
 
 from ._api import (

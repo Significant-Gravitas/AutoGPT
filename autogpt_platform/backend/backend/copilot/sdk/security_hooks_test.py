@@ -9,7 +9,6 @@ import logging
 import os
 
 import pytest
-
 from backend.copilot.context import _current_project_dir
 
 from .security_hooks import (

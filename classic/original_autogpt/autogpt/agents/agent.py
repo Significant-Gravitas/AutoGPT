@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
-from pydantic import Field
-
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from forge.agent.execution_context import ExecutionContext
 from forge.agent.protocols import (
@@ -70,6 +68,7 @@ from forge.utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
+from pydantic import Field
 
 from .prompt_strategies.lats import LATSActionProposal
 from .prompt_strategies.multi_agent_debate import DebateActionProposal

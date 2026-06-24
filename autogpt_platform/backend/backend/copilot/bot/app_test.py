@@ -8,7 +8,6 @@ into ``outbound`` — including the casing round-trip (``platform.value`` vs
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.platform_linking.models import Platform
 from backend.util.service import UnhealthyServiceError
 

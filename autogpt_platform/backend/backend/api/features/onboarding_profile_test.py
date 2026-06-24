@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 import fastapi
 import fastapi.testclient
 import pytest
-
 from backend.api.features.v1 import v1_router
 
 app = fastapi.FastAPI()

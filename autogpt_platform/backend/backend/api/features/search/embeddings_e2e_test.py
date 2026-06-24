@@ -14,12 +14,11 @@ import uuid
 from typing import AsyncGenerator
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search import embeddings
 from backend.api.features.search.embeddings import EMBEDDING_DIM
 from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.api.features.store.hybrid_search import hybrid_search
+from prisma.enums import ContentType
 
 # ============================================================================
 # Test Fixtures

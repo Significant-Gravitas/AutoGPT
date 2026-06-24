@@ -1,8 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +16,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
+from pydantic import SecretStr
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -195,8 +194,12 @@ class IdeogramModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: "https://ideogram.ai/api/images/test-generated-image-url.png",
-                "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
+                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: (
+                    "https://ideogram.ai/api/images/test-generated-image-url.png"
+                ),
+                "upscale_image": lambda api_key, image_url: (
+                    "https://ideogram.ai/api/images/test-upscaled-image-url.png"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )

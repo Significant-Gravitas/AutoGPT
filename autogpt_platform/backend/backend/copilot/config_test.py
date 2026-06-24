@@ -1,7 +1,6 @@
 """Unit tests for ChatConfig."""
 
 import pytest
-
 from backend.util.clients import OPENROUTER_BASE_URL
 
 from .config import ChatConfig, _host_matches

@@ -147,7 +147,7 @@ def format_sql_insert(creds: dict) -> str:
 
     sql = f"""
 -- ============================================================
--- OAuth Application: {creds['name']}
+-- OAuth Application: {creds["name"]}
 -- Generated: {now_iso} UTC
 -- ============================================================
 
@@ -167,14 +167,14 @@ INSERT INTO "OAuthApplication" (
   "isActive"
 )
 VALUES (
-  '{creds['id']}',
+  '{creds["id"]}',
   NOW(),
   NOW(),
-  '{creds['name']}',
-  {f"'{creds['description']}'" if creds['description'] else 'NULL'},
-  '{creds['client_id']}',
-  '{creds['client_secret_hash']}',
-  '{creds['client_secret_salt']}',
+  '{creds["name"]}',
+  {f"'{creds['description']}'" if creds["description"] else "NULL"},
+  '{creds["client_id"]}',
+  '{creds["client_secret_hash"]}',
+  '{creds["client_secret_salt"]}',
   ARRAY{redirect_uris_pg}::TEXT[],
   ARRAY{grant_types_pg}::TEXT[],
   ARRAY{scopes_pg}::"APIKeyPermission"[],
@@ -186,8 +186,8 @@ VALUES (
 -- ⚠️ IMPORTANT: Save these credentials securely!
 -- ============================================================
 --
--- Client ID:     {creds['client_id']}
--- Client Secret: {creds['client_secret_plaintext']}
+-- Client ID:     {creds["client_id"]}
+-- Client Secret: {creds["client_secret_plaintext"]}
 --
 -- ⚠️ The client secret is shown ONLY ONCE!
 -- ⚠️ Store it securely and share only with the application developer.
@@ -200,7 +200,7 @@ VALUES (
 -- To verify the application was created:
 -- SELECT "clientId", name, scopes, "redirectUris", "isActive"
 -- FROM "OAuthApplication"
--- WHERE "clientId" = '{creds['client_id']}';
+-- WHERE "clientId" = '{creds["client_id"]}';
 """
     return sql
 
@@ -817,9 +817,8 @@ async def create_test_app_in_db(
     redirect_uri: str,
 ) -> dict:
     """Create a temporary test OAuth application in the database"""
-    from prisma.models import OAuthApplication
-
     from backend.data import db
+    from prisma.models import OAuthApplication
 
     # Connect to database
     await db.connect()
@@ -860,14 +859,13 @@ async def create_test_app_in_db(
 
 async def cleanup_test_app(app_id: str) -> None:
     """Remove test application and all associated tokens from database"""
+    from backend.data import db
     from prisma.models import (
         OAuthAccessToken,
         OAuthApplication,
         OAuthAuthorizationCode,
         OAuthRefreshToken,
     )
-
-    from backend.data import db
 
     if not db.is_connected():
         await db.connect()

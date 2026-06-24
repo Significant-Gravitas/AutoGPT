@@ -12,7 +12,6 @@ Tests cover:
 """
 
 import pytest
-
 from backend.blocks.data_manipulation import (
     _MAX_FLATTEN_DEPTH,
     ConcatenateListsBlock,

@@ -6,11 +6,10 @@ from typing import TypeVar, overload
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
+from backend.util.retry import conn_retry
 from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
-
-from backend.util.retry import conn_retry
 
 load_dotenv()
 

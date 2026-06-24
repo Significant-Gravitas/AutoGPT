@@ -18,9 +18,6 @@ from typing import (
 
 import jsonref
 import jsonschema
-from jsonschema.validators import validator_for as _jsonschema_validator_for
-from pydantic import BaseModel, Field
-
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.model import (
     Credentials,
@@ -40,6 +37,8 @@ from backend.util.exceptions import (
     BlockUnknownError,
 )
 from backend.util.settings import Config
+from jsonschema.validators import validator_for as _jsonschema_validator_for
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

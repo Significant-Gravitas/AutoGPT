@@ -5,7 +5,6 @@ from typing import Any
 
 import aiohttp
 import html2text
-
 from backend.copilot.model import ChatSession
 from backend.util.request import Requests
 

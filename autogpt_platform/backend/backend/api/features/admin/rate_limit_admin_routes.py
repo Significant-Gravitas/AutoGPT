@@ -4,9 +4,6 @@ import logging
 from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, Body, HTTPException, Security
-from pydantic import BaseModel
-
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     SubscriptionTier,
@@ -18,6 +15,8 @@ from backend.copilot.rate_limit import (
     set_user_tier,
 )
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
+from fastapi import APIRouter, Body, HTTPException, Security
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

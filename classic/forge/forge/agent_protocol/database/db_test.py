@@ -3,7 +3,6 @@ import sqlite3
 from datetime import datetime
 
 import pytest
-
 from forge.agent_protocol.database.db import (
     AgentDB,
     ArtifactModel,

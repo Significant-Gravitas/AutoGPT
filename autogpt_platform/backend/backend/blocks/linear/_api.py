@@ -75,7 +75,6 @@ class LinearClient:
 
         response_data = response.json()
         if "errors" in response_data:
-
             error_messages = [
                 error.get("message", "") for error in response_data["errors"]
             ]

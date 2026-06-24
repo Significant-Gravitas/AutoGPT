@@ -2,10 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal
 
-from openai import AsyncOpenAI
-from openai.types.responses import Response as OpenAIResponse
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -21,6 +17,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from openai import AsyncOpenAI
+from openai.types.responses import Response as OpenAIResponse
+from pydantic import SecretStr
 
 
 @dataclass
