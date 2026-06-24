@@ -26,9 +26,9 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   deriveFileOrigin,
+  downloadFileBlob,
   formatFileSize,
   formatRelativeDate,
-  getFileDownloadUrl,
   getFileTypeIcon,
   getFileTypeLabel,
 } from "../helpers";
@@ -36,6 +36,7 @@ import { CardPreview } from "./CardPreview";
 
 interface Props {
   file: WorkspaceFileItem;
+  onOpen: (file: WorkspaceFileItem) => void;
 }
 
 const CARD_VARIANTS: Variants = {
@@ -54,41 +55,55 @@ const REDUCED_CARD_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
-export function ArtifactCard({ file }: Props) {
+export function ArtifactCard({ file, onOpen }: Props) {
   const origin = deriveFileOrigin(file.path);
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
-  const TypeIcon = getFileTypeIcon(file.mime_type);
+  const TypeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
 
   return (
     <motion.li
       variants={reduceMotion ? REDUCED_CARD_VARIANTS : CARD_VARIANTS}
       style={{ willChange: "transform, opacity, filter" }}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
     >
-      <CardPreview file={file} />
-      <div className="flex items-center gap-3 p-3">
-        <TypeIcon
-          size={20}
-          weight="regular"
-          className="shrink-0 text-zinc-500"
-        />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Text
-            variant="body-medium"
-            className="truncate text-zinc-900"
-            title={file.name}
-          >
-            {file.name}
-          </Text>
-          <Text variant="small" className="truncate text-zinc-500">
-            {getFileTypeLabel(file.mime_type)} ·{" "}
-            {formatFileSize(file.size_bytes)} ·{" "}
-            {formatRelativeDate(file.created_at)}
-          </Text>
+      {/* Full-card click target: opening the file is the primary action.
+          Sits behind the content (z-0); the content is pointer-events-none so
+          clicks fall through, except the kebab menu which re-enables them. */}
+      <button
+        type="button"
+        onClick={() => onOpen(file)}
+        aria-label={`Open ${file.name}`}
+        className="absolute inset-0 z-0 cursor-pointer"
+        data-testid="artifacts-card-open"
+      />
+      <div className="pointer-events-none relative z-10">
+        <CardPreview file={file} />
+        <div className="flex items-center gap-3 p-3">
+          <TypeIcon
+            size={20}
+            weight="regular"
+            className="shrink-0 text-zinc-500"
+          />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Text
+              variant="body-medium"
+              className="truncate text-zinc-900"
+              title={file.name}
+            >
+              {file.name}
+            </Text>
+            <Text variant="small" className="truncate text-zinc-500">
+              {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
+              {formatFileSize(file.size_bytes)} ·{" "}
+              {formatRelativeDate(file.created_at)}
+            </Text>
+          </div>
+          <div className="pointer-events-auto">
+            <CardMenu file={file} goLabel={goLabel} goHref={origin.href} />
+          </div>
         </div>
-        <CardMenu file={file} goLabel={goLabel} goHref={origin.href} />
       </div>
     </motion.li>
   );
@@ -130,18 +145,7 @@ function CardMenu({
     if (isDownloading) return;
     setIsDownloading(true);
     try {
-      const res = await fetch(getFileDownloadUrl(file.id));
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Defer revocation so browsers (Firefox/Edge) have time to start the download.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      await downloadFileBlob(file.id, file.name);
     } catch (error) {
       toast({
         title: "Failed to download file",

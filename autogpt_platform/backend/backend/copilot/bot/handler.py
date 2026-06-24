@@ -25,7 +25,12 @@ from backend.util.exceptions import (
 from backend.util.settings import Settings
 
 from . import sessions, threads
-from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
+from .adapters.base import (
+    FileAttachment,
+    MessageContext,
+    MessageHistoryEntry,
+    PlatformAdapter,
+)
 from .bot_backend import BotBackend, BotStreamError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
@@ -99,7 +104,7 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        message_text = self._message_text(ctx) if include_thread_history else ctx.text
+        message_text = self._message_text(ctx, include_thread_history)
         await self._enqueue_and_process(ctx, adapter, target_id, message_text)
 
     # -- Target resolution --
@@ -126,21 +131,48 @@ class MessageHandler:
 
     # -- Batched streaming --
 
-    def _message_text(self, ctx: MessageContext) -> str:
-        if not ctx.thread_history:
+    def _message_text(self, ctx: MessageContext, include_thread_history: bool) -> str:
+        # Referenced conversations (links/@-mentions the user pasted) are always
+        # surfaced — that's the whole point of fetching them. Thread history is
+        # only included on the first @-into a thread we don't own; a subscribed
+        # thread's prior turns already live in the session.
+        thread_history = ctx.thread_history if include_thread_history else ()
+        if not thread_history and not ctx.referenced_conversations:
             return ctx.text
 
         platform_display = ctx.platform.capitalize()
-        lines = ["[Recent thread context before this message]"]
-        for entry in ctx.thread_history:
-            user = (
-                f"{entry.username} ({platform_display} user ID: {entry.user_id})"
-                if entry.user_id
-                else entry.username
+        lines: list[str] = []
+        if ctx.referenced_conversations:
+            # The user pointed at other channels/threads; their content is
+            # already fetched and inlined below. Lead with a firm instruction so
+            # the model answers from it instead of fixating on the link and
+            # claiming it can't access the platform.
+            lines.append(
+                f"[The {platform_display} channel(s) the user referenced have "
+                f"already been read for you — their full content is included "
+                f"below under each #name. Answer directly from it. Do NOT say you "
+                f"can't open links or access {platform_display}; you already have "
+                f"the content.]"
             )
-            lines.append(f"\n[From {user}]\n{entry.text}")
+            for convo in ctx.referenced_conversations:
+                lines.append(f"\n[Content of #{convo.title}]")
+                for entry in convo.messages:
+                    lines.append(self._format_history_entry(entry, platform_display))
+        if thread_history:
+            lines.append("\n[Recent thread context before this message]")
+            for entry in thread_history:
+                lines.append(self._format_history_entry(entry, platform_display))
         lines.append(f"\n[Current message]\n{ctx.text}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
+        user = (
+            f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+            if entry.user_id
+            else entry.username
+        )
+        return f"\n[From {user}]\n{entry.text}"
 
     async def _enqueue_and_process(
         self,
@@ -362,6 +394,27 @@ class MessageHandler:
                 link_url=session_url,
             )
 
+        async def _on_setup_dropped(
+            session_id: str,
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal active_session_id, buffer, sent_any_content
+            active_session_id = session_id
+            # Drain pending text first so the notice doesn't jump ahead of the
+            # message it follows.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            await adapter.send_message(
+                target_id,
+                _setup_dropped_message(),
+                mentionable_users=ctx.mentionable_users,
+            )
+
         started_at = time.monotonic()
         reply_chars = 0
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
@@ -374,6 +427,7 @@ class MessageHandler:
                 platform_server_id=ctx.server_id,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
+                on_setup_dropped=_on_setup_dropped,
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
@@ -611,6 +665,14 @@ def _copilot_session_url(session_id: str) -> str | None:
     if not base_url:
         return None
     return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
+
+
+def _setup_dropped_message() -> str:
+    return (
+        "⚠️ AutoPilot tried to send you a sign-in link, but the data arrived "
+        "corrupted so the button couldn't be shown. Please ask it to try that "
+        "step again."
+    )
 
 
 def _setup_required_message(setup_output: dict[str, Any]) -> str:

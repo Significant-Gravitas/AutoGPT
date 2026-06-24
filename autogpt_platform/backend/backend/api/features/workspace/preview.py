@@ -61,6 +61,12 @@ _TEXT_HINTS = (
     "markdown",
     "svg",
 )
+# Extension fallback for Markdown only. ``mimetypes.guess_type`` returns
+# ``None``/``application/octet-stream`` for ``.md`` on many systems, which would
+# 415 a file the Artifacts card renders as a content preview. Other text/code
+# types fall back to a static illustration on the frontend and never request a
+# preview, so they don't need an extension fallback here.
+_TEXT_EXTENSIONS = frozenset({"md", "markdown", "mdx"})
 _EMBEDDED_THUMBNAILS = (
     "docprops/thumbnail.jpeg",
     "docprops/thumbnail.jpg",
@@ -93,7 +99,7 @@ async def _dispatch_preview(
     if mime in OFFICE_MIMES:
         _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
         return _webp_response(await _office_thumbnail(file, width))
-    if _is_text_like(mime):
+    if _is_text_like(mime, file.name):
         _ensure_size(file, PREVIEW_MAX_TEXT_BYTES)
         content = await _text_preview(file, max_bytes)
         return Response(
@@ -107,8 +113,11 @@ async def _dispatch_preview(
     )
 
 
-def _is_text_like(mime: str) -> bool:
-    return mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS)
+def _is_text_like(mime: str, name: str = "") -> bool:
+    if mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS):
+        return True
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return ext in _TEXT_EXTENSIONS
 
 
 def _ensure_size(file: WorkspaceFile, limit: int) -> None:

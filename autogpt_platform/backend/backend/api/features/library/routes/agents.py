@@ -212,6 +212,11 @@ async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
+    # `library_db.fork_library_agent` activates the forked graph (validates
+    # node credentials) after the fork's own DB write. A GraphActivationError
+    # raised by that activation propagates to the app-level handler in
+    # rest_api.py and becomes a 400. Making the save itself atomic is a
+    # follow-up.
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
