@@ -24,7 +24,7 @@ def run_processes(*processes: "AppProcess", **kwargs):
         # Run the last process in the foreground.
         processes[-1].start(background=False, **kwargs)
     finally:
-        for process in processes:
+        for process in reversed(processes):
             try:
                 process.stop()
             except Exception as e:
@@ -36,18 +36,33 @@ def main(**kwargs):
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
 
-    from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+    from backend.api.rest_api import AgentServer
+    from backend.api.ws_api import WebsocketServer
+    from backend.copilot.bot.app import CoPilotChatBridge
+    from backend.copilot.executor.manager import CoPilotExecutor
+    from backend.data.db_manager import DatabaseManager
+    from backend.executor import ExecutionManager, Scheduler
+    from backend.executor.batch_executor import BatchExecutor
     from backend.notifications import NotificationManager
-    from backend.server.rest_api import AgentServer
-    from backend.server.ws_api import WebsocketServer
+    from backend.platform_linking.manager import PlatformLinkingManager
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
         Scheduler(),
+        # BatchExecutor polls submitted LLM batches (Anthropic today) and
+        # dispatches results to caller-registered namespace handlers.
+        # The dream pass uses it when an anthropic key is configured;
+        # falls back to sync_baseline otherwise. Own subprocess so a
+        # slow Anthropic batch poll never starves the Scheduler's cron
+        # tick.
+        BatchExecutor(),
         NotificationManager(),
+        PlatformLinkingManager(),
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
+        CoPilotChatBridge(),
+        CoPilotExecutor(),
         **kwargs,
     )
 

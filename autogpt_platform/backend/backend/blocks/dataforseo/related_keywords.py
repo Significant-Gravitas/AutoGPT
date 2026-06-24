@@ -4,6 +4,7 @@ DataForSEO Google Related Keywords block.
 
 from typing import Any, Dict, List, Optional
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -177,18 +178,25 @@ class DataForSeoRelatedKeywordsBlock(Block):
 
             results = await self._fetch_related_keywords(client, input_data)
 
+            # DataForSEO reports per-task USD cost on the response. Feed it
+            # into NodeExecutionStats so the COST_USD resolver bills the
+            # real provider spend at reconciliation time.
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=client.last_cost_usd,
+                    provider_cost_type="cost_usd",
+                )
+            )
+
             # Process and format the results
             related_keywords = []
             if results and len(results) > 0:
                 # results is a list, get the first element
                 first_result = results[0] if isinstance(results, list) else results
-                items = (
-                    first_result.get("items", [])
-                    if isinstance(first_result, dict)
-                    else []
-                )
-                # Ensure items is never None
-                if items is None:
+                # Handle missing key, null value, or valid list value
+                if isinstance(first_result, dict):
+                    items = first_result.get("items") or []
+                else:
                     items = []
                 for item in items:
                     # Extract keyword_data from the item

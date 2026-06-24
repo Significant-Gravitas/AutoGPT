@@ -104,7 +104,7 @@ async def get_accuracy_trends_and_alerts(
             AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
             {user_filter}
         GROUP BY DATE(e."createdAt")
-        HAVING COUNT(*) >= 3  -- Need at least 3 executions per day
+        HAVING COUNT(*) >= 1  -- Include all days with at least 1 execution
     ),
     trends AS (
         SELECT 

@@ -1,26 +1,31 @@
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { useCopyPasteStore } from "@/app/(platform)/build/stores/copyPasteStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
   DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThreeOutlineVerticalIcon } from "@phosphor-icons/react";
-import { Copy, Trash2, ExternalLink } from "lucide-react";
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useCopyPasteStore } from "@/app/(platform)/build/stores/copyPasteStore";
+import {
+  SecondaryDropdownMenuContent,
+  SecondaryDropdownMenuItem,
+  SecondaryDropdownMenuSeparator,
+} from "@/components/molecules/SecondaryMenu/SecondaryMenu";
+import {
+  ArrowSquareOutIcon,
+  CopyIcon,
+  DotsThreeOutlineVerticalIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
 
-export const NodeContextMenu = ({
-  nodeId,
-  subGraphID,
-}: {
+type Props = {
   nodeId: string;
   subGraphID?: string;
-}) => {
+};
+
+export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
   const { deleteElements } = useReactFlow();
 
-  const handleCopy = () => {
+  function handleCopy() {
     useNodeStore.setState((state) => ({
       nodes: state.nodes.map((node) => ({
         ...node,
@@ -30,47 +35,47 @@ export const NodeContextMenu = ({
 
     useCopyPasteStore.getState().copySelectedNodes();
     useCopyPasteStore.getState().pasteNodes();
-  };
+  }
 
-  const handleDelete = () => {
+  function handleDelete() {
     deleteElements({ nodes: [{ id: nodeId }] });
-  };
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="py-2">
         <DotsThreeOutlineVerticalIcon size={16} weight="fill" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="right"
-        align="start"
-        className="rounded-xlarge"
-      >
-        <DropdownMenuItem onClick={handleCopy} className="hover:rounded-xlarge">
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Node
-        </DropdownMenuItem>
+      <SecondaryDropdownMenuContent side="right" align="start">
+        <SecondaryDropdownMenuItem onClick={handleCopy}>
+          <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
+          <span className="dark:text-gray-100">Copy</span>
+        </SecondaryDropdownMenuItem>
+        <SecondaryDropdownMenuSeparator />
 
         {subGraphID && (
-          <DropdownMenuItem
-            onClick={() => window.open(`/build?flowID=${subGraphID}`)}
-            className="hover:rounded-xlarge"
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Open Agent
-          </DropdownMenuItem>
+          <>
+            <SecondaryDropdownMenuItem
+              onClick={() => window.open(`/build?flowID=${subGraphID}`)}
+            >
+              <ArrowSquareOutIcon
+                size={20}
+                className="mr-2 dark:text-gray-100"
+              />
+              <span className="dark:text-gray-100">Open agent</span>
+            </SecondaryDropdownMenuItem>
+            <SecondaryDropdownMenuSeparator />
+          </>
         )}
 
-        <Separator className="my-2" />
-
-        <DropdownMenuItem
-          onClick={handleDelete}
-          className="text-red-600 hover:rounded-xlarge"
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+        <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
+          <TrashIcon
+            size={20}
+            className="mr-2 text-red-500 dark:text-red-400"
+          />
+          <span className="dark:text-red-400">Delete</span>
+        </SecondaryDropdownMenuItem>
+      </SecondaryDropdownMenuContent>
     </DropdownMenu>
   );
 };

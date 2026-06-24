@@ -1,11 +1,6 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import {
-  globalRegistry,
-  OutputActions,
-  OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import {
@@ -16,16 +11,21 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/__legacy__/ui/sheet";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import {
+  globalRegistry,
+  OutputActions,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
 import { BookOpenIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { BuilderActionButton } from "../BuilderActionButton";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -38,36 +38,50 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
 
     return outputNodes
       .map((node) => {
-        const executionResult = node.data.nodeExecutionResult;
-        const outputData = executionResult?.output_data?.output;
+        const executionResults = node.data.nodeExecutionResults || [];
 
-        const renderer = globalRegistry.getRenderer(outputData);
+        const items = executionResults
+          .filter((result) => result.output_data?.output !== undefined)
+          .map((result) => {
+            const outputData = result.output_data!.output;
+            const renderer = globalRegistry.getRenderer(outputData);
+            return {
+              nodeExecID: result.node_exec_id,
+              value: outputData,
+              renderer,
+            };
+          })
+          .filter(
+            (
+              item,
+            ): item is typeof item & {
+              renderer: NonNullable<typeof item.renderer>;
+            } => item.renderer !== null,
+          );
+
+        if (items.length === 0) return null;
 
         return {
+          nodeID: node.id,
           metadata: {
             name: node.data.hardcodedValues?.name || "Output",
             description:
               node.data.hardcodedValues?.description || "Output from the agent",
           },
-          value: outputData ?? "No output yet",
-          renderer,
+          items,
         };
       })
-      .filter(
-        (
-          output,
-        ): output is typeof output & {
-          renderer: NonNullable<typeof output.renderer>;
-        } => output.renderer !== null,
-      );
+      .filter((group): group is NonNullable<typeof group> => group !== null);
   }, [nodes]);
 
   const actionItems = useMemo(() => {
-    return outputs.map((output) => ({
-      value: output.value,
-      metadata: {},
-      renderer: output.renderer,
-    }));
+    return outputs.flatMap((group) =>
+      group.items.map((item) => ({
+        value: item.value,
+        metadata: group.metadata,
+        renderer: item.renderer,
+      })),
+    );
   }, [outputs]);
 
   return (
@@ -76,9 +90,14 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <SheetTrigger asChild>
-              <BuilderActionButton disabled={!flowID || !hasOutputs()}>
-                <BookOpenIcon className="size-6" />
-              </BuilderActionButton>
+              <Button
+                variant="outline"
+                size="icon"
+                data-id="agent-outputs-button"
+                disabled={!flowID || !hasOutputs()}
+              >
+                <BookOpenIcon className="size-4" />
+              </Button>
             </SheetTrigger>
           </TooltipTrigger>
           <TooltipContent>
@@ -107,24 +126,27 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-6">
               {outputs && outputs.length > 0 ? (
-                outputs.map((output, i) => (
-                  <div key={i} className="space-y-2">
+                outputs.map((group) => (
+                  <div key={group.nodeID} className="space-y-2">
                     <div>
                       <Label className="text-base font-semibold">
-                        {output.metadata.name || "Unnamed Output"}
+                        {group.metadata.name || "Unnamed Output"}
                       </Label>
-                      {output.metadata.description && (
+                      {group.metadata.description && (
                         <Label className="mt-1 block text-sm text-gray-600">
-                          {output.metadata.description}
+                          {group.metadata.description}
                         </Label>
                       )}
                     </div>
 
-                    <OutputItem
-                      value={output.value}
-                      metadata={{}}
-                      renderer={output.renderer}
-                    />
+                    {group.items.map((item) => (
+                      <OutputItem
+                        key={item.nodeExecID}
+                        value={item.value}
+                        metadata={group.metadata}
+                        renderer={item.renderer}
+                      />
+                    ))}
                   </div>
                 ))
               ) : (

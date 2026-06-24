@@ -3,6 +3,7 @@ import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/def
 import {
   useGetV1GetExecutionDetails,
   useGetV1GetSpecificGraph,
+  useGetV1ListUserGraphs,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
@@ -17,9 +18,14 @@ import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { okData } from "@/app/api/helpers";
+import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
 
 export const useFlow = () => {
-  const [isLocked, setIsLocked] = useState(false);
+  const { isReadOnly } = useIsReadOnlyGraph();
+  const [isLockedState, setIsLockedState] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -33,6 +39,9 @@ export const useFlow = () => {
   );
   const setGraphExecutionStatus = useGraphStore(
     useShallow((state) => state.setGraphExecutionStatus),
+  );
+  const setAvailableSubGraphs = useGraphStore(
+    useShallow((state) => state.setAvailableSubGraphs),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -49,6 +58,10 @@ export const useFlow = () => {
       flowExecutionID: parseAsString,
     });
 
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
+
   const { data: executionDetails } = useGetV1GetExecutionDetails(
     flowID || "",
     flowExecutionID || "",
@@ -56,9 +69,19 @@ export const useFlow = () => {
       query: {
         select: (res) => res.data as GetV1GetExecutionDetails200,
         enabled: !!flowID && !!flowExecutionID,
+        // Poll while the graph is running to catch updates that arrive before
+        // the WebSocket subscription is established (race condition on fast
+        // executions like dry-runs).  Stops once the execution reaches a
+        // terminal state and isGraphRunning becomes false.
+        refetchInterval: isGraphRunning ? 1000 : false,
       },
     },
   );
+
+  // Fetch all available graphs for sub-agent update detection
+  const { data: availableGraphs } = useGetV1ListUserGraphs({
+    query: { select: okData },
+  });
 
   const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -114,10 +137,18 @@ export const useFlow = () => {
     }
   }, [graph]);
 
+  // Update available sub-graphs in store for sub-agent update detection
+  useEffect(() => {
+    if (availableGraphs) {
+      setAvailableSubGraphs(availableGraphs);
+    }
+  }, [availableGraphs, setAvailableSubGraphs]);
+
   // adding nodes
   useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
     }
   }, [customNodes, addNodes]);
@@ -129,6 +160,14 @@ export const useFlow = () => {
       addLinks(graph.links);
     }
   }, [graph?.links, addLinks]);
+
+  useEffect(() => {
+    if (customNodes.length > 0 && graph?.links) {
+      customNodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
+    }
+  }, [customNodes, graph?.links]);
 
   // update node execution status in nodes
   useEffect(() => {
@@ -173,23 +212,64 @@ export const useFlow = () => {
     if (customNodes.length > 0 && graph?.links) {
       const timer = setTimeout(() => {
         useHistoryStore.getState().initializeHistory();
+        // Mark initial load as complete after history is initialized
+        setIsInitialLoadComplete(true);
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [customNodes, graph?.links]);
 
+  // Also mark as complete for new flows (no flowID) after a short delay
+  useEffect(() => {
+    if (!flowID && !isGraphLoading && !isBlocksLoading) {
+      const timer = setTimeout(() => {
+        setIsInitialLoadComplete(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [flowID, isGraphLoading, isBlocksLoading]);
+
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();
     };
   }, []);
 
+  const linkCount = graph?.links?.length ?? 0;
+
   useEffect(() => {
-    fitView({ padding: 0.2, duration: 800, maxZoom: 2 });
-  }, [fitView]);
+    if (isGraphLoading || isBlocksLoading) {
+      setHasAutoFramed(false);
+      return;
+    }
+
+    if (hasAutoFramed) {
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    fitView,
+    hasAutoFramed,
+    customNodes.length,
+    isBlocksLoading,
+    isGraphLoading,
+    linkCount,
+  ]);
+
+  useEffect(() => {
+    setHasAutoFramed(false);
+    setIsInitialLoadComplete(false);
+  }, [flowID, flowVersion]);
 
   // Drag and drop block from block menu
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -223,11 +303,24 @@ export const useFlow = () => {
     [screenToFlowPosition, addBlock, setBlockMenuOpen],
   );
 
+  // When the graph is read-only, force the canvas locked and ignore unlock
+  // attempts so non-owners cannot edit nodes.
+  const isLocked = isReadOnly || isLockedState;
+  const setIsLocked = useCallback(
+    (locked: boolean) => {
+      if (isReadOnly) return;
+      setIsLockedState(locked);
+    },
+    [isReadOnly],
+  );
+
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
+    isInitialLoadComplete,
     onDragOver,
     onDrop,
     isLocked,
     setIsLocked,
+    isReadOnly,
   };
 };

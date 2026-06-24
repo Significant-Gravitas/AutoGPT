@@ -1,9 +1,9 @@
 "use client";
 
-import { getGetV1ListGraphExecutionsInfiniteQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -91,11 +91,8 @@ export function useEditScheduleModal(
       return res.json();
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
-      });
-      const runsKey = getGetV1ListGraphExecutionsInfiniteQueryOptions(graphId)
-        .queryKey as any;
+      invalidateAllScheduleQueries(queryClient, graphId);
+      const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
       await queryClient.invalidateQueries({ queryKey: runsKey });
       setIsOpen(false);
     },

@@ -12,12 +12,27 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
 import { environment } from "@/services/environment";
+import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
+
+const isDev = environment.isDev();
+const isLocal = environment.isLocal();
+
+const faviconPath = isDev
+  ? "/favicon-dev.ico"
+  : isLocal
+    ? "/favicon-local.ico"
+    : "/favicon.ico";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: faviconPath,
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default async function RootLayout({
@@ -27,8 +42,6 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const isDev = environment.isDev();
-  const isLocal = environment.isLocal();
 
   return (
     <html
@@ -36,25 +49,7 @@ export default async function RootLayout({
       className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <link
-          rel="icon"
-          href={
-            isLocal
-              ? "/favicon-local.ico"
-              : isDev
-                ? "/favicon-dev.ico"
-                : "/favicon.ico"
-          }
-        />
-        <SetupAnalytics
-          host={host}
-          ga={{
-            gaId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-          }}
-        />
-      </head>
-      <body>
+      <body className="min-h-screen">
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
@@ -63,6 +58,13 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
+            <SetupAnalytics
+              host={host}
+              ga={{
+                gaId:
+                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
+              }}
+            />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
               <TallyPopupSimple />
@@ -78,6 +80,7 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <CookieConsentBanner />
+            {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

@@ -1,15 +1,15 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getOnboardingStatus } from "@/app/api/helpers";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { NextResponse } from "next/server";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { revalidatePath } from "next/cache";
-import { shouldShowOnboarding } from "@/app/api/helpers";
+import { NextResponse } from "next/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
-  let next = "/marketplace";
+  let next = "/copilot";
 
   if (code) {
     const supabase = await getServerSupabase();
@@ -25,12 +25,9 @@ export async function GET(request: Request) {
         const api = new BackendAPI();
         await api.createUser();
 
-        if (await shouldShowOnboarding()) {
-          next = "/onboarding";
-          revalidatePath("/onboarding", "layout");
-        } else {
-          revalidatePath("/", "layout");
-        }
+        const { shouldShowOnboarding } = await getOnboardingStatus();
+        next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+        revalidatePath(next, "layout");
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
 
@@ -73,6 +70,9 @@ export async function GET(request: Request) {
           `${origin}/error?message=user-creation-failed`,
         );
       }
+
+      // Get redirect destination from 'next' query parameter
+      next = searchParams.get("next") || next;
 
       const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
       const isLocalEnv = process.env.NODE_ENV === "development";

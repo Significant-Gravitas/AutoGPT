@@ -49,7 +49,26 @@ export const useInfiniteScroll = ({
 
     observer.observe(endOfListRef.current);
 
+    // Check if element is initially in view after a short delay to ensure DOM is ready
+    const checkInitialView = () => {
+      if (endOfListRef.current) {
+        const rect = endOfListRef.current.getBoundingClientRect();
+        const isInitiallyInView =
+          rect.top <= window.innerHeight + scrollThreshold &&
+          rect.bottom >= -scrollThreshold;
+
+        if (isInitiallyInView) {
+          setIsInView(true);
+        }
+      }
+    };
+
+    // Check immediately and after a short delay to catch cases where DOM updates
+    checkInitialView();
+    const timeoutId = setTimeout(checkInitialView, 100);
+
     return () => {
+      clearTimeout(timeoutId);
       observer.disconnect();
     };
   }, [hasNextPage, scrollThreshold]);
@@ -58,7 +77,7 @@ export const useInfiniteScroll = ({
     if (isInView && hasNextPage && !isLoadingRef.current) {
       loadMore();
     }
-  }, [isInView, hasNextPage]);
+  }, [isInView, hasNextPage, loadMore]);
 
   return {
     containerRef,

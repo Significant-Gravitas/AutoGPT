@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.virus_scanner import (
     VirusScannerService,
     VirusScannerSettings,
@@ -85,7 +85,36 @@ class TestVirusScannerService:
         )
         assert result_dirty.is_clean is False
 
-    # Note: ping method was removed from current implementation
+    @pytest.mark.asyncio
+    async def test_scan_empty_file(self, scanner):
+        """Empty files (0 bytes) should be accepted without hitting ClamAV."""
+        content = b""
+        result = await scanner.scan_file(content, filename="empty.png")
+
+        assert result.is_clean is True
+        assert result.threat_name is None
+        assert result.file_size == 0
+        assert result.scan_time_ms == 0
+
+    @pytest.mark.asyncio
+    async def test_scan_single_byte_file(self, scanner):
+        """A 1-byte file should be scanned normally (regression: chunk_size must not be 0)."""
+
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)
+            return None
+
+        mock_client = Mock()
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+        scanner._client = mock_client
+
+        content = b"\x00"
+        result = await scanner.scan_file(content, filename="tiny.bin")
+
+        assert result.is_clean is True
+        assert result.file_size == 1
+        assert result.scan_time_ms > 0
 
     @pytest.mark.asyncio
     async def test_scan_clean_file(self, scanner):
@@ -251,3 +280,27 @@ class TestHelperFunctions:
 
             with pytest.raises(VirusScanError, match="Virus scanning failed"):
                 await scan_content_safe(b"test content", filename="test.txt")
+
+    @pytest.mark.asyncio
+    async def test_scan_content_safe_logs_warning_not_error_on_failure(self):
+        """Scan failures should log at WARNING level, not ERROR, to avoid paging on-call."""
+        with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
+            mock_scanner = Mock()
+            mock_scanner.scan_file = AsyncMock()
+            mock_scanner.scan_file.side_effect = Exception(
+                "range() arg 3 must not be zero"
+            )
+            mock_get_scanner.return_value = mock_scanner
+
+            with (
+                pytest.raises(VirusScanError),
+                patch("backend.util.virus_scanner.logger") as mock_logger,
+            ):
+                await scan_content_safe(b"test", filename="screenshot.png")
+
+            mock_logger.warning.assert_called_once()
+            # Check the formatted log message contains the error text.
+            # Use str() to handle both f-string and %-style logging formats.
+            log_msg = str(mock_logger.warning.call_args)
+            assert "range()" in log_msg
+            mock_logger.error.assert_not_called()

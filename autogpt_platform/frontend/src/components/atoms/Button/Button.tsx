@@ -20,6 +20,7 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
+    asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
 

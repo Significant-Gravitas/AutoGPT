@@ -1,13 +1,15 @@
 "use client";
 
+import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
 } from "@/components/__legacy__/ui/carousel";
-import { useAgentsSection } from "./useAgentsSection";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { Text } from "@/components/atoms/Text/Text";
+import { DotsNineIcon } from "@phosphor-icons/react";
 import { StoreCard } from "../StoreCard/StoreCard";
+import { useAgentsSection } from "./useAgentsSection";
 
 export interface Agent {
   slug: string;
@@ -21,62 +23,68 @@ export interface Agent {
   rating: number;
 }
 
-interface AgentsSectionProps {
-  sectionTitle: string;
+interface Props {
+  sectionTitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
-  margin?: string;
 }
 
-export const AgentsSection = ({
+export function AgentsSection({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
-  margin = "24px",
-}: AgentsSectionProps) => {
-  // TODO: Update this when we have pagination and shifts to useAgentsSection
+}: Props) {
   const displayedAgents = allAgents;
   const { handleCardClick } = useAgentsSection();
 
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <h2
-          style={{ marginBottom: margin }}
-          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
-        >
-          {sectionTitle}
-        </h2>
-        {!displayedAgents || displayedAgents.length === 0 ? (
-          <div className="text-center text-gray-500 dark:text-gray-400">
-            No agents found
+        {sectionTitle ? (
+          <div className="mb-8 flex flex-row items-center gap-2">
+            <DotsNineIcon size={24} />
+            <Text variant="h4">{sectionTitle}</Text>
           </div>
+        ) : null}
+        {!displayedAgents || displayedAgents.length === 0 ? (
+          <Text variant="body" className="ml-4 mt-8 text-gray-500">
+            No agents found
+          </Text>
         ) : (
           <>
             {/* Mobile Carousel View */}
             <Carousel
-              className="md:hidden"
+              className="-mx-4 md:hidden"
               opts={{
                 loop: true,
               }}
             >
-              <CarouselContent>
-                {displayedAgents.map((agent, index) => (
-                  <CarouselItem key={index} className="min-w-64 max-w-71">
-                    <StoreCard
-                      agentName={agent.agent_name}
-                      agentImage={agent.agent_image}
-                      description={agent.description}
-                      runs={agent.runs}
-                      rating={agent.rating}
-                      avatarSrc={agent.creator_avatar}
-                      creatorName={agent.creator}
-                      hideAvatar={hideAvatars}
-                      onClick={() => handleCardClick(agent.creator, agent.slug)}
-                    />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
+              <div className="relative">
+                <CarouselContent className="px-4 pb-2">
+                  {displayedAgents.map((agent, index) => (
+                    <CarouselItem key={index} className="min-w-64 max-w-71">
+                      <StoreCard
+                        agentName={agent.agent_name}
+                        agentImage={agent.agent_image}
+                        description={agent.description}
+                        runs={agent.runs}
+                        rating={agent.rating}
+                        avatarSrc={agent.creator_avatar}
+                        creatorName={agent.creator}
+                        hideAvatar={hideAvatars}
+                        creatorSlug={agent.creator}
+                        agentSlug={agent.slug}
+                        agentGraphID={agent.agent_graph_id}
+                        onClick={() =>
+                          handleCardClick(agent.creator, agent.slug)
+                        }
+                      />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
+              </div>
             </Carousel>
 
             <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -91,6 +99,9 @@ export const AgentsSection = ({
                   avatarSrc={agent.creator_avatar}
                   creatorName={agent.creator}
                   hideAvatar={hideAvatars}
+                  creatorSlug={agent.creator}
+                  agentSlug={agent.slug}
+                  agentGraphID={agent.agent_graph_id}
                   onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               ))}
@@ -100,4 +111,4 @@ export const AgentsSection = ({
       </div>
     </div>
   );
-};
+}

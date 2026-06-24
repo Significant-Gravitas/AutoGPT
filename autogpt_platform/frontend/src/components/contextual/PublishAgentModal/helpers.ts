@@ -8,4 +8,8 @@ export const emptyModalState = {
   category: "",
   description: "",
   recommendedScheduleCron: "",
+  instructions: "",
+  agentOutputDemo: "",
+  changesSummary: "",
+  additionalImages: [],
 };

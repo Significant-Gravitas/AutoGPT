@@ -5,6 +5,7 @@ import {
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
+import { cache } from "react";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -68,10 +69,11 @@ export function buildUrlWithQuery(
 ): string {
   if (!query) return url;
 
-  // Filter out undefined values to prevent them from being included as "undefined" strings
+  // Drop null/undefined so URLSearchParams doesn't serialize them as the
+  // strings "null" / "undefined".
   const filteredQuery = Object.entries(query).reduce(
     (acc, [key, value]) => {
-      if (value !== undefined) {
+      if (value != null) {
         acc[key] = value;
       }
       return acc;
@@ -109,32 +111,23 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
   );
 }
 
-export async function getServerAuthToken(): Promise<string> {
+export const getServerAuthToken = cache(async (): Promise<string | null> => {
   const supabase = await getServerSupabase();
-
-  if (!supabase) {
-    throw new Error("Supabase client not available");
-  }
 
   try {
     const {
       data: { session },
-      error,
     } = await supabase.auth.getSession();
 
-    if (error || !session || !session.access_token) {
-      return "no-token-found";
-    }
-
-    return session.access_token;
+    return session?.access_token ?? null;
   } catch (error) {
     console.error("Failed to get auth token:", error);
-    return "no-token-found";
+    return null;
   }
-}
+});
 
 export function createRequestHeaders(
-  token: string,
+  token: string | null,
   hasRequestBody: boolean,
   contentType: string = "application/json",
   originalRequest?: Request,
@@ -145,7 +138,7 @@ export function createRequestHeaders(
     headers["Content-Type"] = contentType;
   }
 
-  if (token && token !== "no-token-found") {
+  if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
@@ -162,6 +155,15 @@ export function createRequestHeaders(
     const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
     if (apiKeyHeader) {
       headers[API_KEY_HEADER_NAME] = apiKeyHeader;
+    }
+
+    // Forward Sentry distributed-tracing headers so the backend transaction
+    // continues the browser span instead of starting a disconnected trace.
+    for (const name of ["sentry-trace", "baggage"] as const) {
+      const value = originalRequest.headers.get(name);
+      if (value) {
+        headers[name] = value;
+      }
     }
   }
 
@@ -184,6 +186,11 @@ export function serializeRequestBody(
 }
 
 export async function parseApiError(response: Response): Promise<string> {
+  // Handle 413 Payload Too Large with user-friendly message
+  if (response.status === 413) {
+    return "File is too large — max size is 256MB";
+  }
+
   try {
     const errorData = await response.clone().json();
 
@@ -203,6 +210,16 @@ export async function parseApiError(response: Response): Promise<string> {
     if (typeof errorData.detail === "object" && errorData.detail !== null) {
       if (errorData.detail.message) return errorData.detail.message;
       return response.statusText; // Fallback to status text if no message
+    }
+
+    // Check for file size error from backend
+    if (
+      typeof errorData.detail === "string" &&
+      errorData.detail.includes("exceeds the maximum")
+    ) {
+      const match = errorData.detail.match(/maximum allowed size of (\d+)MB/);
+      const maxSize = match ? match[1] : "256";
+      return `File is too large — max size is ${maxSize}MB`;
     }
 
     return errorData.detail || errorData.error || response.statusText;

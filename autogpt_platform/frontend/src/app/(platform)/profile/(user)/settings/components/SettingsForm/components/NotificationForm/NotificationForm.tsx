@@ -55,6 +55,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                   </div>
                   <FormControl>
                     <Switch
+                      aria-label="Agent Run Notifications"
                       checked={field.value}
                       onCheckedChange={field.onChange}
                     />

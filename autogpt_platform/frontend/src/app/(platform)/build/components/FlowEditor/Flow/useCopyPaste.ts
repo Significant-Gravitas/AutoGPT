@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -14,12 +14,16 @@ interface CopyableData {
 
 const CLIPBOARD_PREFIX = "autogpt-flow-data:";
 
-export function useCopyPaste() {
+export function useCopyPaste(isReadOnly = false) {
   const { getViewport } = useReactFlow();
   const { toast } = useToast();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
+      // Read-only graphs cannot be edited, so paste (which would add nodes) is a
+      // no-op. The visual edit controls are hidden in this mode too.
+      if (isReadOnly) return;
+
       const activeElement = document.activeElement;
       const isInputField =
         activeElement?.tagName === "INPUT" ||
@@ -148,8 +152,19 @@ export function useCopyPaste() {
         }
       }
     },
-    [getViewport, toast],
+    [getViewport, toast, isReadOnly],
   );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleCopyPaste(event);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCopyPaste]);
 
   return handleCopyPaste;
 }

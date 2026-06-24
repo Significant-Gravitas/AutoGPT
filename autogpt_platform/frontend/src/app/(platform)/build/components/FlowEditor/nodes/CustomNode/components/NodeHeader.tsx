@@ -1,34 +1,45 @@
-import { Text } from "@/components/atoms/Text/Text";
-import { beautifyString, cn } from "@/lib/utils";
-import { NodeCost } from "./NodeCost";
-import { NodeBadges } from "./NodeBadges";
-import { NodeContextMenu } from "./NodeContextMenu";
-import { CustomNodeData } from "../CustomNode";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useState } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { CustomNodeData } from "../CustomNode";
+import { formatNodeDisplayTitle, getNodeDisplayTitle } from "../helpers";
+import { NodeBadges } from "./NodeBadges";
+import { NodeContextMenu } from "./NodeContextMenu";
+import { NodeCost } from "./NodeCost";
 
-export const NodeHeader = ({
-  data,
-  nodeId,
-}: {
+type Props = {
   data: CustomNodeData;
   nodeId: string;
-}) => {
+};
+
+export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
-  const title = (data.metadata?.customized_name as string) || data.title;
+
+  const title = getNodeDisplayTitle(data);
+  const displayTitle = formatNodeDisplayTitle(data);
+
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
 
+  useEffect(() => {
+    if (!isEditingTitle) {
+      setEditedTitle(title);
+    }
+  }, [title, isEditingTitle]);
+
   const handleTitleEdit = () => {
-    updateNodeData(nodeId, {
-      metadata: { ...data.metadata, customized_name: editedTitle },
-    });
+    if (editedTitle !== title) {
+      updateNodeData(nodeId, {
+        metadata: { ...data.metadata, customized_name: editedTitle },
+      });
+    }
     setIsEditingTitle(false);
   };
 
@@ -41,7 +52,7 @@ export const NodeHeader = ({
   };
 
   return (
-    <div className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4 pt-3">
+    <div className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-zinc-200 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4 pt-3">
       {/* Title row with context menu */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -67,13 +78,16 @@ export const NodeHeader = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div>
-                      <Text variant="large-semibold" className="line-clamp-1">
-                        {beautifyString(title)}
+                      <Text
+                        variant="large-semibold"
+                        className="line-clamp-1 hover:cursor-text"
+                      >
+                        {displayTitle}
                       </Text>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{beautifyString(title)}</p>
+                    <p>{displayTitle}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

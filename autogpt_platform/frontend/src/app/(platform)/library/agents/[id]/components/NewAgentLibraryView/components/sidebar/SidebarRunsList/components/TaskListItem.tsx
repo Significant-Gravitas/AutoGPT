@@ -6,12 +6,13 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
   CheckCircleIcon,
   ClockIcon,
+  FlaskIcon,
   PauseCircleIcon,
   StopCircleIcon,
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 import React from "react";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
@@ -34,8 +35,8 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper className="border-orange-50 bg-orange-50">
-      <PauseCircleIcon size={16} className="text-orange-700" weight="bold" />
+    <IconWrapper className="border-yellow-50 bg-yellow-50">
+      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
     </IconWrapper>
   ),
   COMPLETED: (
@@ -72,11 +73,26 @@ export function TaskListItem({
   onClick,
   onDeleted,
 }: Props) {
+  const icon = run.is_dry_run ? (
+    <IconWrapper className="border-amber-50 bg-amber-50">
+      <FlaskIcon size={16} className="text-amber-700" weight="fill" />
+    </IconWrapper>
+  ) : (
+    statusIconMap[run.status]
+  );
+
   return (
     <SidebarItemCard
-      icon={statusIconMap[run.status]}
-      title={title}
-      description={moment(run.started_at).fromNow()}
+      icon={icon}
+      title={run.is_dry_run ? `${title} (Simulated)` : title}
+      description={
+        run.started_at
+          ? formatDistanceToNow(run.started_at, { addSuffix: true })
+          : "—"
+      }
+      descriptionTitle={
+        run.started_at ? new Date(run.started_at).toString() : undefined
+      }
       onClick={onClick}
       selected={selected}
       actions={

@@ -2,10 +2,10 @@
 
 import {
   getGetV2ListPresetsQueryKey,
+  getV2ListPresets,
   useDeleteV2DeleteAPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import type { LibraryAgentPresetResponse } from "@/app/api/__generated__/models/libraryAgentPresetResponse";
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -56,15 +56,13 @@ export function SelectedTemplateActions({
           queryKey,
         });
 
-        const queryData = queryClient.getQueryData<{
-          data: LibraryAgentPresetResponse;
-        }>(queryKey);
+        const queryData =
+          queryClient.getQueryData<
+            Awaited<ReturnType<typeof getV2ListPresets>>
+          >(queryKey);
 
-        const presets =
-          okData<LibraryAgentPresetResponse>(queryData)?.presets ?? [];
-        const templates = presets.filter(
-          (preset) => !preset.webhook_id || !preset.webhook,
-        );
+        const presets = okData(queryData)?.presets ?? [];
+        const templates = presets.filter((preset) => !preset.webhook_id);
 
         setShowDeleteDialog(false);
         onDeleted?.();

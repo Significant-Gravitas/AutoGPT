@@ -2,24 +2,22 @@ from typing import Any
 
 from firecrawl import FirecrawlApp
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockCost,
-    BlockCostType,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
-    cost,
 )
+from backend.util.exceptions import BlockExecutionError
 
 from ._config import firecrawl
 
 
-@cost(BlockCost(2, BlockCostType.RUN))
 class FirecrawlExtractBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
@@ -59,11 +57,27 @@ class FirecrawlExtractBlock(Block):
     ) -> BlockOutput:
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        extract_result = app.extract(
-            urls=input_data.urls,
-            prompt=input_data.prompt,
-            schema=input_data.output_schema,
-            enable_web_search=input_data.enable_web_search,
-        )
+        try:
+            extract_result = app.extract(
+                urls=input_data.urls,
+                prompt=input_data.prompt,
+                schema=input_data.output_schema,
+                enable_web_search=input_data.enable_web_search,
+            )
+        except Exception as e:
+            raise BlockExecutionError(
+                message=f"Extract failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
 
+        # Firecrawl surfaces actual credit spend on extract responses
+        # (credits_used). 1 Firecrawl credit ≈ $0.001.
+        credits_used = getattr(extract_result, "credits_used", None) or 0
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=credits_used * 0.001,
+                provider_cost_type="cost_usd",
+            )
+        )
         yield "data", extract_result.data

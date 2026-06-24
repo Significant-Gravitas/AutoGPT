@@ -1,15 +1,11 @@
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "@phosphor-icons/react";
 
 export function TimezoneNotice() {
-  const { data: userTimezone, isSuccess } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+  const userTimezone = useUserTimezone();
 
-  if (!isSuccess) {
+  if (!userTimezone) {
     return null;
   }
 
@@ -19,7 +15,7 @@ export function TimezoneNotice() {
         <InfoIcon className="h-4 w-4 text-amber-600" />
         <p className="text-sm text-amber-800">
           No timezone set. Schedule will run in UTC.
-          <a href="/profile/settings" className="ml-1 underline">
+          <a href="/settings/account" className="ml-1 underline">
             Set your timezone
           </a>
         </p>

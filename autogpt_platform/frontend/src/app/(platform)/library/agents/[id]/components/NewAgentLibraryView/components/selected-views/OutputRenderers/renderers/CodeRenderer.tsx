@@ -83,7 +83,9 @@ function renderCode(
         </div>
       )}
       <pre className="overflow-x-auto rounded-md bg-muted p-3">
-        <code className="font-mono text-sm">{codeValue}</code>
+        <code className="whitespace-pre-wrap break-words font-mono text-sm">
+          {codeValue}
+        </code>
       </pre>
     </div>
   );

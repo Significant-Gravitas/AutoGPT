@@ -48,8 +48,6 @@ export const resolveCollisions: CollisionAlgorithm = (
     const width = (node.width ?? node.measured?.width ?? 0) + margin * 2;
     const height = (node.height ?? node.measured?.height ?? 0) + margin * 2;
 
-    console.log("width", width);
-    console.log("height", height);
     const x = node.position.x - margin;
     const y = node.position.y - margin;
 

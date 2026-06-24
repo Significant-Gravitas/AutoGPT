@@ -4,9 +4,10 @@ import { Text } from "@/components/atoms/Text/Text";
 interface Props {
   errorMessage: string;
   context: string;
+  hint?: string;
 }
 
-export function ErrorMessage({ errorMessage, context }: Props) {
+export function ErrorMessage({ errorMessage, context, hint }: Props) {
   return (
     <div className="space-y-2">
       <Text variant="body" className="text-zinc-700">
@@ -17,6 +18,13 @@ export function ErrorMessage({ errorMessage, context }: Props) {
           {errorMessage}
         </Text>
       </div>
+      {hint && (
+        <div className="!mt-4">
+          <Text variant="body" className="text-zinc-700">
+            {hint}
+          </Text>
+        </div>
+      )}
     </div>
   );
 }

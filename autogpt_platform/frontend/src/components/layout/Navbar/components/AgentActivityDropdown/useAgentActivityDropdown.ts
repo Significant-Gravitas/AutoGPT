@@ -1,9 +1,10 @@
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
+import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
@@ -26,7 +27,7 @@ export function useAgentActivityDropdown() {
     isSuccess: executionsSuccess,
     error: executionsError,
   } = useGetV1ListAllExecutions({
-    query: { select: (res) => (res.status === 200 ? res.data : null) },
+    query: { select: okData },
   });
 
   // Get all graph IDs from agentInfoMap
@@ -46,10 +47,22 @@ export function useAgentActivityDropdown() {
   );
 
   // Process initial execution state when data loads
+  // Use a ref to track if we've already processed to avoid infinite loops
+  const processedExecutionsRef = useRef<string | null>(null);
   useEffect(() => {
-    if (executions && executionsSuccess && agentInfoMap.size > 0) {
+    const executionKey = executions
+      ? `${executions.length}-${executionsSuccess}`
+      : null;
+
+    if (
+      executions &&
+      executionsSuccess &&
+      agentInfoMap.size > 0 &&
+      processedExecutionsRef.current !== executionKey
+    ) {
       const notifications = categorizeExecutions(executions, agentInfoMap);
       setNotifications(notifications);
+      processedExecutionsRef.current = executionKey;
     }
   }, [executions, executionsSuccess, agentInfoMap]);
 

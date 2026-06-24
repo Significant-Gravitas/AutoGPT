@@ -3,10 +3,12 @@
  * Handles reading, writing, and managing impersonation state across tabs and server/client contexts
  */
 
-import { IMPERSONATION_STORAGE_KEY } from "./constants";
+import {
+  IMPERSONATION_COOKIE_NAME,
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "./constants";
 import { environment } from "@/services/environment";
-
-const COOKIE_NAME = "admin-impersonate-user-id";
 
 /**
  * Cookie utility functions
@@ -19,7 +21,7 @@ export const ImpersonationCookie = {
     if (!environment.isClientSide()) return;
 
     const encodedUserId = encodeURIComponent(userId);
-    document.cookie = `${COOKIE_NAME}=${encodedUserId}; path=/; SameSite=Lax; Secure`;
+    document.cookie = `${IMPERSONATION_COOKIE_NAME}=${encodedUserId}; path=/; SameSite=Lax; Secure`;
   },
 
   /**
@@ -28,7 +30,7 @@ export const ImpersonationCookie = {
   clear(): void {
     if (!environment.isClientSide()) return;
 
-    document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
+    document.cookie = `${IMPERSONATION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
   },
 
   /**
@@ -40,7 +42,7 @@ export const ImpersonationCookie = {
     try {
       const cookieValue = document.cookie
         .split("; ")
-        .find((row) => row.startsWith(`${COOKIE_NAME}=`))
+        .find((row) => row.startsWith(`${IMPERSONATION_COOKIE_NAME}=`))
         ?.split("=")[1];
 
       return cookieValue ? decodeURIComponent(cookieValue) : null;
@@ -59,7 +61,7 @@ export const ImpersonationCookie = {
     try {
       const { cookies } = await import("next/headers");
       const cookieStore = await cookies();
-      const impersonationCookie = cookieStore.get(COOKIE_NAME);
+      const impersonationCookie = cookieStore.get(IMPERSONATION_COOKIE_NAME);
       return impersonationCookie?.value || null;
     } catch (error) {
       console.debug("Could not access server-side cookies:", error);
@@ -165,3 +167,23 @@ export const ImpersonationState = {
     return await ImpersonationCookie.getServerSide();
   },
 };
+
+/**
+ * Returns system headers to attach to every backend request.
+ *
+ * Currently adds the impersonation header (X-Act-As-User-Id) when an admin
+ * is impersonating a user. Extend this function to add other cross-cutting
+ * request headers rather than scattering them across callers.
+ *
+ * @remarks Client-side only — returns `{}` in server components where
+ * `ImpersonationState.get()` has no access to sessionStorage or client cookies.
+ * For server-side impersonation, use `ImpersonationState.getServerSide()` instead.
+ */
+export function getSystemHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const impersonatedUserId = ImpersonationState.get();
+  if (impersonatedUserId) {
+    headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+  }
+  return headers;
+}

@@ -1,7 +1,9 @@
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
 
@@ -19,6 +21,7 @@ export const useCronSchedulerDialog = ({
   defaultCronExpression?: string;
 }) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
 
@@ -28,11 +31,7 @@ export const useCronSchedulerDialog = ({
     flowExecutionID: parseAsString,
   });
 
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+  const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
@@ -45,6 +44,7 @@ export const useCronSchedulerDialog = ({
               title: "Schedule created",
               description: "Schedule created successfully",
             });
+            invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },
         onError: (error) => {

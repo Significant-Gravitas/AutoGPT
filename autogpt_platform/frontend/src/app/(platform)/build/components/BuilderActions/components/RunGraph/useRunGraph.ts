@@ -4,13 +4,14 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { ApiError } from "@/lib/autogpt-server-api/helpers"; // Check if this exists
+import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 
 export const useRunGraph = () => {
   const { saveGraph, isSaving } = useSaveGraph({
@@ -32,6 +33,35 @@ export const useRunGraph = () => {
   const clearAllNodeErrors = useNodeStore(
     useShallow((state) => state.clearAllNodeErrors),
   );
+  const cleanNodesStatuses = useNodeStore(
+    useShallow((state) => state.cleanNodesStatuses),
+  );
+  const clearAllNodeExecutionResults = useNodeStore(
+    useShallow((state) => state.clearAllNodeExecutionResults),
+  );
+
+  // Tutorial integration - force open dialog when tutorial requests it
+  const forceOpenRunInputDialog = useTutorialStore(
+    (state) => state.forceOpenRunInputDialog,
+  );
+  const setForceOpenRunInputDialog = useTutorialStore(
+    (state) => state.setForceOpenRunInputDialog,
+  );
+
+  // Sync tutorial state with dialog state
+  useEffect(() => {
+    if (forceOpenRunInputDialog && !openRunInputDialog) {
+      setOpenRunInputDialog(true);
+    }
+  }, [forceOpenRunInputDialog, openRunInputDialog]);
+
+  // Reset tutorial state when dialog closes
+  const handleSetOpenRunInputDialog = (isOpen: boolean) => {
+    setOpenRunInputDialog(isOpen);
+    if (!isOpen && forceOpenRunInputDialog) {
+      setForceOpenRunInputDialog(false);
+    }
+  };
 
   const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
     useQueryStates({
@@ -105,18 +135,28 @@ export const useRunGraph = () => {
       },
     });
 
-  const handleRunGraph = async () => {
+  const handleRunGraph = async ({
+    dryRun = false,
+  }: { dryRun?: boolean } = {}) => {
     await saveGraph(undefined);
 
-    if (hasInputs() || hasCredentials()) {
+    if (!dryRun && (hasInputs() || hasCredentials())) {
       setOpenRunInputDialog(true);
     } else {
+      // Clear stale results so the UI shows fresh output from this execution
+      clearAllNodeExecutionResults();
+      cleanNodesStatuses();
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
-        data: { inputs: {}, credentials_inputs: {}, source: "builder" },
+        data: {
+          inputs: {},
+          credentials_inputs: {},
+          source: "builder",
+          ...(dryRun && { dry_run: true }),
+        },
       });
     }
   };
@@ -138,6 +178,6 @@ export const useRunGraph = () => {
     isExecutingGraph,
     isTerminatingGraph,
     openRunInputDialog,
-    setOpenRunInputDialog,
+    setOpenRunInputDialog: handleSetOpenRunInputDialog,
   };
 };

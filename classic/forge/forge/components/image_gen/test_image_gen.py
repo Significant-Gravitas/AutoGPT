@@ -1,5 +1,6 @@
 import functools
 import hashlib
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +12,8 @@ from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
 from forge.file_storage.base import FileStorage
 from forge.llm.providers.openai import OpenAICredentials
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 @pytest.fixture
@@ -39,7 +42,7 @@ def image_size(request):
     return request.param
 
 
-@pytest.mark.vcr
+@pytest.mark.skipif(not OPENAI_API_KEY, reason="OPENAI_API_KEY not set")
 def test_dalle(
     image_gen_component: ImageGeneratorComponent,
     image_size,
@@ -52,10 +55,7 @@ def test_dalle(
     )
 
 
-@pytest.mark.xfail(
-    reason="The image is too big to be put in a cassette for a CI pipeline. "
-    "We're looking into a solution."
-)
+@pytest.mark.xfail(reason="HuggingFace image generation is unreliable in CI.")
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],

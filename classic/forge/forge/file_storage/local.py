@@ -48,24 +48,20 @@ class LocalFileStorage(FileStorage):
         path: str | Path,
         mode: Literal["w", "r"] = "r",
         binary: Literal[False] = False,
-    ) -> TextIO:
-        ...
+    ) -> TextIO: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"], binary: Literal[True]
-    ) -> BinaryIO:
-        ...
+    ) -> BinaryIO: ...
 
     @overload
-    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BinaryIO:
-        ...
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BinaryIO: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False
-    ) -> TextIO | BinaryIO:
-        ...
+    ) -> TextIO | BinaryIO: ...
 
     def open_file(
         self, path: str | Path, mode: Literal["w", "r"] = "r", binary: bool = False

@@ -2,7 +2,7 @@ import os
 import re
 from typing import Type
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

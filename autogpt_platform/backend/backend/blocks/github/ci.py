@@ -5,7 +5,7 @@ from typing import Optional
 
 from typing_extensions import TypedDict
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

@@ -25,7 +25,7 @@ export function RunSummary({ run }: Props) {
       </p>
 
       {typeof correctnessScore === "number" && (
-        <div className="flex items-center gap-3 rounded-lg bg-neutral-50 p-3">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-neutral-600">
               Success Estimate:

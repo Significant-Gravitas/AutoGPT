@@ -2,10 +2,10 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import {
   CheckCircleIcon,
   ClockIcon,
-  EyeIcon,
   PauseCircleIcon,
   StopCircleIcon,
   WarningCircleIcon,
+  WarningIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
@@ -38,9 +38,9 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     textColor: "!text-yellow-700",
   },
   REVIEW: {
-    icon: <EyeIcon size={16} className="text-orange-700" weight="bold" />,
-    bgColor: "bg-orange-50",
-    textColor: "!text-orange-700",
+    icon: <WarningIcon size={16} className="text-yellow-700" weight="bold" />,
+    bgColor: "bg-yellow-50",
+    textColor: "!text-yellow-700",
   },
   COMPLETED: {
     icon: (

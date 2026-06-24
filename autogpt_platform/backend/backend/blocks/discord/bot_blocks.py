@@ -8,13 +8,14 @@ from typing import Any, Literal, cast
 import discord
 from pydantic import SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
 from backend.util.request import Requests
@@ -72,7 +73,7 @@ class ReadDiscordMessagesBlock(Block):
             id="df06086a-d5ac-4abb-9996-2ad0acb2eff7",
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
-            description="Reads messages from a Discord channel using a bot token.",
+            description="Reads new messages from a Discord channel using a bot token and triggers when a new message is posted",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "continuous_read": False,
@@ -666,8 +667,7 @@ class SendDiscordFileBlock(Block):
         file: MediaFileType,
         filename: str,
         message_content: str,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
     ) -> dict:
         intents = discord.Intents.default()
         intents.guilds = True
@@ -731,10 +731,9 @@ class SendDiscordFileBlock(Block):
                     # Local file path - read from stored media file
                     # This would be a path from a previous block's output
                     stored_file = await store_media_file(
-                        graph_exec_id=graph_exec_id,
                         file=file,
-                        user_id=user_id,
-                        return_content=True,  # Get as data URI
+                        execution_context=execution_context,
+                        return_format="for_external_api",  # Get content to send to Discord
                     )
                     # Now process as data URI
                     header, encoded = stored_file.split(",", 1)
@@ -781,8 +780,7 @@ class SendDiscordFileBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
@@ -793,8 +791,7 @@ class SendDiscordFileBlock(Block):
                 file=input_data.file,
                 filename=input_data.filename,
                 message_content=input_data.message_content,
-                graph_exec_id=graph_exec_id,
-                user_id=user_id,
+                execution_context=execution_context,
             )
 
             yield "status", result.get("status", "Unknown error")

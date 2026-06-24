@@ -40,29 +40,35 @@ export function DialogWrap({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
 
-  // Prevent dialog from closing when external picker is open
+  // Prevent dialog from closing when external picker is open or when forceOpen is true
   const handleInteractOutside = useCallback(
     (event: Event) => {
-      if (isExternalPickerOpen()) {
+      if (isExternalPickerOpen() || isForceOpen) {
         event.preventDefault();
         return;
       }
       handleClose();
     },
-    [handleClose],
+    [handleClose, isForceOpen],
   );
 
-  const handlePointerDownOutside = useCallback((event: Event) => {
-    if (isExternalPickerOpen()) {
-      event.preventDefault();
-    }
-  }, []);
+  const handlePointerDownOutside = useCallback(
+    (event: Event) => {
+      if (isExternalPickerOpen() || isForceOpen) {
+        event.preventDefault();
+      }
+    },
+    [isForceOpen],
+  );
 
-  const handleFocusOutside = useCallback((event: Event) => {
-    if (isExternalPickerOpen()) {
-      event.preventDefault();
-    }
-  }, []);
+  const handleFocusOutside = useCallback(
+    (event: Event) => {
+      if (isExternalPickerOpen() || isForceOpen) {
+        event.preventDefault();
+      }
+    },
+    [isForceOpen],
+  );
 
   useEffect(() => {
     function update() {
@@ -88,7 +94,7 @@ export function DialogWrap({
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
-        onEscapeKeyDown={handleClose}
+        onEscapeKeyDown={isForceOpen ? undefined : handleClose}
         aria-describedby={undefined}
         className={modalStyles.content}
         style={{
@@ -96,7 +102,7 @@ export function DialogWrap({
         }}
       >
         <div
-          className={`flex items-center justify-between ${
+          className={`flex items-center justify-between px-2 ${
             title ? "pb-6" : "pb-0"
           }`}
         >
@@ -111,7 +117,7 @@ export function DialogWrap({
             </span>
           )}
 
-          {isForceOpen && !handleClose ? null : (
+          {isForceOpen ? null : (
             <Button
               variant="icon"
               size="icon"
@@ -128,12 +134,12 @@ export function DialogWrap({
           <div
             ref={scrollRef}
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,
             )}
             style={{
               scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
             }}
           >
             {children}

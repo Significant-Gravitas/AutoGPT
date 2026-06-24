@@ -63,21 +63,16 @@ export function useExecutionEvents({
         if (subscribedIds.has(id)) return;
         subscribedIds.add(id);
 
-        api
-          .subscribeToGraphExecutions(id as GraphID)
-          .then(() => {
-            console.debug(`Subscribed to execution updates for graph ${id}`);
-          })
-          .catch((error) => {
-            console.error(
-              `Failed to subscribe to execution updates for graph ${id}:`,
-              error,
-            );
-            Sentry.captureException(error, {
-              tags: { graphId: id },
-            });
-            subscribedIds.delete(id);
+        api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
+          console.error(
+            `Failed to subscribe to execution updates for graph ${id}:`,
+            error,
+          );
+          Sentry.captureException(error, {
+            tags: { graphId: id },
           });
+          subscribedIds.delete(id);
+        });
       });
     });
 
