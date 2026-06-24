@@ -1,8 +1,5 @@
 """MediaDurationBlock - Get the duration of a media file."""
 
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -14,6 +11,8 @@ from backend.blocks.video._utils import strip_chapters_inplace
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 
 class MediaDurationBlock(Block):

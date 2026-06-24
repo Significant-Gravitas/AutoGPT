@@ -3,13 +3,12 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks.baas.bots import (
     _MEETING_BAAS_USD_PER_SECOND,
     BaasBotFetchMeetingDataBlock,
 )
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from pydantic import SecretStr
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

@@ -2,13 +2,12 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
-
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
 from backend.util.exceptions import NotFoundError, WebhookRegistrationError
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 
 from .. import db
 from .. import model as models

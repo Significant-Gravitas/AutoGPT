@@ -8,17 +8,16 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message import ChatCompletionMessage
-
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
     generate_activity_status_for_execution,
 )
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 
 def _make_usage(
@@ -286,7 +285,9 @@ class TestBuildExecutionSummary:
             # Check that errors are now in node's recent_errors field
             # Find the output node (with truncated UUID)
             output_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "678e9012"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "678e9012"  # Truncated
             )
             assert output_node["error_count"] == 1
             assert output_node["execution_count"] == 1
@@ -414,7 +415,9 @@ class TestBuildExecutionSummary:
 
             # String error format - find node with truncated ID
             string_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "333e4444"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "333e4444"  # Truncated
             )
             assert len(string_error_node["recent_errors"]) == 1
             assert (
@@ -424,7 +427,9 @@ class TestBuildExecutionSummary:
 
             # No error output format - find node with truncated ID
             no_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "777e8888"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "777e8888"  # Truncated
             )
             assert len(no_error_node["recent_errors"]) == 1
             assert no_error_node["recent_errors"][0]["error"] == "Unknown error"

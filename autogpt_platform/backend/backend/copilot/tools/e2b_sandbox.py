@@ -49,9 +49,8 @@ import logging
 import math
 from typing import Any, Awaitable, Callable, Literal
 
-from e2b import AsyncSandbox, SandboxLifecycle
-
 from backend.data.redis_client import get_redis_async
+from e2b import AsyncSandbox, SandboxLifecycle
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,8 @@
 import logging
 
+from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
 from fastapi import Request
 from strenum import StrEnum
-
-from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
 
 logger = logging.getLogger(__name__)
 

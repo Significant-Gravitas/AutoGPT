@@ -15,7 +15,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
 from backend.data.execution import (
     ExecutionContext,
@@ -172,9 +171,9 @@ async def test_execute_single_tool_merges_masks_into_inputs():
     assert actual_masks is expected_masks
 
     # Masks merged into node_exec_entry.inputs (the actual bug fix)
-    assert (
-        "credentials" in node_exec.inputs
-    ), f"Credential mask not merged into inputs: {node_exec.inputs!r}"
+    assert "credentials" in node_exec.inputs, (
+        f"Credential mask not merged into inputs: {node_exec.inputs!r}"
+    )
     assert node_exec.inputs["credentials"] == {"api_key": "sk-test-secret"}
 
 

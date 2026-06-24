@@ -7,9 +7,9 @@ from sample_code import three_sum
 def test_three_sum(nums: List[int], target: int, expected_result: List[int]) -> None:
     result = three_sum(nums, target)
     print(result)
-    assert (
-        result == expected_result
-    ), f"AssertionError: Expected the output to be {expected_result}"
+    assert result == expected_result, (
+        f"AssertionError: Expected the output to be {expected_result}"
+    )
 
 
 if __name__ == "__main__":

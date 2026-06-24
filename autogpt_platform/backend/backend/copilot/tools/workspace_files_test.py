@@ -6,7 +6,6 @@ import shutil
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse

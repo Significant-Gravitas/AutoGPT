@@ -50,7 +50,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _build_query_message
 

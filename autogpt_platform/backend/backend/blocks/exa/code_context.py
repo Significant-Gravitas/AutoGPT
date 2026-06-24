@@ -7,8 +7,6 @@ from open source repositories, documentation, and Stack Overflow.
 
 from typing import Union
 
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -20,6 +18,7 @@ from backend.sdk import (
     Requests,
     SchemaField,
 )
+from pydantic import BaseModel
 
 from ._config import exa
 from .helpers import merge_exa_cost

@@ -4,7 +4,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .chat import list_user_chats, start_chat_turn

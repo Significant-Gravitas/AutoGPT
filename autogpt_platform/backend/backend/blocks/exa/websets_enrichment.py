@@ -8,10 +8,6 @@ allowing extraction of additional structured data from existing items.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from exa_py import AsyncExa
-from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -23,6 +19,9 @@ from backend.sdk import (
     Requests,
     SchemaField,
 )
+from exa_py import AsyncExa
+from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
+from pydantic import BaseModel
 
 from ._config import exa
 from .helpers import merge_exa_cost

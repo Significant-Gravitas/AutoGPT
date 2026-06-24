@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 import fastapi
 import fastapi.testclient
 import pytest
-
 from backend.api.features.admin import bot_analytics_routes
 from backend.data.bot_analytics_reads import (
     BotAnalyticsSummary,

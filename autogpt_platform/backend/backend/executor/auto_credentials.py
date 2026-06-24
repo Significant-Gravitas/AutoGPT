@@ -8,10 +8,9 @@ so both handle ``_credentials_id`` payloads identically.
 import logging
 from typing import Any
 
-from redis.asyncio.lock import Lock as AsyncRedisLock
-
 from backend.blocks._base import BlockSchema
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from redis.asyncio.lock import Lock as AsyncRedisLock
 
 logger = logging.getLogger(__name__)
 

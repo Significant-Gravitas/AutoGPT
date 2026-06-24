@@ -4,12 +4,11 @@ import asyncio
 import logging
 from typing import AsyncGenerator
 
-from pydantic import BaseModel, field_serializer
-
 from backend.api.model import NotificationPayload
 from backend.data.event_bus import AsyncRedisEventBus
 from backend.data.push_sender import send_push_for_user
 from backend.util.settings import Settings
+from pydantic import BaseModel, field_serializer
 
 logger = logging.getLogger(__name__)
 _settings = Settings()

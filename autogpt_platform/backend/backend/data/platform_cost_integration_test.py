@@ -9,10 +9,9 @@ when a plain Python dict was passed to the Prisma Json? field.
 import uuid
 
 import pytest
+from backend.util.json import SafeJson
 from prisma.models import PlatformCostLog as PrismaLog
 from prisma.models import User
-
-from backend.util.json import SafeJson
 
 from .platform_cost import PlatformCostEntry, log_platform_cost
 

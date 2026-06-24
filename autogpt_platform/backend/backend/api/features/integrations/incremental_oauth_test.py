@@ -5,10 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
-from pydantic import SecretStr
-
 from backend.api.features.integrations.router import router
 from backend.data.model import APIKeyCredentials, OAuth2Credentials, OAuthState
+from pydantic import SecretStr
 
 app = fastapi.FastAPI()
 app.include_router(router)

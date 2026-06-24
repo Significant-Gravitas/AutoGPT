@@ -45,12 +45,10 @@ class Slant3DBlockBase(Block):
         valid_tags = [filament["colorTag"] for filament in response["filaments"]]
 
         if color_tag not in valid_tags:
-            raise ValueError(
-                f"""Invalid color profile combination {color_tag}.
+            raise ValueError(f"""Invalid color profile combination {color_tag}.
 Valid colors for {profile.value} are:
-{','.join([filament['colorTag'].replace(profile.value.lower(), '') for filament in response['filaments'] if filament['profile'] == profile.value])}
-"""
-            )
+{",".join([filament["colorTag"].replace(profile.value.lower(), "") for filament in response["filaments"] if filament["profile"] == profile.value])}
+""")
         return color_tag
 
     async def _convert_to_color(

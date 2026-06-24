@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_store import MemoryStoreTool

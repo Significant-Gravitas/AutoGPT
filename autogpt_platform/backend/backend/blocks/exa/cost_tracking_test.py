@@ -7,7 +7,6 @@ ExaContentsBlock and ExaCodeContextBlock.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks.exa._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.data.model import NodeExecutionStats
 

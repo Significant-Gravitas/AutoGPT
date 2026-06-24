@@ -1,7 +1,5 @@
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -10,6 +8,7 @@ from backend.data.model import (
 )
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
 from backend.util.settings import Secrets
+from pydantic import SecretStr
 
 secrets = Secrets()
 TODOIST_OAUTH_IS_CONFIGURED = bool(

@@ -1,7 +1,6 @@
 """Tests for creds_manager hook system: register, invoke, and CRUD integration."""
 
 import pytest
-
 from backend.integrations.creds_manager import (
     _invoke_creds_changed_hook,
     register_creds_changed_hook,

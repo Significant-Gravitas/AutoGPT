@@ -23,10 +23,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine
-
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
@@ -66,6 +62,9 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import MetaData, create_engine
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:

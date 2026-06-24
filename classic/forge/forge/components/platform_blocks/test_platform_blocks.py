@@ -4,13 +4,12 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import SecretStr
-
 from forge.components.platform_blocks import (
     PlatformBlocksComponent,
     PlatformBlocksConfig,
 )
 from forge.components.platform_blocks.client import PlatformClient, PlatformClientError
+from pydantic import SecretStr
 
 
 @pytest.fixture

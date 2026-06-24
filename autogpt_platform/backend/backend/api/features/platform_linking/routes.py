@@ -4,8 +4,6 @@ import logging
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Path, Security
-
 from backend.data.db_accessors import platform_linking_db
 from backend.platform_linking.models import (
     BotPlatformInfo,
@@ -23,6 +21,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
+from fastapi import APIRouter, HTTPException, Path, Security
 
 from . import registry
 

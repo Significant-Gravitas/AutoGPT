@@ -2,14 +2,13 @@ import hashlib
 import hmac
 import logging
 
-from fastapi import HTTPException, Request
-from strenum import StrEnum
-
 from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.request import Requests, Response
+from fastapi import HTTPException, Request
+from strenum import StrEnum
 
 from ._base import BaseWebhooksManager
 

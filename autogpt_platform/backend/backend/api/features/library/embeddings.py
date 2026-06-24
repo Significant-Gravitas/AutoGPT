@@ -12,13 +12,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from prisma.enums import ContentType
-
 from backend.api.features.search.embeddings import (
     ensure_content_embedding,
     get_content_embedding,
 )
 from backend.data import graph as graph_db
+from prisma.enums import ContentType
 
 logger = logging.getLogger(__name__)
 

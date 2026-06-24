@@ -4,12 +4,6 @@ import logging
 import time
 from typing import Awaitable, Callable, Dict, Optional, Set
 
-from fastapi import WebSocket, WebSocketDisconnect
-from redis.asyncio import Redis as AsyncRedis
-from redis.asyncio.client import PubSub as AsyncPubSub
-from redis.exceptions import MovedError, RedisError, ResponseError
-from starlette.websockets import WebSocketState
-
 from backend.api.model import WSMessage, WSMethod
 from backend.data import redis_client as redis
 from backend.data.event_bus import _assert_no_wildcard
@@ -21,6 +15,11 @@ from backend.data.execution import (
 )
 from backend.data.notification_bus import NotificationEvent
 from backend.util.settings import Settings
+from fastapi import WebSocket, WebSocketDisconnect
+from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio.client import PubSub as AsyncPubSub
+from redis.exceptions import MovedError, RedisError, ResponseError
+from starlette.websockets import WebSocketState
 
 logger = logging.getLogger(__name__)
 _settings = Settings()

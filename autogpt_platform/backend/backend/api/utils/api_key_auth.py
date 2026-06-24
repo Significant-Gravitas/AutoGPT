@@ -7,11 +7,10 @@ import logging
 import secrets
 from typing import Any, Awaitable, Callable, Optional
 
+from backend.util.exceptions import MissingConfigError
 from fastapi import HTTPException, Request
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
-
-from backend.util.exceptions import MissingConfigError
 
 logger = logging.getLogger(__name__)
 

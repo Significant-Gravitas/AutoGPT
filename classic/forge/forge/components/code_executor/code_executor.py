@@ -10,8 +10,6 @@ from typing import Iterator, Literal, Optional
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
-from pydantic import BaseModel, Field
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
@@ -23,6 +21,7 @@ from forge.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -445,9 +444,7 @@ class CodeExecutorComponent(
             container_name = self.config.docker_container_name
             with self.workspace.mount() as local_path:
                 try:
-                    container: DockerContainer = client.containers.get(
-                        container_name
-                    )  # type: ignore
+                    container: DockerContainer = client.containers.get(container_name)  # type: ignore
                     # Remove existing container - it may have stale mounts from
                     # a previous run with a different workspace directory
                     logger.debug(

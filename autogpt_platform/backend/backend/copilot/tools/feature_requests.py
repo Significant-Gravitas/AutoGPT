@@ -3,13 +3,12 @@
 import logging
 from typing import Any
 
-from pydantic import SecretStr
-
 from backend.blocks.linear._api import LinearClient
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import user_db
 from backend.data.model import APIKeyCredentials
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 from .base import BaseTool
 from .models import (

@@ -7,7 +7,6 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
-
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot.rate_limit import SubscriptionTier
@@ -666,9 +665,8 @@ class TestStreamChatRequestModeValidation:
 
     def test_rejects_invalid_mode_value(self) -> None:
         """Any string outside the Literal set must raise ValidationError."""
-        from pydantic import ValidationError
-
         from backend.api.features.chat.routes import StreamChatRequest
+        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             StreamChatRequest(message="hi", mode="turbo")  # type: ignore[arg-type]

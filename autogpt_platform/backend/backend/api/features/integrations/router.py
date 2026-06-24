@@ -4,19 +4,6 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
 from autogpt_libs.auth import get_user_id
-from fastapi import (
-    APIRouter,
-    Body,
-    HTTPException,
-    Path,
-    Query,
-    Request,
-    Security,
-    status,
-)
-from pydantic import BaseModel, Field, model_validator
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
-
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -65,6 +52,18 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.settings import Settings
+from fastapi import (
+    APIRouter,
+    Body,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Security,
+    status,
+)
+from pydantic import BaseModel, Field, model_validator
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from .models import (
     ProviderConstants,
@@ -1203,8 +1202,7 @@ async def get_ayrshare_sso_url(
     ]
     if not ayrshare_creds:
         logger.error(
-            "Ayrshare credential provisioning did not produce a credential "
-            "for user %s",
+            "Ayrshare credential provisioning did not produce a credential for user %s",
             user_id,
         )
         raise HTTPException(

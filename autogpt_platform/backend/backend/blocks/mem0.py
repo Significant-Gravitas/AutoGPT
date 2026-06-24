@@ -1,8 +1,5 @@
 from typing import Any, Literal, Optional, Union
 
-from mem0 import MemoryClient
-from pydantic import BaseModel, SecretStr
-
 from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
@@ -11,6 +8,8 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from mem0 import MemoryClient
+from pydantic import BaseModel, SecretStr
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="8cc8b2c5-d3e4-4b1c-84ad-e1e9fe2a0122",

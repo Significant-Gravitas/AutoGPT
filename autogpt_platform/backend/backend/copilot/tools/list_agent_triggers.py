@@ -4,11 +4,10 @@ import asyncio
 import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
+from pydantic import BaseModel
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase

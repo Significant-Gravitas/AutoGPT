@@ -2,8 +2,6 @@ from base64 import b64encode
 from enum import Enum
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -21,6 +19,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.file import MediaFileType, store_media_file
 from backend.util.request import Requests
+from pydantic import SecretStr
 
 
 class Format(str, Enum):

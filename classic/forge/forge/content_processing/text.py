@@ -7,7 +7,6 @@ import math
 from typing import Iterator, Optional, TypeVar
 
 import spacy
-
 from forge.json.parsing import extract_list_from_json
 from forge.llm.prompting import ChatPrompt
 from forge.llm.providers import ChatMessage, ModelTokenizer, MultiProvider
@@ -172,14 +171,14 @@ async def _process_text(
             logger.debug(f"Raw LLM response: {repr(response.response.content)}")
             fmt_result_bullet_list = "\n".join(f"* {r}" for r in response.parsed_result)
             logger.debug(
-                f"\n{'-'*11} EXTRACTION RESULT {'-'*12}\n"
+                f"\n{'-' * 11} EXTRACTION RESULT {'-' * 12}\n"
                 f"{fmt_result_bullet_list}\n"
-                f"{'-'*42}\n"
+                f"{'-' * 42}\n"
             )
             return response.parsed_result
         else:
             summary = response.response.content
-            logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
+            logger.debug(f"\n{'-' * 16} SUMMARY {'-' * 17}\n{summary}\n{'-' * 42}\n")
             return summary.strip(), [(summary, text)]
     else:
         chunks = list(

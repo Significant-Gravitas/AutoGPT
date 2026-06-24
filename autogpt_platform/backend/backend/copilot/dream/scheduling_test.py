@@ -26,7 +26,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.feature_flag import Flag
 
 from . import scheduling
@@ -137,12 +136,12 @@ async def test_empty_user_id_returns_empty_dict_without_running():
 @pytest.mark.asyncio
 async def test_both_crons_register_when_their_flags_are_on():
     client = _mock_scheduler_client()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -169,12 +168,12 @@ async def test_community_flag_off_skips_only_community():
     client = _mock_scheduler_client()
     flag_map = _all_flags_on()
     flag_map[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
-    with patch(_PATH_FLAG, new=_flag_mock(flag_map)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(flag_map)),
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -191,12 +190,12 @@ async def test_dream_flag_off_skips_only_nightly_batch():
     client = _mock_scheduler_client()
     flag_map = _all_flags_on()
     flag_map[Flag.DREAM_PASS_ENABLED] = False
-    with patch(_PATH_FLAG, new=_flag_mock(flag_map)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(flag_map)),
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -214,9 +213,13 @@ async def test_all_flags_off_returns_all_skipped_no_rpc_no_tz_lookup():
     RPC to the scheduler service."""
     client = _mock_scheduler_client()
     tz_mock = AsyncMock(return_value="UTC")
-    with patch(_PATH_FLAG, new=_flag_mock({})), patch(_PATH_TZ, new=tz_mock), patch(
-        _PATH_READ_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_WRITE_TZ, new=AsyncMock()), patch(_PATH_CLIENT, return_value=client):
+    with (
+        patch(_PATH_FLAG, new=_flag_mock({})),
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert all(r.get("skipped") is True for r in result.values())  # type: ignore[union-attr]
@@ -235,12 +238,12 @@ async def test_no_drift_returns_none_without_rpc():
     """Cron already registered with the user's current timezone → no
     work, no RPC."""
     client = _mock_scheduler_client()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -256,12 +259,12 @@ async def test_timezone_drift_re_registers_via_replace_existing():
     Helper detects the drift via the stored value and re-registers."""
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="Europe/Paris")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="Europe/Paris")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -285,12 +288,12 @@ async def test_force_refresh_skips_drift_check_and_always_re_registers():
     bypasses drift detection and always re-registers."""
     client = _mock_scheduler_client()
     read_spy = AsyncMock(return_value="America/New_York")
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_READ_TZ, new=read_spy), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_READ_TZ, new=read_spy),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc", force_refresh=True)
 
@@ -308,12 +311,12 @@ async def test_redis_read_failure_treats_as_first_registration():
     helper falls through to scheduler RPC. APScheduler's
     ``replace_existing=True`` is the durable backstop."""
     client = _mock_scheduler_client()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -334,12 +337,12 @@ async def test_timezone_lookup_failure_leaves_existing_crons_untouched():
     scheduler RPC, no Redis write."""
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/Chicago")), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/Chicago")),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -362,12 +365,12 @@ async def test_timezone_lookup_failure_attempted_once_not_per_job():
     one — two enabled crons must not trigger a second DB round-trip."""
     tz_mock = AsyncMock(return_value=None)
     client = _mock_scheduler_client()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_dream_system_scheduled("abc")
 
@@ -380,12 +383,12 @@ async def test_force_refresh_with_failed_tz_lookup_still_skips_re_registration()
     re-register onto UTC when it can't read the new timezone back —
     the lazy drift-detection path recovers once the DB is healthy."""
     client = _mock_scheduler_client()
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc", force_refresh=True)
 
@@ -459,12 +462,12 @@ async def test_one_cron_rpc_failure_does_not_block_the_other():
     registers cleanly. Failed cron surfaces as skipped dict, not a
     propagated exception."""
     client = _mock_scheduler_client(fail_jobs=("community_rebuild",))
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         result = await ensure_dream_system_scheduled("abc")
 
@@ -486,12 +489,12 @@ async def test_timezone_lookup_runs_at_most_once_per_invocation():
     user's timezone."""
     client = _mock_scheduler_client()
     tz_mock = AsyncMock(return_value="UTC")
-    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())),
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_dream_system_scheduled("abc")
 

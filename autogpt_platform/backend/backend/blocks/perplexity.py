@@ -4,8 +4,6 @@ from enum import Enum
 from typing import Any, Literal
 
 import openai
-from pydantic import SecretStr, field_validator
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -25,6 +23,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
+from pydantic import SecretStr, field_validator
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[Perplexity-Block]")
 

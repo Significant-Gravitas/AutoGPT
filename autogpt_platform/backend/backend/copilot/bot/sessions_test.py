@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.config import SESSION_TTL
 

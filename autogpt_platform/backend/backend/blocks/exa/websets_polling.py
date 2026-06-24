@@ -10,9 +10,6 @@ import time
 from enum import Enum
 from typing import Any, Dict
 
-from exa_py import AsyncExa
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -23,6 +20,8 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from exa_py import AsyncExa
+from pydantic import BaseModel
 
 from ._config import exa
 from .helpers import merge_exa_cost

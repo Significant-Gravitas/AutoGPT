@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-
 from backend.copilot.bot import outbound
 from backend.copilot.bot.adapters.base import ChannelInfo, PostedRef
 

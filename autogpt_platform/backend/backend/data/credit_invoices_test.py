@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
-
 from backend.data import credit as credit_module
 from backend.data.credit import InvoiceListItem, UserCredit
 

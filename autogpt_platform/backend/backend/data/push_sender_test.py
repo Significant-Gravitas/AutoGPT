@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from backend.api.model import NotificationPayload
 from backend.data import push_sender
 from backend.data.push_subscription import PushSubscriptionDTO

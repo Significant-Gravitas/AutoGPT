@@ -10,7 +10,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.local_context_probe import (
     _MINIMUM_SAFE_WINDOW,
     LOCAL_CONTEXT_FALLBACK,

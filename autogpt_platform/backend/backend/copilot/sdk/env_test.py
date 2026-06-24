@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 import pytest
-
 from backend.copilot.config import ChatConfig
 
 # ---------------------------------------------------------------------------

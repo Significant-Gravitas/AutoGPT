@@ -8,7 +8,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.util import json
 
 from .transcript import (
@@ -848,9 +847,9 @@ class TestStripForUpload:
         types = [
             b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
         ]
-        assert (
-            "thinking" in types
-        ), "Anthropic-signed thinking on last turn must survive strip"
+        assert "thinking" in types, (
+            "Anthropic-signed thinking on last turn must survive strip"
+        )
         assert "text" in types
 
     def test_empty_content(self):
@@ -1208,12 +1207,12 @@ class TestUploadCliSession:
         # a1 should have its thinking block stripped (it's not the last assistant turn).
         a1_stored = json.loads(stored_lines[1])
         a1_content = a1_stored["message"]["content"]
-        assert all(
-            b["type"] != "thinking" for b in a1_content
-        ), "stale thinking block should be stripped from a1"
-        assert any(
-            b["type"] == "text" for b in a1_content
-        ), "text block should be kept in a1"
+        assert all(b["type"] != "thinking" for b in a1_content), (
+            "stale thinking block should be stripped from a1"
+        )
+        assert any(b["type"] == "text" for b in a1_content), (
+            "text block should be kept in a1"
+        )
 
         # a2 (last turn) should be unchanged.
         a2_stored = json.loads(stored_lines[3])

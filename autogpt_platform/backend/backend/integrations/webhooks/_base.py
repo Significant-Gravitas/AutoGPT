@@ -4,14 +4,13 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, Generic, Optional, TypeVar
 from uuid import uuid4
 
-from fastapi import Request
-from strenum import StrEnum
-
 import backend.data.integrations as integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
+from fastapi import Request
+from strenum import StrEnum
 
 from .utils import webhook_ingress_url
 

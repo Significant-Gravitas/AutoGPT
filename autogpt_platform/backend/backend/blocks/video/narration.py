@@ -3,11 +3,6 @@
 import os
 from typing import Literal
 
-from elevenlabs import ElevenLabs
-from moviepy import CompositeAudioClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -30,6 +25,10 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from elevenlabs import ElevenLabs
+from moviepy import CompositeAudioClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 
 class VideoNarrationBlock(Block):

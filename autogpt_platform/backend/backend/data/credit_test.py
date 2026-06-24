@@ -1,7 +1,4 @@
 import pytest
-from prisma.enums import CreditTransactionType
-from prisma.models import CreditTransaction, UserBalance
-
 from backend.blocks import get_block
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.credit import UsageTransactionMetadata, UserCredit
@@ -10,6 +7,8 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
+from prisma.enums import CreditTransactionType
+from prisma.models import CreditTransaction, UserBalance
 
 user_credit = UserCredit()
 

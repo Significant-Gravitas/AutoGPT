@@ -29,9 +29,6 @@ import time
 import uuid
 from typing import Any
 
-from openai.types.chat.chat_completion_chunk import ChoiceDelta
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -39,6 +36,8 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamReasoningStart,
 )
+from openai.types.chat.chat_completion_chunk import ChoiceDelta
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 

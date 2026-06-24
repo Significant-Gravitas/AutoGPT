@@ -8,10 +8,9 @@ import logging
 from io import BytesIO
 from typing import Any, Optional
 
-from pydantic import BaseModel
-
 from backend.data.model import APIKeyCredentials
 from backend.util.request import Requests
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

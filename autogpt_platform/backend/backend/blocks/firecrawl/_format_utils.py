@@ -2,9 +2,8 @@
 
 from typing import List
 
-from firecrawl.v2.types import FormatOption, ScreenshotFormat
-
 from backend.blocks.firecrawl._api import ScrapeFormat
+from firecrawl.v2.types import FormatOption, ScreenshotFormat
 
 
 def convert_to_format_options(

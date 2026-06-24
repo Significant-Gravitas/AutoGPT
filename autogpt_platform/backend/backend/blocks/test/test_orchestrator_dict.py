@@ -1,7 +1,6 @@
 from unittest.mock import Mock
 
 import pytest
-
 from backend.blocks.data_manipulation import AddToListBlock, CreateDictionaryBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 
@@ -41,7 +40,8 @@ async def test_orchestrator_handles_dynamic_dict_fields():
 
     # Generate function signature
     signature = await OrchestratorBlock._create_block_function_signature(
-        mock_node, mock_links  # type: ignore
+        mock_node,
+        mock_links,  # type: ignore
     )
 
     # Verify the signature was created successfully
@@ -98,7 +98,8 @@ async def test_orchestrator_handles_dynamic_list_fields():
 
     # Generate function signature
     signature = await OrchestratorBlock._create_block_function_signature(
-        mock_node, mock_links  # type: ignore
+        mock_node,
+        mock_links,  # type: ignore
     )
 
     # Verify dynamic list fields are handled properly

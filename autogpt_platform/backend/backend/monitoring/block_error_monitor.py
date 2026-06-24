@@ -4,8 +4,6 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel
-
 from backend.blocks import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.util.clients import (
@@ -14,6 +12,7 @@ from backend.util.clients import (
 )
 from backend.util.metrics import sentry_capture_error
 from backend.util.settings import Config
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 config = Config()

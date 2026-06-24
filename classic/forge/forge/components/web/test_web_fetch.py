@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-
 from forge.utils.exceptions import CommandExecutionError
 
 from .web_fetch import WebFetchComponent, WebFetchConfiguration

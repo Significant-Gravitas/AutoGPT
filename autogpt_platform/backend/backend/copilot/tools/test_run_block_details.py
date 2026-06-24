@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockType
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName

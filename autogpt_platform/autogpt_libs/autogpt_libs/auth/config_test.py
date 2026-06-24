@@ -7,9 +7,8 @@ import logging
 import os
 
 import pytest
-from pytest_mock import MockerFixture
-
 from autogpt_libs.auth.config import AuthConfigError, Settings
+from pytest_mock import MockerFixture
 
 
 def test_environment_variable_precedence(mocker: MockerFixture):

@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import aio_pika
-from prisma.enums import NotificationType
-
 from backend.data import rabbitmq
 from backend.data.notifications import (
     BaseEventModel,
@@ -43,6 +41,7 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import AppEnvironment, Settings
+from prisma.enums import NotificationType
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()

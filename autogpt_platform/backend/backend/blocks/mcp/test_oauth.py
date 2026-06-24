@@ -5,11 +5,10 @@ Tests for MCP OAuth handler.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from backend.blocks.mcp.client import MCPClient
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
+from pydantic import SecretStr
 
 
 def _mock_response(json_data: dict, status: int = 200) -> MagicMock:

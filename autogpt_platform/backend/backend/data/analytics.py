@@ -3,10 +3,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import prisma.types
-from pydantic import BaseModel
-
 from backend.data.db import query_raw_with_schema
 from backend.util.json import SafeJson
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

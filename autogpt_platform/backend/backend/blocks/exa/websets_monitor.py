@@ -8,10 +8,6 @@ keep websets updated with fresh data on a schedule.
 from enum import Enum
 from typing import Optional
 
-from exa_py import AsyncExa
-from exa_py.websets.types import Monitor as SdkMonitor
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -22,6 +18,9 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from exa_py import AsyncExa
+from exa_py.websets.types import Monitor as SdkMonitor
+from pydantic import BaseModel
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT

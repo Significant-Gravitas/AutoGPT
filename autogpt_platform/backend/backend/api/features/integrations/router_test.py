@@ -6,8 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
-from pydantic import SecretStr
-
 from backend.api.features.integrations.router import router
 from backend.data.integrations import Webhook
 from backend.data.model import (
@@ -18,6 +16,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
+from pydantic import SecretStr
 
 app = fastapi.FastAPI()
 app.include_router(router)

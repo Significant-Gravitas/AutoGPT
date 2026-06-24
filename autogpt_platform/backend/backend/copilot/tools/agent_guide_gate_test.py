@@ -8,7 +8,6 @@ auto-fix loops.
 """
 
 import pytest
-
 from backend.copilot.model import ChatMessage, ChatSession
 
 from .helpers import require_guide_read

@@ -7,7 +7,6 @@ Tests that specific cache entries can be deleted while preserving others.
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.util.models import Pagination
 
 from . import cache as store_cache

@@ -11,10 +11,6 @@ from urllib.parse import quote
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
-from fastapi import Query, UploadFile
-from fastapi.responses import Response
-from pydantic import BaseModel, Field
-
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
@@ -29,6 +25,9 @@ from backend.data.workspace import (
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager, format_bytes
 from backend.util.workspace_storage import get_workspace_storage
+from fastapi import Query, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 
 def _sanitize_filename_for_header(

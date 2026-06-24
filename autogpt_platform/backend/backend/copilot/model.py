@@ -4,6 +4,11 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Self, cast
 
+from backend.data.db_accessors import chat_db, library_db
+from backend.data.graph import GraphSettings
+from backend.data.redis_client import get_redis_async
+from backend.util import json
+from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionDeveloperMessageParam,
@@ -22,12 +27,6 @@ from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, PrivateAttr
-
-from backend.data.db_accessors import chat_db, library_db
-from backend.data.graph import GraphSettings
-from backend.data.redis_client import get_redis_async
-from backend.util import json
-from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
 from .config import ChatConfig
 

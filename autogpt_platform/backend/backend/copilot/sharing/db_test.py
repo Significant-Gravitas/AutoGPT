@@ -13,17 +13,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.enums import SharedVia
-from prisma.models import AgentGraphExecution, ChatLinkedShare
-from prisma.models import ChatMessage as PrismaChatMessage
-from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import (
-    SharedChatFile,
-    SharedExecutionFile,
-    UserWorkspace,
-    UserWorkspaceFile,
-)
-
 from backend.blocks._base import BlockType
 from backend.copilot.sharing.db import (
     _build_shared_execution_file_allowlist,
@@ -33,6 +22,16 @@ from backend.copilot.sharing.db import (
     enable_chat_session_share,
     get_chat_share_state,
     link_new_execution_to_chat_share,
+)
+from prisma.enums import SharedVia
+from prisma.models import AgentGraphExecution, ChatLinkedShare
+from prisma.models import ChatMessage as PrismaChatMessage
+from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import (
+    SharedChatFile,
+    SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
 )
 
 SESSION_ID = "sess-A"

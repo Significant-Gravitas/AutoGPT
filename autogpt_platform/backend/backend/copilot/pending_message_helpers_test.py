@@ -4,8 +4,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
-
 from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
@@ -20,6 +18,7 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from fastapi import HTTPException
 
 # ── check_pending_call_rate ────────────────────────────────────────────
 
@@ -690,9 +689,9 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Invariant 3: pending row is raw chip text only.
     chip_row = session.messages[1]
-    assert (
-        chip_row.content == "oh sleep 4 secs in between"
-    ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
+    assert chip_row.content == "oh sleep 4 secs in between", (
+        f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
+    )
     assert "<memory_context>" not in chip_row.content
     assert "can you sleep" not in chip_row.content, (
         "regression: chip row absorbed original text — "

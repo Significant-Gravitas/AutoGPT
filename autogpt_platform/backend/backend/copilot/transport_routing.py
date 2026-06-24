@@ -19,9 +19,8 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import BaseModel, ConfigDict
-
 from backend.util.llm.providers import ProviderLiteral
+from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
 

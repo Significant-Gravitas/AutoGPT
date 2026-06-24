@@ -4,9 +4,8 @@ import atexit
 import logging
 from typing import Any
 
-from posthog import Posthog
-
 from backend.util.settings import Settings
+from posthog import Posthog
 
 logger = logging.getLogger(__name__)
 settings = Settings()

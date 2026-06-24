@@ -14,9 +14,6 @@ from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 import anthropic
 import openai
 from anthropic.types import ToolParam
-from openai.types.chat import ChatCompletion as OpenAIChatCompletion
-from pydantic import BaseModel, SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -44,6 +41,8 @@ from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from pydantic import BaseModel, SecretStr
 
 settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -86,12 +85,13 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 
+
 def AICredentialsField() -> AICredentials:
     # Get all models that are NOT Ollama
     required_models = [
         model for model in LlmModel if model.metadata.provider != "ollama"
     ]
-    
+
     return CredentialsField(
         description="API key for the LLM provider. Not required for Ollama models.",
         discriminator="model",
@@ -99,8 +99,10 @@ def AICredentialsField() -> AICredentials:
             model.value: model.metadata.provider for model in LlmModel
         },
         # Explicitly tell the UI which models require this credential
-        optional=True, # Make it generally optional at the field level
-        required_for=[model.value for model in required_models], # But enforce it for non-Ollama models
+        optional=True,  # Make it generally optional at the field level
+        required_for=[
+            model.value for model in required_models
+        ],  # But enforce it for non-Ollama models
     )
 
 
@@ -1456,15 +1458,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             else "Please provide a"
         ) + f" valid JSON {outer_output_type} that matches the expected format."
 
-        return trim_prompt(
-            f"""
+        return trim_prompt(f"""
             |{complaint}
             |
             |{indented_parse_error}
             |
             |{instruction}
-        """
-        )
+        """)
 
     def get_json_from_response(
         self, response_text: str, *, pure_json_mode: bool, output_tag_start: str
@@ -2114,8 +2114,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for item in parsed_list:
             yield "list_item", item
 
-    SYSTEM_PROMPT = trim_prompt(
-        """
+    SYSTEM_PROMPT = trim_prompt("""
         |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
         |
         |The 'list' field should contain a JSON array with the generated string values.
@@ -2125,5 +2124,4 @@ class AIListGeneratorBlock(AIBlockBase):
         |• ["string1", "string2", "string3"]
         |
         |Ensure you provide a proper JSON array with only string values in the 'list' field.
-        """
-    )
+        """)

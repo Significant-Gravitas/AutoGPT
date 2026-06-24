@@ -1,14 +1,13 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from backend.blocks.youtube import TEST_CREDENTIALS, TranscribeYoutubeVideoBlock
+from backend.data.model import UserPasswordCredentials
+from backend.integrations.providers import ProviderName
 from pydantic import SecretStr
 from youtube_transcript_api._errors import NoTranscriptFound
 from youtube_transcript_api._transcripts import FetchedTranscript, Transcript
 from youtube_transcript_api.proxies import WebshareProxyConfig
-
-from backend.blocks.youtube import TEST_CREDENTIALS, TranscribeYoutubeVideoBlock
-from backend.data.model import UserPasswordCredentials
-from backend.integrations.providers import ProviderName
 
 
 class TestTranscribeYoutubeVideoBlock:

@@ -6,7 +6,6 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
 from backend.util.test import execute_block_test
@@ -18,11 +17,7 @@ class TestSSEParsing:
     """Tests for SSE (text/event-stream) response parsing."""
 
     def test_parse_sse_simple(self):
-        sse = (
-            "event: message\n"
-            'data: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n'
-            "\n"
-        )
+        sse = 'event: message\ndata: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n\n'
         body = MCPClient._parse_sse_response(sse)
         assert body["result"] == {"tools": []}
         assert body["id"] == 1
@@ -560,9 +555,8 @@ class TestMCPToolBlock:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_run_with_credentials(self):
         """Verify the block uses OAuth2Credentials and passes auth token."""
-        from pydantic import SecretStr
-
         from backend.data.model import OAuth2Credentials
+        from pydantic import SecretStr
 
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(

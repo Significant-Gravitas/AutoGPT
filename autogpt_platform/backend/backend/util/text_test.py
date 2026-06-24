@@ -3,7 +3,6 @@
 import asyncio
 
 import pytest
-
 from backend.util.text import TextFormatter
 
 

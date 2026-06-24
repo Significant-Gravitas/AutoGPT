@@ -3,8 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-
 from forge.llm.providers.anthropic import (
     ANTHROPIC_CHAT_MODELS,
     AnthropicCredentials,
@@ -23,6 +21,7 @@ from forge.llm.providers.schema import (
     ToolResultMessage,
 )
 from forge.models.json_schema import JSONSchema
+from pydantic import SecretStr
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +111,9 @@ class TestAnthropicModels:
             AnthropicModelName.CLAUDE3_5_SONNET_v1,
             AnthropicModelName.CLAUDE3_5_SONNET_v2,
         ]:
-            assert (
-                ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False
-            ), f"{name} should NOT support extended thinking"
+            assert ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False, (
+                f"{name} should NOT support extended thinking"
+            )
 
 
 # ---------------------------------------------------------------------------

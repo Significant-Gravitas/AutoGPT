@@ -15,9 +15,8 @@ from backend.data.db_accessors import workspace_db
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
-    from e2b import AsyncSandbox
-
     from backend.copilot.permissions import CopilotPermissions
+    from e2b import AsyncSandbox
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it

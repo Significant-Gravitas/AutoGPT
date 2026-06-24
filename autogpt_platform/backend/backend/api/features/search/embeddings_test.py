@@ -4,10 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma
 import pytest
+from backend.api.features.search import embeddings
 from prisma import Prisma
 from prisma.enums import ContentType
-
-from backend.api.features.search import embeddings
 
 
 @pytest.fixture(autouse=True)

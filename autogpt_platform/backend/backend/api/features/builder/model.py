@@ -1,12 +1,11 @@
 from typing import Literal
 
-from pydantic import BaseModel
-
 import backend.api.features.library.model as library_model
 import backend.api.features.store.model as store_model
 from backend.blocks._base import BlockInfo
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
+from pydantic import BaseModel
 
 FilterType = Literal[
     "blocks",

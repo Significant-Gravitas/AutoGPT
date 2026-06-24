@@ -28,13 +28,12 @@ import logging
 import math
 from typing import Any
 
-from openai import AsyncOpenAI
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.token_tracking import persist_and_record_usage
+from openai import AsyncOpenAI
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, WebSearchResponse, WebSearchResult

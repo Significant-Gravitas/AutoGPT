@@ -6,10 +6,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.errors import UniqueViolationError
-
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace import WorkspaceManager
+from prisma.errors import UniqueViolationError
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 

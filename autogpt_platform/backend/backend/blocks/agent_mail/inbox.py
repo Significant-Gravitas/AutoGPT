@@ -7,7 +7,6 @@ AgentMail API. You can create thousands of inboxes on demand.
 """
 
 from agentmail.inboxes.types import CreateInboxRequest
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,

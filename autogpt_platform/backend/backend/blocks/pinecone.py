@@ -1,8 +1,6 @@
 import uuid
 from typing import Any, Literal
 
-from pinecone import Pinecone, ServerlessSpec
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +16,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from pinecone import Pinecone, ServerlessSpec
 
 PineconeCredentials = APIKeyCredentials
 PineconeCredentialsInput = CredentialsMetaInput[

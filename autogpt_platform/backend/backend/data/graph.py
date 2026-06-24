@@ -5,6 +5,17 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
 
+from backend.blocks import get_block, get_blocks
+from backend.blocks._base import Block, BlockType, EmptySchema
+from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.integrations.providers import ProviderName
+from backend.util import type as type_utils
+from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.json import SafeJson
+from backend.util.models import Pagination
+from backend.util.request import parse_url
 from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
@@ -22,18 +33,6 @@ from prisma.types import (
 )
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
-
-from backend.blocks import get_block, get_blocks
-from backend.blocks._base import Block, BlockType, EmptySchema
-from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
-from backend.integrations.providers import ProviderName
-from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
-from backend.util.json import SafeJson
-from backend.util.models import Pagination
-from backend.util.request import parse_url
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
@@ -986,9 +985,9 @@ class GraphModel(Graph, GraphMeta):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node.id][
-                        field_name
-                    ] = f"Requires {', '.join(missing_deps)} to be set"
+                    node_errors[node.id][field_name] = (
+                        f"Requires {', '.join(missing_deps)} to be set"
+                    )
 
         return node_errors
 
@@ -1764,8 +1763,7 @@ async def fix_llm_provider_credentials():
 
     broken_nodes = []
     try:
-        broken_nodes = await query_raw_with_schema(
-            """
+        broken_nodes = await query_raw_with_schema("""
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
@@ -1774,8 +1772,7 @@ async def fix_llm_provider_credentials():
             ON        node."agentGraphId" = graph.id
             WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
             ORDER BY  graph."userId";
-            """
-        )
+            """)
         logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
     except Exception as e:
         logger.error(f"Error fixing LLM credential inputs: {e}")

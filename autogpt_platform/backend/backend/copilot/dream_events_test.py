@@ -12,7 +12,6 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
-
 from backend.copilot.dream.schemas import (
     DemotionSummary,
     DreamOperationsSnapshot,

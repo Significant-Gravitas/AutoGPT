@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.managed_credentials import ManagedCredentialProvider
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -77,8 +76,7 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
             pod = await client.pods.get(pod_id=pod_id)
             if getattr(pod, "client_id", None) and pod.client_id != user_id:
                 logger.error(
-                    "Pod %s client_id=%s does not match user %s — "
-                    "refusing to delete",
+                    "Pod %s client_id=%s does not match user %s — refusing to delete",
                     pod_id,
                     pod.client_id,
                     user_id,

@@ -4,8 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-
 from backend.api.features.platform_linking.registry import PlatformMeta
 from backend.platform_linking.models import PlatformLinkInfo, PlatformUserLinkInfo
 from backend.util.exceptions import (
@@ -15,6 +13,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
+from fastapi import HTTPException
 
 
 def _db_mock(**method_configs):
@@ -191,11 +190,10 @@ class TestAdversarialTokenPath:
 
     @pytest.fixture
     def client(self):
+        import backend.api.features.platform_linking.routes as routes_mod
         import fastapi
         from autogpt_libs.auth import get_user_id, requires_user
         from fastapi.testclient import TestClient
-
-        import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None
@@ -254,11 +252,10 @@ class TestAdversarialDeleteLinkId:
 
     @pytest.fixture
     def client(self):
+        import backend.api.features.platform_linking.routes as routes_mod
         import fastapi
         from autogpt_libs.auth import get_user_id, requires_user
         from fastapi.testclient import TestClient
-
-        import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None

@@ -3,7 +3,6 @@ import os
 
 import uvicorn
 from dotenv import load_dotenv
-
 from forge.logging.config import configure_logging
 
 logger = logging.getLogger(__name__)

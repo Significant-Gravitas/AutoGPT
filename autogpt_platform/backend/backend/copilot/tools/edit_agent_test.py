@@ -6,7 +6,6 @@ fix+validate+save) is exercised by the agent-generation pipeline tests.
 """
 
 import pytest
-
 from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.tools.edit_agent import (
     EditAgentTool,

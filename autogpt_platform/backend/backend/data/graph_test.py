@@ -3,12 +3,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+import backend.api.features.store.model as store
 import fastapi.exceptions
 import prisma
 import pytest
-from pytest_snapshot.plugin import Snapshot
-
-import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
@@ -30,6 +28,7 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.test import SpinTestServer
+from pytest_snapshot.plugin import Snapshot
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -869,12 +868,12 @@ def test_mcp_credential_combine_different_servers():
 
     # Each entry should contain the server hostname in its key
     keys = list(combined.keys())
-    assert any(
-        "mcp.sentry.dev" in k for k in keys
-    ), f"Expected 'mcp.sentry.dev' in one key, got {keys}"
-    assert any(
-        "mcp.linear.app" in k for k in keys
-    ), f"Expected 'mcp.linear.app' in one key, got {keys}"
+    assert any("mcp.sentry.dev" in k for k in keys), (
+        f"Expected 'mcp.sentry.dev' in one key, got {keys}"
+    )
+    assert any("mcp.linear.app" in k for k in keys), (
+        f"Expected 'mcp.linear.app' in one key, got {keys}"
+    )
 
 
 def test_mcp_credential_combine_same_server():
@@ -1043,9 +1042,9 @@ async def test_get_graph_non_owner_pending_not_in_library_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "User without ownership, marketplace, or library access must be denied"
+    assert result is None, (
+        "User without ownership, marketplace, or library access must be denied"
+    )
 
 
 # --------------- Library membership grants graph access --------------- #
@@ -1161,9 +1160,9 @@ async def test_get_graph_anonymous_approved_marketplace_access() -> None:
             user_id=None,
         )
 
-    assert (
-        result is mock_graph_model
-    ), "Anonymous user should access APPROVED marketplace agent"
+    assert result is mock_graph_model, (
+        "Anonymous user should access APPROVED marketplace agent"
+    )
 
 
 @pytest.mark.asyncio
@@ -1322,9 +1321,9 @@ async def test_get_graph_library_with_null_agent_graph_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "Library agent with missing graph relation should not grant access"
+    assert result is None, (
+        "Library agent with missing graph relation should not grant access"
+    )
 
 
 @pytest.mark.asyncio
@@ -1352,9 +1351,9 @@ async def test_get_graph_library_wrong_version_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "Library agent for version 1 must not grant access to version 2"
+    assert result is None, (
+        "Library agent for version 1 must not grant access to version 2"
+    )
     # Verify version was included in the library query
     lib_call = mock_lib_prisma.return_value.find_first
     lib_call.assert_called_once()
@@ -1419,9 +1418,9 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
             for_export=False,
         )
 
-    assert (
-        result is mock_graph_model
-    ), "Admin must access pending v2 via get_graph_as_admin"
+    assert result is mock_graph_model, (
+        "Admin must access pending v2 via get_graph_as_admin"
+    )
 
 
 # --------------- execution permission truth table --------------- #

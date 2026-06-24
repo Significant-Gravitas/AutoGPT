@@ -4,10 +4,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
-
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
+from pydantic import BaseModel, Field, model_validator
 
 
 class ResponseType(str, Enum):

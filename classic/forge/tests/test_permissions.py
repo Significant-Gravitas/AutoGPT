@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from forge.config.workspace_settings import (
     AgentPermissions,
     PermissionsConfig,
@@ -794,14 +793,12 @@ class TestWorkspaceSettings:
 
         # Create custom settings file
         settings_file = autogpt_dir / "autogpt.yaml"
-        settings_file.write_text(
-            """
+        settings_file.write_text("""
 permissions:
   allow:
     - custom_command(*)
   deny: []
-"""
-        )
+""")
 
         settings = WorkspaceSettings.load_or_create(workspace)
 
@@ -845,15 +842,13 @@ class TestAgentPermissions:
 
         # Create custom permissions file
         perm_file = agent_dir / "permissions.yaml"
-        perm_file.write_text(
-            """
+        perm_file.write_text("""
 permissions:
   allow:
     - agent_specific(*)
   deny:
     - agent_denied(*)
-"""
-        )
+""")
 
         permissions = AgentPermissions.load_or_create(agent_dir)
 

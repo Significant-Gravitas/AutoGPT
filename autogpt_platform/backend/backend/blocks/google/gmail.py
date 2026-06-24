@@ -11,10 +11,6 @@ from email.utils import getaddresses, parseaddr
 from pathlib import Path
 from typing import List, Literal, Optional, Protocol, runtime_checkable
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from pydantic import BaseModel, Field
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -26,6 +22,9 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from pydantic import BaseModel, Field
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -325,11 +324,13 @@ class GmailBase(Block, ABC):
         """Download attachment content when email body is stored as attachment."""
         try:
             attachment = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .attachments()
-                .get(userId="me", messageId=msg_id, id=attachment_id)
-                .execute()
+                lambda: (
+                    service.users()
+                    .messages()
+                    .attachments()
+                    .get(userId="me", messageId=msg_id, id=attachment_id)
+                    .execute()
+                )
             )
             return attachment.get("data")
         except Exception:
@@ -351,11 +352,13 @@ class GmailBase(Block, ABC):
 
     async def download_attachment(self, service, message_id: str, attachment_id: str):
         attachment = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .attachments()
-            .get(userId="me", messageId=message_id, id=attachment_id)
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .attachments()
+                .get(userId="me", messageId=message_id, id=attachment_id)
+                .execute()
+            )
         )
         file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
         return file_data
@@ -513,10 +516,12 @@ class GmailReadBlock(GmailBase):
                 else "full"
             )
             msg = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .get(userId="me", id=message["id"], format=format_type)
-                .execute()
+                lambda: (
+                    service.users()
+                    .messages()
+                    .get(userId="me", id=message["id"], format=format_type)
+                    .execute()
+                )
             )
 
             headers = {
@@ -649,10 +654,12 @@ class GmailSendBlock(GmailBase):
             )
         raw_message = await create_mime_message(input_data, execution_context)
         sent_message = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .send(userId="me", body={"raw": raw_message})
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .send(userId="me", body={"raw": raw_message})
+                .execute()
+            )
         )
         return {"id": sent_message["id"], "status": "sent"}
 
@@ -746,8 +753,13 @@ class GmailCreateDraftBlock(GmailBase):
             input_data,
             execution_context,
         )
-        yield "result", GmailDraftResult(
-            id=result["id"], message_id=result["message"]["id"], status="draft_created"
+        yield (
+            "result",
+            GmailDraftResult(
+                id=result["id"],
+                message_id=result["message"]["id"],
+                status="draft_created",
+            ),
         )
 
     async def _create_draft(
@@ -760,10 +772,12 @@ class GmailCreateDraftBlock(GmailBase):
 
         raw_message = await create_mime_message(input_data, execution_context)
         draft = await asyncio.to_thread(
-            lambda: service.users()
-            .drafts()
-            .create(userId="me", body={"message": {"raw": raw_message}})
-            .execute()
+            lambda: (
+                service.users()
+                .drafts()
+                .create(userId="me", body={"message": {"raw": raw_message}})
+                .execute()
+            )
         )
 
         return draft
@@ -887,10 +901,12 @@ class GmailAddLabelBlock(GmailBase):
     async def _add_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_or_create_label(service, label_name)
         result = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .modify(userId="me", id=message_id, body={"addLabelIds": [label_id]})
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .modify(userId="me", id=message_id, body={"addLabelIds": [label_id]})
+                .execute()
+            )
         )
         if not result.get("labelIds"):
             return {
@@ -904,10 +920,12 @@ class GmailAddLabelBlock(GmailBase):
         label_id = await self._get_label_id(service, label_name)
         if not label_id:
             label = await asyncio.to_thread(
-                lambda: service.users()
-                .labels()
-                .create(userId="me", body={"name": label_name})
-                .execute()
+                lambda: (
+                    service.users()
+                    .labels()
+                    .create(userId="me", body={"name": label_name})
+                    .execute()
+                )
             )
             label_id = label["id"]
         return label_id
@@ -974,10 +992,14 @@ class GmailRemoveLabelBlock(GmailBase):
         label_id = await self._get_label_id(service, label_name)
         if label_id:
             result = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
-                .execute()
+                lambda: (
+                    service.users()
+                    .messages()
+                    .modify(
+                        userId="me", id=message_id, body={"removeLabelIds": [label_id]}
+                    )
+                    .execute()
+                )
             )
             if not result.get("labelIds"):
                 return {
@@ -1095,10 +1117,12 @@ class GmailGetThreadBlock(GmailBase):
             else "full"
         )
         thread = await asyncio.to_thread(
-            lambda: service.users()
-            .threads()
-            .get(userId="me", id=thread_id, format=format_type)
-            .execute()
+            lambda: (
+                service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format=format_type)
+                .execute()
+            )
         )
 
         parsed_messages = []
@@ -1153,23 +1177,25 @@ async def _build_reply_message(
     """
     # Get parent message for reply context
     parent = await asyncio.to_thread(
-        lambda: service.users()
-        .messages()
-        .get(
-            userId="me",
-            id=input_data.parentMessageId,
-            format="metadata",
-            metadataHeaders=[
-                "Subject",
-                "References",
-                "Message-ID",
-                "From",
-                "To",
-                "Cc",
-                "Reply-To",
-            ],
+        lambda: (
+            service.users()
+            .messages()
+            .get(
+                userId="me",
+                id=input_data.parentMessageId,
+                format="metadata",
+                metadataHeaders=[
+                    "Subject",
+                    "References",
+                    "Message-ID",
+                    "From",
+                    "To",
+                    "Cc",
+                    "Reply-To",
+                ],
+            )
+            .execute()
         )
-        .execute()
     )
 
     # Build headers dictionary, preserving all values for duplicate headers
@@ -1395,10 +1421,12 @@ class GmailReplyBlock(GmailBase):
 
         # Send the message
         return await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .send(userId="me", body={"threadId": thread_id, "raw": raw})
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .send(userId="me", body={"threadId": thread_id, "raw": raw})
+                .execute()
+            )
         )
 
 
@@ -1508,18 +1536,20 @@ class GmailDraftReplyBlock(GmailBase):
 
         # Create draft with proper thread association
         draft = await asyncio.to_thread(
-            lambda: service.users()
-            .drafts()
-            .create(
-                userId="me",
-                body={
-                    "message": {
-                        "threadId": thread_id,
-                        "raw": raw,
-                    }
-                },
+            lambda: (
+                service.users()
+                .drafts()
+                .create(
+                    userId="me",
+                    body={
+                        "message": {
+                            "threadId": thread_id,
+                            "raw": raw,
+                        }
+                    },
+                )
+                .execute()
             )
-            .execute()
         )
 
         return draft
@@ -1691,10 +1721,12 @@ class GmailForwardBlock(GmailBase):
 
         # Get the original message
         original = await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .get(userId="me", id=input_data.messageId, format="full")
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .get(userId="me", id=input_data.messageId, format="full")
+                .execute()
+            )
         )
 
         headers = {
@@ -1787,8 +1819,10 @@ To: {original_to}
         # Send the forwarded message
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         return await asyncio.to_thread(
-            lambda: service.users()
-            .messages()
-            .send(userId="me", body={"raw": raw})
-            .execute()
+            lambda: (
+                service.users()
+                .messages()
+                .send(userId="me", body={"raw": raw})
+                .execute()
+            )
         )

@@ -14,14 +14,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from prisma.enums import ContentType
-
 from backend.api.features.search.content_handlers import build_workspace_file_text
 from backend.api.features.search.embeddings import (
     delete_content_embedding,
     ensure_content_embedding,
     get_content_embedding,
 )
+from prisma.enums import ContentType
 
 logger = logging.getLogger(__name__)
 

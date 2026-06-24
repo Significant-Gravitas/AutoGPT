@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from backend.blocks.time_blocks import (
     DateStrftimeFormat,
     GetCurrentDateAndTimeBlock,

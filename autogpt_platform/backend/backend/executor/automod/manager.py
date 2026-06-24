@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient
 
-from pydantic import ValidationError
-
 from backend.data.execution import ExecutionStatus
 from backend.util.exceptions import ModerationError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.request import Requests
 from backend.util.settings import Settings
+from pydantic import ValidationError
 
 from .models import AutoModRequest, AutoModResponse, ModerationConfig
 
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class AutoModManager:
-
     def __init__(self):
         self.config = self._load_config()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the block documentation generator."""
-import pytest
 
+import pytest
 from scripts.generate_block_docs import (
     class_name_to_display_name,
     extract_manual_content,

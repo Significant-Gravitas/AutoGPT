@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.list_agent_triggers import (
     AgentTriggerListResponse,
     ListAgentTriggersTool,
@@ -34,8 +33,7 @@ def _make_webhook_preset():
     preset.is_active = True
     preset.webhook_id = "wh-1"
     preset.webhook.url = (
-        "https://backend.agpt.co/api/integrations/generic_webhook"
-        "/webhooks/wh-1/ingress"
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress"
     )
     preset.webhook.provider = "generic_webhook"
     return preset

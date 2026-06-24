@@ -3,9 +3,8 @@ import enum
 import math
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Secret, SecretBytes, SecretStr
-
 from forge.models.config import SystemConfiguration, UserConfigurable
+from pydantic import BaseModel, ConfigDict, Secret, SecretBytes, SecretStr
 
 _T = TypeVar("_T")
 

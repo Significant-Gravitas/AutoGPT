@@ -24,8 +24,6 @@ from enum import Enum
 from logging import Logger
 from typing import Any, Optional
 
-from pydantic import Field
-
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -41,6 +39,7 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
+from pydantic import Field
 
 from .base import (
     BaseMultiStepPromptStrategy,
@@ -381,7 +380,7 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         )
 
         planning_msg = ChatMessage.user(
-            f"{self.config.planner_instruction}\n\n" f'Your task:\n"""{task}"""'
+            f'{self.config.planner_instruction}\n\nYour task:\n"""{task}"""'
         )
 
         return ChatPrompt(

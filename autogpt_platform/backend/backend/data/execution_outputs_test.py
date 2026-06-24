@@ -13,9 +13,8 @@ This breaks OrchestratorBlock agent mode tool execution.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import TypeAdapter
-
 from backend.data.block import CompletedBlockOutput
+from pydantic import TypeAdapter
 
 
 @pytest.mark.asyncio
@@ -35,9 +34,9 @@ async def test_outputs_are_lists():
 
     # The result must conform to CompletedBlockOutput = dict[str, list[Any]]
     assert "response" in result
-    assert isinstance(
-        result["response"], list
-    ), f"Expected list, got {type(result['response']).__name__}: {result['response']!r}"
+    assert isinstance(result["response"], list), (
+        f"Expected list, got {type(result['response']).__name__}: {result['response']!r}"
+    )
 
     # Must also pass TypeAdapter validation (this is what the RPC layer does)
     adapter = TypeAdapter(CompletedBlockOutput)

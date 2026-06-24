@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
     DREAM_PERMISSIONS,

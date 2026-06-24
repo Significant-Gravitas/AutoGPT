@@ -7,8 +7,6 @@ from collections import defaultdict
 from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast
 
-from pydantic import BaseModel, JsonValue, ValidationError
-
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -56,6 +54,7 @@ from backend.util.exceptions import (
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
+from pydantic import BaseModel, JsonValue, ValidationError
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -524,9 +523,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_INVALID_PREFIX} {e}"
+                )
                 continue
 
             try:
@@ -537,15 +536,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                )
                 continue
 
             if not credentials:
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                )
                 continue
 
             if (
@@ -655,18 +654,18 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        )
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.

@@ -1,12 +1,11 @@
 import logging
 
-from fastapi import Request
-
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.util.request import Requests
+from fastapi import Request
 
 logger = logging.getLogger(__name__)
 

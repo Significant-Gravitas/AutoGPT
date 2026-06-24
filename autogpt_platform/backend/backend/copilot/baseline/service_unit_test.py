@@ -7,8 +7,6 @@ without requiring API keys, database connections, or network access.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types.chat import ChatCompletionToolParam
-
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
@@ -43,6 +41,7 @@ from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+from openai.types.chat import ChatCompletionToolParam
 
 
 class TestBaselineStreamState:
@@ -2113,9 +2112,9 @@ class TestBaselineReasoningStreaming:
         # only) block — assert on that shape.
         sys_msg = call_kwargs["messages"][0]
         sys_content = sys_msg.get("content")
-        assert isinstance(
-            sys_content, list
-        ), "Cached system message should be a list-shape content block"
+        assert isinstance(sys_content, list), (
+            "Cached system message should be a list-shape content block"
+        )
         assert any(
             "cache_control" in block for block in sys_content if isinstance(block, dict)
         ), "Kimi system message should now carry cache_control markers"

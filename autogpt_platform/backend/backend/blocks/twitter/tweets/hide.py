@@ -1,5 +1,4 @@
 import tweepy
-
 from backend.blocks._base import (
     Block,
     BlockCategory,

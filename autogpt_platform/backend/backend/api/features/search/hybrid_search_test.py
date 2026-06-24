@@ -5,14 +5,13 @@ Tests for the generic unified hybrid search engine.
 from unittest.mock import patch
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search import embeddings
 from backend.api.features.search.hybrid_search import (
     UnifiedSearchWeights,
     tokenize,
     unified_hybrid_search,
 )
+from prisma.enums import ContentType
 
 # ---------------------------------------------------------------------------
 # tokenize (BM25)

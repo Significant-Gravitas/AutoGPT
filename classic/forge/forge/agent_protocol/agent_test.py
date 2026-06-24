@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 from fastapi import UploadFile
-
 from forge.file_storage.base import FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 

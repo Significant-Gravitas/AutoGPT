@@ -2,8 +2,6 @@ import json
 import logging
 from pathlib import Path
 
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -14,6 +12,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
+from pydantic import BaseModel
 
 from ._auth import (
     TEST_CREDENTIALS,

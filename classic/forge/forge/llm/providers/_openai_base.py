@@ -17,6 +17,7 @@ from typing import (
 
 import sentry_sdk
 import tenacity
+from forge.json.parsing import json_loads
 from openai._exceptions import APIConnectionError, APIStatusError
 from openai.types import CreateEmbeddingResponse, EmbeddingCreateParams
 from openai.types.chat import (
@@ -28,8 +29,6 @@ from openai.types.chat import (
     CompletionCreateParams,
 )
 from openai.types.shared_params import FunctionDefinition
-
-from forge.json.parsing import json_loads
 
 from .schema import (
     AssistantChatMessage,

@@ -14,11 +14,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message import ChatCompletionMessage
-
 from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
@@ -31,6 +26,10 @@ from backend.executor.simulator import (
     prepare_dry_run,
     simulate_block,
 )
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -292,9 +291,9 @@ class TestPrepareDryRun:
         # manager.py does before calling Input(**...).
         validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
         err = block.input_schema.validate_data(validation_input)
-        assert (
-            err is None
-        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
+        assert err is None, (
+            f"prepare_dry_run produced input that fails jsonschema validation: {err}"
+        )
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch

@@ -11,30 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    File,
-    Header,
-    HTTPException,
-    Path,
-    Query,
-    Request,
-    Response,
-    Security,
-    UploadFile,
-)
-from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
-from pydantic import BaseModel, Field
-from starlette.status import (
-    HTTP_204_NO_CONTENT,
-    HTTP_402_PAYMENT_REQUIRED,
-    HTTP_404_NOT_FOUND,
-)
-from typing_extensions import Optional, TypedDict
-
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
@@ -151,6 +127,29 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 from backend.util.virus_scanner import scan_content_safe
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+    Security,
+    UploadFile,
+)
+from fastapi.concurrency import run_in_threadpool
+from prisma.enums import SubscriptionTier
+from pydantic import BaseModel, Field
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_404_NOT_FOUND,
+)
+from typing_extensions import Optional, TypedDict
 
 from .library import db as library_db
 from .store.model import StoreAgentDetails

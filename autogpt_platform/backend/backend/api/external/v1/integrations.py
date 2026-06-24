@@ -12,10 +12,6 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, HTTPException, Path, Security, status
-from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field, SecretStr
-
 from backend.api.external.middleware import require_permission
 from backend.api.features.integrations.models import get_all_provider_names
 from backend.api.features.integrations.router import (
@@ -39,6 +35,9 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Settings
+from fastapi import APIRouter, Body, HTTPException, Path, Security, status
+from prisma.enums import APIKeyPermission
+from pydantic import BaseModel, Field, SecretStr
 
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler

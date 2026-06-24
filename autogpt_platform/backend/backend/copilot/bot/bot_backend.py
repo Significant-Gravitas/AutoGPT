@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
-from pydantic import BaseModel
-
 from backend.copilot import stream_registry
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
@@ -38,6 +36,7 @@ from backend.util.exceptions import (
     LinkAlreadyExistsError,
     NotFoundError,
 )
+from pydantic import BaseModel
 
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends

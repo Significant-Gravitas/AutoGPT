@@ -12,7 +12,6 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -188,8 +187,11 @@ class TestExecuteCodeBlockRun:
         )
         # process_execution_results parses E2B-specific result objects; patch it so
         # this test only exercises run()'s own output-forwarding branches.
-        with patch.object(block, "execute_code", mock), patch.object(
-            block, "process_execution_results", return_value=({"text": "42"}, [])
+        with (
+            patch.object(block, "execute_code", mock),
+            patch.object(
+                block, "process_execution_results", return_value=({"text": "42"}, [])
+            ),
         ):
             outputs = dict(
                 await _run(

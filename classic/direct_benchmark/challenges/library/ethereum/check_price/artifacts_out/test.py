@@ -11,9 +11,9 @@ def test_get_ethereum_price() -> None:
     # Validate that the eth price is all digits
     pattern = r"^\d+$"
     matches = re.match(pattern, eth_price) is not None
-    assert (
-        matches
-    ), f"AssertionError: Ethereum price should be all digits, but got {eth_price}"
+    assert matches, (
+        f"AssertionError: Ethereum price should be all digits, but got {eth_price}"
+    )
 
     # Get the current price of Ethereum
     real_eth_price = get_ethereum_price()

@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.models import ErrorResponse, ValidationResultResponse
 from backend.copilot.tools.validate_agent import ValidateAgentGraphTool
 

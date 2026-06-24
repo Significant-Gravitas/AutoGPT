@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from forge.agent.base import BaseAgentSettings
 from forge.file_storage import FileStorage
 

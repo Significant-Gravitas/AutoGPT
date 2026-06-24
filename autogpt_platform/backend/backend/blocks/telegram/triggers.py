@@ -4,8 +4,6 @@ Telegram trigger blocks for receiving messages via webhooks.
 
 import logging
 
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -17,6 +15,7 @@ from backend.blocks._base import (
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.telegram import TelegramWebhookType
+from pydantic import BaseModel
 
 from ._auth import (
     TEST_CREDENTIALS,
@@ -199,8 +198,9 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
             document = message.get("document", {})
             video = message.get("video", {})
             yield "file_id", (document.get("file_id", "") or video.get("file_id", ""))
-            yield "file_name", (
-                document.get("file_name", "") or audio.get("file_name", "")
+            yield (
+                "file_name",
+                (document.get("file_name", "") or audio.get("file_name", "")),
             )
             yield "caption", message.get("caption", "")
         # Determine message type and extract content

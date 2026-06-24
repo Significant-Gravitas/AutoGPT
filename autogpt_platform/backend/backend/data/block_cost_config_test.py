@@ -1,5 +1,4 @@
 import pytest
-
 from backend.blocks.ayrshare.post_to_bluesky import PostToBlueskyBlock
 from backend.blocks.ayrshare.post_to_facebook import PostToFacebookBlock
 from backend.blocks.ayrshare.post_to_gmb import PostToGMBBlock

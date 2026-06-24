@@ -8,7 +8,6 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
-
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,

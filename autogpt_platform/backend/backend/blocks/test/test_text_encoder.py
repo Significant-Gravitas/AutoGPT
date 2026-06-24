@@ -1,5 +1,4 @@
 import pytest
-
 from backend.blocks.encoder_block import TextEncoderBlock
 
 

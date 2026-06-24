@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.exceptions import LinkTokenExpiredError
 
 from .db import confirm_server_link, confirm_user_link
@@ -44,9 +43,9 @@ class TestManagerWiring:
             "list_user_server_ids",
         }
         for name in expected:
-            assert hasattr(
-                PlatformLinkingManagerClient, name
-            ), f"Client missing RPC stub: {name}"
+            assert hasattr(PlatformLinkingManagerClient, name), (
+                f"Client missing RPC stub: {name}"
+            )
 
         for name in (
             "confirm_server_link",
@@ -56,9 +55,9 @@ class TestManagerWiring:
             "delete_server_link",
             "delete_user_link",
         ):
-            assert not hasattr(
-                PlatformLinkingManagerClient, name
-            ), f"User-facing method leaked to bot client: {name}"
+            assert not hasattr(PlatformLinkingManagerClient, name), (
+                f"User-facing method leaked to bot client: {name}"
+            )
 
     @pytest.mark.asyncio
     async def test_resolve_server_link_delegates_to_accessor(self):

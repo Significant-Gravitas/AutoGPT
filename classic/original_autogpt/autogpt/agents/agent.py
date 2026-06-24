@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
-from pydantic import Field
-
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from forge.agent.execution_context import ExecutionContext
 from forge.agent.protocols import (
@@ -70,6 +68,7 @@ from forge.utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
+from pydantic import Field
 
 from .prompt_strategies.lats import LATSActionProposal
 from .prompt_strategies.multi_agent_debate import DebateActionProposal
@@ -354,15 +353,15 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
             if self.app_config.reasoning_effort:
                 thinking_kwargs["reasoning_effort"] = self.app_config.reasoning_effort
 
-        response: ChatModelResponse[AnyActionProposal] = (
-            await self.llm_provider.create_chat_completion(
-                prompt.messages,
-                model_name=self.llm.name,
-                completion_parser=self.prompt_strategy.parse_response_content,
-                functions=prompt.functions,
-                prefill_response=prompt.prefill_response,
-                **thinking_kwargs,
-            )
+        response: ChatModelResponse[
+            AnyActionProposal
+        ] = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            model_name=self.llm.name,
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
+            **thinking_kwargs,
         )
         result = response.parsed_result
 

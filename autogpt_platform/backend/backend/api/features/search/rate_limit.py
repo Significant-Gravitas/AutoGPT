@@ -18,7 +18,6 @@ import logging
 from datetime import UTC, datetime
 
 import fastapi
-
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)

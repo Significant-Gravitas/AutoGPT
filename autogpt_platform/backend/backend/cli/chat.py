@@ -46,7 +46,6 @@ def chat_view(
     import asyncio
 
     import prisma.models
-
     from backend.data.db import connect, disconnect
 
     # Parse up front so a bad value fails fast with a clean message.
@@ -100,7 +99,6 @@ def chat_list(user_id: str | None, limit: int):
 
     import prisma.models
     import prisma.types
-
     from backend.data.db import connect, disconnect
 
     async def run():
@@ -169,8 +167,7 @@ def _render_session(session, messages, *, full: bool) -> str:
     lines.append(f"  created:  {s.createdAt:%Y-%m-%d %H:%M:%S}")
     lines.append(f"  updated:  {s.updatedAt:%Y-%m-%d %H:%M:%S}")
     lines.append(
-        f"  tokens:   prompt={s.totalPromptTokens} "
-        f"completion={s.totalCompletionTokens}"
+        f"  tokens:   prompt={s.totalPromptTokens} completion={s.totalCompletionTokens}"
     )
     lines.append(f"  messages: {len(messages)}")
     lines.append("=" * 80)

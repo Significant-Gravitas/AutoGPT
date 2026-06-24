@@ -8,7 +8,6 @@ including the combination of library and marketplace agents.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.agent_generator import core
 
 

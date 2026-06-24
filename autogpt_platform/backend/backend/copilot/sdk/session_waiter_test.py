@@ -14,7 +14,6 @@ Focuses on the queue-on-busy fallback:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot import active_turns
 from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
 

@@ -8,7 +8,6 @@ tests patch ``backend.copilot.active_turns.chat_db`` to return an
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot import active_turns
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,

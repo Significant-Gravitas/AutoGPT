@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.manage_presets import (
     DeletePresetTool,
     ListPresetsTool,
@@ -132,8 +131,9 @@ async def test_update_rename_skips_preset_fetch(session):
     tdb.update_triggered_preset = AsyncMock(return_value=_preset(name="Renamed"))
     ldb = MagicMock()
     ldb.get_preset = AsyncMock()
-    with patch(f"{_PATH}.triggers_db", return_value=tdb), patch(
-        f"{_PATH}.library_db", return_value=ldb
+    with (
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{_PATH}.library_db", return_value=ldb),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER, session=session, preset_id="preset-1", name="Renamed"
@@ -148,8 +148,9 @@ async def test_update_rename_skips_preset_fetch(session):
 async def test_update_pause(session):
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(return_value=_preset(is_active=False))
-    with patch(f"{_PATH}.triggers_db", return_value=tdb), patch(
-        f"{_PATH}.library_db", return_value=MagicMock()
+    with (
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{_PATH}.library_db", return_value=MagicMock()),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER, session=session, preset_id="preset-1", is_active=False
@@ -168,8 +169,9 @@ async def test_update_reconfigure_merges_and_reuses_credentials(session):
     ldb.get_preset = AsyncMock(return_value=current)
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(return_value=_preset())
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=tdb
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         await UpdatePresetTool()._execute(
             user_id=_USER,
@@ -189,8 +191,9 @@ async def test_update_reconfigure_merges_and_reuses_credentials(session):
 async def test_update_reconfigure_preset_not_found(session):
     ldb = MagicMock()
     ldb.get_preset = AsyncMock(return_value=None)
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=MagicMock()
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=MagicMock()),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER, session=session, preset_id="missing", inputs={"x": 1}
@@ -203,8 +206,9 @@ async def test_update_reconfigure_preset_not_found(session):
 async def test_update_not_found_from_shared_fn(session):
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(side_effect=NotFoundError("gone"))
-    with patch(f"{_PATH}.triggers_db", return_value=tdb), patch(
-        f"{_PATH}.library_db", return_value=MagicMock()
+    with (
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{_PATH}.library_db", return_value=MagicMock()),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER, session=session, preset_id="missing", name="X"
@@ -219,8 +223,9 @@ async def test_update_webhook_rejected(session):
     ldb.get_preset = AsyncMock(return_value=_preset())
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(side_effect=InvalidInputError("no events"))
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=tdb
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER,
@@ -247,8 +252,9 @@ async def test_delete_missing_preset_id(session):
 async def test_delete_not_found(session):
     ldb = MagicMock()
     ldb.get_preset = AsyncMock(return_value=None)
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=MagicMock()
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=MagicMock()),
     ):
         result = await DeletePresetTool()._execute(
             user_id=_USER, session=session, preset_id="missing"
@@ -263,8 +269,9 @@ async def test_delete_success(session):
     ldb.get_preset = AsyncMock(return_value=_preset(name="ToDelete"))
     tdb = MagicMock()
     tdb.delete_preset_with_webhook_cleanup = AsyncMock()
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=tdb
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         result = await DeletePresetTool()._execute(
             user_id=_USER, session=session, preset_id="preset-1"
@@ -298,8 +305,9 @@ async def test_update_webhook_registration_error(session):
     tdb.update_triggered_preset = AsyncMock(
         side_effect=WebhookRegistrationError("provider refused")
     )
-    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
-        f"{_PATH}.triggers_db", return_value=tdb
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         result = await UpdatePresetTool()._execute(
             user_id=_USER, session=session, preset_id="preset-1", inputs={"repo": "x"}

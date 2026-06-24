@@ -16,12 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args, get_origin
 
-from prisma.enums import ContentType
-
 from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
 from backend.util.text import split_camelcase
+from prisma.enums import ContentType
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -163,26 +162,22 @@ class StoreAgentHandler(ContentHandler):
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about store agent embedding coverage."""
         # Count approved versions
-        approved_result = await query_raw_with_schema(
-            """
+        approved_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"StoreListingVersion"
             WHERE "submissionStatus" = 'APPROVED'
             AND "isDeleted" = false
-            """
-        )
+            """)
         total_approved = approved_result[0]["count"] if approved_result else 0
 
         # Count versions with embeddings
-        embedded_result = await query_raw_with_schema(
-            """
+        embedded_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"StoreListingVersion" slv
             JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
-            """
-        )
+            """)
         with_embeddings = embedded_result[0]["count"] if embedded_result else 0
 
         return {
@@ -249,7 +244,7 @@ class BlockHandler(ContentHandler):
         block_ids = list(enabled.keys())
 
         # Query for existing embeddings
-        placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
+        placeholders = ",".join([f"${i + 1}" for i in range(len(block_ids))])
         existing_result = await query_raw_with_schema(
             f"""
             SELECT "contentId"
@@ -340,7 +335,7 @@ class BlockHandler(ContentHandler):
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         block_ids = list(enabled.keys())
-        placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
+        placeholders = ",".join([f"${i + 1}" for i in range(len(block_ids))])
 
         embedded_result = await query_raw_with_schema(
             f"""
@@ -590,7 +585,7 @@ class DocumentationHandler(ContentHandler):
         ]
 
         # Check which ones have embeddings
-        placeholders = ",".join([f"${i+1}" for i in range(len(section_content_ids))])
+        placeholders = ",".join([f"${i + 1}" for i in range(len(section_content_ids))])
         existing_result = await query_raw_with_schema(
             f"""
             SELECT "contentId"
@@ -678,13 +673,11 @@ class DocumentationHandler(ContentHandler):
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         # Count embeddings in database for DOCUMENTATION type
-        embedded_result = await query_raw_with_schema(
-            """
+        embedded_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"UnifiedContentEmbedding"
             WHERE "contentType" = 'DOCUMENTATION'::{schema_prefix}"ContentType"
-            """
-        )
+            """)
 
         with_embeddings = embedded_result[0]["count"] if embedded_result else 0
 
@@ -762,17 +755,14 @@ class LibraryAgentHandler(ContentHandler):
         return items
 
     async def get_stats(self) -> dict[str, int]:
-        total_result = await query_raw_with_schema(
-            """
+        total_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"LibraryAgent"
             WHERE "isDeleted" = false AND "isHidden" = false
-            """
-        )
+            """)
         total = total_result[0]["count"] if total_result else 0
 
-        with_result = await query_raw_with_schema(
-            """
+        with_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"LibraryAgent" la
             JOIN {schema_prefix}"UnifiedContentEmbedding" uce
@@ -780,8 +770,7 @@ class LibraryAgentHandler(ContentHandler):
               AND uce."contentType" = 'LIBRARY_AGENT'::{schema_prefix}"ContentType"
               AND uce."userId" = la."userId"
             WHERE la."isDeleted" = false AND la."isHidden" = false
-            """
-        )
+            """)
         with_embeddings = with_result[0]["count"] if with_result else 0
 
         return {
@@ -888,17 +877,14 @@ class WorkspaceFileHandler(ContentHandler):
         return items
 
     async def get_stats(self) -> dict[str, int]:
-        total_result = await query_raw_with_schema(
-            """
+        total_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"UserWorkspaceFile"
             WHERE "isDeleted" = false
-            """
-        )
+            """)
         total = total_result[0]["count"] if total_result else 0
 
-        with_result = await query_raw_with_schema(
-            """
+        with_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"UserWorkspaceFile" uwf
             JOIN {schema_prefix}"UserWorkspace" uw ON uw.id = uwf."workspaceId"
@@ -907,8 +893,7 @@ class WorkspaceFileHandler(ContentHandler):
               AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
               AND uce."userId" = uw."userId"
             WHERE uwf."isDeleted" = false
-            """
-        )
+            """)
         with_embeddings = with_result[0]["count"] if with_result else 0
 
         return {
@@ -979,17 +964,14 @@ class ChatSessionHandler(ContentHandler):
         return items
 
     async def get_stats(self) -> dict[str, int]:
-        total_result = await query_raw_with_schema(
-            """
+        total_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
-            """
-        )
+            """)
         total = total_result[0]["count"] if total_result else 0
 
-        with_result = await query_raw_with_schema(
-            """
+        with_result = await query_raw_with_schema("""
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession" cs
             JOIN {schema_prefix}"UnifiedContentEmbedding" uce
@@ -997,8 +979,7 @@ class ChatSessionHandler(ContentHandler):
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
-            """
-        )
+            """)
         with_embeddings = with_result[0]["count"] if with_result else 0
 
         return {

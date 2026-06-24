@@ -18,9 +18,6 @@ import logging
 import shlex
 from typing import Any
 
-from e2b import AsyncSandbox, CommandExitException
-from e2b.exceptions import TimeoutException
-
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
@@ -32,6 +29,8 @@ from backend.copilot.integration_creds import (
     get_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
+from e2b import AsyncSandbox, CommandExitException
+from e2b.exceptions import TimeoutException
 
 from .base import BaseTool
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase

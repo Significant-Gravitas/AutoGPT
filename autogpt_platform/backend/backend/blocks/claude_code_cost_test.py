@@ -11,7 +11,6 @@ Verifies:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockCostType
 from backend.blocks.claude_code import ClaudeCodeBlock
 from backend.data.block_cost_config import BLOCK_COSTS

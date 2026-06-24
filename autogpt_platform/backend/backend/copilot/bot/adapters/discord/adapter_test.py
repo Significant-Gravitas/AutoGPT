@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
-
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_CHAR_BUDGET,

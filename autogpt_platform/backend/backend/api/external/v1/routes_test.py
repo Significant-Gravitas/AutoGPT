@@ -1,17 +1,16 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import backend.api.external.v1.routes as routes_mod
 import fastapi
 import fastapi.testclient
 import pytest
-from prisma.enums import APIKeyPermission
-
-import backend.api.external.v1.routes as routes_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
+from prisma.enums import APIKeyPermission
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)

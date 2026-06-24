@@ -26,10 +26,9 @@ import logging
 import time
 from typing import Any, cast
 
-from pydantic import BaseModel, Field, ValidationError
-
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 

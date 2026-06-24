@@ -8,13 +8,12 @@ import re
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from pydantic import SecretStr
-
 from forge.config.base import BaseConfig
 from forge.llm.providers import ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
+from pydantic import SecretStr
 
 # Type alias for prompt strategy options
 PromptStrategyName = Literal[
@@ -156,10 +155,9 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
     """
     Check if API keys (if required) are set for the configured SMART_LLM and FAST_LLM.
     """
-    from pydantic import ValidationError
-
     from forge.llm.providers.anthropic import AnthropicModelName
     from forge.llm.providers.groq import GroqModelName
+    from pydantic import ValidationError
 
     if set((config.smart_llm, config.fast_llm)).intersection(AnthropicModelName):
         from forge.llm.providers.anthropic import AnthropicCredentials
@@ -189,9 +187,8 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
             )
 
     if set((config.smart_llm, config.fast_llm)).intersection(GroqModelName):
-        from groq import AuthenticationError
-
         from forge.llm.providers.groq import GroqProvider
+        from groq import AuthenticationError
 
         try:
             groq = GroqProvider()
@@ -215,9 +212,8 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
             raise ValueError("Groq is unavailable: invalid API key") from e
 
     if set((config.smart_llm, config.fast_llm)).intersection(OpenAIModelName):
-        from openai import AuthenticationError
-
         from forge.llm.providers.openai import OpenAIProvider
+        from openai import AuthenticationError
 
         try:
             openai = OpenAIProvider()

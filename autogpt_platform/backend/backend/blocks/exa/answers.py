@@ -1,9 +1,5 @@
 from typing import Optional
 
-from exa_py import AsyncExa
-from exa_py.api import AnswerResponse
-from pydantic import BaseModel
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -15,6 +11,9 @@ from backend.sdk import (
     MediaFileType,
     SchemaField,
 )
+from exa_py import AsyncExa
+from exa_py.api import AnswerResponse
+from pydantic import BaseModel
 
 from ._config import exa
 from .helpers import merge_exa_cost

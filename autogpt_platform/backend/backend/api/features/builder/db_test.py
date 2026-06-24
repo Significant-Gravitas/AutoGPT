@@ -9,9 +9,8 @@ real ~400-block registry; one test exercises the real index builder.
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
 import backend.api.features.builder.db as db
+import pytest
 from backend.blocks._base import BlockInfo
 from backend.util.text import split_camelcase
 

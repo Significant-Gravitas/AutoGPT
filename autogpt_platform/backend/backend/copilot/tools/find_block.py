@@ -1,13 +1,12 @@
 import logging
 from typing import Any
 
-from prisma.enums import ContentType
-
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
+from prisma.enums import ContentType
 
 from .base import BaseTool, ToolResponseBase
 from .models import (

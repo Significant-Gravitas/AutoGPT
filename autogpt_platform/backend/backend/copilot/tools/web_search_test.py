@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from backend.copilot.model import ChatSession
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
@@ -21,8 +22,6 @@ from openai.types.chat.chat_completion_message import (
     AnnotationURLCitation,
     ChatCompletionMessage,
 )
-
-from backend.copilot.model import ChatSession
 
 from .models import ErrorResponse, WebSearchResponse
 from .web_search import (

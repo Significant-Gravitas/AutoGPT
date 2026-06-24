@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
-
 from backend.blocks.ai_condition import (
     MIN_LLM_OUTPUT_TOKENS,
     AIConditionBlock,

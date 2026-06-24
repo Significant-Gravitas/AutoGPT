@@ -1,10 +1,9 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, SecretStr
-
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from pydantic import BaseModel, SecretStr
 
 Slant3DCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.SLANT3D], Literal["api_key"]

@@ -21,12 +21,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.tools.graphiti_forget import mark_edges_superseded
+from pydantic import BaseModel, Field
 
 from .ratification_hits import (
     HIT_TRACKER_KEY_PREFIX,

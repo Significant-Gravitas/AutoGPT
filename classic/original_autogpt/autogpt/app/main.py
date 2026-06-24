@@ -22,7 +22,6 @@ from autogpt.app.config import (
     assert_config_has_required_llm_api_keys,
 )
 from colorama import Fore, Style
-
 from forge.agent_protocol.database import AgentDB
 from forge.components.code_executor.code_executor import (
     is_docker_available,
@@ -269,8 +268,7 @@ async def run_auto_gpt(
 
         if load_existing_agent != "" and load_existing_agent not in existing_agents:
             logger.info(
-                f"Unknown agent '{load_existing_agent}', "
-                f"creating a new one instead.",
+                f"Unknown agent '{load_existing_agent}', creating a new one instead.",
                 extra={"color": Fore.YELLOW},
             )
             load_existing_agent = ""
@@ -480,8 +478,7 @@ async def run_auto_gpt(
 
         # Allow user to Save As other ID
         save_as_id = clean_input(
-            f"Press enter to save as '{agent_id}',"
-            " or enter a different ID to save to:",
+            f"Press enter to save as '{agent_id}', or enter a different ID to save to:",
         )
         # TODO: allow many-to-one relations of agents and workspaces
         await agent.file_manager.save_state(
@@ -891,7 +888,9 @@ def print_assistant_thoughts(
     thoughts_text = remove_ansi_escape(
         thoughts.reasoning
         if isinstance(thoughts, AssistantThoughts)
-        else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
+        else thoughts.summary()
+        if isinstance(thoughts, ModelWithSummary)
+        else thoughts
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW
@@ -923,4 +922,4 @@ def print_assistant_thoughts(
 
 
 def remove_ansi_escape(s: str) -> str:
-    return s.replace("\x1B", "")
+    return s.replace("\x1b", "")

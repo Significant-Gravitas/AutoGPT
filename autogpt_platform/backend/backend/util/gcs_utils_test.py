@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from backend.util.gcs_utils import download_range, parse_gcs_path
 
 

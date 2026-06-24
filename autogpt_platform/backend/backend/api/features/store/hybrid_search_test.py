@@ -5,7 +5,6 @@ Integration tests for the store-agent hybrid search.
 from unittest.mock import patch
 
 import pytest
-
 from backend.api.features.search import embeddings
 from backend.api.features.store.hybrid_search import HybridSearchWeights, hybrid_search
 

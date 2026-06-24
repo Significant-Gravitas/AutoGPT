@@ -6,8 +6,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
@@ -16,6 +14,7 @@ from backend.api.features.search.content_handlers import (
     StoreAgentHandler,
     _get_enabled_blocks,
 )
+from prisma.enums import ContentType
 
 
 @pytest.fixture(autouse=True)

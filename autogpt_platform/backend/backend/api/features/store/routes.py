@@ -3,17 +3,16 @@ import urllib.parse
 from typing import Literal
 
 import autogpt_libs.auth
+import backend.data.graph
+import backend.util.json
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
-from pydantic import BaseModel
-
-import backend.data.graph
-import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
+from fastapi import Query, Security
+from pydantic import BaseModel
 
 from . import cache as store_cache
 from . import db as store_db

@@ -8,11 +8,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from croniter import croniter
-from prisma.enums import AgentExecutionStatus
-from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
-from pydantic import BaseModel
-
 from backend.data.db import query_raw_with_schema
 from backend.data.execution import get_graph_executions, get_graph_executions_count
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -24,6 +19,10 @@ from backend.executor.utils import (
     create_execution_queue_config,
 )
 from backend.util.clients import get_async_execution_queue, get_scheduler_client
+from croniter import croniter
+from prisma.enums import AgentExecutionStatus
+from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -348,14 +347,12 @@ async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
         AgentDiagnosticsSummary with agent metrics
     """
     # Single query to count distinct agents with active executions
-    result = await query_raw_with_schema(
-        """
+    result = await query_raw_with_schema("""
         SELECT COUNT(DISTINCT "agentGraphId") AS active_agents
         FROM {schema_prefix}"AgentGraphExecution"
         WHERE "executionStatus" IN ('RUNNING', 'QUEUED')
         AND "isDeleted" = false
-        """
-    )
+        """)
 
     active_agents = result[0].get("active_agents", 0) if result else 0
 

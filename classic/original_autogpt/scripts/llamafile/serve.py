@@ -18,7 +18,9 @@ import click
 LLAMAFILE = Path("mistral-7b-instruct-v0.2.Q5_K_M.llamafile")
 LLAMAFILE_URL = f"https://huggingface.co/jartine/Mistral-7B-Instruct-v0.2-llamafile/resolve/main/{LLAMAFILE.name}"  # noqa
 LLAMAFILE_EXE = Path("llamafile.exe")
-LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.6/llamafile-0.8.6"  # noqa
+LLAMAFILE_EXE_URL = (
+    "https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.6/llamafile-0.8.6"  # noqa
+)
 
 
 @click.command()
@@ -156,7 +158,7 @@ def report_download_progress(chunk_number: int, chunk_size: int, total_size: int
         bar = "#" * int(40 * percent)
         print(
             f"\rDownloading: [{bar:<40}] {percent:.0%}"
-            f" - {downloaded_size/1e6:.1f}/{total_size/1e6:.1f} MB",
+            f" - {downloaded_size / 1e6:.1f}/{total_size / 1e6:.1f} MB",
             end="",
         )
 

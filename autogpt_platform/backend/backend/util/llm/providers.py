@@ -40,11 +40,6 @@ from typing import Any, Literal, cast
 import anthropic
 import ollama
 import openai
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.shared_params import ResponseFormatJSONObject
-from pydantic import Field
-from pydantic.dataclasses import dataclass
-
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
@@ -64,6 +59,10 @@ from backend.util.openai_responses import (
 )
 from backend.util.request import validate_url_host
 from backend.util.settings import Settings
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.shared_params import ResponseFormatJSONObject
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 settings = Settings()
 logger = logging.getLogger(__name__)
@@ -1239,8 +1238,7 @@ async def poll_batch(
     """
     if provider != "anthropic":
         raise NotImplementedError(
-            f"poll_batch only supports provider='anthropic' today; "
-            f"got {provider!r}."
+            f"poll_batch only supports provider='anthropic' today; got {provider!r}."
         )
     client = anthropic.AsyncAnthropic(api_key=api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)

@@ -18,15 +18,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NotRequired, TypedDict, cast
 
-from prisma.enums import ContentType
-from rank_bm25 import BM25Okapi
-
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
     embed_query,
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+from prisma.enums import ContentType
+from rank_bm25 import BM25Okapi
 
 
 class HybridSearchRow(TypedDict):

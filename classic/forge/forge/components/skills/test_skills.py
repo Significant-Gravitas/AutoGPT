@@ -116,8 +116,7 @@ class TestSkillParser:
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: test-skill
 description: A test skill for validation
 author: Test Author
@@ -129,8 +128,7 @@ tags:
 # Test Skill
 
 This is the skill content.
-"""
-            )
+""")
 
             skill = parse_skill_md(skill_dir)
             assert skill.metadata.name == "test-skill"
@@ -167,13 +165,11 @@ This is the skill content.
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: [invalid: yaml
 description: broken
 ---
-Content"""
-            )
+Content""")
 
             with pytest.raises(SkillParseError, match="Invalid YAML"):
                 parse_skill_md(skill_dir)
@@ -185,12 +181,10 @@ Content"""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: test-skill
 ---
-Missing description"""
-            )
+Missing description""")
 
             with pytest.raises(SkillParseError, match="Invalid metadata"):
                 parse_skill_md(skill_dir)
@@ -202,16 +196,14 @@ Missing description"""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: nested-skill
 description: Has nested metadata
 metadata:
   author: Nested Author
   version: 2.0.0
 ---
-Content"""
-            )
+Content""")
 
             skill = parse_skill_md(skill_dir)
             assert skill.metadata.name == "nested-skill"
@@ -229,15 +221,13 @@ class TestSkillLoading:
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: load-test
 description: Test loading
 ---
 # Full Content
 
-This should be loaded."""
-            )
+This should be loaded.""")
 
             skill = parse_skill_md(skill_dir)
             assert skill.content is None
@@ -255,13 +245,11 @@ This should be loaded."""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: idempotent
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             skill = parse_skill_md(skill_dir)
             loaded1 = load_skill_content(skill)
@@ -275,13 +263,11 @@ Content"""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: extra-files
 description: Has extra files
 ---
-Content"""
-            )
+Content""")
 
             reference_md = skill_dir / "reference.md"
             reference_md.write_text("# Reference\nExtra content here.")
@@ -298,13 +284,11 @@ Content"""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: traversal-test
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             skill = parse_skill_md(skill_dir)
 
@@ -321,13 +305,11 @@ Content"""
             skill_dir.mkdir()
 
             skill_md = skill_dir / "SKILL.md"
-            skill_md.write_text(
-                """---
+            skill_md.write_text("""---
 name: list-files
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             (skill_dir / "file1.md").write_text("File 1")
             (skill_dir / "file2.txt").write_text("File 2")
@@ -353,13 +335,11 @@ class TestSkillDiscovery:
             for name in ["skill-a", "skill-b"]:
                 skill_dir = skills_dir / name
                 skill_dir.mkdir()
-                (skill_dir / "SKILL.md").write_text(
-                    f"""---
+                (skill_dir / "SKILL.md").write_text(f"""---
 name: {name}
 description: Skill {name}
 ---
-Content for {name}"""
-                )
+Content for {name}""")
 
             # Create a directory without SKILL.md (should be ignored)
             (skills_dir / "not-a-skill").mkdir()
@@ -382,13 +362,11 @@ Content for {name}"""
             for d, desc in [(dir1, "First"), (dir2, "Second")]:
                 skill_dir = d / "duplicate-skill"
                 skill_dir.mkdir()
-                (skill_dir / "SKILL.md").write_text(
-                    f"""---
+                (skill_dir / "SKILL.md").write_text(f"""---
 name: duplicate-skill
 description: {desc} skill
 ---
-Content"""
-                )
+Content""")
 
             skills = discover_skills([dir1, dir2])
             assert len(skills) == 1
@@ -419,14 +397,12 @@ class TestSkillComponent:
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "test-skill"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: test-skill
 description: A test skill
 author: Test Author
 ---
-Content"""
-            )
+Content""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -441,15 +417,13 @@ Content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "loadable"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: loadable
 description: A loadable skill
 ---
 # Instructions
 
-Use this skill for testing."""
-            )
+Use this skill for testing.""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -464,13 +438,11 @@ Use this skill for testing."""
             for i in range(3):
                 skill_dir = Path(tmp_dir) / f"skill-{i}"
                 skill_dir.mkdir()
-                (skill_dir / "SKILL.md").write_text(
-                    f"""---
+                (skill_dir / "SKILL.md").write_text(f"""---
 name: skill-{i}
 description: Skill {i}
 ---
-Content"""
-                )
+Content""")
 
             config = SkillConfiguration(
                 skill_directories=[Path(tmp_dir)],
@@ -491,13 +463,11 @@ Content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "unloadable"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: unloadable
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -514,13 +484,11 @@ Content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "with-files"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: with-files
 description: Has extra files
 ---
-Main content"""
-            )
+Main content""")
             (skill_dir / "extra.md").write_text("Extra file content")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
@@ -539,13 +507,11 @@ Main content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "catalog-test"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: catalog-test
 description: Test skill
 ---
-Content"""
-            )
+Content""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -560,15 +526,13 @@ Content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "content-test"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: content-test
 description: Test skill
 ---
 # Skill Instructions
 
-Use this for testing purposes."""
-            )
+Use this for testing purposes.""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -585,13 +549,11 @@ Use this for testing purposes."""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "cmd-test"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: cmd-test
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -615,13 +577,11 @@ Content"""
         with TemporaryDirectory() as tmp_dir:
             skill_dir = Path(tmp_dir) / "resource-test"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: resource-test
 description: Test
 ---
-Content"""
-            )
+Content""")
 
             config = SkillConfiguration(skill_directories=[Path(tmp_dir)])
             component = SkillComponent(config)
@@ -642,13 +602,11 @@ Content"""
             # Add a skill
             skill_dir = Path(tmp_dir) / "new-skill"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                """---
+            (skill_dir / "SKILL.md").write_text("""---
 name: new-skill
 description: New
 ---
-Content"""
-            )
+Content""")
 
             # Refresh
             component.refresh_skills()

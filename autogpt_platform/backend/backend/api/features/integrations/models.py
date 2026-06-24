@@ -5,11 +5,10 @@ This module provides models that will be included in the OpenAPI schema generati
 allowing frontend code generators like Orval to create corresponding TypeScript types.
 """
 
-from pydantic import BaseModel, Field
-
 from backend.data.model import CredentialsType
 from backend.integrations.providers import ProviderName
 from backend.sdk.registry import AutoRegistry
+from pydantic import BaseModel, Field
 
 
 def get_all_provider_names() -> list[str]:

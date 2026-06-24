@@ -21,13 +21,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
-from langfuse import propagate_attributes
-from openai import APIConnectionError
-from openai import omit as openai_omit
-from openai.types import CompletionUsage
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from opentelemetry import trace as otel_trace
-
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -131,6 +124,12 @@ from backend.util.tool_call_loop import (
     ToolCallResult,
     tool_call_loop,
 )
+from langfuse import propagate_attributes
+from openai import APIConnectionError
+from openai import omit as openai_omit
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from opentelemetry import trace as otel_trace
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions

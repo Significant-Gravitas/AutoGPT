@@ -13,8 +13,6 @@ These tests verify that:
 
 from unittest.mock import AsyncMock, patch
 
-from pydantic import SecretStr
-
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
 from backend.data.model import (
     APIKeyCredentials,
@@ -25,6 +23,7 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
 
 from ._test_data import make_session
 from .helpers import _resolve_discriminated_credentials, resolve_block_credentials

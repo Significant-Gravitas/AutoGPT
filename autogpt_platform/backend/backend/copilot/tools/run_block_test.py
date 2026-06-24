@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
@@ -1117,9 +1116,9 @@ class TestRunBlockCredentialsHidden:
             "credentials picker shape leaked into LLM-facing schema — the LLM "
             "will try to construct it and fail"
         )
-        assert "credentials" not in inputs.get(
-            "required", []
-        ), "credentials must not be listed as required — backend resolves it"
+        assert "credentials" not in inputs.get("required", []), (
+            "credentials must not be listed as required — backend resolves it"
+        )
         assert "model_name" in inputs["properties"]
         assert "model_name" in inputs["required"]
 

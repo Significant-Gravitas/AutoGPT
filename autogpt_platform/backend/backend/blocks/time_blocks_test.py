@@ -1,11 +1,10 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import ValidationError
-
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.time_blocks import CountdownTimerBlock
 from backend.data.graph import GraphModel, Link, Node
+from pydantic import ValidationError
 
 
 async def _run(block: CountdownTimerBlock, **input_kwargs):

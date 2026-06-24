@@ -40,25 +40,21 @@ async def test_backfill_adds_active_status_to_legacy_edges(
     )
 
     # Sanity: no edge has status yet.
-    records, _, _ = await driver.execute_query(
-        """
+    records, _, _ = await driver.execute_query("""
         MATCH ()-[e:RELATES_TO]->()
         WHERE e.status IS NULL
         RETURN count(e) AS n
-        """
-    )
+        """)
     assert records[0]["n"] == 2
 
     records, _, _ = await driver.execute_query(BACKFILL_QUERY)
     assert records[0]["updated"] == 2
 
     # Every edge now has status='active'.
-    records, _, _ = await driver.execute_query(
-        """
+    records, _, _ = await driver.execute_query("""
         MATCH ()-[e:RELATES_TO]->()
         RETURN e.status AS status
-        """
-    )
+        """)
     assert {r["status"] for r in records} == {"active"}
 
 
@@ -121,22 +117,18 @@ async def test_backfill_does_not_overwrite_existing_status(
     assert records[0]["updated"] == 1, "only the unstatussed edge should be touched"
 
     # Verify the superseded edge kept its status.
-    records, _, _ = await driver.execute_query(
-        """
+    records, _, _ = await driver.execute_query("""
         MATCH ()-[e:RELATES_TO {uuid: 'already-superseded'}]->()
         RETURN e.status AS status, e.expiration_reason AS reason
-        """
-    )
+        """)
     assert records[0]["status"] == "superseded"
     assert records[0]["reason"] == "previous_pass"
 
     # And the legacy edge got 'active'.
-    records, _, _ = await driver.execute_query(
-        """
+    records, _, _ = await driver.execute_query("""
         MATCH ()-[e:RELATES_TO {uuid: 'legacy-active'}]->()
         RETURN e.status AS status
-        """
-    )
+        """)
     assert records[0]["status"] == "active"
 
 

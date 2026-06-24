@@ -3,9 +3,8 @@
 
 import asyncio
 
-from prisma import Prisma
-
 from backend.data.db import query_raw_with_schema
+from prisma import Prisma
 
 
 async def check_store_data(db):

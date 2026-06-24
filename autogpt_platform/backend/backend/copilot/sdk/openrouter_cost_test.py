@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.openrouter_cost import record_turn_cost_from_openrouter
 

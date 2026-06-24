@@ -4,11 +4,10 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import backend.blocks.llm as llm
 import httpx
 import openai
 import pytest
-
-import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -50,10 +49,9 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_llm_call_anthropic_returns_cache_tokens(self):
         """Test that llm_call returns cache read/creation tokens from Anthropic."""
-        from pydantic import SecretStr
-
         import backend.blocks.llm as llm
         from backend.data.model import APIKeyCredentials
+        from pydantic import SecretStr
 
         anthropic_creds = APIKeyCredentials(
             id="test-anthropic-id",
@@ -1048,9 +1046,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -1079,9 +1077,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -1109,9 +1107,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
@@ -1345,9 +1343,9 @@ class TestAnthropicCacheControl:
         an_tools = captured_kwargs.get("tools")
         assert isinstance(an_tools, list)
         assert len(an_tools) == 2
-        assert (
-            an_tools[0].get("cache_control") is None
-        ), "Only last tool gets cache_control"
+        assert an_tools[0].get("cache_control") is None, (
+            "Only last tool gets cache_control"
+        )
         assert an_tools[-1].get("cache_control") == {"type": "ephemeral"}
 
     @pytest.mark.asyncio
@@ -1383,9 +1381,9 @@ class TestAnthropicCacheControl:
         import anthropic
 
         tools_arg = captured_kwargs.get("tools")
-        assert (
-            tools_arg is anthropic.NOT_GIVEN
-        ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        assert tools_arg is anthropic.NOT_GIVEN, (
+            "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_system_prompt_omits_system_key(self):
@@ -1417,9 +1415,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        )
 
     @pytest.mark.asyncio
     async def test_whitespace_only_system_prompt_omits_system_key(self):
@@ -1455,9 +1453,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        )
 
 
 class TestLLMRequestTimeout:
@@ -1546,9 +1544,9 @@ class TestLLMRequestTimeout:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count["n"] == 1
-        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        assert call_count["n"] == 1, (
+            f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        )
 
 
 class TestLlmModelMissingHandler:

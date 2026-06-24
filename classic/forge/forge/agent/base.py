@@ -18,9 +18,6 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field
-from pydantic_core import from_json, to_json
-
 from forge.agent import protocols
 from forge.agent.components import (
     AgentComponent,
@@ -35,6 +32,8 @@ from forge.llm.providers.schema import ChatModelInfo
 from forge.models.action import ActionResult, AnyProposal
 from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
 from forge.permissions import CommandPermissionManager
+from pydantic import BaseModel, Field
+from pydantic_core import from_json, to_json
 
 logger = logging.getLogger(__name__)
 

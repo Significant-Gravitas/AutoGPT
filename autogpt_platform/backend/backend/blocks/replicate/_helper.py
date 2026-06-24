@@ -19,7 +19,7 @@ def extract_result(output: ReplicateOutputs) -> str:
         elif isinstance(output[0], str):
             result = "".join(
                 output  # type: ignore we're already not a file output here
-            )  # type:ignore If output is a list and a str, join the elements the first element. Happens if its text
+            )  # type: ignore If output is a list and a str, join the elements the first element. Happens if its text
         elif isinstance(output[0], dict):
             result = str(output[0])
         else:

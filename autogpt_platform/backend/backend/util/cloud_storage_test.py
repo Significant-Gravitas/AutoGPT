@@ -5,7 +5,6 @@ Tests for cloud storage utilities.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.cloud_storage import CloudStorageConfig, CloudStorageHandler
 
 

@@ -7,10 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
-
 from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
 from backend.blocks.sql_query_helpers import (
     _CONNECT_TIMEOUT_SECONDS,
@@ -23,6 +19,9 @@ from backend.blocks.sql_query_helpers import (
     _validate_query_is_read_only,
     _validate_single_statement,
 )
+from pydantic import SecretStr
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 
 class TestValidateSingleStatement:
@@ -1376,9 +1375,8 @@ class TestURLCreateSpecialCharacters:
         self, db_type: DatabaseType, expected_driver: str
     ):
         """URL.create() must use the correct drivername for each database type."""
-        from sqlalchemy.engine.url import URL
-
         from backend.blocks.sql_query_block import _DATABASE_TYPE_TO_DRIVER
+        from sqlalchemy.engine.url import URL
 
         drivername = _DATABASE_TYPE_TO_DRIVER[db_type]
         url = URL.create(
@@ -1466,9 +1464,9 @@ class TestNewDisallowedKeywords:
         error, stmt = _validate_single_statement(query)
         if error is None and stmt is not None:
             ro_error = _validate_query_is_read_only(stmt)
-            assert (
-                ro_error is not None
-            ), f"Expected '{expected_keyword}' to be blocked but query passed: {query}"
+            assert ro_error is not None, (
+                f"Expected '{expected_keyword}' to be blocked but query passed: {query}"
+            )
             assert "Disallowed SQL keyword" in ro_error
 
     @pytest.mark.parametrize(

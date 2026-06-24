@@ -11,10 +11,9 @@ import logging
 from json import JSONDecodeError
 from typing import Any, Optional, TypeVar
 
-from pydantic import BaseModel, Field
-
 from backend.data.model import APIKeyCredentials
 from backend.util.request import Requests
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

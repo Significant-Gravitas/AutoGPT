@@ -1,8 +1,7 @@
 from enum import Enum
 
-from pydantic import BaseModel
-
 from backend.data.model import SchemaField
+from pydantic import BaseModel
 
 
 class CreateCampaignResponse(BaseModel):

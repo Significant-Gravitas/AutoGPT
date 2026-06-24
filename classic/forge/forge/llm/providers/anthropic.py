@@ -8,9 +8,8 @@ import sentry_sdk
 import tenacity
 import tiktoken
 from anthropic import APIConnectionError, APIStatusError
-from pydantic import SecretStr
-
 from forge.models.config import UserConfigurable
+from pydantic import SecretStr
 
 from .schema import (
     AssistantChatMessage,
@@ -476,9 +475,9 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             # Add beta header for interleaved thinking with tool use
             if functions:
                 kwargs["extra_headers"] = kwargs.get("extra_headers", {})
-                kwargs["extra_headers"][
-                    "anthropic-beta"
-                ] = "interleaved-thinking-2025-05-14"
+                kwargs["extra_headers"]["anthropic-beta"] = (
+                    "interleaved-thinking-2025-05-14"
+                )
 
         if extra_headers := self._configuration.extra_request_headers:
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})
@@ -577,7 +576,8 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         @self._retry_api_request
         async def _create_chat_completion_with_retry() -> Message:
             return await self._client.messages.create(
-                model=model, **completion_kwargs  # type: ignore
+                model=model,
+                **completion_kwargs,  # type: ignore
             )
 
         response = await _create_chat_completion_with_retry()

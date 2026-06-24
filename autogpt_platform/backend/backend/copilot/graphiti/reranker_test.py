@@ -13,9 +13,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from graphiti_core.llm_client import LLMConfig
-
 from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
+from graphiti_core.llm_client import LLMConfig
 
 
 def _logprob_response(token: str, logprob: float) -> SimpleNamespace:

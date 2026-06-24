@@ -6,8 +6,6 @@ import logging
 import os
 from typing import Callable, List, Optional, Type
 
-from pydantic import SecretStr
-
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.data.model import (
     APIKeyCredentials,
@@ -20,6 +18,7 @@ from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 

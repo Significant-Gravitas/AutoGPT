@@ -5,9 +5,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from tiktoken import encoding_for_model
-
 from backend.util import json
+from tiktoken import encoding_for_model
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI

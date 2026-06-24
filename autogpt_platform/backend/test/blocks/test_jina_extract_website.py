@@ -1,7 +1,6 @@
 from typing import cast
 
 import pytest
-
 from backend.blocks.jina._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,

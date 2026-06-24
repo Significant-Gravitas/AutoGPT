@@ -7,9 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.models import ChatMessage as PrismaChatMessage
-from prisma.models import ChatSession as PrismaChatSession
-
 from backend.copilot.db import (
     PaginatedMessages,
     get_chat_messages_paginated,
@@ -18,6 +15,8 @@ from backend.copilot.db import (
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
 from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
+from prisma.models import ChatMessage as PrismaChatMessage
+from prisma.models import ChatSession as PrismaChatSession
 
 
 def _make_msg(

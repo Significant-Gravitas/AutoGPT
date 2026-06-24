@@ -352,13 +352,16 @@ async def test_get_user_profile(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_parameterized():
     """Malicious search input is passed as a parameter, not concatenated into SQL."""
-    with patch(
-        "backend.api.features.store.hybrid_search.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ) as hybrid_query_raw, patch(
-        "backend.api.features.store.db.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ) as fallback_query_raw:
+    with (
+        patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ) as hybrid_query_raw,
+        patch(
+            "backend.api.features.store.db.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ) as fallback_query_raw,
+    ):
         malicious_search = "test'; DROP TABLE StoreAgent; --"
         result = await db.get_store_agents(search_query=malicious_search)
 
@@ -374,13 +377,16 @@ async def test_get_store_agents_with_search_parameterized():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_and_filters_parameterized():
     """Malicious creator/category values are bound as parameters across all filters."""
-    with patch(
-        "backend.api.features.store.hybrid_search.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ), patch(
-        "backend.api.features.store.db.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ) as fallback_query_raw:
+    with (
+        patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.api.features.store.db.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ) as fallback_query_raw,
+    ):
         malicious_creator = "creator1'; DROP TABLE Users; --"
         malicious_category = "AI'; DELETE FROM StoreAgent; --"
         result = await db.get_store_agents(
@@ -403,13 +409,16 @@ async def test_get_store_agents_with_search_and_filters_parameterized():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_search_category_array_injection():
     """Category injection attempt is bound as a parameter, not interpolated."""
-    with patch(
-        "backend.api.features.store.hybrid_search.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ), patch(
-        "backend.api.features.store.db.query_raw_with_schema",
-        AsyncMock(return_value=[]),
-    ) as fallback_query_raw:
+    with (
+        patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.api.features.store.db.query_raw_with_schema",
+            AsyncMock(return_value=[]),
+        ) as fallback_query_raw,
+    ):
         malicious_category = "AI'; DROP TABLE StoreAgent; --"
         result = await db.get_store_agents(
             search_query="test",

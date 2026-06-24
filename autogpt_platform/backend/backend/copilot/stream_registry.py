@@ -23,8 +23,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
-from redis.exceptions import RedisError
-
 from backend.api.model import CopilotCompletionPayload
 from backend.copilot.active_turns import release_turn_slot
 from backend.copilot.turn_queue import dispatch_next_for_user
@@ -35,6 +33,7 @@ from backend.data.notification_bus import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
+from redis.exceptions import RedisError
 
 from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX

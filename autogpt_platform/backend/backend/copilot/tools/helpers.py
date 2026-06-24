@@ -8,8 +8,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_core import PydanticUndefined
-
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import (
@@ -34,6 +32,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
+from pydantic_core import PydanticUndefined
 
 from .models import (
     BlockOutputResponse,

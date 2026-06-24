@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -11,6 +9,7 @@ from backend.blocks._base import (
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.compass import CompassWebhookType
+from pydantic import BaseModel
 
 
 class Transcription(BaseModel):

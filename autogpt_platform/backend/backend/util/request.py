@@ -11,6 +11,7 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
+from backend.util.json import loads
 from tenacity import (
     RetryCallState,
     retry,
@@ -18,8 +19,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
-
-from backend.util.json import loads
 
 
 class HTTPClientError(Exception):

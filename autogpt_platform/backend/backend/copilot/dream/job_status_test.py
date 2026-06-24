@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.copilot.dream.job_status import (
     STATUS_KEY_PREFIX,
     STATUS_TTL_SECONDS,

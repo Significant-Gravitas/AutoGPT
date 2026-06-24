@@ -71,8 +71,7 @@ def test_missing_azure_config(config: AppConfig) -> None:
 @pytest.fixture
 def config_with_azure(config: AppConfig):
     config_file = config.app_data_dir / "azure_config.yaml"
-    config_file.write_text(
-        f"""
+    config_file.write_text(f"""
 azure_api_type: azure
 azure_api_version: 2023-06-01-preview
 azure_endpoint: https://dummy.openai.azure.com
@@ -80,8 +79,7 @@ azure_model_map:
     {config.fast_llm}: FAST-LLM_ID
     {config.smart_llm}: SMART-LLM_ID
     {config.embedding_model}: embedding-deployment-id-for-azure
-"""
-    )
+""")
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config_with_azure = ConfigBuilder.build_config_from_env(workspace=config.workspace)

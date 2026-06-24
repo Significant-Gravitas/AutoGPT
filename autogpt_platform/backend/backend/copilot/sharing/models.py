@@ -22,11 +22,10 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.service import strip_injected_context_for_display
+from pydantic import BaseModel
 
 # Secret-shaped key hints.  Each entry is a whole "word" — boundary
 # matching is enforced by :data:`_SECRET_KEY_RE` so that ``token`` does

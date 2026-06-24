@@ -9,12 +9,11 @@ import logging
 from datetime import datetime
 
 import discord
-from discord import app_commands
-
 from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
 from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
+from discord import app_commands
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ async def _handle_unlink(interaction: discord.Interaction) -> None:
 
     if not base_url:
         await interaction.response.send_message(
-            f"{message}\n\nOpen AutoGPT on the web and go to " "Settings → Bots.",
+            f"{message}\n\nOpen AutoGPT on the web and go to Settings → Bots.",
             ephemeral=True,
         )
         return

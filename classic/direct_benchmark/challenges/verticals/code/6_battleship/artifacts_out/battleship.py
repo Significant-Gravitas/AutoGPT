@@ -41,9 +41,10 @@ class Battleship(AbstractBattleship):
         if not ship_length:
             raise ValueError(f"Invalid ship type {placement.ship_type}")
 
-        start_row, start_col = placement.start["row"], ord(
-            placement.start["column"]
-        ) - ord("A")
+        start_row, start_col = (
+            placement.start["row"],
+            ord(placement.start["column"]) - ord("A"),
+        )
 
         if start_row < 1 or start_row > 10 or start_col < 0 or start_col > 9:
             raise ValueError("Placement out of bounds")
@@ -78,8 +79,9 @@ class Battleship(AbstractBattleship):
         if not self.all_ships_placed(game):
             raise ValueError("All ships must be placed before starting turns")
 
-        target_row, target_col = turn.target["row"], ord(turn.target["column"]) - ord(
-            "A"
+        target_row, target_col = (
+            turn.target["row"],
+            ord(turn.target["column"]) - ord("A"),
         )
         hit_ship = game.board.get((target_row, target_col))
 

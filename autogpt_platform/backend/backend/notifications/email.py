@@ -1,11 +1,6 @@
 import logging
 import pathlib
 
-from postmarker.core import PostmarkClient
-from postmarker.models.emails import EmailManager
-from prisma.enums import NotificationType
-from pydantic import BaseModel
-
 from backend.data.notifications import (
     NotificationDataType_co,
     NotificationEventModel,
@@ -13,6 +8,10 @@ from backend.data.notifications import (
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
+from postmarker.core import PostmarkClient
+from postmarker.models.emails import EmailManager
+from prisma.enums import NotificationType
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 settings = Settings()

@@ -1,9 +1,8 @@
 import pytest
+from backend.api.middleware.security import SecurityHeadersMiddleware
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
-
-from backend.api.middleware.security import SecurityHeadersMiddleware
 
 
 @pytest.fixture

@@ -7,9 +7,6 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from pydantic import field_validator
-from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -30,6 +27,8 @@ from backend.copilot.permissions import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from pydantic import field_validator
+from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -337,8 +336,8 @@ class AutoPilotBlock(Block):
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
         from backend.copilot.sdk.session_waiter import (
-            run_copilot_turn_via_queue,  # avoid circular import
-        )
+            run_copilot_turn_via_queue,
+        )  # avoid circular import
 
         tokens = _check_recursion(max_recursion_depth)
         perm_token = None
@@ -680,9 +679,9 @@ async def _enqueue_for_recovery(
     if dry_run:
         return
     try:
-        from backend.copilot.executor.utils import (  # avoid circular import
+        from backend.copilot.executor.utils import (
             enqueue_copilot_turn,
-        )
+        )  # avoid circular import
 
         await asyncio.wait_for(
             enqueue_copilot_turn(

@@ -5,14 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_mock
 import stripe
-from prisma.enums import SubscriptionTier
-
 from backend.data.stripe_reconciliation import (
     ReconciliationSummary,
     _collect_status_page,
     _record_subscription,
     reconcile_all_stripe_tiers,
 )
+from prisma.enums import SubscriptionTier
 
 
 class _SubDict(dict):

@@ -14,10 +14,6 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from hypercorn.asyncio import serve as hypercorn_serve
-from hypercorn.config import Config as HypercornConfig
-from sentry_sdk import set_user
-
 from forge.agent_protocol.api_router import base_router
 from forge.agent_protocol.database import AgentDB
 from forge.agent_protocol.middlewares import AgentMiddleware
@@ -36,6 +32,9 @@ from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
+from hypercorn.asyncio import serve as hypercorn_serve
+from hypercorn.config import Config as HypercornConfig
+from sentry_sdk import set_user
 
 logger = logging.getLogger(__name__)
 
@@ -234,10 +233,8 @@ class AgentProtocolServer:
 
         # Execute previously proposed action
         if last_proposal:
-            agent.file_manager.workspace.on_write_file = (
-                lambda path: self._on_agent_write_file(
-                    task=task, step=step, relative_path=path
-                )
+            agent.file_manager.workspace.on_write_file = lambda path: (
+                self._on_agent_write_file(task=task, step=step, relative_path=path)
             )
 
             if last_proposal.use_tool.name == ASK_COMMAND:

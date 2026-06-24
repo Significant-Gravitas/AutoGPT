@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
-
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
@@ -22,6 +20,7 @@ from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
 )
+from pydantic import BaseModel, Field, field_validator
 
 from .base import BaseTool
 from .execution_utils import get_execution_outputs, wait_for_execution

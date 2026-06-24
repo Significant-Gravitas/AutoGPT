@@ -23,12 +23,11 @@ from typing import Awaitable, Callable, Optional
 
 import fastapi
 import pypdfium2
-from fastapi.responses import Response
-from PIL import Image
-
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace_storage import get_workspace_storage
+from fastapi.responses import Response
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 

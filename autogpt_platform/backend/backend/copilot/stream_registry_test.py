@@ -4,11 +4,10 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from redis.exceptions import RedisError
-
 from backend.copilot import stream_registry
 from backend.copilot.constants import STREAM_LOCK_PREFIX
 from backend.copilot.executor.utils import get_session_lock_key
+from redis.exceptions import RedisError
 
 
 @pytest.fixture(autouse=True)
@@ -459,7 +458,6 @@ async def test_mark_session_completed_releases_stream_lock():
 async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
     """During replay, the subscriber queue contains chunks plus terminal finish."""
     import orjson
-
     from backend.copilot.response_model import (
         StreamTextDelta,
         StreamTextEnd,

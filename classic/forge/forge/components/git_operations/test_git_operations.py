@@ -1,9 +1,8 @@
 import pytest
-from git.exc import GitCommandError
-from git.repo.base import Repo
-
 from forge.file_storage.base import FileStorage
 from forge.utils.exceptions import CommandExecutionError
+from git.exc import GitCommandError
+from git.repo.base import Repo
 
 from . import GitOperationsComponent
 

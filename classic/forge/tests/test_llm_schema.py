@@ -1,8 +1,6 @@
 """Tests for LLM provider schema models."""
 
 import pytest
-from pydantic import ValidationError
-
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
@@ -21,6 +19,7 @@ from forge.llm.providers.schema import (
     ToolResultMessage,
 )
 from forge.models.json_schema import JSONSchema
+from pydantic import ValidationError
 
 
 # ---------------------------------------------------------------------------

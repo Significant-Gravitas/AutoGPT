@@ -1,8 +1,6 @@
 import logging
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -12,6 +10,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

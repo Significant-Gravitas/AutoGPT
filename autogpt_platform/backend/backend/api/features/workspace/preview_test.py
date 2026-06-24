@@ -7,11 +7,10 @@ from unittest.mock import AsyncMock
 import fastapi
 import fastapi.testclient
 import pytest
-from fpdf import FPDF
-from PIL import Image
-
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
+from fpdf import FPDF
+from PIL import Image
 
 app = fastapi.FastAPI()
 app.include_router(router)

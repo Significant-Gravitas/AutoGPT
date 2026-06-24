@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.manage_schedules import (
     DeleteScheduleTool,
     ListSchedulesTool,

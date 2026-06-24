@@ -171,7 +171,7 @@ def _apply_credential_result(
         else creds_meta.get("provider", "unknown")
     )
     credential_ref = (
-        f"The {credential_label} credential used by the " f"{new_node.block.name} node"
+        f"The {credential_label} credential used by the {new_node.block.name} node"
     )
 
     if refresh_error:

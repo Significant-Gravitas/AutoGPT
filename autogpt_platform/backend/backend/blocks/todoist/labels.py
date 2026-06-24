@@ -1,6 +1,3 @@
-from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +15,8 @@ from backend.blocks.todoist._auth import (
 )
 from backend.blocks.todoist._types import Colors
 from backend.data.model import SchemaField
+from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 
 class TodoistCreateLabelBlock(Block):

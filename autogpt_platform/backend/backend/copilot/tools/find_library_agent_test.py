@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import (
     AgentsFoundResponse,

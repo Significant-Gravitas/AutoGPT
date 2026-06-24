@@ -3,9 +3,6 @@ from datetime import datetime, timezone
 from typing import Iterator, Literal
 
 import praw
-from praw.models import Comment, MoreComments, Submission
-from pydantic import BaseModel, SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -22,6 +19,8 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.mock import MockObject
 from backend.util.settings import Settings
+from praw.models import Comment, MoreComments, Submission
+from pydantic import BaseModel, SecretStr
 
 # Type aliases for Reddit API options
 UserPostSort = Literal["new", "hot", "top", "controversial"]
@@ -309,10 +308,13 @@ class PostRedditCommentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
-        yield "comment_id", self.reply_post(
-            credentials,
-            post_id=input_data.post_id,
-            comment=input_data.comment,
+        yield (
+            "comment_id",
+            self.reply_post(
+                credentials,
+                post_id=input_data.post_id,
+                comment=input_data.comment,
+            ),
         )
         yield "post_id", input_data.post_id
 

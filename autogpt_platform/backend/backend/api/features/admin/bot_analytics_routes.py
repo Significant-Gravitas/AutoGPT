@@ -9,8 +9,6 @@ underlying schema stores neither).
 import logging
 
 from autogpt_libs.auth import requires_admin_user
-from fastapi import APIRouter, Query, Security
-
 from backend.data.bot_analytics_reads import (
     BotAnalyticsSummary,
     BotCommandUsage,
@@ -26,6 +24,7 @@ from backend.data.bot_analytics_reads import (
     list_bot_guilds,
 )
 from backend.platform_linking.models import Platform
+from fastapi import APIRouter, Query, Security
 
 logger = logging.getLogger(__name__)
 

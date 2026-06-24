@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.blocks.system.library_operations import (
     AddToLibraryFromStoreBlock,

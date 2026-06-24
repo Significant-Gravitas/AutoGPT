@@ -8,7 +8,6 @@ existing integration points to include SDK-registered components.
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from backend.integrations.providers import ProviderName
 from backend.sdk import (
     AutoRegistry,

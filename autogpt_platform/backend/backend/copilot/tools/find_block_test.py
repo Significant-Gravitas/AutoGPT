@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockType
 
 from ._test_data import make_session

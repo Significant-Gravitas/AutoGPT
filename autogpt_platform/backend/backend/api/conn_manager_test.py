@@ -3,8 +3,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import WebSocket
-
 from backend.api.conn_manager import (
     ConnectionManager,
     _graph_execs_channel_key,
@@ -15,6 +13,7 @@ from backend.api.conn_manager import (
 )
 from backend.api.model import WSMethod
 from backend.data.execution import GraphExecutionMeta
+from fastapi import WebSocket
 
 
 @pytest.fixture

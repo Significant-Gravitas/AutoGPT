@@ -54,9 +54,7 @@ class TestFileIdJsonPattern:
 
     def test_extracts_from_json_blob(self):
         content = (
-            '{"type":"workspace_file_written",'
-            f'"file_id":"{UUID_A}",'
-            '"path":"out.png"}'
+            f'{{"type":"workspace_file_written","file_id":"{UUID_A}","path":"out.png"}}'
         )
         assert extract_workspace_file_ids(content) == {UUID_A}
 
@@ -85,7 +83,7 @@ class TestMixedInput:
             "image": [f"workspace://{UUID_A}#image/png"],
             "notes": f"[Attached files]\nfile_id={UUID_B} note.txt",
             "tool_response": (
-                '{"type":"workspace_file_written",' f'"file_id":"{UUID_C}"}}'
+                f'{{"type":"workspace_file_written","file_id":"{UUID_C}"}}'
             ),
             # Same UUID via a second shape — must dedupe.
             "duplicate": f"file_id={UUID_A}",

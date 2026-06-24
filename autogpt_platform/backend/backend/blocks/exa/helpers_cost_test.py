@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.blocks.exa.helpers import extract_exa_cost_usd, merge_exa_cost
 from backend.data.model import NodeExecutionStats
 

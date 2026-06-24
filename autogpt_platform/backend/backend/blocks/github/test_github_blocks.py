@@ -1,7 +1,6 @@
 import inspect
 
 import pytest
-
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.github.commits import FileOperation, GithubMultiFileCommitBlock
 from backend.blocks.github.pull_requests import (

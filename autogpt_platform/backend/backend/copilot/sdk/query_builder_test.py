@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import (
     _BARE_MESSAGE_TOKEN_FLOOR,

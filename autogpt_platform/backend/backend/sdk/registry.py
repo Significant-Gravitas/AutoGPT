@@ -6,13 +6,12 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
-from pydantic import BaseModel
-
 from backend.blocks.basic import Block
 from backend.data.model import Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from backend.sdk.provider import Provider
@@ -91,7 +90,6 @@ class AutoRegistry:
                     not hasattr(provider.webhook_manager, "PROVIDER_NAME")
                     or provider.webhook_manager.PROVIDER_NAME is None
                 ):
-
                     # This works because ProviderName has _missing_ method
                     provider.webhook_manager.PROVIDER_NAME = ProviderName(provider.name)
                 cls._webhook_managers[provider.name] = provider.webhook_manager

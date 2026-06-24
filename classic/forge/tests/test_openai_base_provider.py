@@ -5,7 +5,6 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from forge.llm.providers._openai_base import (
     BaseOpenAIChatProvider,
     format_function_def_for_openai,
@@ -734,12 +733,12 @@ class TestCreateChatCompletion:
             msgs = kwargs.get("messages", [])
             for msg in msgs:
                 if msg.get("role") == "assistant":
-                    assert (
-                        msg.get("content") is not None
-                    ), "Assistant message content must not be null on retry"
-                    assert isinstance(
-                        msg["content"], str
-                    ), f"Content must be str, got {type(msg['content'])}"
+                    assert msg.get("content") is not None, (
+                        "Assistant message content must not be null on retry"
+                    )
+                    assert isinstance(msg["content"], str), (
+                        f"Content must be str, got {type(msg['content'])}"
+                    )
             return good_completion
 
         provider._client.chat.completions.create = check_retry_messages

@@ -255,7 +255,7 @@ class AgentBenchAdapter(BenchmarkAdapter):
                 raise RuntimeError("Docker is not running")
         except FileNotFoundError:
             raise RuntimeError(
-                "Docker is required for the OS environment. " "Install Docker first."
+                "Docker is required for the OS environment. Install Docker first."
             )
 
     def _check_playwright(self) -> None:
@@ -403,7 +403,7 @@ class AgentBenchAdapter(BenchmarkAdapter):
             table_str_parts.append("\nData (first 20 rows):")
             for i, row in enumerate(rows[:20]):
                 row_str = " | ".join(str(cell) for cell in row)
-                table_str_parts.append(f"  {i+1}. {row_str}")
+                table_str_parts.append(f"  {i + 1}. {row_str}")
             if len(rows) > 20:
                 table_str_parts.append(f"  ... ({len(rows) - 20} more rows)")
 

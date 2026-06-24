@@ -8,8 +8,6 @@ import logging
 from enum import Enum
 from typing import cast
 
-from prisma.types import Serializable
-
 from backend.sdk import (
     BaseWebhooksManager,
     Credentials,
@@ -18,6 +16,7 @@ from backend.sdk import (
     update_webhook,
 )
 from backend.util.request import HTTPClientError, HTTPServerError
+from prisma.types import Serializable
 
 from ._api import (
     WebhookFilters,

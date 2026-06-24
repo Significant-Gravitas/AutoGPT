@@ -1,9 +1,6 @@
 import os
 from enum import Enum
 
-from pydantic import SecretStr
-from replicate.client import Client as ReplicateClient
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -18,6 +15,8 @@ from backend.blocks.replicate._auth import (
 )
 from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 
 
 # Model name enum
@@ -141,7 +140,9 @@ class ReplicateFluxAdvancedModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: "https://replicate.com/output/generated-image-url.jpg",
+                "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: (
+                    "https://replicate.com/output/generated-image-url.jpg"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )

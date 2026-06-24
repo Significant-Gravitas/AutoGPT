@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,

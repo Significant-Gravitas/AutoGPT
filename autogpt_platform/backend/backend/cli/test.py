@@ -140,7 +140,6 @@ def websocket(server_address: str, graph_exec_id: str):
     import asyncio
 
     import websockets.asyncio.client
-
     from backend.api.ws_api import WSMessage, WSMethod, WSSubscribeGraphExecutionRequest
 
     async def send_message(server_address: str):

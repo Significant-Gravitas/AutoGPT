@@ -8,13 +8,12 @@ from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
 from autogpt_libs.auth.dependencies import get_optional_user_id
+from backend.util.cache import cached
+from backend.util.settings import Settings
 from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
-
-from backend.util.cache import cached
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 

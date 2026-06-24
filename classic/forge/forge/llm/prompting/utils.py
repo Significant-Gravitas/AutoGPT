@@ -9,7 +9,7 @@ SEPARATOR_LENGTH = 42
 def dump_prompt(prompt: ChatPrompt) -> str:
     def separator(text: str):
         half_sep_len = (SEPARATOR_LENGTH - 2 - len(text)) / 2
-        return f"{floor(half_sep_len)*'-'} {text.upper()} {ceil(half_sep_len)*'-'}"
+        return f"{floor(half_sep_len) * '-'} {text.upper()} {ceil(half_sep_len) * '-'}"
 
     formatted_messages = "\n".join(
         [f"{separator(m.role)}\n{m.content}" for m in prompt.messages]
@@ -37,7 +37,7 @@ def to_numbered_list(
 ) -> str:
     if items:
         return "\n".join(
-            f"{i+1}. {item.format(**template_args)}" for i, item in enumerate(items)
+            f"{i + 1}. {item.format(**template_args)}" for i, item in enumerate(items)
         )
     else:
         return no_items_response

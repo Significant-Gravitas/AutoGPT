@@ -1,7 +1,6 @@
 from typing import Any, Type
 
 import pytest
-
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockSchemaInput
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
@@ -131,9 +130,9 @@ async def test_block_ids_valid(block: Type[Block]):
     try:
         parsed_uuid = uuid.UUID(block_instance.id)
         # Verify it's specifically UUID version 4
-        assert (
-            parsed_uuid.version == 4
-        ), f"Block {block.name} ID is UUID version {parsed_uuid.version}, expected version 4"
+        assert parsed_uuid.version == 4, (
+            f"Block {block.name} ID is UUID version {parsed_uuid.version}, expected version 4"
+        )
     except ValueError:
         pytest.fail(f"Block {block.name} has invalid UUID format: {block_instance.id}")
 
@@ -294,9 +293,9 @@ def test_agent_input_block_ignores_legacy_placeholder_values():
     }
     instance = AgentInputBlock.Input.model_construct(**legacy_data)
     schema = instance.generate_schema()
-    assert (
-        "enum" not in schema
-    ), "AgentInputBlock should not produce enum from legacy placeholder_values"
+    assert "enum" not in schema, (
+        "AgentInputBlock should not produce enum from legacy placeholder_values"
+    )
 
 
 def test_dropdown_input_block_produces_enum():
@@ -318,9 +317,9 @@ def test_dropdown_input_block_legacy_placeholder_values_produces_enum():
         name="choice", value=None, placeholder_values=opts
     )
     schema = instance.generate_schema()
-    assert (
-        schema.get("enum") == opts
-    ), "Legacy placeholder_values should be remapped to options"
+    assert schema.get("enum") == opts, (
+        "Legacy placeholder_values should be remapped to options"
+    )
 
 
 def test_generate_schema_integration_legacy_placeholder_values():
@@ -336,9 +335,9 @@ def test_generate_schema_integration_legacy_placeholder_values():
         (AgentInputBlock.Input, legacy_input_default),
     )
     url_props = result["properties"]["url"]
-    assert (
-        "enum" not in url_props
-    ), "Graph schema should not contain enum from AgentInputBlock placeholder_values"
+    assert "enum" not in url_props, (
+        "Graph schema should not contain enum from AgentInputBlock placeholder_values"
+    )
 
 
 def test_generate_schema_integration_dropdown_produces_enum():
@@ -386,8 +385,8 @@ def test_dropdown_input_block_init_legacy_placeholder_values():
     instance = AgentDropdownInputBlock.Input.model_validate(
         {"name": "choice", "value": None, "placeholder_values": opts}
     )
-    assert (
-        instance.options == opts
-    ), "Legacy placeholder_values should be remapped to options via model_validate"
+    assert instance.options == opts, (
+        "Legacy placeholder_values should be remapped to options via model_validate"
+    )
     schema = instance.generate_schema()
     assert schema.get("enum") == opts

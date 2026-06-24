@@ -4,9 +4,8 @@ from logging import getLogger
 from typing import Any, Dict, List, Union
 from urllib.parse import urlencode
 
-from pydantic import field_serializer
-
 from backend.sdk import BaseModel, Credentials, Requests
+from pydantic import field_serializer
 
 logger = getLogger(__name__)
 

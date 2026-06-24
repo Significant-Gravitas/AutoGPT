@@ -11,11 +11,10 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Literal, overload
 
+from forge.models.config import UserConfigurable
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from google.cloud.storage.fileio import BlobReader, BlobWriter
-
-from forge.models.config import UserConfigurable
 
 from .base import FileStorage, FileStorageConfiguration
 

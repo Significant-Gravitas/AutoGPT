@@ -1,8 +1,6 @@
 from typing import cast
 
 import tweepy
-from tweepy.client import Response
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +18,7 @@ from backend.blocks.twitter._auth import (
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.model import SchemaField
+from tweepy.client import Response
 
 
 class TwitterDeleteListBlock(Block):
@@ -232,7 +231,7 @@ class TwitterCreateListBlock(Block):
                 ("list_id", "1234567890"),
                 ("url", "https://twitter.com/i/lists/1234567890"),
             ],
-            test_mock={"create_list": lambda *args, **kwargs: ("1234567890")},
+            test_mock={"create_list": lambda *args, **kwargs: "1234567890"},
         )
 
     @staticmethod

@@ -2,13 +2,12 @@ import time
 import urllib.parse
 from typing import ClassVar, Optional
 
-from pydantic import SecretStr
-
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 from backend.util.settings import Settings
+from pydantic import SecretStr
 
 settings = Settings()
 

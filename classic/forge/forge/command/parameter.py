@@ -1,6 +1,5 @@
-from pydantic import BaseModel
-
 from forge.models.json_schema import JSONSchema
+from pydantic import BaseModel
 
 
 class CommandParameter(BaseModel):

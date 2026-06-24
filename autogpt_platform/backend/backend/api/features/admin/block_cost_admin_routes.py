@@ -4,14 +4,13 @@ import typing
 from datetime import datetime, timezone
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, HTTPException, Query, Security
-from pydantic import BaseModel
-
 from backend.data.block_cost_analytics import (
     ANALYTICS_MAX_DAYS,
     BlockCostEstimateRow,
     compute_block_cost_estimates,
 )
+from fastapi import APIRouter, HTTPException, Query, Security
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

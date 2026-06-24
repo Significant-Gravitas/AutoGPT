@@ -17,6 +17,9 @@ from typing import (
 import tenacity
 import tiktoken
 import yaml
+from forge.json.parsing import json_loads
+from forge.models.config import UserConfigurable
+from forge.models.json_schema import JSONSchema
 from openai._exceptions import APIStatusError, RateLimitError
 from openai.types import EmbeddingCreateParams
 from openai.types.chat import (
@@ -25,10 +28,6 @@ from openai.types.chat import (
     CompletionCreateParams,
 )
 from pydantic import SecretStr
-
-from forge.json.parsing import json_loads
-from forge.models.config import UserConfigurable
-from forge.models.json_schema import JSONSchema
 
 from ._openai_base import BaseOpenAIChatProvider, BaseOpenAIEmbeddingProvider
 from .schema import (
@@ -634,9 +633,9 @@ class OpenAICredentials(ModelProviderCredentials):
             config_params = yaml.load(file, Loader=yaml.SafeLoader) or {}
 
         try:
-            assert config_params.get(
-                "azure_model_map", {}
-            ), "Azure model->deployment_id map is empty"
+            assert config_params.get("azure_model_map", {}), (
+                "Azure model->deployment_id map is empty"
+            )
         except AssertionError as e:
             raise ValueError(*e.args)
 

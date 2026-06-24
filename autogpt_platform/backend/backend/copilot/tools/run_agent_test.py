@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
-
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import GraphValidationError
 

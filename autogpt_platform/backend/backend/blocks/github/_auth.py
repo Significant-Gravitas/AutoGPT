@@ -1,7 +1,5 @@
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -10,6 +8,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
+from pydantic import SecretStr
 
 secrets = Secrets()
 GITHUB_OAUTH_IS_CONFIGURED = bool(

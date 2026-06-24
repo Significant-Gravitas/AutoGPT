@@ -3,9 +3,9 @@ import typing
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from pydantic._internal._model_construction import (  # HACK shouldn't be used
+from pydantic._internal._model_construction import (
     ModelMetaclass,
-)
+)  # HACK shouldn't be used
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined, PydanticUndefinedType
 

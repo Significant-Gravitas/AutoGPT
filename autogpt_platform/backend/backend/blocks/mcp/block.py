@@ -9,8 +9,6 @@ dropdown and the input/output schema adapts dynamically.
 import logging
 from typing import Any, Literal
 
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -33,6 +31,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.json import validate_with_jsonschema
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -226,9 +225,12 @@ class MCPToolBlock(Block):
         if required:
             missing = required - set(input_data.tool_arguments.keys())
             if missing:
-                yield "error", (
-                    f"Missing required argument(s): {', '.join(sorted(missing))}. "
-                    f"Please fill in all required fields marked with * in the block form."
+                yield (
+                    "error",
+                    (
+                        f"Missing required argument(s): {', '.join(sorted(missing))}. "
+                        f"Please fill in all required fields marked with * in the block form."
+                    ),
                 )
                 return
 

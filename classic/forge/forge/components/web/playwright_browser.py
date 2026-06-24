@@ -7,14 +7,6 @@ from pathlib import Path
 from typing import Any, Iterator, Literal, Optional
 
 from bs4 import BeautifulSoup
-from pydantic import BaseModel, SecretStr
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
@@ -27,6 +19,13 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import CommandExecutionError
 from forge.utils.url_validator import validate_url
+from pydantic import BaseModel, SecretStr
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -269,8 +268,7 @@ class WebPlaywrightComponent(
 
         # Wait for DOM to stabilize
         try:
-            await page.evaluate(
-                """
+            await page.evaluate("""
                 () => new Promise(resolve => {
                     let timer;
                     const observer = new MutationObserver(() => {
@@ -289,8 +287,7 @@ class WebPlaywrightComponent(
                         resolve();
                     }, 500);
                 })
-            """
-            )
+            """)
         except Exception as e:
             logger.debug(f"DOM stability check failed (non-critical): {e}")
 

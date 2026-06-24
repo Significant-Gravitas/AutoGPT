@@ -10,11 +10,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
+from backend.util.json import SafeJson
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
-
-from backend.util.json import SafeJson
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
@@ -174,8 +173,7 @@ async def create_workspace_file(
     )
 
     logger.info(
-        f"Created workspace file {file.id} at path {path} "
-        f"in workspace {workspace_id}"
+        f"Created workspace file {file.id} at path {path} in workspace {workspace_id}"
     )
     return WorkspaceFile.from_db(file)
 

@@ -1,10 +1,6 @@
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import SecretStr
-from replicate.client import Client as ReplicateClient
-from replicate.helpers import FileOutput
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -22,6 +18,9 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ModerationError
 from backend.util.file import MediaFileType, store_media_file
+from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
+from replicate.helpers import FileOutput
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

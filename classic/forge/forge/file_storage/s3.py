@@ -14,9 +14,8 @@ from typing import TYPE_CHECKING, BinaryIO, Literal, Optional, overload
 
 import boto3
 import botocore.exceptions
-from pydantic import SecretStr
-
 from forge.models.config import UserConfigurable
+from pydantic import SecretStr
 
 from .base import FileStorage, FileStorageConfiguration
 

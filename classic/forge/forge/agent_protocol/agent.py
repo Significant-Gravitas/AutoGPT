@@ -9,7 +9,6 @@ from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-
 from forge.agent_protocol.api_router import base_router
 from forge.agent_protocol.database.db import AgentDB
 from forge.agent_protocol.middlewares import AgentMiddleware

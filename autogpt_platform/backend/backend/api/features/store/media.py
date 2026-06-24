@@ -3,11 +3,10 @@ import os
 import uuid
 
 import fastapi
-from gcloud.aio import storage as async_storage
-
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
+from gcloud.aio import storage as async_storage
 
 from . import exceptions as store_exceptions
 

@@ -11,19 +11,6 @@ import time
 import uuid
 from typing import Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    Message,
-    ResultMessage,
-    StreamEvent,
-    SystemMessage,
-    TextBlock,
-    ThinkingBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-)
-
 from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -43,6 +30,18 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+)
+from claude_agent_sdk import (
+    AssistantMessage,
+    Message,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
 )
 
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output

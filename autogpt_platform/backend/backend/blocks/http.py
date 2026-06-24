@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Literal
 
 import aiofiles
-from pydantic import SecretStr
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -30,6 +28,7 @@ from backend.util.file import (
     store_media_file,
 )
 from backend.util.request import Requests
+from pydantic import SecretStr
 
 logger = logging.getLogger(name=__name__)
 

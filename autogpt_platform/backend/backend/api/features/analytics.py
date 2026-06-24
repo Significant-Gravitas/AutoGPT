@@ -3,12 +3,11 @@
 import logging
 from typing import Annotated
 
+import backend.data.analytics
 import fastapi
 import pydantic
 from autogpt_libs.auth import get_user_id
 from autogpt_libs.auth.dependencies import requires_user
-
-import backend.data.analytics
 
 router = fastapi.APIRouter(dependencies=[fastapi.Security(requires_user)])
 logger = logging.getLogger(__name__)

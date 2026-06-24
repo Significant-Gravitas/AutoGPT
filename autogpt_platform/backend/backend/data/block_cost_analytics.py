@@ -10,11 +10,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.blocks import get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
+from pydantic import BaseModel
 
 # Match the cost types whose pre-flight is genuinely 0 today (see
 # `block_usage_cost` in executor/utils.py). TOKENS is excluded because

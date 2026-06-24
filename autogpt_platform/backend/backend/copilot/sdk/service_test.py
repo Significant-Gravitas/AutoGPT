@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
@@ -1468,10 +1467,9 @@ class TestConsumeSdkUntilDone:
     async def test_happy_path_text_then_result(self):
         """AssistantMessage with TextBlock → ResultMessage(success) →
         helper yields StreamStart, Step events, TextDelta(s), Finish."""
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
-
         from backend.copilot.response_model import StreamFinish, StreamTextDelta
         from backend.copilot.sdk.service import _consume_sdk_until_done
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         ctx = self._ctx()
         state = self._state()
@@ -1513,10 +1511,9 @@ class TestConsumeSdkUntilDone:
         """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
         the helper must refresh the lock and yield ``StreamHeartbeat``
         without aborting the turn."""
-        from claude_agent_sdk import ResultMessage
-
         from backend.copilot.response_model import StreamFinish, StreamHeartbeat
         from backend.copilot.sdk.service import _consume_sdk_until_done
+        from claude_agent_sdk import ResultMessage
 
         ctx = self._ctx()
         state = self._state()
@@ -1554,6 +1551,9 @@ class TestConsumeSdkUntilDone:
         """A turn that ends with only thinking blocks (no text, no
         tool_use) should set ``pending_thinking_only_reprompt`` and skip
         ``StreamFinish`` so the caller can fire a re-prompt round."""
+        from backend.copilot.response_model import StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
         from claude_agent_sdk import (
             AssistantMessage,
             ResultMessage,
@@ -1562,10 +1562,6 @@ class TestConsumeSdkUntilDone:
             ToolUseBlock,
             UserMessage,
         )
-
-        from backend.copilot.response_model import StreamFinish
-        from backend.copilot.sdk.service import _consume_sdk_until_done
-        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 
         ctx = self._ctx()
         state = self._state()
@@ -1617,6 +1613,14 @@ class TestConsumeSdkUntilDone:
     async def test_tool_use_roundtrip(self):
         """Full tool-use cycle: SystemMessage(init) → AssistantMessage(ToolUse)
         → UserMessage(ToolResult) → AssistantMessage(text) → ResultMessage."""
+        from backend.copilot.response_model import (
+            StreamFinish,
+            StreamTextDelta,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
         from claude_agent_sdk import (
             AssistantMessage,
             ResultMessage,
@@ -1626,15 +1630,6 @@ class TestConsumeSdkUntilDone:
             ToolUseBlock,
             UserMessage,
         )
-
-        from backend.copilot.response_model import (
-            StreamFinish,
-            StreamTextDelta,
-            StreamToolInputAvailable,
-            StreamToolOutputAvailable,
-        )
-        from backend.copilot.sdk.service import _consume_sdk_until_done
-        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 
         ctx = self._ctx()
         state = self._state()
@@ -1693,10 +1688,9 @@ class TestConsumeSdkUntilDone:
     async def test_result_subtype_error_yields_stream_error(self):
         """``ResultMessage(subtype="error")`` from the SDK should surface as
         a ``StreamError`` paired with ``StreamFinish``."""
-        from claude_agent_sdk import ResultMessage
-
         from backend.copilot.response_model import StreamError, StreamFinish
         from backend.copilot.sdk.service import _consume_sdk_until_done
+        from claude_agent_sdk import ResultMessage
 
         ctx = self._ctx()
         state = self._state()
@@ -1732,10 +1726,9 @@ class TestConsumeSdkUntilDone:
         """``SystemMessage(subtype="task_progress")`` flows through the
         adapter and yields a ``StreamHeartbeat`` so the SSE channel and
         Redis lock TTL stay alive during long tool runs."""
-        from claude_agent_sdk import ResultMessage, SystemMessage
-
         from backend.copilot.response_model import StreamHeartbeat
         from backend.copilot.sdk.service import _consume_sdk_until_done
+        from claude_agent_sdk import ResultMessage, SystemMessage
 
         ctx = self._ctx()
         state = self._state()
@@ -1771,10 +1764,9 @@ class TestConsumeSdkUntilDone:
         """The empty-tool-call circuit breaker counts consecutive
         AssistantMessages whose ToolUseBlock has empty input.  Verify the
         helper threads the running counter through ``loop_state``."""
-        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
-
         from backend.copilot.sdk.service import _consume_sdk_until_done
         from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
 
         ctx = self._ctx()
         state = self._state()

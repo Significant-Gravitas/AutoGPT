@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-
 from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,

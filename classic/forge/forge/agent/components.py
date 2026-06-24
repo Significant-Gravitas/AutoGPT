@@ -3,9 +3,8 @@ from __future__ import annotations
 from abc import ABC
 from typing import Callable, ClassVar, Generic, Optional, TypeVar
 
-from pydantic import BaseModel
-
 from forge.models.config import _update_user_config_from_env, deep_update
+from pydantic import BaseModel
 
 AC = TypeVar("AC", bound="AgentComponent")
 BM = TypeVar("BM", bound=BaseModel)

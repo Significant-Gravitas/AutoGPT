@@ -5,11 +5,10 @@ Unit tests for APIKeyAuthenticator class.
 from unittest.mock import Mock, patch
 
 import pytest
-from fastapi import HTTPException, Request
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
-
 from backend.api.utils.api_key_auth import APIKeyAuthenticator
 from backend.util.exceptions import MissingConfigError
+from fastapi import HTTPException, Request
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
 
 @pytest.fixture
@@ -457,7 +456,8 @@ async def test_api_key_with_unicode_characters_normalization_attack(mock_request
     """Test that Unicode normalization doesn't bypass validation."""
     # Create auth with composed Unicode character
     auth = APIKeyAuthenticator(
-        header_name="X-API-Key", expected_token="café"  # é is composed
+        header_name="X-API-Key",
+        expected_token="café",  # é is composed
     )
 
     # Try with decomposed version (c + a + f + e + ´)
@@ -522,8 +522,8 @@ async def test_api_keys_with_newline_variations(mock_request):
         "valid\r\ntoken",  # Windows newline
         "valid\rtoken",  # Mac newline
         "valid\x85token",  # NEL (Next Line)
-        "valid\x0Btoken",  # Vertical Tab
-        "valid\x0Ctoken",  # Form Feed
+        "valid\x0btoken",  # Vertical Tab
+        "valid\x0ctoken",  # Form Feed
     ]
 
     for api_key in newline_variations:

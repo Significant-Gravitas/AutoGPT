@@ -8,7 +8,6 @@ incr/expire/rpush/ltrim/llen, and eval() for the CAS helper.
 from typing import Any
 
 import pytest
-
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
@@ -213,7 +212,11 @@ async def test_capped_rpush_returns_length_and_trims() -> None:
     r = _Fake()
     for i in range(5):
         length = await capped_rpush(
-            r, "buf", f"item-{i}", max_len=3, ttl_seconds=30  # type: ignore[arg-type]
+            r,
+            "buf",
+            f"item-{i}",
+            max_len=3,
+            ttl_seconds=30,  # type: ignore[arg-type]
         )
     # After 5 pushes capped at 3, only the newest 3 remain.
     assert length == 3
@@ -280,7 +283,11 @@ async def test_hash_cas_swaps_when_expected_matches() -> None:
     r = _Fake()
     r.hashes["meta"] = {"status": "running"}
     swapped = await hash_compare_and_set(
-        r, "meta", "status", expected="running", new="completed"  # type: ignore[arg-type]
+        r,
+        "meta",
+        "status",
+        expected="running",
+        new="completed",  # type: ignore[arg-type]
     )
     assert swapped is True
     assert r.hashes["meta"]["status"] == "completed"
@@ -291,7 +298,11 @@ async def test_hash_cas_no_swap_when_expected_differs() -> None:
     r = _Fake()
     r.hashes["meta"] = {"status": "completed"}
     swapped = await hash_compare_and_set(
-        r, "meta", "status", expected="running", new="failed"  # type: ignore[arg-type]
+        r,
+        "meta",
+        "status",
+        expected="running",
+        new="failed",  # type: ignore[arg-type]
     )
     assert swapped is False
     assert r.hashes["meta"]["status"] == "completed"

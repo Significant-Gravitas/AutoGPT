@@ -37,7 +37,9 @@ def test_demotion_status_must_be_one_of_two_values():
     DreamDemotion(edge_uuid="u", reason="r", new_status="contradicted")
     with pytest.raises(ValidationError):
         DreamDemotion(
-            edge_uuid="u", reason="r", new_status="archived"  # type: ignore[arg-type]
+            edge_uuid="u",
+            reason="r",
+            new_status="archived",  # type: ignore[arg-type]
         )
 
 

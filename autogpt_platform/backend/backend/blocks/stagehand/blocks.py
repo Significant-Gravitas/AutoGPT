@@ -1,9 +1,6 @@
 import logging
 from enum import Enum
 
-from stagehand import AsyncStagehand
-from stagehand.types.session_act_params import Options as ActOptions
-
 from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
@@ -22,6 +19,8 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from stagehand import AsyncStagehand
+from stagehand.types.session_act_params import Options as ActOptions
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +52,9 @@ class StagehandRecommendedLlmModel(str, Enum):
         if len(model_name.split("/")) == 1 and not self.value.startswith(
             model_metadata.provider
         ):
-            assert (
-                model_metadata.provider != "open_router"
-            ), "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
+            assert model_metadata.provider != "open_router", (
+                "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
+            )
             model_name = f"{model_metadata.provider}/{model_name}"
 
         logger.error(f"Model name: {model_name}")

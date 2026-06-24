@@ -6,14 +6,13 @@ import time
 from functools import wraps
 from uuid import uuid4
 
+from backend.util.settings import get_service_name
 from tenacity import (
     retry,
     retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
 )
-
-from backend.util.settings import get_service_name
 
 logger = logging.getLogger(__name__)
 

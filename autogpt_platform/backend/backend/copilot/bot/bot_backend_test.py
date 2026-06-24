@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,

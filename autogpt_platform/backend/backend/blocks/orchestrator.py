@@ -12,8 +12,6 @@ from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel
-
 import backend.blocks.llm as llm
 from backend.blocks._base import (
     Block,
@@ -46,6 +44,7 @@ from backend.util.tool_call_loop import (
     ToolCallResult,
     tool_call_loop,
 )
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node

@@ -5,10 +5,9 @@ from datetime import datetime
 from typing import Any, Optional, cast
 
 import pydantic
-from prisma.models import CoPilotUnderstanding
-
 from backend.data.redis_client import get_redis_async
 from backend.util.json import SafeJson
+from prisma.models import CoPilotUnderstanding
 
 logger = logging.getLogger(__name__)
 

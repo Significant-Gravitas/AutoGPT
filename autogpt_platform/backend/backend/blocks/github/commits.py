@@ -2,8 +2,6 @@ import asyncio
 from enum import StrEnum
 from urllib.parse import quote
 
-from typing_extensions import TypedDict
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -15,6 +13,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import parse_data_uri, resolve_media_content
 from backend.util.type import MediaFileType
+from typing_extensions import TypedDict
 
 from ._api import get_api
 from ._auth import (

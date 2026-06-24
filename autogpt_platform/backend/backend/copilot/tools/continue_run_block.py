@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from prisma.enums import ReviewStatus
-
 from backend.blocks import get_block
 from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
@@ -13,6 +11,7 @@ from backend.copilot.constants import (
 )
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import review_db
+from prisma.enums import ReviewStatus
 
 from .base import BaseTool
 from .helpers import execute_block, resolve_block_credentials

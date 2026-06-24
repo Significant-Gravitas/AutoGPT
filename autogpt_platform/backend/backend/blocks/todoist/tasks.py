@@ -1,9 +1,5 @@
 from datetime import datetime
 
-from todoist_api_python.api import TodoistAPI
-from todoist_api_python.models import Task
-from typing_extensions import Optional
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +16,9 @@ from backend.blocks.todoist._auth import (
     TodoistCredentialsInput,
 )
 from backend.data.model import SchemaField
+from todoist_api_python.api import TodoistAPI
+from todoist_api_python.models import Task
+from typing_extensions import Optional
 
 
 class TodoistCreateTaskBlock(Block):
@@ -580,7 +579,7 @@ class TodoistReopenTaskBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={"reopen_task": lambda *args, **kwargs: (True)},
+            test_mock={"reopen_task": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -632,7 +631,7 @@ class TodoistDeleteTaskBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={"delete_task": lambda *args, **kwargs: (True)},
+            test_mock={"delete_task": lambda *args, **kwargs: True},
         )
 
     @staticmethod

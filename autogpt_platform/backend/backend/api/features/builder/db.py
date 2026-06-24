@@ -4,13 +4,11 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any, Awaitable, Sequence, get_args, get_origin
 
-import prisma
-from prisma.models import mv_suggested_blocks
-
 import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
+import prisma
 from backend.blocks import load_all_blocks
 from backend.blocks._base import (
     AnyBlockSchema,
@@ -24,6 +22,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
 from backend.util.text import split_camelcase
+from prisma.models import mv_suggested_blocks
 
 from .model import (
     BlockCategoryResponse,

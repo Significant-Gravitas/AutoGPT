@@ -1,8 +1,7 @@
 from typing import Optional
 
-from pydantic import BaseModel, SecretStr
-
 from forge.models.config import UserConfigurable
+from pydantic import BaseModel, SecretStr
 
 
 class PlatformBlocksConfig(BaseModel):

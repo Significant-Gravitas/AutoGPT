@@ -7,11 +7,10 @@ from typing import Awaitable, Optional
 import aio_pika
 import pika
 import pika.adapters.blocking_connection
-from pika.spec import BasicProperties
-from pydantic import BaseModel
-
 from backend.util.retry import conn_retry, func_retry
 from backend.util.settings import Settings
+from pika.spec import BasicProperties
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

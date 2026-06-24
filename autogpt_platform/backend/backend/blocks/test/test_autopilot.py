@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from backend.blocks.autopilot import (
     AUTOPILOT_BLOCK_ID,
     AutoPilotBlock,

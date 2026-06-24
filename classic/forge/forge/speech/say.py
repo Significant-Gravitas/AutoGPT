@@ -1,4 +1,4 @@
-""" Text to speech module """
+"""Text to speech module"""
 
 from __future__ import annotations
 
@@ -24,20 +24,24 @@ class TTSConfig(SystemConfiguration):
     speak_mode: bool = False
     elevenlabs: Optional[ElevenLabsConfig] = None
     streamelements: Optional[StreamElementsConfig] = None
-    provider: Literal[
-        "elevenlabs", "gtts", "macos", "streamelements"
-    ] = UserConfigurable(
-        default="gtts",
-        from_env=lambda: os.getenv("TEXT_TO_SPEECH_PROVIDER")
-        or (
-            "macos"
-            if os.getenv("USE_MAC_OS_TTS")
-            else (
-                "elevenlabs"
-                if os.getenv("ELEVENLABS_API_KEY")
-                else "streamelements" if os.getenv("USE_BRIAN_TTS") else "gtts"
-            )
-        ),
+    provider: Literal["elevenlabs", "gtts", "macos", "streamelements"] = (
+        UserConfigurable(
+            default="gtts",
+            from_env=lambda: (
+                os.getenv("TEXT_TO_SPEECH_PROVIDER")
+                or (
+                    "macos"
+                    if os.getenv("USE_MAC_OS_TTS")
+                    else (
+                        "elevenlabs"
+                        if os.getenv("ELEVENLABS_API_KEY")
+                        else "streamelements"
+                        if os.getenv("USE_BRIAN_TTS")
+                        else "gtts"
+                    )
+                )
+            ),
+        )
     )  # type: ignore
 
 

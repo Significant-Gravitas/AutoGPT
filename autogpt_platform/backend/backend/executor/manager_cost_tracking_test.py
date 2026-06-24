@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.executor.cost_tracking import (

@@ -3,7 +3,6 @@ Shared configuration for all AgentMail blocks.
 """
 
 from agentmail import AsyncAgentMail
-
 from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, SecretStr
 
 # AgentMail is in beta with no published paid tier yet, but ~37 blocks

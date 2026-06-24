@@ -1,7 +1,5 @@
 from urllib.parse import quote
 
-from typing_extensions import TypedDict
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -10,6 +8,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from typing_extensions import TypedDict
 
 from ._api import get_api
 from ._auth import (

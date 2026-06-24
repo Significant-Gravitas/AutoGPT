@@ -2,7 +2,6 @@ import json
 from typing import Iterator
 
 import click
-
 from forge.agent.protocols import CommandProvider
 from forge.command import Command, command
 from forge.models.json_schema import JSONSchema

@@ -58,15 +58,14 @@ from enum import Enum
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from prisma.models import User as PrismaUser
-from pydantic import BaseModel, Field
-from redis.exceptions import RedisClusterException, RedisError
-
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from prisma.models import User as PrismaUser
+from pydantic import BaseModel, Field
+from redis.exceptions import RedisClusterException, RedisError
 
 logger = logging.getLogger(__name__)
 

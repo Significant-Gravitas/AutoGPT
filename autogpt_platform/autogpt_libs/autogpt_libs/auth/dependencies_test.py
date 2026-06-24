@@ -7,16 +7,15 @@ import os
 from unittest.mock import Mock
 
 import pytest
-from fastapi import FastAPI, HTTPException, Request, Security
-from fastapi.testclient import TestClient
-from pytest_mock import MockerFixture
-
 from autogpt_libs.auth.dependencies import (
     get_user_id,
     requires_admin_user,
     requires_user,
 )
 from autogpt_libs.auth.models import User
+from fastapi import FastAPI, HTTPException, Request, Security
+from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 
 
 class TestAuthDependencies:

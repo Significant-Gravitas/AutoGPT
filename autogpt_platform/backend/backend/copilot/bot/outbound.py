@@ -18,10 +18,9 @@ import logging
 import re
 from typing import Literal, Optional
 
-from pydantic import BaseModel
-
 from backend.copilot.bot.adapters.base import ChannelInfo, PlatformAdapter
 from backend.copilot.bot.bot_backend import BotBackend
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,6 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
-
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,

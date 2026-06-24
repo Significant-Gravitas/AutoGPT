@@ -35,14 +35,13 @@ import math
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from openai.types import CompletionUsage
-
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from openai.types import CompletionUsage
 
 logger = logging.getLogger(__name__)
 

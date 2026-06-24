@@ -22,12 +22,6 @@ from typing import Literal, Optional
 from urllib.parse import urlencode
 
 from autogpt_libs.auth import get_user_id
-from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
-from gcloud.aio import storage as async_storage
-from PIL import Image
-from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
-
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -51,6 +45,11 @@ from backend.data.auth.oauth import (
 )
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
+from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
+from gcloud.aio import storage as async_storage
+from PIL import Image
+from prisma.enums import APIKeyPermission
+from pydantic import BaseModel, Field
 
 settings = Settings()
 logger = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
-
 from backend.blocks.google.gmail import (
     GmailForwardBlock,
     GmailReadBlock,

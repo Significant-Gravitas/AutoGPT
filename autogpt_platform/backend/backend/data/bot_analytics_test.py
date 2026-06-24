@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.data import bot_analytics
 from backend.platform_linking.models import BotEventInput, BotGuildInput, Platform
 

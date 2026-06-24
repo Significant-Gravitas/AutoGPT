@@ -5,9 +5,6 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from starlette.middleware.cors import CORSMiddleware
-
 from backend.api.conn_manager import ConnectionManager
 from backend.api.model import (
     WSMessage,
@@ -24,6 +21,8 @@ from backend.monitoring.instrumentation import (
 )
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from starlette.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger(__name__)
 settings = Settings()

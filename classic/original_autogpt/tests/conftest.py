@@ -8,7 +8,6 @@ import pytest
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.config import AppConfig, ConfigBuilder
 from autogpt.app.main import _configure_llm_provider
-
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.local import (
     FileStorage,

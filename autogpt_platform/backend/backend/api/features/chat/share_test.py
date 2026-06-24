@@ -4,10 +4,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from starlette.responses import Response
-
 from backend.api.features.chat.share import owner_router, public_router
 from backend.copilot.sharing.models import (
     SharedChatMessage,
@@ -15,6 +11,9 @@ from backend.copilot.sharing.models import (
     SharedChatSession,
 )
 from backend.data.workspace import WorkspaceFile
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from starlette.responses import Response
 
 app = FastAPI()
 app.include_router(owner_router, prefix="/api/chat")

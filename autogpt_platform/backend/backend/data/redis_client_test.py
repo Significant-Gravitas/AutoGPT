@@ -5,6 +5,7 @@ Patches the redis-py constructors + ``ping()`` so no real Redis is needed.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import backend.data.redis_client as redis_client
 import pytest
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
@@ -13,8 +14,6 @@ from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
-
-import backend.data.redis_client as redis_client
 
 
 @pytest.fixture(autouse=True)

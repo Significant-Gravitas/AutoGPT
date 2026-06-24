@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks._base import BlockType
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.tools.helpers import (

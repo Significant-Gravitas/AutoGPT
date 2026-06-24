@@ -4,13 +4,12 @@ import json
 import logging
 from typing import Any
 
-from openai.types.chat import ChatCompletionToolParam
-
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.db_accessors import workspace_db
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
+from openai.types.chat import ChatCompletionToolParam
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 

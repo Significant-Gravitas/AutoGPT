@@ -1,7 +1,6 @@
 """Tests for GetAgentBuildingGuideTool."""
 
 import pytest
-
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.get_agent_building_guide import (
     _TRIGGER_AGENTS_HEADING,

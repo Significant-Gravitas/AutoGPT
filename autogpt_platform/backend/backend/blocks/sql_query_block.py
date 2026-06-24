@@ -1,10 +1,6 @@
 import asyncio
 from typing import Any, Literal
 
-from pydantic import SecretStr
-from sqlalchemy.engine.url import URL
-from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -29,6 +25,9 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.request import resolve_and_check_blocked
+from pydantic import SecretStr
+from sqlalchemy.engine.url import URL
+from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
 TEST_CREDENTIALS = UserPasswordCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

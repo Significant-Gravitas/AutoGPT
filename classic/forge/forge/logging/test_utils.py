@@ -24,10 +24,10 @@ from .utils import remove_color_codes
         ),
         ("", ""),
         ("hello", "hello"),
-        ("hello\x1B[31m world", "hello world"),
-        ("\x1B[36mHello,\x1B[32m World!", "Hello, World!"),
+        ("hello\x1b[31m world", "hello world"),
+        ("\x1b[36mHello,\x1b[32m World!", "Hello, World!"),
         (
-            "\x1B[1m\x1B[31mError:\x1B[0m\x1B[31m file not found",
+            "\x1b[1m\x1b[31mError:\x1b[0m\x1b[31m file not found",
             "Error: file not found",
         ),
     ],

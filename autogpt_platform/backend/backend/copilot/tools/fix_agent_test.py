@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from backend.copilot.tools.fix_agent import FixAgentGraphTool
 from backend.copilot.tools.models import ErrorResponse, FixResultResponse
 

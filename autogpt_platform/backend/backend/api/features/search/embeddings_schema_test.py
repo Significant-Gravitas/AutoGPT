@@ -7,10 +7,9 @@ These tests verify that embeddings operations work correctly across different da
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search import embeddings
 from backend.api.features.search.embeddings import EMBEDDING_DIM
+from prisma.enums import ContentType
 
 # Schema prefix tests removed - functionality moved to db.raw_with_schema() helper
 

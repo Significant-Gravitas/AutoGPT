@@ -4,10 +4,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from pydantic import BaseModel
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -17,6 +13,9 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from pydantic import BaseModel
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,

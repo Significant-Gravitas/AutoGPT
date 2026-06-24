@@ -6,10 +6,9 @@ Telegram bots use an API key (bot token) obtained from @BotFather.
 
 from typing import Literal
 
-from pydantic import SecretStr
-
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from pydantic import SecretStr
 
 # Bot token credentials (API key style)
 TelegramCredentials = APIKeyCredentials

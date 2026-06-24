@@ -15,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import pytest
-
 from backend.util.cache import cached, clear_thread_cache, thread_cached
 
 

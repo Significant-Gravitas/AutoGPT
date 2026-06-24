@@ -1,9 +1,8 @@
 """Tests for the semantic_search function."""
 
 import pytest
-from prisma.enums import ContentType
-
 from backend.api.features.search.embeddings import EMBEDDING_DIM, semantic_search
+from prisma.enums import ContentType
 
 
 @pytest.mark.asyncio

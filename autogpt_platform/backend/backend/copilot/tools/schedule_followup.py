@@ -29,7 +29,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger
-
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled

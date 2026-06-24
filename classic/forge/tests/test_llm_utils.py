@@ -1,7 +1,6 @@
 """Tests for LLM provider utility functions."""
 
 import pytest
-
 from forge.llm.providers.schema import (
     AssistantFunctionCall,
     AssistantToolCall,

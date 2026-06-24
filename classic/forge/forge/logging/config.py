@@ -9,9 +9,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from openai._base_client import log as openai_logger
-
 from forge.models.config import SystemConfiguration, UserConfigurable
+from openai._base_client import log as openai_logger
 
 if TYPE_CHECKING:
     from forge.speech import TTSConfig

@@ -1,7 +1,5 @@
 import logging
 
-from pydantic import BaseModel
-
 from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.blocks._base import (
     Block,
@@ -12,6 +10,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

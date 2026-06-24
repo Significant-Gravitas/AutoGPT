@@ -53,9 +53,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
-from pydantic.dataclasses import dataclass
-
 from backend.util.feature_flag import Flag, is_feature_enabled
+from pydantic.dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 

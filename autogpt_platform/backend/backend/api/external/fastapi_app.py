@@ -1,11 +1,10 @@
-from fastapi import FastAPI
-from fastapi.requests import Request
-from fastapi.responses import JSONResponse
-
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
+from fastapi import FastAPI
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
 
 from .v1.routes import v1_router
 

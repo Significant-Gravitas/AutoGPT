@@ -15,13 +15,12 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Iterator, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from forge.agent.components import ConfigurableComponent
 from forge.agent.protocols import CommandProvider, DirectiveProvider, MessageProvider
 from forge.command import Command, command
 from forge.llm.providers import ChatMessage
 from forge.models.json_schema import JSONSchema
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from forge.llm.providers import MultiProvider

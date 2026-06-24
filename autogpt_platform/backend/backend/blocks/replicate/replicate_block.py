@@ -2,9 +2,6 @@ import asyncio
 import logging
 from typing import Optional
 
-from pydantic import SecretStr
-from replicate.client import Client as ReplicateClient
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -27,6 +24,8 @@ from backend.data.model import (
 )
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 from backend.util.file import MediaFileType, store_media_file
+from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from backend.blocks.llm import LlmModel
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse

@@ -5,10 +5,6 @@ from zoneinfo import ZoneInfo
 
 import prisma
 import pydantic
-from prisma.enums import OnboardingStep
-from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
-
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
 from backend.data.credit import get_user_credit_model
@@ -20,6 +16,9 @@ from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
+from prisma.enums import OnboardingStep
+from prisma.models import UserOnboarding
+from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {

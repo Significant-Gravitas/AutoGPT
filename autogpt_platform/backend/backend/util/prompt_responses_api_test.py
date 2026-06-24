@@ -10,8 +10,6 @@ alongside Chat Completions and Anthropic formats.
 """
 
 import pytest
-from tiktoken import encoding_for_model
-
 from backend.util.prompt import (
     _ensure_tool_pairs_intact,
     _extract_tool_call_ids_from_message,
@@ -24,6 +22,7 @@ from backend.util.prompt import (
     compress_context,
     validate_and_remove_orphan_tool_responses,
 )
+from tiktoken import encoding_for_model
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -593,9 +592,9 @@ class TestCompressContextResponsesApi:
         if fc_items or fco_items:
             fc_call_ids = {m["call_id"] for m in fc_items}
             fco_call_ids = {m["call_id"] for m in fco_items}
-            assert (
-                fco_call_ids <= fc_call_ids
-            ), "function_call_output exists without matching function_call"
+            assert fco_call_ids <= fc_call_ids, (
+                "function_call_output exists without matching function_call"
+            )
 
         # At minimum, neither should have been silently deleted if the
         # conversation was short enough to keep them

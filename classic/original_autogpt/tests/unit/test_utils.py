@@ -12,10 +12,9 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
+from forge.json.parsing import extract_dict_from_json
 from git import InvalidGitRepositoryError
 from tests.utils import skip_in_ci
-
-from forge.json.parsing import extract_dict_from_json
 
 
 @pytest.fixture

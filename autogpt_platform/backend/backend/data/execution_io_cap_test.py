@@ -4,10 +4,9 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from prisma.enums import AgentExecutionStatus
-
 from backend.data.execution import NodeExecutionResult
 from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
+from prisma.enums import AgentExecutionStatus
 
 
 def _make_io_row(name: str, value: str) -> MagicMock:

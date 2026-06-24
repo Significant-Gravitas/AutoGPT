@@ -20,8 +20,6 @@ import logging
 from typing import Any
 
 import pydantic
-from prisma.enums import ContentType
-
 from backend.api.features.search import hybrid_search
 from backend.api.features.search.model import (
     GlobalSearchResponse,
@@ -34,6 +32,7 @@ from backend.data.db_accessors import library_db, search
 from backend.data.workspace import get_workspace
 from backend.util.cache import cached
 from backend.util.workspace import WorkspaceManager
+from prisma.enums import ContentType
 
 logger = logging.getLogger(__name__)
 

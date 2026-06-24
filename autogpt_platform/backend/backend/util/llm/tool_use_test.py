@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.util.llm.tool_use import (
     _inline_refs,
     force_tool_choice,
     pydantic_to_anthropic_tool,
 )
+from pydantic import BaseModel, Field
 
 
 class _Demotion(BaseModel):

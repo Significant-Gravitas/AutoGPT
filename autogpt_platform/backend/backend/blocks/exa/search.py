@@ -2,8 +2,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from exa_py import AsyncExa
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -14,6 +12,7 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from exa_py import AsyncExa
 
 from ._config import exa
 from .helpers import (
