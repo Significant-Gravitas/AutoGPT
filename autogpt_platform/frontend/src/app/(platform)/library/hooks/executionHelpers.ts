@@ -7,9 +7,8 @@ export const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
 // list filter so the four call sites stay in lockstep.
 export function isAgentScheduled(agent: {
   is_scheduled?: boolean;
-  recommended_schedule_cron?: string | null;
 }): boolean {
-  return !!agent.is_scheduled || !!agent.recommended_schedule_cron;
+  return !!agent.is_scheduled;
 }
 
 export function isActive(status: string): boolean {
