@@ -39,6 +39,7 @@ def _ctx(
     thread_history: tuple[MessageHistoryEntry, ...] = (),
     referenced_conversations: tuple[ReferencedConversation, ...] = (),
     attachments: tuple[InboundAttachment, ...] = (),
+    skipped_attachments: tuple[tuple[str, str], ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -53,6 +54,7 @@ def _ctx(
         thread_history=thread_history,
         referenced_conversations=referenced_conversations,
         attachments=attachments,
+        skipped_attachments=skipped_attachments,
     )
 
 
@@ -942,6 +944,7 @@ class TestAttachments:
 
         async def _recording_stream(*args, **kwargs):
             captured["file_ids"] = kwargs.get("file_ids")
+            captured["message"] = kwargs.get("message")
             if False:
                 yield ""
 
@@ -1001,6 +1004,46 @@ class TestAttachments:
         assert "virus scan" in note
 
     @pytest.mark.asyncio
+    async def test_dropped_attachments_surfaced_to_user_and_model(self):
+        # An adapter-stage skip (too large) and an upload-stage rejection
+        # (virus) must both reach the user (a note) AND the model (in the turn
+        # text), while a clean file still flows through.
+        results = [
+            WorkspaceUploadResult(filename="ok.png", file_id="f1"),
+            WorkspaceUploadResult(filename="virus.exe", error="virus_detected"),
+        ]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(
+            channel_type="dm",
+            server_id=None,
+            channel_id="dm-1",
+            text="check these",
+            attachments=(
+                InboundAttachment(
+                    filename="ok.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="virus.exe",
+                    mime_type="application/octet-stream",
+                    content=b"y",
+                ),
+            ),
+            skipped_attachments=(("huge.zip", "too large"),),
+        )
+
+        await handler.handle(ctx, adapter)
+
+        assert captured["file_ids"] == ["f1"]
+        user_note = adapter.send_message.await_args_list[0].args[1]
+        assert "huge.zip" in user_note and "virus.exe" in user_note
+        # The model is told it does NOT have these files.
+        assert "do not claim to have read them" in captured["message"]
+        assert "huge.zip" in captured["message"]
+        assert "virus.exe" in captured["message"]
+
+    @pytest.mark.asyncio
     async def test_file_only_message_is_processed(self):
         results = [WorkspaceUploadResult(filename="a.pdf", file_id="f1")]
         api, captured = self._upload_recording_api(results)
@@ -1028,7 +1071,8 @@ class TestAttachments:
 
         assert captured["file_ids"] == []
         note = adapter.send_message.await_args_list[0].args[1]
-        assert "couldn't process" in note.lower()
+        assert "a.pdf" in note
+        assert "couldn't be uploaded" in note.lower()
 
     @pytest.mark.asyncio
     async def test_batched_file_ids_capped_to_per_turn_limit(self):

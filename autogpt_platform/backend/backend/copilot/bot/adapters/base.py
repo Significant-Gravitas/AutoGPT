@@ -124,6 +124,10 @@ class MessageContext:
     # Files the user attached to this message (bytes already downloaded). The
     # handler uploads these to the workspace and passes their IDs to the turn.
     attachments: tuple[InboundAttachment, ...] = ()
+    # Attachments the adapter couldn't ingest at all (too large / download
+    # failed), as ``(filename, reason)`` pairs — surfaced to the user and the
+    # model so neither thinks the file was read.
+    skipped_attachments: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_dm(self) -> bool:

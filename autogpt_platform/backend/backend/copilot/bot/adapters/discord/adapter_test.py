@@ -1430,12 +1430,13 @@ class TestExtractAttachments:
         msg = MagicMock()
         msg.attachments = [_discord_attachment("a.png", "image/png", 10, b"png")]
 
-        result = await adapter._extract_attachments(msg)
+        downloaded, skipped = await adapter._extract_attachments(msg)
 
-        assert len(result) == 1
-        assert result[0].filename == "a.png"
-        assert result[0].mime_type == "image/png"
-        assert result[0].content == b"png"
+        assert skipped == ()
+        assert len(downloaded) == 1
+        assert downloaded[0].filename == "a.png"
+        assert downloaded[0].mime_type == "image/png"
+        assert downloaded[0].content == b"png"
 
     @pytest.mark.asyncio
     async def test_skips_oversized_attachment(self):
@@ -1444,9 +1445,10 @@ class TestExtractAttachments:
         msg = MagicMock()
         msg.attachments = [_discord_attachment("huge.bin", None, big)]
 
-        result = await adapter._extract_attachments(msg)
+        downloaded, skipped = await adapter._extract_attachments(msg)
 
-        assert result == ()
+        assert downloaded == ()
+        assert skipped == (("huge.bin", "too large"),)
 
     @pytest.mark.asyncio
     async def test_defaults_missing_mime_to_octet_stream(self):
@@ -1454,12 +1456,12 @@ class TestExtractAttachments:
         msg = MagicMock()
         msg.attachments = [_discord_attachment("data", None, 5)]
 
-        result = await adapter._extract_attachments(msg)
+        downloaded, _ = await adapter._extract_attachments(msg)
 
-        assert result[0].mime_type == "application/octet-stream"
+        assert downloaded[0].mime_type == "application/octet-stream"
 
     @pytest.mark.asyncio
-    async def test_caps_attachment_count(self):
+    async def test_caps_attachment_count_and_reports_extras(self):
         adapter, _ = _bare_adapter()
         msg = MagicMock()
         msg.attachments = [
@@ -1467,10 +1469,13 @@ class TestExtractAttachments:
             for i in range(MAX_INBOUND_ATTACHMENTS + 3)
         ]
 
-        result = await adapter._extract_attachments(msg)
+        downloaded, skipped = await adapter._extract_attachments(msg)
 
-        assert len(result) == MAX_INBOUND_ATTACHMENTS
-        assert result[0].filename == "f0.txt"
+        assert len(downloaded) == MAX_INBOUND_ATTACHMENTS
+        assert downloaded[0].filename == "f0.txt"
+        # The 3 over the cap are reported as skipped.
+        assert len(skipped) == 3
+        assert all(reason == "too many files attached" for _, reason in skipped)
 
     @pytest.mark.asyncio
     async def test_skips_attachment_that_fails_to_download(self):
@@ -1480,6 +1485,7 @@ class TestExtractAttachments:
         msg = MagicMock()
         msg.attachments = [att]
 
-        result = await adapter._extract_attachments(msg)
+        downloaded, skipped = await adapter._extract_attachments(msg)
 
-        assert result == ()
+        assert downloaded == ()
+        assert skipped == (("a.png", "couldn't be downloaded"),)

@@ -17,7 +17,6 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
-from backend.platform_linking.models import WorkspaceUploadResult
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -113,15 +112,22 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        file_ids = await self._upload_attachments(ctx, adapter, target_id)
+        file_ids, upload_problems = await self._upload_attachments(ctx)
+
+        # Files that didn't make it: adapter-stage (too large / failed download)
+        # plus upload-stage (virus / quota). Tell the user AND, below, the model
+        # — so neither assumes a dropped file was actually read.
+        problems = list(ctx.skipped_attachments) + upload_problems
+        if problems:
+            await adapter.send_message(target_id, _format_attachment_problems(problems))
 
         # Decide on NEW input only — typed text or a usable upload. Thread
         # history (folded into the prompt below) is context, not a reason to
         # respond, so don't let it keep an otherwise-empty turn alive.
         if not ctx.text.strip() and not file_ids:
-            # The user already got any rejection note. Don't enqueue a blank
-            # turn, and unsubscribe a thread we just created for a channel
-            # message so it doesn't linger orphaned-but-subscribed for 7 days.
+            # The user already got the note. Don't enqueue a blank turn, and
+            # unsubscribe a thread we just created for a channel message so it
+            # doesn't linger orphaned-but-subscribed for 7 days.
             if ctx.channel_type == "channel" and target_id != ctx.channel_id:
                 await threads.unsubscribe(ctx.platform, target_id)
             return
@@ -130,15 +136,21 @@ class MessageHandler:
         # instead of seeing an empty "[Current message]".
         current_text = ctx.text if ctx.text.strip() else "(see the attached file(s))"
         message_text = self._message_text(ctx, include_thread_history, current_text)
+        if problems:
+            message_text += "\n\n" + _model_attachment_note(problems)
         await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
 
     async def _upload_attachments(
-        self, ctx: MessageContext, adapter: PlatformAdapter, target_id: str
-    ) -> list[str]:
-        """Upload the user's attachments to the workspace; return the IDs of the
-        ones that succeeded and tell the user about any that were rejected."""
+        self, ctx: MessageContext
+    ) -> tuple[list[str], list[tuple[str, str]]]:
+        """Upload the user's attachments to the workspace.
+
+        Returns ``(file_ids, problems)`` — the IDs that succeeded, and
+        ``(filename, reason)`` for the ones that were rejected — so the caller
+        can attach the successes and surface the failures.
+        """
         if not ctx.attachments:
-            return []
+            return [], []
         try:
             results = await self._api.upload_workspace_files(
                 platform=ctx.platform,
@@ -147,19 +159,17 @@ class MessageHandler:
                 attachments=ctx.attachments,
             )
         except Exception:
-            # The upload path itself failed (not a per-file rejection). Don't drop
-            # the message — tell the user and let any text in it still go through.
-            logger.exception("Attachment upload failed for target %s", target_id)
-            await adapter.send_message(
-                target_id,
-                "I couldn't process the attached file(s). Please try again in a moment.",
-            )
-            return []
+            # The upload path itself failed (not a per-file rejection). Don't
+            # drop the message — surface it and let any text still go through.
+            logger.exception("Attachment upload failed for user %s", ctx.user_id)
+            return [], [(a.filename, "couldn't be uploaded") for a in ctx.attachments]
         file_ids = [r.file_id for r in results if r.file_id]
-        failed = [r for r in results if not r.file_id]
-        if failed:
-            await adapter.send_message(target_id, _format_upload_failures(failed))
-        return file_ids
+        problems = [
+            (r.filename, _UPLOAD_ERROR_TEXT.get(r.error or "", "couldn't be uploaded"))
+            for r in results
+            if not r.file_id
+        ]
+        return file_ids, problems
 
     # -- Target resolution --
 
@@ -729,13 +739,22 @@ _UPLOAD_ERROR_TEXT: dict[str, str] = {
 }
 
 
-def _format_upload_failures(failed: list[WorkspaceUploadResult]) -> str:
-    """A short note listing which attachments were rejected and why."""
+def _format_attachment_problems(problems: list[tuple[str, str]]) -> str:
+    """User-facing note listing attachments that couldn't be attached and why."""
     lines = ["⚠️ Some files couldn't be attached:"]
-    for result in failed:
-        reason = _UPLOAD_ERROR_TEXT.get(result.error or "", "couldn't be uploaded")
-        lines.append(f"• `{result.filename}` {reason}")
+    for filename, reason in problems:
+        lines.append(f"• `{filename}` {reason}")
     return "\n".join(lines)
+
+
+def _model_attachment_note(problems: list[tuple[str, str]]) -> str:
+    """Note injected into the turn so AutoPilot knows which files it does NOT
+    have, instead of assuming a dropped attachment was read."""
+    listed = ", ".join(f"{filename} ({reason})" for filename, reason in problems)
+    return (
+        f"[Note: the following attachment(s) could NOT be attached and are "
+        f"unavailable to you — do not claim to have read them: {listed}]"
+    )
 
 
 def build_thread_name(text: str, username: str) -> str:

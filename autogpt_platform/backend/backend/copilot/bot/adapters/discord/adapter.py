@@ -449,6 +449,7 @@ class DiscordAdapter(PlatformAdapter):
             # context — both verbatim, with their links left untouched.
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
+            attachments, skipped = await self._extract_attachments(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -462,47 +463,45 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
-                attachments=await self._extract_attachments(message),
+                attachments=attachments,
+                skipped_attachments=skipped,
             )
             await self._on_message_callback(ctx, self)
 
     async def _extract_attachments(
         self, message: discord.Message
-    ) -> tuple[InboundAttachment, ...]:
+    ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
         """Download the user's file attachments so the handler can upload them.
 
-        Bounded by count and the adapter's per-file byte cap; oversized files
-        are skipped (the model still sees the rest of the message). A single
-        failed download is skipped rather than failing the whole turn.
+        Returns ``(downloaded, skipped)`` where ``skipped`` is ``(filename,
+        reason)`` for files we couldn't ingest (over the per-file cap, beyond
+        the per-message count, or a failed download) so the handler can tell
+        the user and the model rather than silently dropping them.
         """
         attachments: list[InboundAttachment] = []
-        if len(message.attachments) > MAX_INBOUND_ATTACHMENTS:
-            logger.info(
-                "Ignoring %d attachment(s) beyond the per-message limit of %d",
-                len(message.attachments) - MAX_INBOUND_ATTACHMENTS,
-                MAX_INBOUND_ATTACHMENTS,
-            )
+        skipped: list[tuple[str, str]] = []
+        extra = message.attachments[MAX_INBOUND_ATTACHMENTS:]
+        for attachment in extra:
+            skipped.append((attachment.filename or "file", "too many files attached"))
         for attachment in message.attachments[:MAX_INBOUND_ATTACHMENTS]:
+            name = attachment.filename or "file"
             if attachment.size > self.max_attachment_bytes:
-                logger.info(
-                    "Skipping oversized attachment %s (%d bytes)",
-                    attachment.filename,
-                    attachment.size,
-                )
+                skipped.append((name, "too large"))
                 continue
             try:
                 content = await attachment.read()
             except (discord.HTTPException, discord.NotFound):
-                logger.warning("Could not download attachment %s", attachment.filename)
+                logger.warning("Could not download attachment %s", name)
+                skipped.append((name, "couldn't be downloaded"))
                 continue
             attachments.append(
                 InboundAttachment(
-                    filename=attachment.filename or "file",
+                    filename=name,
                     mime_type=attachment.content_type or "application/octet-stream",
                     content=content,
                 )
             )
-        return tuple(attachments)
+        return tuple(attachments), tuple(skipped)
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""
