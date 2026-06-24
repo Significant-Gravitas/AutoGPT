@@ -2,18 +2,31 @@
 
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "../../store";
-import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { fileItemToArtifactRef } from "./components/FilesTab/helpers";
+import {
+  useSessionFiles,
+  type SessionFile,
+} from "./components/FilesTab/useSessionFiles";
+
+function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
+  if (generated.length === 0) return null;
+  return generated.reduce((latest, file) =>
+    new Date(file.item.created_at).getTime() >
+    new Date(latest.item.created_at).getTime()
+      ? file
+      : latest,
+  );
+}
 
 /**
- * Opens the context panel to the Files tab the first time a session has files,
- * unless the user has explicitly closed it. Mirrors useAutoOpenArtifacts.
+ * The first time a session is found to have generated files, opens the Artifact
+ * panel directly on the most recently generated file (unless the user has
+ * explicitly closed the panel). Mirrors useAutoOpenForProgress.
  */
 export function useAutoOpenForFiles(sessionId: string | null) {
-  const openContextPanelForFiles = useCopilotUIStore(
-    (s) => s.openContextPanelForFiles,
-  );
-  const { uploaded, generated } = useSessionFiles(sessionId);
-  const hasFiles = uploaded.length + generated.length > 0;
+  const autoOpenArtifact = useCopilotUIStore((s) => s.autoOpenArtifact);
+  const { generated } = useSessionFiles(sessionId);
+  const lastGenerated = getLastGeneratedFile(generated);
   const triggered = useRef(false);
   const prevSessionIdRef = useRef(sessionId);
 
@@ -31,9 +44,9 @@ export function useAutoOpenForFiles(sessionId: string | null) {
   }, [sessionId]);
 
   useEffect(() => {
-    if (hasFiles && !triggered.current) {
+    if (lastGenerated && !triggered.current) {
       triggered.current = true;
-      openContextPanelForFiles();
+      autoOpenArtifact(fileItemToArtifactRef(lastGenerated.item));
     }
-  }, [hasFiles, openContextPanelForFiles]);
+  }, [lastGenerated, autoOpenArtifact]);
 }

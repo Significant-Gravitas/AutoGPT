@@ -16,10 +16,16 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, cast
 
 from prisma.enums import ContentType
 from rank_bm25 import BM25Okapi
+
+# Source TypedDict/NotRequired from typing_extensions: pydantic's TypeAdapter
+# cannot build a core schema for a typing.TypedDict on Python < 3.12 (the
+# __orig_bases__ attribute it relies on was only added to typing.TypedDict in
+# 3.12). The search RPC contract test validates HybridSearchRow via TypeAdapter.
+from typing_extensions import NotRequired, TypedDict
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
@@ -46,7 +52,6 @@ class HybridSearchRow(TypedDict):
     updated_at: datetime | None
     semantic_score: float
     lexical_score: float
-    lexical_raw: float
     category_score: float
     recency_score: float
     combined_score: float
