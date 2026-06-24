@@ -771,9 +771,9 @@ async def test_matrix_format_to_string_schema(fmt: str):
             session=_make_session(),
             input_schema=schema,
         )
-    assert isinstance(result["text"], str), (
-        f"{fmt}: expected str, got {type(result['text'])}"
-    )
+    assert isinstance(
+        result["text"], str
+    ), f"{fmt}: expected str, got {type(result['text'])}"
     assert result["text"] == raw_content, f"{fmt}: raw content mismatch"
 
 
@@ -798,9 +798,9 @@ async def test_matrix_format_to_nonstring_schema(fmt: str):
             session=_make_session(),
         )
     assert result["data"] == expected_parsed, f"{fmt}: parsed value mismatch"
-    assert not isinstance(result["data"], str), (
-        f"{fmt}: expected structured type, got str"
-    )
+    assert not isinstance(
+        result["data"], str
+    ), f"{fmt}: expected structured type, got str"
 
 
 @pytest.mark.asyncio

@@ -1174,9 +1174,9 @@ class TestStreamChatCompletionRetryIntegration:
             ):
                 events.append(event)
 
-        assert attempt_count[0] == 2, (
-            f"Expected 2 SDK attempts (retry), got {attempt_count[0]}"
-        )
+        assert (
+            attempt_count[0] == 2
+        ), f"Expected 2 SDK attempts (retry), got {attempt_count[0]}"
         errors = [e for e in events if isinstance(e, StreamError)]
         assert not errors, f"Unexpected StreamError: {errors}"
         assert any(isinstance(e, StreamStart) for e in events)
@@ -1432,9 +1432,9 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Should NOT retry — only 1 attempt for auth errors
-        assert attempt_count[0] == 1, (
-            f"Expected 1 attempt (no retry for auth error), got {attempt_count[0]}"
-        )
+        assert (
+            attempt_count[0] == 1
+        ), f"Expected 1 attempt (no retry for auth error), got {attempt_count[0]}"
         errors = [e for e in events if isinstance(e, StreamError)]
         assert errors, "Expected StreamError"
         assert errors[0].code == "sdk_stream_error"
@@ -1791,14 +1791,14 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Two SDK client calls: first fails with transient error, second succeeds.
-        assert call_count[0] == 2, (
-            f"Expected 2 SDK calls (transient retry), got {call_count[0]}"
-        )
+        assert (
+            call_count[0] == 2
+        ), f"Expected 2 SDK calls (transient retry), got {call_count[0]}"
         # No StreamError emitted — the retry succeeded.
         errors = [e for e in events if isinstance(e, StreamError)]
-        assert not errors, (
-            f"Unexpected StreamError emitted during transient retry: {errors}"
-        )
+        assert (
+            not errors
+        ), f"Unexpected StreamError emitted during transient retry: {errors}"
         # StreamStatus("Connection interrupted…") must have been yielded.
         status_events = [e for e in events if isinstance(e, StreamStatus)]
         assert status_events, "Expected StreamStatus retry notification but got none"
@@ -1806,9 +1806,7 @@ class TestStreamChatCompletionRetryIntegration:
             "retrying" in (e.message or "").lower()
             or "interrupted" in (e.message or "").lower()
             for e in status_events
-        ), (
-            f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
-        )
+        ), f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
@@ -1880,14 +1878,14 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Two SDK client calls: first fails with ECONNRESET, second succeeds.
-        assert call_count[0] == 2, (
-            f"Expected 2 SDK calls (ECONNRESET transient retry), got {call_count[0]}"
-        )
+        assert (
+            call_count[0] == 2
+        ), f"Expected 2 SDK calls (ECONNRESET transient retry), got {call_count[0]}"
         # No StreamError emitted — the retry succeeded.
         errors = [e for e in events if isinstance(e, StreamError)]
-        assert not errors, (
-            f"Unexpected StreamError emitted during ECONNRESET retry: {errors}"
-        )
+        assert (
+            not errors
+        ), f"Unexpected StreamError emitted during ECONNRESET retry: {errors}"
         # StreamStatus("Connection interrupted…") must have been yielded.
         status_events = [e for e in events if isinstance(e, StreamStatus)]
         assert status_events, "Expected StreamStatus retry notification but got none"
@@ -1895,9 +1893,7 @@ class TestStreamChatCompletionRetryIntegration:
             "retrying" in (e.message or "").lower()
             or "interrupted" in (e.message or "").lower()
             for e in status_events
-        ), (
-            f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
-        )
+        ), f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio

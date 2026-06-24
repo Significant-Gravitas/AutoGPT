@@ -22,7 +22,9 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 from langfuse import get_client
-from langfuse.openai import AsyncOpenAI as LangfuseAsyncOpenAI  # pyright: ignore[reportPrivateImportUsage]
+from langfuse.openai import (
+    AsyncOpenAI as LangfuseAsyncOpenAI,
+)  # pyright: ignore[reportPrivateImportUsage]
 from openai.types.chat import ChatCompletion
 
 from .anthropic_rate_card import compute_anthropic_cost_usd

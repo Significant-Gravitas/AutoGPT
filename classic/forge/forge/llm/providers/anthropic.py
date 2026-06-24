@@ -475,9 +475,9 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             # Add beta header for interleaved thinking with tool use
             if functions:
                 kwargs["extra_headers"] = kwargs.get("extra_headers", {})
-                kwargs["extra_headers"]["anthropic-beta"] = (
-                    "interleaved-thinking-2025-05-14"
-                )
+                kwargs["extra_headers"][
+                    "anthropic-beta"
+                ] = "interleaved-thinking-2025-05-14"
 
         if extra_headers := self._configuration.extra_request_headers:
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})

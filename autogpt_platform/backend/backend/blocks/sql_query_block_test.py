@@ -1464,9 +1464,9 @@ class TestNewDisallowedKeywords:
         error, stmt = _validate_single_statement(query)
         if error is None and stmt is not None:
             ro_error = _validate_query_is_read_only(stmt)
-            assert ro_error is not None, (
-                f"Expected '{expected_keyword}' to be blocked but query passed: {query}"
-            )
+            assert (
+                ro_error is not None
+            ), f"Expected '{expected_keyword}' to be blocked but query passed: {query}"
             assert "Disallowed SQL keyword" in ro_error
 
     @pytest.mark.parametrize(

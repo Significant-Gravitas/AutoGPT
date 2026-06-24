@@ -1007,9 +1007,9 @@ async def test_delete_user_skill_emits_audit_log(caplog):
         for r in caplog.records
         if "[skills]" in r.getMessage() and "deleting skill audited" in r.getMessage()
     ]
-    assert len(audit_lines) == 1, (
-        f"expected one audit log line, got {[r.getMessage() for r in caplog.records]}"
-    )
+    assert (
+        len(audit_lines) == 1
+    ), f"expected one audit log line, got {[r.getMessage() for r in caplog.records]}"
     msg = audit_lines[0].getMessage()
     assert "user-abc" in msg  # truncated user_id[:8]
     assert "audited" in msg

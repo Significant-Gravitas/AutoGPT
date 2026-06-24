@@ -35,9 +35,7 @@ class TTSConfig(SystemConfiguration):
                     else (
                         "elevenlabs"
                         if os.getenv("ELEVENLABS_API_KEY")
-                        else "streamelements"
-                        if os.getenv("USE_BRIAN_TTS")
-                        else "gtts"
+                        else "streamelements" if os.getenv("USE_BRIAN_TTS") else "gtts"
                     )
                 )
             ),

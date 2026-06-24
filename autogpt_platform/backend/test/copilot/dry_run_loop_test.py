@@ -192,9 +192,9 @@ class TestRunAgentToolSchema:
         """dry_run must be in the run_agent LLM schema so the LLM can request
         per-call dry runs in normal sessions."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        assert "dry_run" in params.get("properties", {}), (
-            "dry_run must be exposed in the run_agent LLM schema"
-        )
+        assert "dry_run" in params.get(
+            "properties", {}
+        ), "dry_run must be exposed in the run_agent LLM schema"
         assert "dry_run" not in params.get("required", [])
 
     def test_wait_for_result_in_schema(self, schema: ChatCompletionToolParam):
@@ -225,9 +225,9 @@ class TestRunBlockToolSchema:
         """dry_run must NOT be in the run_block LLM schema — it is session-level."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         props = params.get("properties", {})
-        assert "dry_run" not in props, (
-            "dry_run must not be exposed in the run_block LLM schema"
-        )
+        assert (
+            "dry_run" not in props
+        ), "dry_run must not be exposed in the run_block LLM schema"
         assert "dry_run" not in params.get("required", [])
 
     def test_block_id_and_input_data_are_required(
@@ -264,9 +264,9 @@ class TestRunAgentInputModel:
         from backend.copilot.tools.run_agent import RunAgentTool
 
         tool = RunAgentTool()
-        assert "dry_run" in tool.parameters.get("properties", {}), (
-            "dry_run must be exposed in the LLM tool schema"
-        )
+        assert "dry_run" in tool.parameters.get(
+            "properties", {}
+        ), "dry_run must be exposed in the LLM tool schema"
 
     def test_dry_run_accepts_true(self):
         model = RunAgentInput(username_agent_slug="user/agent", dry_run=True)
@@ -340,9 +340,9 @@ class TestGuideWorkflowOrdering:
         """Step 7 (Save/create_agent) must appear before step 8 (Dry-run)."""
         create_pos = guide_content.index("create_agent")
         dry_run_pos = guide_content.index("dry_run=True")
-        assert create_pos < dry_run_pos, (
-            "create_agent must appear before dry_run=True in the workflow"
-        )
+        assert (
+            create_pos < dry_run_pos
+        ), "create_agent must appear before dry_run=True in the workflow"
 
     def test_dry_run_before_inspect_in_verification_section(self, guide_content: str):
         """In the verification loop section, Dry-run step must come before
@@ -351,9 +351,9 @@ class TestGuideWorkflowOrdering:
         section = guide_content[section_start:]
         dry_run_pos = section.index("**Dry-run**")
         inspect_pos = section.index("**Inspect")
-        assert dry_run_pos < inspect_pos, (
-            "Dry-run step must come before Inspect & fix in the verification loop"
-        )
+        assert (
+            dry_run_pos < inspect_pos
+        ), "Dry-run step must come before Inspect & fix in the verification loop"
 
     def test_fix_before_repeat_in_verification_section(self, guide_content: str):
         """The Fix step must come before the Repeat step."""
@@ -376,9 +376,9 @@ class TestGuideWorkflowOrdering:
         section = guide_content[section_start:]
         # The section should contain numbered items 1 through 5
         for step_num in range(1, 6):
-            assert f"{step_num}. " in section, (
-                f"Missing numbered step {step_num} in verification workflow"
-            )
+            assert (
+                f"{step_num}. " in section
+            ), f"Missing numbered step {step_num} in verification workflow"
 
     def test_workflow_steps_are_in_numbered_order(self, guide_content: str):
         """The main workflow steps (1-9) must appear in ascending order."""
@@ -394,9 +394,9 @@ class TestGuideWorkflowOrdering:
             if match:
                 step_positions.append((step_num, match.start()))
         # Verify at least steps 1-9 are present and in order
-        assert len(step_positions) >= 9, (
-            f"Expected 9 workflow steps, found {len(step_positions)}"
-        )
+        assert (
+            len(step_positions) >= 9
+        ), f"Expected 9 workflow steps, found {len(step_positions)}"
         for i in range(1, len(step_positions)):
             prev_num, prev_pos = step_positions[i - 1]
             curr_num, curr_pos = step_positions[i]

@@ -2,7 +2,7 @@ import enum
 import logging
 import os
 from pathlib import Path
-from typing import (
+from typing import Union, Optional; from ...models import AnthropicSettings, GroqSettings; from .models import OpenAISettings Optional; from ...models import AnthropicSettings, GroqSettings; from .models import OpenAISettings (
     Any,
     Callable,
     Iterator,
@@ -633,9 +633,9 @@ class OpenAICredentials(ModelProviderCredentials):
             config_params = yaml.load(file, Loader=yaml.SafeLoader) or {}
 
         try:
-            assert config_params.get("azure_model_map", {}), (
-                "Azure model->deployment_id map is empty"
-            )
+            assert config_params.get(
+                "azure_model_map", {}
+            ), "Azure model->deployment_id map is empty"
         except AssertionError as e:
             raise ValueError(*e.args)
 
@@ -657,20 +657,20 @@ class OpenAICredentials(ModelProviderCredentials):
         return {"model": deployment_id}
 
 
-class OpenAISettings(ModelProviderSettings):
+class Union[OpenAISettings, AnthropicSettings, GroqSettings](ModelProviderSettings):
     credentials: Optional[OpenAICredentials]  # type: ignore
     budget: ModelProviderBudget  # type: ignore
 
 
 class OpenAIProvider(
-    BaseOpenAIChatProvider[OpenAIModelName, OpenAISettings],
-    BaseOpenAIEmbeddingProvider[OpenAIModelName, OpenAISettings],
+    BaseOpenAIChatProvider[OpenAIModelName, Union[OpenAISettings, AnthropicSettings, GroqSettings]],
+    BaseOpenAIEmbeddingProvider[OpenAIModelName, Union[OpenAISettings, AnthropicSettings, GroqSettings]],
 ):
     MODELS = OPEN_AI_MODELS
     CHAT_MODELS = OPEN_AI_CHAT_MODELS
     EMBEDDING_MODELS = OPEN_AI_EMBEDDING_MODELS
 
-    default_settings = OpenAISettings(
+    default_settings = Union[OpenAISettings, AnthropicSettings, GroqSettings](
         name="openai_provider",
         description="Provides access to OpenAI's API.",
         configuration=ModelProviderConfiguration(),
@@ -678,14 +678,14 @@ class OpenAIProvider(
         budget=ModelProviderBudget(),
     )
 
-    _settings: OpenAISettings
+    _settings: Union[OpenAISettings, AnthropicSettings, GroqSettings]
     _configuration: ModelProviderConfiguration
     _credentials: OpenAICredentials
     _budget: ModelProviderBudget
 
     def __init__(
         self,
-        settings: Optional[OpenAISettings] = None,
+        settings: Optional[Union[OpenAISettings, AnthropicSettings, GroqSettings]] = None,
         logger: Optional[logging.Logger] = None,
     ):
         super(OpenAIProvider, self).__init__(settings=settings, logger=logger)

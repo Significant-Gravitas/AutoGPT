@@ -220,9 +220,9 @@ class TestConvertRawResponseToDict:
         result = _convert_raw_response_to_dict(resp)
         assert isinstance(result, list)
         for item in result:
-            assert "status" not in item, (
-                f"'status' must be stripped from Responses API items: {item}"
-            )
+            assert (
+                "status" not in item
+            ), f"'status' must be stripped from Responses API items: {item}"
 
     def test_responses_api_strips_status_from_message(self):
         """Responses API message items also carry 'status'; it must be stripped."""
@@ -230,9 +230,9 @@ class TestConvertRawResponseToDict:
         result = _convert_raw_response_to_dict(resp)
         assert isinstance(result, list)
         for item in result:
-            assert "status" not in item, (
-                f"'status' must be stripped from Responses API items: {item}"
-            )
+            assert (
+                "status" not in item
+            ), f"'status' must be stripped from Responses API items: {item}"
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1012,9 +1012,9 @@ async def test_agent_mode_conversation_valid_for_responses_api():
                 "function_call_output",
                 "message",
             )
-            assert has_role or has_type, (
-                f"input[{i}] has neither valid role nor type: {item!r}"
-            )
+            assert (
+                has_role or has_type
+            ), f"input[{i}] has neither valid role nor type: {item!r}"
 
 
 @pytest.mark.asyncio
@@ -1088,6 +1088,6 @@ async def test_traditional_mode_conversation_valid_for_responses_api():
                 "function_call_output",
                 "message",
             )
-            assert has_role or has_type, (
-                f"conversations[{i}] has neither valid role nor type: {item!r}"
-            )
+            assert (
+                has_role or has_type
+            ), f"conversations[{i}] has neither valid role nor type: {item!r}"

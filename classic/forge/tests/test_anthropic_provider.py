@@ -111,9 +111,9 @@ class TestAnthropicModels:
             AnthropicModelName.CLAUDE3_5_SONNET_v1,
             AnthropicModelName.CLAUDE3_5_SONNET_v2,
         ]:
-            assert ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False, (
-                f"{name} should NOT support extended thinking"
-            )
+            assert (
+                ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False
+            ), f"{name} should NOT support extended thinking"
 
 
 # ---------------------------------------------------------------------------

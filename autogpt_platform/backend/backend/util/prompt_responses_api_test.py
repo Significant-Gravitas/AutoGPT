@@ -592,9 +592,9 @@ class TestCompressContextResponsesApi:
         if fc_items or fco_items:
             fc_call_ids = {m["call_id"] for m in fc_items}
             fco_call_ids = {m["call_id"] for m in fco_items}
-            assert fco_call_ids <= fc_call_ids, (
-                "function_call_output exists without matching function_call"
-            )
+            assert (
+                fco_call_ids <= fc_call_ids
+            ), "function_call_output exists without matching function_call"
 
         # At minimum, neither should have been silently deleted if the
         # conversation was short enough to keep them

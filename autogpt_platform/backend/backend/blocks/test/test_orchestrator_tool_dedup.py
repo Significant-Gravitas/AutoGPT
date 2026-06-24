@@ -773,9 +773,9 @@ async def test_unicode_in_block_names_and_defaults():
     import re
 
     for name in names:
-        assert re.fullmatch(r"[a-zA-Z0-9_-]+", name), (
-            f"Invalid chars in tool name: {name!r}"
-        )
+        assert re.fullmatch(
+            r"[a-zA-Z0-9_-]+", name
+        ), f"Invalid chars in tool name: {name!r}"
 
 
 def test_disambiguate_unicode_in_defaults_description():

@@ -171,9 +171,9 @@ async def test_execute_single_tool_merges_masks_into_inputs():
     assert actual_masks is expected_masks
 
     # Masks merged into node_exec_entry.inputs (the actual bug fix)
-    assert "credentials" in node_exec.inputs, (
-        f"Credential mask not merged into inputs: {node_exec.inputs!r}"
-    )
+    assert (
+        "credentials" in node_exec.inputs
+    ), f"Credential mask not merged into inputs: {node_exec.inputs!r}"
     assert node_exec.inputs["credentials"] == {"api_key": "sk-test-secret"}
 
 

@@ -210,9 +210,9 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
     owner = cluster.get_node_from_key(channel)
     port_to_idx = {p: i for i, p in enumerate(ISOLATED_PORTS)}
     target_idx = port_to_idx.get(owner.port)
-    assert target_idx is not None, (
-        f"owner port {owner.port} not in known set {ISOLATED_PORTS}"
-    )
+    assert (
+        target_idx is not None
+    ), f"owner port {owner.port} not in known set {ISOLATED_PORTS}"
     target_container = f"{ISOLATED_PROJECT}-redis-{target_idx}"
 
     client = await rc.connect_sharded_pubsub_async(channel)
@@ -237,17 +237,17 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
 
         first = await asyncio.wait_for(_drain_one(), timeout=6.0)
         received.append(first or "")
-        assert received == ["before-restart"], (
-            f"pre-restart publish did not arrive: {received}"
-        )
+        assert received == [
+            "before-restart"
+        ], f"pre-restart publish did not arrive: {received}"
 
         # Restart the shard that owns the slot.
         rc_restart = _run(["docker", "restart", "--time", "1", target_container])
         assert rc_restart.returncode == 0, rc_restart.stderr
 
-        assert _wait_cluster_ok(timeout_s=30), (
-            "isolated cluster never re-converged to state=ok after restart"
-        )
+        assert _wait_cluster_ok(
+            timeout_s=30
+        ), "isolated cluster never re-converged to state=ok after restart"
         # Hold a small grace window for shard's gossip to settle.
         await asyncio.sleep(1.0)
 
@@ -282,9 +282,9 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
             await async_cluster_2.execute_command("SPUBLISH", channel, "after-restart")
 
             data = await asyncio.wait_for(_drain_after(), timeout=15.0)
-            assert data == "after-restart", (
-                f"subscriber did not receive post-restart event (got {data!r})"
-            )
+            assert (
+                data == "after-restart"
+            ), f"subscriber did not receive post-restart event (got {data!r})"
         finally:
             try:
                 await pubsub2.execute_command("SUNSUBSCRIBE", channel)

@@ -91,9 +91,9 @@ async def initialize_blocks() -> None:
         applied = 0
         for db_block in all_db_blocks:
             if db_block.optimizedDescription and db_block.id in block_classes:
-                block_classes[
-                    db_block.id
-                ]._optimized_description = db_block.optimizedDescription
+                block_classes[db_block.id]._optimized_description = (
+                    db_block.optimizedDescription
+                )
                 applied += 1
         if applied:
             logger.info("Loaded %d optimized block descriptions", applied)

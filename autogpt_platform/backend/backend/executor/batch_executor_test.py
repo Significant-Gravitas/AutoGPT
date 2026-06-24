@@ -241,9 +241,9 @@ class TestWalkOnceDispatch:
             await enqueue_pending(_entry())
             await walk_once(api_key_for=lambda p: "sk-ant-test")
 
-        assert len(seen_rows) == 1, (
-            "handler should fire exactly once even on re-dispatch"
-        )
+        assert (
+            len(seen_rows) == 1
+        ), "handler should fire exactly once even on re-dispatch"
         # The refused-claim zombie row is removed without dispatching
         # so subsequent walks don't keep re-polling + re-downloading.
         assert await list_pending() == []

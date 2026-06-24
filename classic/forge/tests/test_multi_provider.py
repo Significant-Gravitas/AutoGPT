@@ -54,9 +54,9 @@ class TestChatModelsRegistry:
         """Every model in the registry must have a valid provider_name."""
         valid_providers = set(ModelProviderName)
         for model_name, info in CHAT_MODELS.items():
-            assert info.provider_name in valid_providers, (
-                f"Model {model_name} has unknown provider {info.provider_name}"
-            )
+            assert (
+                info.provider_name in valid_providers
+            ), f"Model {model_name} has unknown provider {info.provider_name}"
 
     def test_every_registered_model_has_positive_max_tokens(self):
         for model_name, info in CHAT_MODELS.items():
@@ -283,9 +283,9 @@ class TestOpenAIModelDefinitions:
         for base, pro in pairs:
             base_info = OPEN_AI_CHAT_MODELS[base]
             pro_info = OPEN_AI_CHAT_MODELS[pro]
-            assert pro_info.prompt_token_cost > base_info.prompt_token_cost, (
-                f"{pro} should cost more than {base}"
-            )
+            assert (
+                pro_info.prompt_token_cost > base_info.prompt_token_cost
+            ), f"{pro} should cost more than {base}"
 
     def test_mini_and_nano_cost_less_than_base(self):
         base_cost = OPEN_AI_CHAT_MODELS[OpenAIModelName.GPT5].prompt_token_cost

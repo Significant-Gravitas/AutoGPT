@@ -836,7 +836,9 @@ class ExecutionProcessor:
             return
 
         if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
-            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
+            log_metadata.info(
+                f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}"
+            )
             exec_meta.status = ExecutionStatus.RUNNING
             send_execution_update(
                 db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)

@@ -154,9 +154,9 @@ def test_log_raw_metric_validation_errors(
     assert "detail" in error_detail, f"Missing 'detail' in error: {error_detail}"
 
     error_text = json.dumps(error_detail)
-    assert expected_error in error_text, (
-        f"Expected '{expected_error}' in error response: {error_text}"
-    )
+    assert (
+        expected_error in error_text
+    ), f"Expected '{expected_error}' in error response: {error_text}"
 
 
 def test_log_raw_metric_service_error(
@@ -310,9 +310,9 @@ def test_log_raw_analytics_validation_errors(
     assert "detail" in error_detail, f"Missing 'detail' in error: {error_detail}"
 
     error_text = json.dumps(error_detail)
-    assert expected_error in error_text, (
-        f"Expected '{expected_error}' in error response: {error_text}"
-    )
+    assert (
+        expected_error in error_text
+    ), f"Expected '{expected_error}' in error response: {error_text}"
 
 
 def test_log_raw_analytics_service_error(

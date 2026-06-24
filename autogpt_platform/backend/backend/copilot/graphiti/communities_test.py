@@ -130,9 +130,9 @@ class TestBoundedLabelPropagation:
         # The warning text must mention the cap. Check caplog.text (the
         # full captured log) because record collection can vary with
         # pytest-logging configuration; the formatted text is reliable.
-        assert f"{MAX_LABEL_PROP_ITERATIONS}-iteration cap" in caplog.text, (
-            f"expected cap-warning in caplog.text; got: {caplog.text!r}"
-        )
+        assert (
+            f"{MAX_LABEL_PROP_ITERATIONS}-iteration cap" in caplog.text
+        ), f"expected cap-warning in caplog.text; got: {caplog.text!r}"
 
 
 class TestUpstreamMonkeyPatch:

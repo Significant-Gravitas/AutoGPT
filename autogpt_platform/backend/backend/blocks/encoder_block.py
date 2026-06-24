@@ -44,11 +44,9 @@ class TextEncoderBlock(Block):
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
             output_schema=TextEncoderBlock.Output,
-            test_input={
-                "text": """Hello
+            test_input={"text": """Hello
 World!
-This is a "quoted" string."""
-            },
+This is a "quoted" string."""},
             test_output=[
                 (
                     "encoded_text",

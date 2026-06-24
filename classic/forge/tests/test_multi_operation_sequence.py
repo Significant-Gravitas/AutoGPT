@@ -366,14 +366,14 @@ class TestOpenAIMultiOperationSequence:
         )
 
         if uses_new_param:
-            assert kwargs.get("max_completion_tokens") == 1000, (
-                f"{model_name} should use max_completion_tokens"
-            )
+            assert (
+                kwargs.get("max_completion_tokens") == 1000
+            ), f"{model_name} should use max_completion_tokens"
             assert "max_tokens" not in kwargs
         else:
-            assert kwargs.get("max_tokens") == 1000, (
-                f"{model_name} should use max_tokens"
-            )
+            assert (
+                kwargs.get("max_tokens") == 1000
+            ), f"{model_name} should use max_tokens"
             assert "max_completion_tokens" not in kwargs
 
 
@@ -571,9 +571,9 @@ class TestAllRegisteredModelsConsistency:
         """No model should have negative costs."""
         for name, info in CHAT_MODELS.items():
             assert info.prompt_token_cost >= 0, f"{name} has negative prompt cost"
-            assert info.completion_token_cost >= 0, (
-                f"{name} has negative completion cost"
-            )
+            assert (
+                info.completion_token_cost >= 0
+            ), f"{name} has negative completion cost"
 
     def test_completion_cost_greater_or_equal_to_prompt_cost(self):
         """For all models, output tokens should cost >= input tokens."""
@@ -588,6 +588,6 @@ class TestAllRegisteredModelsConsistency:
         for name, info in CHAT_MODELS.items():
             if info.provider_name == ModelProviderName.LLAMAFILE:
                 continue  # Llamafile Mistral intentionally lacks function calling
-            assert info.has_function_call_api is True, (
-                f"{name} does not support function calling"
-            )
+            assert (
+                info.has_function_call_api is True
+            ), f"{name} does not support function calling"

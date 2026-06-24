@@ -161,9 +161,9 @@ class TestMakeFlexGraphitiClient:
 
         # The regular (non-flex) client was constructed.
         assert regular_sentinel.called, "expected fallback to regular OpenAIClient"
-        assert not flex_sentinel.called, (
-            "flex client must not be constructed under local transport"
-        )
+        assert (
+            not flex_sentinel.called
+        ), "flex client must not be constructed under local transport"
         # And the constructed instance was passed into _build_graphiti.
         assert captured["llm_client"] is regular_sentinel.return_value
 
