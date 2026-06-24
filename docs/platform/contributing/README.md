@@ -2,15 +2,11 @@
 
 Want to contribute to AutoGPT? Welcome!
 
-For the complete contributing guide, see the [CONTRIBUTING.md](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/CONTRIBUTING.md) in the repository root. It covers:
-
-- Repository structure and setup
-- Backend and frontend development
-- Testing strategy
-- Pull request process and conventions
-- Documentation contributions
+The complete contributing guide lives in the repository root: [CONTRIBUTING.md](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/CONTRIBUTING.md). It covers setup, development commands, testing, the PR process, and documentation contributions.
 
 ## Platform-Specific Guides
+
+These guides cover specific platform development topics in detail:
 
 - [OAuth Integration Flow](oauth-integration-flow.md) — How to add OAuth providers
 - [Testing](tests.md) — Playwright E2E testing setup and patterns
