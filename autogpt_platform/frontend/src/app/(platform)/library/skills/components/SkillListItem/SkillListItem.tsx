@@ -4,7 +4,12 @@ import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSki
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { BookOpenIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  BookOpenIcon,
+  DownloadSimpleIcon,
+  EyeIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";
@@ -22,6 +27,8 @@ export function SkillListItem({ skill }: Props) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isDownloading,
+    handleDownload,
     isViewOpen,
     openView,
     closeView,
@@ -75,6 +82,17 @@ export function SkillListItem({ skill }: Props) {
         >
           <EyeIcon className="mr-1 h-4 w-4" />
           View
+        </Button>
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleDownload}
+          loading={isDownloading}
+          data-testid="skill-download-button"
+          aria-label="Download skill"
+        >
+          <DownloadSimpleIcon className="mr-1 h-4 w-4" />
+          Download
         </Button>
         <Button
           variant="secondary"

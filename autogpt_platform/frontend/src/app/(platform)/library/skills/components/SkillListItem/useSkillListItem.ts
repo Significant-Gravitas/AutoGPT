@@ -1,5 +1,6 @@
 import {
   getListCopilotSkillsQueryKey,
+  readCopilotSkill,
   useDeleteCopilotSkill,
   useReadCopilotSkill,
 } from "@/app/api/__generated__/endpoints/skills/skills";
@@ -8,7 +9,7 @@ import type { CopilotSkillDetail } from "@/app/api/__generated__/models/copilotS
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { describeSkill } from "./helpers";
+import { describeSkill, downloadTextFile, renderSkillMarkdown } from "./helpers";
 
 interface Args {
   skill: CopilotSkillInfo;
@@ -19,6 +20,7 @@ export function useSkillListItem({ skill }: Args) {
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const { mutateAsync: deleteSkill, isPending: isDeleting } =
     useDeleteCopilotSkill();
@@ -66,6 +68,29 @@ export function useSkillListItem({ skill }: Args) {
     setIsViewOpen(open);
   }
 
+  async function handleDownload() {
+    setIsDownloading(true);
+    try {
+      const res = await readCopilotSkill(skill.name);
+      const skillDetail = res.data as CopilotSkillDetail;
+      downloadTextFile(
+        `${skill.name}.md`,
+        renderSkillMarkdown(skillDetail),
+      );
+    } catch (error) {
+      toast({
+        title: "Failed to download skill",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   async function handleDelete() {
     try {
       await deleteSkill({ name: skill.name });
@@ -94,6 +119,8 @@ export function useSkillListItem({ skill }: Args) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isDownloading,
+    handleDownload,
     isViewOpen,
     openView,
     closeView,

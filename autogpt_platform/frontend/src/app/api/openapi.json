@@ -9606,6 +9606,46 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "skills"],
+        "summary": "Upload a copilot skill from a SKILL.md file",
+        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
+        "operationId": "uploadCopilotSkill",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadCopilotSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillInfo" }
+              }
+            }
+          },
+          "400": { "description": "Malformed SKILL.md or validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Per-user skill limit reached" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/skills/{name}": {
@@ -22089,6 +22129,15 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UploadCopilotSkillRequest": {
+        "properties": {
+          "content": { "type": "string", "title": "Content" }
+        },
+        "type": "object",
+        "required": ["content"],
+        "title": "UploadCopilotSkillRequest",
+        "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
       },
       "UsageWindowPublic": {
         "properties": {
