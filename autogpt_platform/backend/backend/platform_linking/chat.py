@@ -99,6 +99,10 @@ async def upload_chat_file(request: WorkspaceUploadRequest) -> WorkspaceUploadRe
         return WorkspaceUploadResult(
             filename=request.filename, error="scan_unavailable"
         )
+    except NotFoundError:
+        # NotFoundError subclasses ValueError; let a missing user/workspace
+        # propagate as a linking error instead of being mislabelled "rejected".
+        raise
     except ValueError:
         # write_file raises ValueError for size / storage-quota limits.
         return WorkspaceUploadResult(filename=request.filename, error="rejected")

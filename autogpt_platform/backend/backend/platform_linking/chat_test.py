@@ -313,3 +313,13 @@ class TestUploadChatFile:
         ):
             with pytest.raises(NotFoundError):
                 await upload_chat_file(self._req())
+
+    @pytest.mark.asyncio
+    async def test_not_found_in_try_propagates_not_rejected(self):
+        # NotFoundError subclasses ValueError; if one is raised inside the
+        # write path it must propagate, not be swallowed as "rejected".
+        write = AsyncMock(side_effect=NotFoundError("workspace gone"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            with pytest.raises(NotFoundError):
+                await upload_chat_file(self._req())
