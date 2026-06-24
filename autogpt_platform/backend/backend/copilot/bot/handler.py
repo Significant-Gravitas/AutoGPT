@@ -136,12 +136,22 @@ class MessageHandler:
         ones that succeeded and tell the user about any that were rejected."""
         if not ctx.attachments:
             return []
-        results = await self._api.upload_workspace_files(
-            platform=ctx.platform,
-            platform_user_id=ctx.user_id,
-            platform_server_id=ctx.server_id,
-            attachments=ctx.attachments,
-        )
+        try:
+            results = await self._api.upload_workspace_files(
+                platform=ctx.platform,
+                platform_user_id=ctx.user_id,
+                platform_server_id=ctx.server_id,
+                attachments=ctx.attachments,
+            )
+        except Exception:
+            # The upload path itself failed (not a per-file rejection). Don't drop
+            # the message — tell the user and let any text in it still go through.
+            logger.exception("Attachment upload failed for target %s", target_id)
+            await adapter.send_message(
+                target_id,
+                "I couldn't process the attached file(s). Please try again in a moment.",
+            )
+            return []
         file_ids = [r.file_id for r in results if r.file_id]
         failed = [r for r in results if not r.file_id]
         if failed:

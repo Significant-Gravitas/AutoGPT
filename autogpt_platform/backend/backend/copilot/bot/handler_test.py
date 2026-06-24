@@ -1014,6 +1014,23 @@ class TestAttachments:
         assert captured["file_ids"] == ["f1"]
 
     @pytest.mark.asyncio
+    async def test_upload_rpc_failure_keeps_text_turn_and_notifies(self):
+        # The upload path itself blowing up (not a per-file rejection) must not
+        # drop the message — any text still goes through and the user is told.
+        api, captured = self._upload_recording_api([])
+        api.upload_workspace_files = AsyncMock(side_effect=RuntimeError("rpc down"))
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("summarize this", [("a.pdf", "application/pdf")]), adapter
+        )
+
+        assert captured["file_ids"] == []
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "couldn't process" in note.lower()
+
+    @pytest.mark.asyncio
     async def test_batched_file_ids_capped_to_per_turn_limit(self):
         # Several file-heavy messages batched together can exceed the
         # BotChatRequest file_ids limit; the drain must cap, not fail.
