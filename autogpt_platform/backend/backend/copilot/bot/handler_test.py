@@ -1038,6 +1038,41 @@ class TestAttachments:
         assert captured and len(captured[0]) == MAX_TURN_FILE_IDS
 
     @pytest.mark.asyncio
+    async def test_channel_file_only_all_rejected_unsubscribes_orphan_thread(self):
+        # A channel @mention creates+subscribes a thread; if it's file-only and
+        # every upload fails, we must unsubscribe the thread we just created so
+        # it doesn't linger orphaned-but-subscribed.
+        api = _api()
+        api.upload_workspace_files = AsyncMock(
+            return_value=[
+                WorkspaceUploadResult(filename="bad.exe", error="virus_detected")
+            ]
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()  # create_thread → "thread-new"
+        ctx = _ctx(
+            channel_type="channel",
+            text="",
+            attachments=(
+                InboundAttachment(
+                    filename="bad.exe",
+                    mime_type="application/octet-stream",
+                    content=b"x",
+                ),
+            ),
+        )
+
+        with (
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.handler.threads.unsubscribe", new=AsyncMock()
+            ) as unsub,
+        ):
+            await handler.handle(ctx, adapter)
+
+        unsub.assert_awaited_once_with("discord", "thread-new")
+
+    @pytest.mark.asyncio
     async def test_file_only_message_with_all_uploads_rejected_does_not_enqueue(self):
         # Every upload failed → no successful file_ids and no text. The user
         # already got the rejection note, so we must NOT enqueue a blank turn.

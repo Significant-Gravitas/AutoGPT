@@ -120,6 +120,10 @@ class MessageHandler:
             if not file_ids:
                 # File-only message whose every upload was rejected — the user
                 # already got the rejection note, so don't enqueue a blank turn.
+                # If we just created a thread for a channel message, unsubscribe
+                # it so it doesn't linger orphaned-but-subscribed for 7 days.
+                if ctx.channel_type == "channel" and target_id != ctx.channel_id:
+                    await threads.unsubscribe(ctx.platform, target_id)
                 return
             # File-only message — give AutoPilot a nudge to look at the uploads.
             message_text = "(see the attached file(s))"
