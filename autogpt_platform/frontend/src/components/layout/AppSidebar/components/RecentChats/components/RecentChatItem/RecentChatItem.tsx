@@ -15,7 +15,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
-  ChatCircleIcon,
   CircleNotchIcon,
   DotsThreeIcon,
   DownloadSimpleIcon,
@@ -24,12 +23,14 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import { formatChatDate } from "../../helpers";
 
 interface Session {
   id: string;
   title?: string | null;
   source_platform?: string | null;
   is_processing?: boolean | null;
+  updated_at: string;
 }
 
 interface Props {
@@ -43,6 +44,7 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   chatSharingEnabled: boolean;
+  showDate?: boolean;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
@@ -60,6 +62,7 @@ export function RecentChatItem({
   isExporting,
   isDeleting,
   chatSharingEnabled,
+  showDate = false,
   onRename,
   onExport,
   onShare,
@@ -103,10 +106,13 @@ export function RecentChatItem({
             />
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
-          ) : (
-            <ChatCircleIcon className="size-4 shrink-0 text-zinc-500" />
-          )}
+          ) : null}
           <span className="truncate">{title}</span>
+          {showDate && (
+            <span className="ml-auto shrink-0 text-xs text-zinc-400">
+              {formatChatDate(session.updated_at)}
+            </span>
+          )}
         </Link>
       </SidebarMenuButton>
 
