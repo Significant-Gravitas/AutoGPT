@@ -33,6 +33,39 @@ export function getFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
 
+// Fetches the file as a blob and triggers a browser download. Throws on a
+// non-OK response so callers can surface the error (toast) and toggle their
+// own loading state.
+export async function downloadFileBlob(
+  fileId: string,
+  fileName: string,
+): Promise<void> {
+  const res = await fetch(getFileDownloadUrl(fileId));
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revocation so browsers (Firefox/Edge) have time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function getFilePreviewUrl(
+  fileId: string,
+  opts: { width?: number; bytes?: number },
+): string {
+  const params = new URLSearchParams();
+  if (opts.width) params.set("w", String(opts.width));
+  if (opts.bytes) params.set("bytes", String(opts.bytes));
+  const query = params.toString();
+  const base = `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/preview`;
+  return query ? `${base}?${query}` : base;
+}
+
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
 
 export function formatFileSize(bytes: number): string {
@@ -67,7 +100,65 @@ export function formatRelativeDate(input: string | Date): string {
   });
 }
 
-export function getFileTypeLabel(mimeType: string | undefined): string {
+// Source-code extensions whose MIME type is ambiguous or actively misleading
+// in the browser/OS database — most notably `.ts`, which resolves to
+// `video/mp2t` (MPEG transport stream) and would otherwise render as a video.
+// Classifying these by extension keeps source files out of the media path.
+// Mirrors the copilot ArtifactPanel classifier, which is also extension-first.
+const CODE_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "mts",
+  "cts",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "kts",
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "hpp",
+  "cs",
+  "php",
+  "swift",
+  "scala",
+  "sh",
+  "bash",
+  "zsh",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "sql",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "vue",
+  "svelte",
+  "dart",
+  "lua",
+  "r",
+]);
+
+export function isCodeFile(fileName: string | undefined): boolean {
+  const ext = (fileName ?? "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return ext ? CODE_EXTENSIONS.has(ext[1]) : false;
+}
+
+export function getFileTypeLabel(
+  mimeType: string | undefined,
+  fileName?: string,
+): string {
+  if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
   if (mt.startsWith("image/")) return "Image";
   if (mt.startsWith("video/")) return "Video";
@@ -82,7 +173,11 @@ export function getFileTypeLabel(mimeType: string | undefined): string {
   return "Generated file";
 }
 
-export function getFileTypeIcon(mimeType: string | undefined): Icon {
+export function getFileTypeIcon(
+  mimeType: string | undefined,
+  fileName?: string,
+): Icon {
+  if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
   if (mt.startsWith("image/")) return ImageIcon;
   if (mt.startsWith("video/")) return VideoCameraIcon;
@@ -100,32 +195,95 @@ export function getFileTypeIcon(mimeType: string | undefined): Icon {
   return FileIcon;
 }
 
-export type PreviewKind = "image" | "video" | "text" | "none";
+export type PreviewKind =
+  | "image"
+  | "video"
+  | "pdf"
+  | "office"
+  | "csv"
+  | "json"
+  | "markdown"
+  | "ics"
+  | "vcard"
+  | "text"
+  | "none";
 
-const MAX_TEXT_PREVIEW_BYTES = 200_000;
+// These ceilings mirror the backend preview limits exactly, so we never fire
+// a preview request for a file the backend would reject (it shows an
+// illustration instead). Keep in sync with PREVIEW_MAX_* in backend preview.py.
 const MAX_IMAGE_PREVIEW_BYTES = 10_000_000;
 const MAX_VIDEO_PREVIEW_BYTES = 500_000_000;
+const MAX_DOC_PREVIEW_BYTES = 50_000_000;
+const MAX_TEXT_PREVIEW_BYTES = 50_000_000;
+// ICS/VCF are parsed whole on the client, so cap the download size.
+const MAX_STRUCTURED_PREVIEW_BYTES = 110_000;
+
+const OFFICE_MIMES = new Set([
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+function isOfficeFile(mime: string, name: string): boolean {
+  return (
+    OFFICE_MIMES.has(mime) ||
+    name.endsWith(".pptx") ||
+    name.endsWith(".docx") ||
+    name.endsWith(".xlsx")
+  );
+}
 
 export function getPreviewKind(
   mimeType: string | undefined,
   sizeBytes: number,
+  fileName?: string,
 ): PreviewKind {
   const mt = (mimeType ?? "").toLowerCase();
-  if (mt.startsWith("image/")) {
+  const name = (fileName ?? "").toLowerCase();
+
+  // Extension-first for source code: `.ts` & friends carry misleading MIME
+  // types (e.g. `video/mp2t`). Render them as a generic file card, not media.
+  if (isCodeFile(name)) {
+    return sizeBytes > MAX_TEXT_PREVIEW_BYTES ? "none" : "text";
+  }
+
+  if (mt.startsWith("image/") && !mt.includes("svg")) {
     return sizeBytes > MAX_IMAGE_PREVIEW_BYTES ? "none" : "image";
   }
   if (mt.startsWith("video/")) {
     return sizeBytes > MAX_VIDEO_PREVIEW_BYTES ? "none" : "video";
   }
+  if (mt === "application/pdf" || name.endsWith(".pdf")) {
+    return sizeBytes > MAX_DOC_PREVIEW_BYTES ? "none" : "pdf";
+  }
+  if (isOfficeFile(mt, name)) {
+    return sizeBytes > MAX_DOC_PREVIEW_BYTES ? "none" : "office";
+  }
+  if (mt.includes("calendar") || name.endsWith(".ics")) {
+    return sizeBytes > MAX_STRUCTURED_PREVIEW_BYTES ? "none" : "ics";
+  }
+  if (mt.includes("vcard") || name.endsWith(".vcf")) {
+    return sizeBytes > MAX_STRUCTURED_PREVIEW_BYTES ? "none" : "vcard";
+  }
+
+  // csv/json/text fetch only the first few KB, but still skip absurdly large
+  // files to match the backend's text ceiling.
   if (sizeBytes > MAX_TEXT_PREVIEW_BYTES) return "none";
+  if (mt.includes("csv") || name.endsWith(".csv")) return "csv";
+  if (mt.includes("json") || name.endsWith(".json")) return "json";
+  if (
+    mt.includes("markdown") ||
+    name.endsWith(".md") ||
+    name.endsWith(".markdown") ||
+    name.endsWith(".mdx")
+  ) {
+    return "markdown";
+  }
   if (
     mt.startsWith("text/") ||
     mt.includes("html") ||
     mt.includes("xhtml") ||
-    mt.includes("json") ||
     mt.includes("xml") ||
-    mt.includes("csv") ||
-    mt.includes("markdown") ||
     mt.includes("javascript") ||
     mt.includes("typescript") ||
     mt.includes("yaml")

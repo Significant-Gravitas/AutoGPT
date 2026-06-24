@@ -11,7 +11,7 @@ from datetime import datetime
 import discord
 from discord import app_commands
 
-from backend.copilot.bot import sessions
+from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
 from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
@@ -22,16 +22,26 @@ logger = logging.getLogger(__name__)
 def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
     """Register all slash commands on the given CommandTree."""
 
+    def _track(interaction: discord.Interaction, command_name: str) -> None:
+        api.track_event(
+            platform="discord",
+            event_type="command_used",
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            command_name=command_name,
+        )
+
     @tree.command(
         name="setup",
         description="Link this server to an AutoGPT account for AutoPilot",
     )
     @app_commands.default_permissions(manage_guild=True)
     async def setup_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "setup")
         await _handle_setup(interaction, api)
 
     @tree.command(name="help", description="Show AutoPilot bot usage info")
     async def help_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "help")
         await _handle_help(interaction)
 
     @tree.command(
@@ -39,6 +49,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Manage linked servers from your AutoGPT settings",
     )
     async def unlink_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "unlink")
         await _handle_unlink(interaction)
 
     @tree.command(
@@ -46,6 +57,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Start a fresh AutoPilot conversation in this DM or thread",
     )
     async def new_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "new")
         await _handle_new(interaction)
 
     @tree.command(
@@ -53,7 +65,16 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Resume one of your past AutoPilot conversations (DMs only)",
     )
     async def resume_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "resume")
         await _handle_resume(interaction, api)
+
+    @tree.command(
+        name="leave",
+        description="Stop AutoPilot from auto-replying in this thread",
+    )
+    async def leave_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "leave")
+        await _handle_leave(interaction)
 
 
 async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> None:
@@ -183,6 +204,31 @@ async def _handle_new(interaction: discord.Interaction) -> None:
 
     await interaction.response.send_message(
         "Started a fresh conversation — send a message to begin.",
+        ephemeral=True,
+    )
+
+
+async def _handle_leave(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.channel, discord.Thread):
+        await interaction.response.send_message(
+            "Use `/leave` inside a thread. I only auto-reply in threads I'm "
+            "subscribed to.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        await threads.unsubscribe("discord", str(interaction.channel.id))
+    except Exception:
+        logger.exception("Failed to unsubscribe thread for /leave")
+        await interaction.response.send_message(
+            "Couldn't step out of this thread right now. Please try again in a moment.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        "Going quiet in this thread. @mention me to bring me back.",
         ephemeral=True,
     )
 

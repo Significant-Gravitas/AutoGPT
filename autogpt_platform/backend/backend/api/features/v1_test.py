@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import fastapi
 import fastapi.testclient
@@ -11,6 +11,7 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
@@ -18,12 +19,16 @@ from backend.copilot.tools.skills import (
 )
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
+# Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
+# tests below verify the same behaviour the real app exposes.
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 
 client = fastapi.testclient.TestClient(app)
 
@@ -410,6 +415,37 @@ def test_request_top_up(
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
+    )
+
+
+def test_request_top_up_forwards_datafast_headers(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DataFast attribution headers are forwarded to top_up_intent."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits",
+        json={"credit_amount": 500},
+        headers={
+            "X-Datafast-Visitor-Id": "vis_1",
+            "X-Datafast-Session-Id": "ses_1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_credit_model.top_up_intent.assert_awaited_once_with(
+        ANY,
+        500,
+        datafast_visitor_id="vis_1",
+        datafast_session_id="ses_1",
     )
 
 
@@ -842,6 +878,105 @@ def test_delete_graph(
         json.dumps(response_data, indent=2, sort_keys=True),
         "grphs_del",
     )
+
+
+def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Core atomicity guarantee: when before_graph_activate raises,
+    POST /graphs must return 400 and never call create_graph / create_library_agent.
+    Reordering activation back to post-save would break this test."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+
+    mock_graph_model = Mock()
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    create_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "name": "Test Graph",
+                "description": "Test",
+                "nodes": [],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    create_lib_agent_mock.assert_not_awaited()
+
+
+def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Same atomicity guarantee on PUT /graphs/{id}: an activation failure
+    must short-circuit with 400 before any new graph version is written."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+
+    mock_graph_model = Mock(is_active=True)
+    existing_version = Mock(version=1, is_active=True)
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[existing_version]),
+    )
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    update_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.update_library_agent_version_and_settings",
+        new=AsyncMock(),
+    )
+
+    response = client.put(
+        "/graphs/graph-123",
+        json={
+            "id": "graph-123",
+            "name": "Test Graph",
+            "description": "Test",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    update_lib_agent_mock.assert_not_awaited()
 
 
 # Invalid request tests

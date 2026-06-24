@@ -18,6 +18,19 @@ export enum Flag {
   CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
+  // Graphiti memory + dream-system gates. Mirror of the backend
+  // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
+  // them when memory/dream-related UI surfaces ship (P6+ on the
+  // dream-system roadmap). They default false below to match the
+  // backend's fail-closed gating (default=False, opt-in only) — a
+  // LaunchDarkly outage or missing flag key must not switch the
+  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
+  // enable the stack for local-dev / Playwright runs.
+  GRAPHITI_MEMORY = "graphiti-memory",
+  GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
+  DREAM_PASS_ENABLED = "dream-pass-enabled",
+  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
+  DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -35,6 +48,11 @@ const defaultFlags = {
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
+  [Flag.GRAPHITI_MEMORY]: false,
+  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
+  [Flag.DREAM_PASS_ENABLED]: false,
+  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
+  [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -82,6 +100,16 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
+    case Flag.GRAPHITI_MEMORY:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
+    case Flag.GRAPHITI_COMMUNITIES_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
+    case Flag.DREAM_PASS_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
+    case Flag.DREAM_PASS_WEB_FACT_CHECK:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
+    case Flag.DREAM_PASS_INVALIDATE_ENTITY:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
   }
 }
 

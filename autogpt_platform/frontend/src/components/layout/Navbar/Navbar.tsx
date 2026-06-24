@@ -10,7 +10,6 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
@@ -26,7 +25,6 @@ const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
   "/build": IconType.Builder,
   "/copilot": IconType.Chat,
   "/library": IconType.Library,
-  "/artifacts": IconType.UploadCloud,
   "/monitor": IconType.Library,
 };
 
@@ -57,12 +55,11 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
-
+  // Files is reached via the icon in the CoPilot sidebar (gated by
+  // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
-    ...(isArtifactsEnabled ? [{ name: "Artifacts", href: "/artifacts" }] : []),
     ...loggedInLinks,
   ];
 
@@ -72,6 +69,11 @@ export function Navbar() {
 
   return (
     <>
+      {/* Drives banner-aware offsets in fixed-position siblings (e.g. ChatSidebar)
+          that can't read the navbar's natural height through normal layout. */}
+      <style>{`:root { --preview-banner-height: ${
+        shouldShowPreviewBanner ? "2.25rem" : "0px"
+      }; }`}</style>
       <div className="sticky top-0 z-40 w-full">
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />

@@ -8,18 +8,27 @@ from backend.api.features.library.db import (
     create_folder,
     create_graph_in_library,
     create_library_agent,
+    create_preset,
     delete_folder,
     get_folder_agents_map,
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_preset,
     get_root_agent_summaries,
     list_folders,
     list_library_agents,
+    list_presets,
+    list_trigger_agents,
     move_folder,
     update_folder,
     update_graph_in_library,
     update_library_agent,
+)
+from backend.api.features.library.triggers import (
+    delete_preset_with_webhook_cleanup,
+    setup_triggered_preset,
+    update_triggered_preset,
 )
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -35,6 +44,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.data import bot_analytics as bot_analytics_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -45,7 +55,11 @@ from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
 )
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.credit import (
+    UsageTransactionMetadata,
+    get_user_credit_model,
+    reconcile_stripe_tier_for_user,
+)
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
@@ -105,6 +119,7 @@ from backend.data.push_subscription import (
     get_user_push_subscriptions,
     increment_fail_count,
 )
+from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -300,6 +315,13 @@ class DatabaseManager(AppService):
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
+    setup_triggered_preset = _(setup_triggered_preset)
+    update_triggered_preset = _(update_triggered_preset)
+    delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
+    get_preset = _(get_preset)
+    create_preset = _(create_preset)
+    list_presets = _(list_presets)
+    list_trigger_agents = _(list_trigger_agents)
 
     create_folder = _(create_folder)
     list_folders = _(list_folders)
@@ -370,6 +392,13 @@ class DatabaseManager(AppService):
         cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
     )
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+    # Per-user lazy reconcile, exposed so Prisma-less processes
+    # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
+    # row via db_accessors.credit_db() instead of crashing on direct Prisma.
+    reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -389,6 +418,13 @@ class DatabaseManager(AppService):
     cleanup_expired_platform_link_tokens = _(
         platform_linking_db.cleanup_expired_platform_link_tokens
     )
+    fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = _(bot_analytics_db.record_bot_event)
+    record_guild_joined = _(bot_analytics_db.record_guild_joined)
+    mark_guild_left = _(bot_analytics_db.mark_guild_left)
+    sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -552,6 +588,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
+    setup_triggered_preset = d.setup_triggered_preset
+    update_triggered_preset = d.update_triggered_preset
+    delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup
+    get_preset = d.get_preset
+    create_preset = d.create_preset
+    list_presets = d.list_presets
+    list_trigger_agents = d.list_trigger_agents
 
     # ============ Library Folders ============ #
     create_folder = d.create_folder
@@ -615,6 +658,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     increment_push_fail_count = d.increment_push_fail_count
     cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+    reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     find_user_link_owner = d.find_user_link_owner
@@ -632,6 +679,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
+    fetch_workspace_artifact = d.fetch_workspace_artifact
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = d.record_bot_event
+    record_guild_joined = d.record_guild_joined
+    mark_guild_left = d.mark_guild_left
+    sync_guild_presence = d.sync_guild_presence
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

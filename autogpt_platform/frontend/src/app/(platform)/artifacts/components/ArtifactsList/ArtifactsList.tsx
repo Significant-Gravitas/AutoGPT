@@ -6,7 +6,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
+import { useState } from "react";
 import { ArtifactCard } from "./ArtifactCard/ArtifactCard";
+import { FileViewerModal } from "../FileViewerModal/FileViewerModal";
 import { FileTypeMarquee } from "./FileTypeMarquee";
 import { LoadMoreSentinel } from "./LoadMoreSentinel";
 
@@ -41,6 +43,7 @@ export function ArtifactsList({
   listKey,
 }: Props) {
   const reduceMotion = useReducedMotion();
+  const [openFile, setOpenFile] = useState<WorkspaceFileItem | null>(null);
 
   if (isLoading) {
     return (
@@ -74,7 +77,7 @@ export function ArtifactsList({
       >
         <FileTypeMarquee />
         <Text variant="h5" className="text-zinc-700">
-          {hasSearchTerm ? "No files match your search" : "No artifacts yet"}
+          {hasSearchTerm ? "No files match your search" : "No files yet"}
         </Text>
       </div>
     );
@@ -91,7 +94,7 @@ export function ArtifactsList({
         animate={reduceMotion ? undefined : "show"}
       >
         {files.map((file) => (
-          <ArtifactCard key={file.id} file={file} />
+          <ArtifactCard key={file.id} file={file} onOpen={setOpenFile} />
         ))}
       </motion.ul>
       <LoadMoreSentinel
@@ -99,6 +102,13 @@ export function ArtifactsList({
         isLoading={isLoadingMore}
         onLoadMore={onLoadMore}
       />
+      {openFile ? (
+        <FileViewerModal
+          key={openFile.id}
+          file={openFile}
+          onClose={() => setOpenFile(null)}
+        />
+      ) : null}
     </>
   );
 }

@@ -8,6 +8,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
+// Mock the auth hook — toggle logged-in vs logged-out per test.
+let mockIsLoggedIn = true;
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ isLoggedIn: mockIsLoggedIn }),
+}));
+
 // Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
 let mockIsPaymentEnabled: boolean | undefined = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -45,6 +51,7 @@ import { PaywallGate } from "../PaywallGate";
 describe("PaywallGate", () => {
   beforeEach(() => {
     mockPathname = "/build";
+    mockIsLoggedIn = true;
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
     mockIsLocal = false;
@@ -72,6 +79,19 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+  });
+
+  it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
+    mockIsPaymentEnabled = true;
+    mockIsLoggedIn = false;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
   it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
