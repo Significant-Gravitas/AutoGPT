@@ -22131,9 +22131,7 @@
         "title": "UpdateTimezoneRequest"
       },
       "UploadCopilotSkillRequest": {
-        "properties": {
-          "content": { "type": "string", "title": "Content" }
-        },
+        "properties": { "content": { "type": "string", "title": "Content" } },
         "type": "object",
         "required": ["content"],
         "title": "UploadCopilotSkillRequest",
