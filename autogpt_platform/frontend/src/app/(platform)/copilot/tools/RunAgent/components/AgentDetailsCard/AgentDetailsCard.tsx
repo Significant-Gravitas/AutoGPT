@@ -51,6 +51,19 @@ export function AgentDetailsCard({ output }: Props) {
     );
   }
 
+  if (output.agent.trigger_info) {
+    // Informational only — no action button. run_agent hands off to
+    // setup_agent_webhook_trigger (whose own card collects config/credentials
+    // and shows the result), so a "Set up trigger" button here would be
+    // redundant and, once setup has succeeded, a stale backward-pointing CTA.
+    return (
+      <ContentMessage>
+        This agent runs on a webhook trigger, so it can&apos;t be run or
+        scheduled directly — it&apos;s activated by setting up its trigger.
+      </ContentMessage>
+    );
+  }
+
   if (!schema) {
     return (
       <div className="grid gap-2">

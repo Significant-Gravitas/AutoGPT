@@ -1,9 +1,25 @@
 import { expect, Page } from "@playwright/test";
+import path from "path";
 import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
 const DETERMINISTIC_MARKETPLACE_AGENT_SEARCH = "E2E Calculator Agent";
+
+// Small local PNG selected in the publish flow to satisfy the "at least one
+// image is required" rule. The upload request itself is stubbed (see
+// submitAgentForReview) because the CI stack has no GCS media bucket — so the
+// file content is irrelevant, only that a file is chosen.
+const THUMBNAIL_FIXTURE_PATH = path.join(
+  __dirname,
+  "../assets/test-thumbnail.png",
+);
+
+// The store media upload endpoint requires a configured GCS bucket, which the
+// E2E stack does not provide. Stub it with a local asset URL: this test covers
+// the publish → track → delete dashboard flow, not GCS storage. The stubbed URL
+// is served locally (no external fetch) and satisfies the image-required rule.
+const STUBBED_THUMBNAIL_URL = "/placeholder.png";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -245,6 +261,27 @@ export class MarketplacePage extends BasePage {
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
     await this.page.getByRole("option", { name: "Other" }).click();
+
+    // Stub the GCS-backed media upload so the flow is hermetic in CI, then
+    // select a file to trigger it. This satisfies the "at least one image is
+    // required" rule without a real storage bucket.
+    await this.page.route(
+      "**/api/store/submissions/media",
+      async (route) =>
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(STUBBED_THUMBNAIL_URL),
+        }),
+    );
+    await publishAgentModal.getByRole("button", { name: /Thumbnails/ }).click();
+    await publishAgentModal
+      .locator("#image-upload")
+      .setInputFiles(THUMBNAIL_FIXTURE_PATH);
+    await expect(
+      publishAgentModal.getByTestId("thumbnail-remove-0"),
+      "uploaded thumbnail should appear before submitting",
+    ).toBeVisible({ timeout: 15000 });
 
     await publishAgentModal
       .getByRole("button", { name: /Experience details/ })

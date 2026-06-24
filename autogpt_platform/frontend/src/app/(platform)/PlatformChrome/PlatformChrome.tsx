@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { usePlatformChrome } from "./usePlatformChrome";
@@ -39,6 +40,7 @@ export function PlatformChrome({ children }: Props) {
             <InsetHeaderActions />
           </header>
           <AdminImpersonationBanner />
+          <GlobalSearchOverlay />
           <section className="flex-1">{content}</section>
         </SidebarInset>
       </SidebarProvider>
@@ -49,6 +51,7 @@ export function PlatformChrome({ children }: Props) {
     <main className="flex h-screen w-full flex-col">
       <Navbar />
       <AdminImpersonationBanner />
+      <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>
     </main>
   );
