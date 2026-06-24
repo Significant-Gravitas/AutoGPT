@@ -2,7 +2,6 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Sequence, cast, get_args
@@ -15,7 +14,9 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     File,
+    Header,
     HTTPException,
     Path,
     Query,
@@ -48,7 +49,16 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
-from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillNotFoundError,
+    delete_user_skill,
+    get_default_skill_with_body,
+    list_user_skill_sibling_paths,
+    list_user_skills,
+    read_user_skill_with_body,
+)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -77,6 +87,12 @@ from backend.data.credit import (
     set_subscription_tier,
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
+    sync_tier_from_checkout_session,
+)
+from backend.data.execution import ExecutionContext
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    get_user_cost_summary,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -92,6 +108,8 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.redis_client import get_redis_async
+from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -109,7 +127,7 @@ from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -462,7 +480,10 @@ async def get_graph_blocks() -> Response:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+    },
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -484,13 +505,21 @@ async def execute_graph_block(
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
@@ -619,10 +648,22 @@ async def get_user_credits(
     dependencies=[Security(requires_user)],
 )
 async def request_top_up(
-    request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
+    request: RequestTopUp,
+    user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ):
     user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
+    checkout_url = await user_credit_model.top_up_intent(
+        user_id,
+        request.credit_amount,
+        datafast_visitor_id=x_datafast_visitor_id,
+        datafast_session_id=x_datafast_session_id,
+    )
     return {"checkout_url": checkout_url}
 
 
@@ -987,6 +1028,12 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -1070,6 +1117,8 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
@@ -1244,6 +1293,8 @@ async def update_subscription_tier(
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             billing_cycle=request.billing_cycle,
+            datafast_visitor_id=x_datafast_visitor_id,
+            datafast_session_id=x_datafast_session_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1262,6 +1313,62 @@ async def update_subscription_tier(
     status = await get_subscription_status(user_id)
     status.url = url
     return status
+
+
+def _stripe_event_dedup_key(event_id: str) -> str:
+    return f"stripe_webhook_event:{event_id}"
+
+
+async def _claim_stripe_event(event_id: str) -> bool:
+    """Mark a Stripe webhook event as claimed via Redis SETNX.
+
+    Returns ``True`` when the caller acquired the claim (first time we've seen
+    ``event_id``) and should proceed with handler dispatch. Returns ``False``
+    when the event was already processed in a prior delivery — Stripe retries
+    the same ``event.id`` on non-2xx responses, and we don't want downstream
+    handlers (some of which only carry per-resource idempotency) to fire twice.
+
+    Pair with ``_release_stripe_event`` in a try/except around handler dispatch:
+    on handler failure we DELete the key so Stripe's retry isn't no-op'd, but
+    a retry that arrives *during* in-flight processing still hits the live
+    claim and is deduped.
+
+    TTL of 24h comfortably exceeds Stripe's retry window. On Redis failure we
+    fall open and let processing continue — better to risk a rare duplicate
+    than to drop a real event.
+    """
+    if not event_id:
+        # Malformed event without an id — fall open so the rest of the
+        # handler can decide what to do (it'll log and 200 anyway).
+        return True
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            _stripe_event_dedup_key(event_id), "1", nx=True, ex=86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup claim failed for event %s; processing anyway",
+            event_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _release_stripe_event(event_id: str) -> None:
+    """Release a previously-claimed dedup key so Stripe's retry can rerun."""
+    if not event_id:
+        return
+    try:
+        redis_client = await get_redis_async()
+        await redis_client.delete(_stripe_event_dedup_key(event_id))
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup release failed for event %s",
+            event_id,
+            exc_info=True,
+        )
 
 
 @v1_router.post(
@@ -1297,7 +1404,20 @@ async def stripe_webhook(request: Request):
     # AFTER signature verification — which Stripe interprets as a delivery
     # failure and retries forever, while spamming Sentry with no useful info.
     # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
+            event_type,
+        )
+        return Response(status_code=200)
+
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):
@@ -1307,75 +1427,82 @@ async def stripe_webhook(request: Request):
         )
         return Response(status_code=200)
 
-    if event_type in (
-        "checkout.session.completed",
-        "checkout.session.async_payment_succeeded",
-    ):
-        session_id = data_object.get("id")
-        if not session_id:
-            logger.warning(
-                "stripe_webhook: %s missing data.object.id; ignoring", event_type
-            )
-            return Response(status_code=200)
-        await UserCredit().fulfill_checkout(session_id=session_id)
-
-    if event_type in (
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
-    ):
-        await sync_subscription_from_stripe(data_object)
-
-    # `subscription_schedule.updated` is deliberately omitted: our own
-    # `SubscriptionSchedule.create` + `.modify` calls in
-    # `_schedule_downgrade_at_period_end` would fire that event right back at us
-    # and loop redundant traffic through this handler. We only care about state
-    # transitions (released / completed); phase advance to the new price is
-    # already covered by `customer.subscription.updated`.
-    if event_type in (
-        "subscription_schedule.released",
-        "subscription_schedule.completed",
-    ):
-        await sync_subscription_schedule_from_stripe(data_object)
-
-    if event_type == "invoice.payment_succeeded":
-        await handle_subscription_payment_success(data_object)
-
-    if event_type == "invoice.payment_failed":
-        await handle_subscription_payment_failure(data_object)
-
-    # New Stripe API (≥2025-04-01) split the per-payment events off the Invoice
-    # resource. data.object is an InvoicePayment, not an Invoice, so we hydrate
-    # the underlying Invoice before delegating to the existing handlers.
-    if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
-        invoice_id = data_object.get("invoice")
-        if invoice_id:
-            try:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
-            except stripe.StripeError:
-                logger.exception(
-                    "stripe_webhook: %s could not retrieve invoice %s; skipping",
-                    event_type,
-                    invoice_id,
+    # Wrap handler dispatch so a downstream failure releases the dedup claim;
+    # otherwise Stripe's retry would hit the live key and silently drop the
+    # event. Concurrent retries that arrive *during* in-flight processing
+    # still hit the live claim and are deduped.
+    try:
+        if event_type in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        ):
+            session_id = data_object.get("id")
+            if not session_id:
+                logger.warning(
+                    "stripe_webhook: %s missing data.object.id; ignoring", event_type
                 )
                 return Response(status_code=200)
-            invoice_payload = cast(dict, invoice)
-            if event_type == "invoice_payment.paid":
-                await handle_subscription_payment_success(invoice_payload)
-            else:
-                await handle_subscription_payment_failure(invoice_payload)
+            await UserCredit().fulfill_checkout(session_id=session_id)
+            await sync_tier_from_checkout_session(data_object)
 
-    # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
-    # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
-    # StripeObject (a dict subclass) carrying that runtime shape, so we cast
-    # to satisfy the type checker without changing runtime behaviour.
-    if event_type == "charge.dispute.created":
-        await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+        if event_type in (
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
+            await sync_subscription_from_stripe(data_object)
 
-    if event_type == "refund.created" or event_type == "charge.dispute.closed":
-        await UserCredit().deduct_credits(
-            cast("stripe.Refund | stripe.Dispute", data_object)
-        )
+        # `subscription_schedule.updated` is deliberately omitted: our own
+        # `SubscriptionSchedule.create` + `.modify` calls in
+        # `_schedule_downgrade_at_period_end` would fire that event right back
+        # at us and loop redundant traffic through this handler. We only care
+        # about state transitions (released / completed); phase advance to
+        # the new price is already covered by `customer.subscription.updated`.
+        if event_type in (
+            "subscription_schedule.released",
+            "subscription_schedule.completed",
+        ):
+            await sync_subscription_schedule_from_stripe(data_object)
+
+        if event_type == "invoice.payment_succeeded":
+            await handle_subscription_payment_success(data_object)
+
+        if event_type == "invoice.payment_failed":
+            await handle_subscription_payment_failure(data_object)
+
+        # New Stripe API (≥2025-04-01) split the per-payment events off the
+        # Invoice resource. data.object is an InvoicePayment, not an Invoice,
+        # so we hydrate the underlying Invoice before delegating to the
+        # existing handlers. A transient ``stripe.StripeError`` here propagates
+        # to the outer handler so the dedup claim is released and Stripe sees
+        # a 5xx + retries — swallowing it with a 200 would silently drop the
+        # event and leave the dedup key blocking the next delivery.
+        if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+            invoice_id = data_object.get("invoice")
+            if invoice_id:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice_payload = cast(dict, invoice)
+                if event_type == "invoice_payment.paid":
+                    await handle_subscription_payment_success(invoice_payload)
+                else:
+                    await handle_subscription_payment_failure(invoice_payload)
+
+        # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
+        # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
+        # StripeObject (a dict subclass) carrying that runtime shape, so we
+        # cast to satisfy the type checker without changing runtime behaviour.
+        if event_type == "charge.dispute.created":
+            await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+
+        if event_type == "refund.created" or event_type == "charge.dispute.closed":
+            await UserCredit().deduct_credits(
+                cast("stripe.Refund | stripe.Dispute", data_object)
+            )
+    except Exception:
+        # Release the dedup claim so Stripe's retry isn't no-op'd. Re-raise
+        # so the webhook returns 500 and Stripe retries (the normal contract).
+        await _release_stripe_event(event_id)
+        raise
 
     return Response(status_code=200)
 
@@ -1536,11 +1663,16 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
+    # Validate node credentials (and clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. before_graph_activate may also mutate input_default; those
+    # edits need to be persisted, so it must run before create_graph.
+    graph = await before_graph_activate(graph, user_id=user_id)
+
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    return activated_graph
+    return graph
 
 
 @v1_router.delete(
@@ -1585,18 +1717,33 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. before_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=user_id)
+
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
         )
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
+
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -1632,8 +1779,11 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
+    new_active_graph = await before_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -1649,6 +1799,15 @@ async def set_graph_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=user_id,
+            graph_id=graph_id,
+            new_version=new_active_version,
+        )
 
 
 @v1_router.patch(
@@ -1682,7 +1841,19 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    # The route dep enforces fail-closed (503-on-blip) so a transient
+    # Supabase outage surfaces as a retryable error, not a free run
+    # for a paywalled user. The deep gate inside ``add_graph_execution``
+    # still covers scheduled / webhook / copilot-internal runs that
+    # don't pass through this route — those callers prefer fail-open
+    # so background work doesn't abandon valid jobs during a blip.
+    responses={
+        402: {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+        },
+        503: {"description": "Subscription state temporarily unavailable"},
+    },
 )
 async def execute_graph(
     graph_id: str,
@@ -1810,6 +1981,43 @@ async def list_graphs_executions(
         paginated_result.executions, user_id
     )
     return filtered_executions
+
+
+@v1_router.get(
+    path="/executions/cost-summary",
+    summary="User cost summary",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def get_executions_cost_summary(
+    user_id: Annotated[str, Security(get_user_id)],
+    since: datetime | None = Query(
+        None,
+        description="Window start (UTC). Defaults to start of current calendar month.",
+    ),
+    until: datetime | None = Query(
+        None,
+        description="Window end (UTC). Defaults to now.",
+    ),
+    top_runs_limit: int = Query(
+        10,
+        ge=1,
+        le=50,
+        description="Maximum number of top-cost runs to return.",
+    ),
+) -> UserExecutionCostSummary:
+    """Aggregated cost breakdown for the calling user's graph executions."""
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="`since` must be earlier than or equal to `until`.",
+        )
+    return await get_user_cost_summary(
+        user_id=user_id,
+        since=since,
+        until=until,
+        top_runs_limit=top_runs_limit,
+    )
 
 
 @v1_router.get(
@@ -1973,20 +2181,26 @@ async def enable_execution_sharing(
         raise HTTPException(status_code=404, detail="Execution not found")
 
     # Generate a unique share token
-    share_token = str(uuid.uuid4())
+    share_token = generate_share_token()
 
     # Remove stale allowlist records before updating the token — prevents a
     # window where old records + new token could coexist.
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Update the execution with share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=True,
-        share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
-    )
+    # Update the execution with share info — the underlying update_many
+    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
+    # between the pre-check above and this write surfaces as 404 rather
+    # than a silent no-op.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=True,
+            share_token=share_token,
+            shared_at=datetime.now(timezone.utc),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
@@ -2024,21 +2238,25 @@ async def disable_execution_sharing(
     # Remove shared file allowlist records
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Remove share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    # Remove share info — owner-gated at the DB layer; TOCTOU delete
+    # after the pre-check surfaces as 404.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=False,
+            share_token=None,
+            shared_at=None,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
@@ -2058,11 +2276,11 @@ async def get_shared_execution(
 async def download_shared_file(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
     file_id: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> Response:
     """Download a workspace file from a shared execution (no auth required).
@@ -2164,7 +2382,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -2179,7 +2397,37 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+
+
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(
@@ -2200,6 +2448,150 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+########################################################
+##################### COPILOT SKILLS #####################
+########################################################
+
+
+class CopilotSkillInfo(BaseModel):
+    """User-distilled copilot skill metadata for the library UI.
+
+    Defaults (built-in agent-building / MCP-tool guides) are intentionally
+    excluded — they cannot be edited or deleted, so surfacing them in the
+    user-facing list would add noise without affordances.
+    """
+
+    name: str
+    description: str
+    triggers: list[str] = []
+
+
+class CopilotSkillDetail(BaseModel):
+    """Full SKILL.md content surfaced to the library expand-to-view UI."""
+
+    name: str
+    description: str
+    triggers: list[str] = []
+    body: str
+    version: str | None = None
+    is_default: bool = False
+    # Sibling files in the same skill folder (references/, scripts/,
+    # assets/, etc.) — the workspace paths the model can reach via
+    # ``read_workspace_file``.  Empty for built-in defaults since they
+    # ship as on-disk markdown and have no sibling artefacts.
+    sibling_files: list[str] = []
+
+
+@v1_router.get(
+    path="/skills",
+    summary="List user-distilled copilot skills",
+    operation_id="listCopilotSkills",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_skills(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[CopilotSkillInfo]:
+    """Return user-stored skills for the current user.
+
+    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
+    library UI sees the exact same set the copilot ``<available_skills>``
+    block surfaces, minus the built-in defaults (which are read-only and
+    handled separately by the copilot runtime).
+    """
+    skills = await list_user_skills(user_id)
+    return [
+        CopilotSkillInfo(
+            name=s.name,
+            description=s.description,
+            triggers=list(s.triggers),
+        )
+        for s in skills
+    ]
+
+
+@v1_router.get(
+    path="/skills/{name}",
+    summary="Read a single copilot skill with its full SKILL.md body",
+    operation_id="readCopilotSkill",
+    tags=["skills"],
+    responses={404: {"description": "Skill not found"}},
+    dependencies=[Security(requires_user)],
+)
+async def read_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to read"),
+) -> CopilotSkillDetail:
+    """Return full SKILL.md content (name, description, triggers, body)
+    for the library UI's expand-to-view dialog.
+
+    Built-in default skills are returned with ``is_default=True`` so the
+    UI can hide destructive affordances; missing user skills return 404.
+    """
+    slug = name.strip().lower()
+    try:
+        default = get_default_skill_with_body(slug)
+    except OSError:
+        # Don't leak the on-disk path; operators trace via server logs.
+        logger.exception("[skills] failed to load default skill body for %s", slug)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load default skill body",
+        )
+    if default is not None:
+        return CopilotSkillDetail(
+            name=default.name,
+            description=default.description,
+            triggers=list(default.triggers),
+            body=default.body,
+            is_default=True,
+        )
+
+    parsed = await read_user_skill_with_body(user_id, slug)
+    if parsed is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
+    return CopilotSkillDetail(
+        name=parsed.name,
+        description=parsed.description,
+        triggers=list(parsed.triggers),
+        body=parsed.body,
+        version=parsed.version,
+        is_default=False,
+        sibling_files=sibling_files,
+    )
+
+
+@v1_router.delete(
+    path="/skills/{name}",
+    summary="Delete a user-distilled copilot skill",
+    operation_id="deleteCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def delete_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to delete"),
+) -> dict[str, str]:
+    """Delete a user-distilled skill by slug.
+
+    Built-in defaults are not user-deletable — attempting to delete one
+    returns 400.  Missing skills return 404 so the UI can reconcile a
+    stale list.
+    """
+    try:
+        slug = await delete_user_skill(user_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BuiltInSkillError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"name": slug}
 
 
 ########################################################

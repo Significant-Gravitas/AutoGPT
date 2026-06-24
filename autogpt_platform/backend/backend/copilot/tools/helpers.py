@@ -1,6 +1,7 @@
 """Shared helpers for chat tools."""
 
 import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -20,7 +21,7 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, workspace_db
+from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
@@ -31,6 +32,7 @@ from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
@@ -226,6 +228,14 @@ async def execute_block(
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
+        # get_user_by_id raises ValueError on missing user; fall back to UTC
+        # so an orphaned-session block call still runs instead of crashing.
+        try:
+            user_timezone = get_user_timezone_or_utc(
+                (await user_db().get_user_by_id(user_id)).timezone
+            )
+        except ValueError:
+            user_timezone = "UTC"
 
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -240,6 +250,7 @@ async def execute_block(
             workspace_id=workspace.id,
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            user_timezone=user_timezone,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -322,8 +333,15 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pre-execution credit check (courtesy; spend_credits is atomic)
-            cost, cost_filter = block_usage_cost(block, input_data)
+            # Pre-execution credit check (courtesy; spend_credits is atomic).
+            # Pass `use_preflight_estimate=False` because this path bypasses
+            # the executor manager and never runs reconciliation — locking in
+            # the historical-average estimate as the final charge would be
+            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
+            # those types, preserving the pre-#13031 contract.
+            cost, cost_filter = block_usage_cost(
+                block, input_data, use_preflight_estimate=False
+            )
             has_cost = cost > 0
             _credit_db = credit_db()
             if has_cost:
@@ -590,6 +608,14 @@ async def prepare_block_for_execution(
             message=f"Block '{block.name}' cannot be run directly.{hint}",
             session_id=session_id,
         )
+
+    # LLMs sometimes pass `"credentials": null` instead of omitting the field.
+    # Treat null credential fields as absent so the injection path below can
+    # populate them, and so _base.validate_data doesn't reject null against a
+    # required object schema.
+    for field_name in block.input_schema.get_credentials_fields():
+        if field_name in input_data and input_data[field_name] is None:
+            input_data.pop(field_name)
 
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data
@@ -887,10 +913,67 @@ def _resolve_discriminated_credentials(
 
 
 _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+# Mirrors :data:`backend.copilot.tools.skills.DEFAULT_SKILLS` — the
+# agent-building guide now also ships as the canonical default skill,
+# so calling ``read_skill("agent_building_guide")`` satisfies the gate.
+_AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
+
+
+def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
+    """Return True iff the model has called ``read_skill(name=skill_name)``
+    in this session (durable history or current-turn in-flight calls).
+
+    Scans tool-call arguments — :meth:`ChatSession.has_tool_been_called`
+    only checks tool names, but the skill registry path discriminates by
+    argument.  Defensive against malformed JSON / missing args so a
+    badly-formed historical row does not crash the guard.
+
+    Same-turn safety: also inspects in-flight calls (captured via
+    :meth:`ChatSession.get_inflight_tool_call_args`) so a ``read_skill``
+    dispatched earlier in the *current* turn is recognised before its
+    row lands in ``session.messages``.
+    """
+    # In-flight first — newest calls live here and the dispatcher
+    # records argument dicts (not strings) so no JSON parsing needed.
+    for args in session.get_inflight_tool_call_args("read_skill"):
+        if str(args.get("name") or "").strip().lower() == skill_name:
+            return True
+    # Durable scan of past turns + already-flushed current turn.
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            # Defensive: a persisted row may carry ``function`` as ``None`` or
+            # a non-dict if a past producer ever shipped a malformed payload —
+            # treat the flat ``name`` / ``arguments`` shape as the fallback so
+            # the gate path never raises on bad data.
+            fn_raw = tc.get("function")
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or tc.get("name")
+            if name != "read_skill":
+                continue
+            raw_args = fn.get("arguments") if fn else tc.get("arguments")
+            if isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(raw_args, dict):
+                parsed = raw_args
+            else:
+                continue
+            if str(parsed.get("name") or "").strip().lower() == skill_name:
+                return True
+    return False
 
 
 def require_guide_read(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Accepts either the legacy ``get_agent_building_guide`` tool call OR
+    a ``read_skill(name="agent_building_guide")`` call — the skill
+    registry now seeds the same content as the canonical default skill,
+    so either path satisfies the contract.
 
     Import inline to keep ``helpers.py`` free of tool-response imports.
     Uses :meth:`ChatSession.has_tool_been_called` which checks both the
@@ -902,8 +985,6 @@ def require_guide_read(session: ChatSession, tool_name: str):
     Kimi K2.6 in particular because its aggressive tool-call chaining
     exercises this path far more than Sonnet does.
     """
-    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
-
     # Builder-bound sessions always receive the guide inline via the
     # per-turn ``<builder_context>`` injection (see
     # ``backend.copilot.builder_context``), so no tool-call gate is needed —
@@ -912,12 +993,64 @@ def require_guide_read(session: ChatSession, tool_name: str):
         return None
     if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
         return None
+    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+        return None
     return ErrorResponse(
         message=(
-            f"Call get_agent_building_guide first, then retry {tool_name}. "
-            "The guide documents required block ids, input/output schemas, "
-            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
-            "generating agent JSON without it produces schema mismatches."
+            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
+            f"first, then retry {tool_name}. The guide documents required block ids, "
+            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
+            "usage — generating agent JSON without it produces schema mismatches."
+        ),
+        session_id=session.session_id,
+    )
+
+
+_LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
+
+
+def _has_for_creation_args(args: dict) -> bool:
+    """``for_creation=True`` + non-empty ``goal_summary``: the inputs the
+    hybrid search actually needs. Empty goal_summary soft-fails without
+    running the search, so it must not satisfy the gate."""
+    if args.get("for_creation") is not True:
+        return False
+    goal_summary = args.get("goal_summary")
+    return isinstance(goal_summary, str) and bool(goal_summary.strip())
+
+
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff a satisfying ``find_library_agent`` call exists in the
+    current turn's in-flight buffer. Turn-scoped on purpose: a stale
+    call from an earlier turn's unrelated goal must not satisfy the
+    gate for a new create_agent request."""
+    for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
+        if _has_for_creation_args(args):
+            return True
+    return False
+
+
+def require_library_check(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
+    hasn't been called in this session. Bypassed in builder-bound sessions
+    (already editing a specific agent)."""
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if session.metadata.builder_graph_id:
+        return None
+    if _was_called_for_creation(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Before {tool_name} can run, search the user's library for an "
+            "agent that already does what they want. Call "
+            "`find_library_agent` with `for_creation=true` and "
+            "`goal_summary=<one-sentence description of the user's goal>` "
+            "(default-mode substring search does NOT satisfy this gate). "
+            "If any agents are returned, present them to the user and ask "
+            "whether they want to reuse one. Only retry "
+            f"{tool_name} with `library_check_ack=true` if the user "
+            "explicitly chooses to build a new agent anyway."
         ),
         session_id=session.session_id,
     )

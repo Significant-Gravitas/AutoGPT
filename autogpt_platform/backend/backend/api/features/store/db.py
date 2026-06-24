@@ -655,10 +655,27 @@ async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
 
 
 async def get_store_submissions(
-    user_id: str, page: int = 1, page_size: int = 20
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    search_query: str | None = None,
+    statuses: list[prisma.enums.SubmissionStatus] | None = None,
+    sort_key: str | None = None,
+    sort_dir: str = "desc",
 ) -> store_model.StoreSubmissionsResponse:
     """Get store submissions for the authenticated user -- not an admin"""
-    logger.debug(f"Getting store submissions for user {user_id}, page={page}")
+    logger.debug(
+        (
+            "Getting store submissions for user %s, page=%s, search_query=%r, "
+            "statuses=%r, sort_key=%r, sort_dir=%s"
+        ),
+        user_id,
+        page,
+        search_query,
+        statuses,
+        sort_key,
+        sort_dir,
+    )
 
     try:
         skip = (page - 1) * page_size
@@ -668,20 +685,38 @@ async def get_store_submissions(
             "is_deleted": False,
         }
 
-        # Page rows and creator-wide stats run concurrently — stats already
-        # returns COUNT(*) over the same filter, so we reuse it for pagination
-        # instead of issuing a redundant count query.
-        submissions, stats = await asyncio.gather(
-            prisma.models.StoreSubmission.prisma().find_many(
-                where=where,
-                skip=skip,
-                take=page_size,
-                order=[{"submitted_at": "desc"}],
-            ),
-            _get_submission_stats(user_id),
-        )
+        normalized_query = (search_query or "").strip()
+        if normalized_query:
+            where["OR"] = [
+                {"name": {"contains": normalized_query, "mode": "insensitive"}},
+                {"slug": {"contains": normalized_query, "mode": "insensitive"}},
+                {"sub_heading": {"contains": normalized_query, "mode": "insensitive"}},
+            ]
+        if statuses:
+            where["status"] = {"in": statuses}
 
-        total = stats.total
+        order: list[prisma.types.StoreSubmissionOrderByInput]
+        if sort_key == "runs":
+            order = [{"run_count": sort_dir}, {"submitted_at": "desc"}]
+        else:
+            order = [{"submitted_at": sort_dir}]
+
+        submissions_task = prisma.models.StoreSubmission.prisma().find_many(
+            where=where,
+            skip=skip,
+            take=page_size,
+            order=order,
+        )
+        stats_task = _get_submission_stats(user_id)
+        if normalized_query or statuses:
+            count_task = prisma.models.StoreSubmission.prisma().count(where=where)
+            submissions, stats, total = await asyncio.gather(
+                submissions_task, stats_task, count_task
+            )
+        else:
+            submissions, stats = await asyncio.gather(submissions_task, stats_task)
+            total = stats.total
+
         total_pages = (total + page_size - 1) // page_size
 
         submission_models = [
@@ -700,25 +735,9 @@ async def get_store_submissions(
             stats=stats,
         )
 
-    except Exception as e:
-        logger.error(f"Error fetching store submissions: {e}")
-        # Return empty response rather than exposing internal errors
-        return store_model.StoreSubmissionsResponse(
-            submissions=[],
-            pagination=store_model.Pagination(
-                current_page=page,
-                total_items=0,
-                total_pages=0,
-                page_size=page_size,
-            ),
-            stats=store_model.SubmissionStats(
-                total=0,
-                approved=0,
-                pending=0,
-                total_runs=0,
-                average_rating=None,
-            ),
-        )
+    except Exception:
+        logger.exception("Error fetching store submissions")
+        raise
 
 
 async def delete_store_submission(
@@ -1194,31 +1213,59 @@ async def get_my_agents(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
+    sort_by: store_model.MyAgentsSortBy = store_model.MyAgentsSortBy.MOST_RECENT,
+    search_query: str | None = None,
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
-    logger.debug(f"Getting my agents for user {user_id}, page={page}")
+    logger.debug(
+        "Getting my agents for user %s, page=%s, sort_by=%s, search_query=%r",
+        user_id,
+        page,
+        sort_by.value,
+        search_query,
+    )
 
     try:
+        agent_graph_filter: prisma.types.AgentGraphWhereInput = {
+            "StoreListingVersions": {
+                "none": {
+                    "isAvailable": True,
+                    "StoreListing": {"is": {"isDeleted": False}},
+                }
+            }
+        }
+
+        normalized_query = (search_query or "").strip()
+        if normalized_query:
+            agent_graph_filter["OR"] = [
+                {"name": {"contains": normalized_query, "mode": "insensitive"}},
+                {
+                    "description": {
+                        "contains": normalized_query,
+                        "mode": "insensitive",
+                    }
+                },
+            ]
+
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
             # Filter for unpublished agents only:
-            "AgentGraph": {
-                "is": {
-                    "StoreListingVersions": {
-                        "none": {
-                            "isAvailable": True,
-                            "StoreListing": {"is": {"isDeleted": False}},
-                        }
-                    }
-                }
-            },
+            "AgentGraph": {"is": agent_graph_filter},
             "isArchived": False,
             "isDeleted": False,
         }
 
+        if sort_by == store_model.MyAgentsSortBy.NAME:
+            order: list = [
+                {"AgentGraph": {"name": "asc"}},
+                {"updatedAt": "desc"},
+            ]
+        else:
+            order = [{"updatedAt": "desc"}]
+
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
-            order=[{"updatedAt": "desc"}],
+            order=order,
             skip=(page - 1) * page_size,
             take=page_size,
             include={"AgentGraph": True},

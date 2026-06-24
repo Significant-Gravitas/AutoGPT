@@ -234,7 +234,13 @@ async def log_system_credential_cost(
 
             model_name = _extract_model_name(input_data.get("model"))
 
-            credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
+            # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)
+            # compute the *actual* charge from the captured stats. Without this
+            # the call hits the pre-flight path and records the historical
+            # estimate, skewing platform-cost analytics.
+            credit_cost, _ = block_usage_cost(
+                block=block, input_data=input_data, stats=stats
+            )
 
             provider_name = cred_data.get("provider", "unknown")
             tracking_type, tracking_amount = resolve_tracking(
@@ -255,6 +261,14 @@ async def log_system_credential_cost(
             meta: dict[str, Any] = {
                 "tracking_type": tracking_type,
                 "tracking_amount": tracking_amount,
+                # All block-layer LLM calls go through the sync provider
+                # dispatch today; tagging consistently with the rest of
+                # the platform (copilot chat, dream sync_baseline) so
+                # the admin cost-logs Path column never renders "—".
+                # When the block layer opts into flex/batch in the
+                # future, write the actual mode here.
+                "execution_path": "sync",
+                "source": "block",
             }
             if credit_cost is not None:
                 meta["credit_cost"] = credit_cost

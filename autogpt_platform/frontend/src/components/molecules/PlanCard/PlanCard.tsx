@@ -1,14 +1,17 @@
 "use client";
 
+import NumberFlow from "@number-flow/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
-import { type Country, formatPrice } from "./countries";
+import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
+
+const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
 
 interface Props {
   plan: PlanDef;
@@ -18,6 +21,9 @@ interface Props {
   className?: string;
   loading?: boolean;
   disabled?: boolean;
+  // "charged-today" shows the prorated amount billed now; "billing-period"
+  // shows a plain "billed monthly/annually" caption instead (paywall surface).
+  priceCaption?: "charged-today" | "billing-period";
 }
 
 export function PlanCard({
@@ -28,8 +34,9 @@ export function PlanCard({
   className,
   loading = false,
   disabled = false,
+  priceCaption = "charged-today",
 }: Props) {
-  const { displayPrice, monthlyEquiv, perLabel } = computePlanPricing({
+  const { primaryPrice, chargedToday } = computePlanPricing({
     plan,
     country,
     isYearly,
@@ -37,6 +44,15 @@ export function PlanCard({
   const hl = plan.highlighted;
   const isTeam = plan.key === PLAN_KEYS.TEAM;
   const reduceMotion = useReducedMotion();
+  const decimalDigits = ZERO_DECIMAL_CODES.has(country.currencyCode) ? 0 : 2;
+  const moneyFormat = {
+    style: "currency",
+    currency: country.currencyCode,
+    currencyDisplay: "symbol",
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
+  } as const;
+  const moneyFormatter = new Intl.NumberFormat("en-US", moneyFormat);
 
   return (
     <div
@@ -136,32 +152,23 @@ export function PlanCard({
           </div>
 
           <div className="mb-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            {displayPrice !== null ? (
+            {primaryPrice !== null ? (
               <>
                 <span
+                  aria-label={moneyFormatter.format(primaryPrice)}
                   className={cn(
                     "font-poppins font-medium leading-none text-zinc-800",
                     hl ? "text-[32px]" : "text-[26px]",
                   )}
                 >
-                  {formatPrice(
-                    displayPrice,
-                    country.currencyCode,
-                    country.symbol,
-                  )}
+                  <NumberFlow
+                    value={primaryPrice}
+                    format={moneyFormat}
+                    locales="en-US"
+                    willChange
+                  />
                 </span>
-                <span className="text-xs text-zinc-400">{perLabel}</span>
-                {monthlyEquiv !== null && (
-                  <span className="text-xs text-zinc-800">
-                    (
-                    {formatPrice(
-                      monthlyEquiv,
-                      country.currencyCode,
-                      country.symbol,
-                    )}
-                    /month)
-                  </span>
-                )}
+                <span className="text-xs text-zinc-400">/ month</span>
               </>
             ) : (
               <span
@@ -174,6 +181,27 @@ export function PlanCard({
               </span>
             )}
           </div>
+
+          {priceCaption === "billing-period"
+            ? primaryPrice !== null && (
+                <div className="mb-1 text-xs font-medium text-zinc-400">
+                  {isYearly ? "billed annually" : "billed monthly"}
+                </div>
+              )
+            : chargedToday !== null && (
+                <div
+                  aria-label={`Charged today: ${moneyFormatter.format(chargedToday)}`}
+                  className="mb-1 flex items-baseline gap-1 text-xs font-medium text-zinc-700"
+                >
+                  <span>Charged today:</span>
+                  <NumberFlow
+                    value={chargedToday}
+                    format={moneyFormat}
+                    locales="en-US"
+                    willChange
+                  />
+                </div>
+              )}
 
           <p className="mb-3.5 min-h-[30px] text-sm leading-relaxed text-zinc-800">
             {plan.description}

@@ -14,7 +14,7 @@ import {
   useDeleteIntegration,
   type DeleteIntegrationTarget,
 } from "../hooks/useDeleteIntegration";
-import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
 export function useIntegrationsList() {
@@ -34,7 +34,7 @@ export function useIntegrationsList() {
   const providers = filterProviders(allProviders, debouncedQuery);
 
   const allCredentialIds = allProviders.flatMap((p) =>
-    p.credentials.map((c) => c.id),
+    p.credentials.filter((c) => !c.isManaged).map((c) => c.id),
   );
   const selection = useIntegrationsSelection(allCredentialIds);
   const {

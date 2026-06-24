@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import config as cfg_mod
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
@@ -17,6 +19,7 @@ from .service import (
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
@@ -352,6 +355,7 @@ class TestNormalizeModelName:
             # _validate_sdk_model_vendor_compatibility allows construction.
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
@@ -383,12 +387,10 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
 class TestResolveSdkModel:
@@ -439,6 +441,7 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
@@ -489,6 +492,12 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` now also runs in
+            # subscription mode (see PR #13034 review).  Provide an
+            # Anthropic title model + direct key so the aux 401-trap
+            # validator passes — orthogonal to what this test checks.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() is None
@@ -504,6 +513,7 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
@@ -529,6 +539,7 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -586,6 +597,7 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -652,6 +664,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -682,6 +696,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -891,6 +907,7 @@ class TestSystemPromptPreset:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
 
@@ -904,6 +921,7 @@ class TestSystemPromptPreset:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
 
@@ -2051,3 +2069,154 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in assistant_msgs]
         assert STREAM_INCOMPLETE_MARKER in contents
         assert STOPPED_BY_USER_MARKER not in contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_persists_stream_error_marker(self):
+        """SECRT-2333: when the SDK turn ends with
+        ``loop_state.ended_with_stream_error=True`` (idle timeout, transient
+        retries exhausted, breaker, subtype=error) and no marker is on the
+        tail yet, the post-stream branch must persist a STREAM_ERROR_MARKER
+        ChatMessage so chat reload sees a clear "stopped on error" entry —
+        even when the on-wire StreamError is dropped (client disconnect)."""
+        from backend.copilot.constants import STREAM_ERROR_MARKER
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover  (make this an async generator)
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER in contents, contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_skips_marker_when_one_exists(self):
+        """When the inner branch (idle timeout, breaker) already appended an
+        ``_append_error_marker`` row, the post-stream branch must NOT add a
+        second STREAM_ERROR_MARKER on top — that would render two error
+        bubbles on reload."""
+        from backend.copilot.constants import (
+            COPILOT_RETRYABLE_ERROR_PREFIX,
+            STREAM_ERROR_MARKER,
+        )
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            # Mirror the idle-timeout branch: it calls ``_append_error_marker``
+            # before flipping the flag.
+            _ctx.session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} Idle timeout",
+                )
+            )
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER not in contents, contents
+
+
+class TestHiddenShortNamesForPermissions:
+    """``_hidden_short_names_for_permissions`` is the pure function that
+    decides which MCP tools to skip at registration so the model never sees
+    permission-denied names — direct fix for the production trace where the
+    SDK's auto-deny string was narrated as a fake Allow/Deny UI."""
+
+    def test_none_permissions_hides_nothing(self):
+        assert _hidden_short_names_for_permissions(None) == frozenset()
+
+    def test_empty_permissions_hides_nothing(self):
+        # tools=[] makes is_empty() true regardless of the *_exclude flags.
+        perms = CopilotPermissions(tools=[], blocks=[])
+        assert _hidden_short_names_for_permissions(perms) == frozenset()
+
+    def test_blacklist_hides_listed_tools(self):
+        perms = CopilotPermissions(
+            tools=list(BUILDER_BLOCKED_TOOLS),
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert set(BUILDER_BLOCKED_TOOLS) <= hidden
+        # Everything else stays visible.
+        assert hidden == all_known_tool_names() - (
+            all_known_tool_names() - set(BUILDER_BLOCKED_TOOLS)
+        )
+
+    def test_whitelist_hides_everything_not_listed(self):
+        all_tools = all_known_tool_names()
+        # Pick one stable, well-known tool as the whitelist.
+        keep = "find_block"
+        assert keep in all_tools, "test relies on find_block being registered"
+        perms = CopilotPermissions(
+            tools=[keep],
+            tools_exclude=False,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert keep not in hidden
+        assert hidden == all_tools - {keep}
+
+    def test_unknown_tool_in_blacklist_is_ignored(self):
+        """Typos in the blacklist must not phantom-hide real tools — the
+        function operates on the intersection with the known-tool set."""
+        perms = CopilotPermissions(
+            tools=["this_tool_does_not_exist"],
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        # No real tool gets hidden by an unknown name.
+        assert hidden == frozenset()
+        # Sanity: all real tools remain visible.
+        assert all_known_tool_names() - hidden == all_known_tool_names()

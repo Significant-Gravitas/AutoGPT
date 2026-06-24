@@ -28,6 +28,9 @@ export default function SettingsCreatorDashboardPage() {
     filterState,
     setFilterState,
     resetFilters,
+    searchInput,
+    setSearchInput,
+    debouncedSearch,
     isLoading,
     error,
     refetch,
@@ -40,6 +43,7 @@ export default function SettingsCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   } = useCreatorDashboardPage();
 
   if (error) {
@@ -60,7 +64,8 @@ export default function SettingsCreatorDashboardPage() {
     return <DashboardSkeleton />;
   }
 
-  const isEmpty = submissions.length === 0;
+  const isEmpty =
+    submissions.length === 0 && !debouncedSearch && stats.total === 0;
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -85,9 +90,13 @@ export default function SettingsCreatorDashboardPage() {
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              debouncedSearch={debouncedSearch}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
               index={2}
             />
           </div>
@@ -101,9 +110,13 @@ export default function SettingsCreatorDashboardPage() {
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              debouncedSearch={debouncedSearch}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
             />
           </div>
         </>
