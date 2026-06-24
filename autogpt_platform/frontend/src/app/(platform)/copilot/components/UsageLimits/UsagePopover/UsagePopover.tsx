@@ -10,12 +10,18 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { ChartBarIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
 
-export function UsagePopover() {
+interface Props {
+  trigger?: ReactNode;
+  align?: "start" | "center" | "end";
+}
+
+export function UsagePopover({ trigger, align = "start" }: Props) {
   const { usage, isSuccess, isBillingEnabled } = useUsagePopover();
 
   if (!isSuccess || !usage) return null;
@@ -26,14 +32,16 @@ export function UsagePopover() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Usage limits">
-          <ChartBarIcon className="!size-5" weight="light" />
-        </Button>
+        {trigger ?? (
+          <Button variant="ghost" size="icon" aria-label="Usage limits">
+            <ChartBarIcon className="!size-5" weight="light" />
+          </Button>
+        )}
       </PopoverTrigger>
       {/* z-[80]: must layer above the AutoPilot mobile drawer
           (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
-      <PopoverContent align="start" className="z-[80] w-72 p-4">
+      <PopoverContent align={align} className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <Text variant="body-medium" className="text-neutral-800">
