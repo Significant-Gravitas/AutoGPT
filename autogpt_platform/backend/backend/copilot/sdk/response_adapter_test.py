@@ -1260,9 +1260,9 @@ def test_flush_with_stashed_output():
     """Stashed output from PostToolUse hook is used when flushing."""
     adapter = _adapter()
 
-    # Simulate PostToolUse hook stashing output
+    # Simulate PostToolUse hook stashing output (keyed by tool name + input).
     _pto.set({})
-    _stash("WebSearch", "Search result: 5 items found")
+    _stash("WebSearch", "Search result: 5 items found", {"query": "test"})
 
     all_responses: list[StreamBaseResponse] = []
 
@@ -1296,6 +1296,65 @@ def test_flush_with_stashed_output():
     ]
     assert len(output_events) == 1
     assert output_events[0].output == "Search result: 5 items found"
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+
+
+def test_parallel_same_tool_outputs_not_swapped():
+    """OPEN-3158: two parallel calls to the SAME tool must keep each call's
+    output attached to its OWN tool_call_id.
+
+    The outputs are stashed in COMPLETION order (call B finishes first here)
+    but the tool_result blocks arrive in CALL order (A then B).  A name-only
+    stash key would hand call A the next-oldest output (B's) and vice-versa,
+    swapping the two search-result cards in the UI.  Keying the stash by
+    (tool_name + input) keeps the pairing correct.
+    """
+    adapter = _adapter()
+    _pto.set({})
+
+    # Two parallel web_search calls with DIFFERENT queries.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="call-a",
+                    name=f"{MCP_TOOL_PREFIX}web_search",
+                    input={"query": "alpha"},
+                ),
+                ToolUseBlock(
+                    id="call-b",
+                    name=f"{MCP_TOOL_PREFIX}web_search",
+                    input={"query": "beta"},
+                ),
+            ],
+            model="test",
+        )
+    )
+
+    # Outputs stashed in COMPLETION order: B finishes before A.  Stripped of
+    # the MCP prefix exactly as the truncating wrapper stashes them.
+    _stash("web_search", "results for beta", {"query": "beta"})
+    _stash("web_search", "results for alpha", {"query": "alpha"})
+
+    # Tool results arrive in CALL order (A then B).
+    results = adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="call-a", content="truncated-a"),
+                ToolResultBlock(tool_use_id="call-b", content="truncated-b"),
+            ]
+        )
+    )
+
+    outputs = {
+        r.toolCallId: r.output
+        for r in results
+        if isinstance(r, StreamToolOutputAvailable)
+    }
+    assert outputs["call-a"] == "results for alpha"
+    assert outputs["call-b"] == "results for beta"
 
     # Cleanup
     _pto.set({})  # type: ignore[arg-type]
@@ -2136,7 +2195,7 @@ def test_real_tool_result_flag_set_by_stashed_flush():
     # Initialise the stash ContextVar (normally done by set_execution_context).
     _pto.set({})
     # Simulate PostToolUse hook stashing real output for a built-in tool.
-    _stash("ReadFile", "file content here")
+    _stash("ReadFile", "file content here", {"path": "/x"})
     adapter.convert_message(
         AssistantMessage(
             content=[ToolUseBlock(id="t-real", name="ReadFile", input={"path": "/x"})],

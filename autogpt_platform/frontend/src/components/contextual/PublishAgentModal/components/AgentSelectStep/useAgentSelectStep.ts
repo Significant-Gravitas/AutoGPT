@@ -3,6 +3,7 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 export interface Agent {
@@ -30,6 +31,7 @@ interface UseAgentSelectStepProps {
 }
 
 const PAGE_SIZE = 10;
+const SEARCH_QUERY_MAX_LENGTH = 100;
 
 export function useAgentSelectStep({
   onSelect,
@@ -50,11 +52,31 @@ export function useAgentSelectStep({
   const [sortBy, setSortBy] = React.useState<MyAgentsSortBy>(
     MyAgentsSortBy.most_recent,
   );
+  const [searchInput, setSearchInput] = React.useState("");
+  const [searchResetPending, setSearchResetPending] = React.useState(false);
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
+  const isDebouncingSearch = searchInput.trim() !== debouncedSearch;
+  const queryPage = searchResetPending ? 1 : page;
   const { isLoggedIn } = useSupabase();
 
   React.useEffect(() => {
     setPage(1);
   }, [sortBy]);
+
+  function handleSearchChange(next: string) {
+    const cappedNext = next.slice(0, SEARCH_QUERY_MAX_LENGTH);
+    const prevTrimmed = searchInput.trim();
+    setSearchInput(cappedNext);
+    if (cappedNext.trim() !== prevTrimmed) {
+      setSearchResetPending(true);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!searchResetPending || isDebouncingSearch) return;
+    setPage(1);
+    setSearchResetPending(false);
+  }, [isDebouncingSearch, searchResetPending]);
 
   const {
     data: agentsData,
@@ -63,13 +85,14 @@ export function useAgentSelectStep({
     error,
   } = useGetV2GetMyAgents(
     {
-      page,
+      page: queryPage,
       page_size: PAGE_SIZE,
       sort_by: sortBy,
+      search_query: debouncedSearch || undefined,
     },
     {
       query: {
-        enabled: isLoggedIn,
+        enabled: isLoggedIn && !isDebouncingSearch,
         refetchOnMount: "always",
         staleTime: 0,
         placeholderData: keepPreviousData,
@@ -82,7 +105,7 @@ export function useAgentSelectStep({
               id: agent.graph_id,
               version: agent.graph_version,
               lastEdited: agent.last_edited.toLocaleDateString(),
-              imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+              imageSrc: agent.agent_image || "",
               description: agent.description || "",
               recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
             }),
@@ -140,6 +163,10 @@ export function useAgentSelectStep({
     pageSize: PAGE_SIZE,
     sortBy,
     pageDirection,
+    searchInput,
+    setSearchInput: handleSearchChange,
+    debouncedSearch,
+    isDebouncingSearch,
     handleAgentClick,
     handleNext,
     handleSortChange,

@@ -19,6 +19,7 @@ import { getOnboardingMock } from "@/app/api/__generated__/endpoints/onboarding/
 import { getOttoMock } from "@/app/api/__generated__/endpoints/otto/otto.msw";
 import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 
 // Pass hard-coded data to individual handler functions to override faker-generated data.
@@ -44,5 +45,6 @@ export const mockHandlers = [
   ...getOttoMock(),
   ...getPresetsMock(),
   ...getSchedulesMock(),
+  ...getSearchMock(),
   ...getStoreMock(),
 ];

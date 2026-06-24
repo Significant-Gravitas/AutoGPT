@@ -22,6 +22,14 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToastOnFail: () => mockToast,
 }));
 
+// test-utils wraps every render in OnboardingProvider, which asynchronously
+// redirects incomplete users via router.replace("/onboarding"). That timer can
+// fire mid-test and pollute the router.replace assertions below, so stub the
+// provider to a passthrough (same approach as the login/signup tests).
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Strip Radix portals — happy-dom doesn't render them. The mock keeps the
 // Dialog tree visible while ignoring controlled/forceOpen props.
 function MockDialog({ children }: { children: React.ReactNode }) {
@@ -39,6 +47,39 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
+const mockValidateSession = vi.fn().mockResolvedValue(true);
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({
+    validateSession: mockValidateSession,
+    isLoggedIn: true,
+  }),
+}));
+
+// The shared test wrapper mounts OnboardingProvider, which asynchronously
+// checks onboarding completion and can fire router.replace("/onboarding").
+// That shares this file's mocked next/navigation replace, so the stray
+// redirect races into assertions that the paywall did NOT navigate. Render
+// children directly to keep navigation owned solely by PaywallModal.
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockReplace,
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/build",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -53,23 +94,28 @@ interface SubscriptionShape {
 function setupMocks({
   subscription,
   isLoading = false,
+  isFetching = false,
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
 }: {
   subscription: SubscriptionShape | null;
   isLoading?: boolean;
+  isFetching?: boolean;
   mutateFn?: ReturnType<typeof vi.fn>;
   isPending?: boolean;
 }) {
+  const refetchFn = vi.fn();
   mockUseGetSubscriptionStatus.mockReturnValue({
     data: subscription,
     isLoading,
+    isFetching,
+    refetch: refetchFn,
   });
   mockUseUpdateSubscriptionTier.mockReturnValue({
     mutateAsync: mutateFn,
     isPending,
   });
-  return { mutateFn };
+  return { mutateFn, refetchFn };
 }
 
 afterEach(() => {
@@ -131,8 +177,22 @@ describe("PaywallModal — dynamic plan rendering", () => {
   });
 });
 
+describe("PaywallModal — logout", () => {
+  it("routes to the shared /logout page when the Log out button is clicked", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+
+    expect(mockReplace).toHaveBeenCalledWith("/logout");
+  });
+});
+
 describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
-  it("defaults to yearly billing with the monthly-equivalent price and the annual total", () => {
+  it("defaults to monthly billing with the full monthly prices and a 'billed monthly' caption", () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -143,15 +203,14 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    // PRO yearly = 51000 cents → $42.50/mo primary, $510.00 charged today.
-    // MAX yearly = 326400 cents → $272.00/mo primary, $3,264.00 charged today.
-    expect(screen.getByLabelText("$42.50")).toBeDefined();
-    expect(screen.getByLabelText("$272.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
+    // PRO monthly = 5000 cents = $50.00, MAX monthly = 32000 cents = $320.00.
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  it("toggling Monthly switches displayed prices to the full monthly amounts", async () => {
+  it("toggling Yearly switches to the discounted monthly-equivalent prices and a 'billed annually' caption", async () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -162,14 +221,13 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /monthly/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
 
-    // PRO monthly = 5000 cents = $50.00 (primary), $50.00 charged today
+    // PRO yearly = 51000 cents → $42.50/mo, MAX yearly = 326400 cents → $272.00/mo.
     await waitFor(() => {
-      expect(screen.getByLabelText("$50.00")).toBeDefined();
-      expect(screen.getByLabelText("$320.00")).toBeDefined();
-      expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
-      expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
+      expect(screen.getByLabelText("$42.50")).toBeDefined();
+      expect(screen.getByLabelText("$272.00")).toBeDefined();
+      expect(screen.getAllByText("billed annually").length).toBe(2);
     });
   });
 });
@@ -193,7 +251,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
   }
 
-  it("clicking Upgrade to Pro after switching to monthly fires {tier:PRO, billing_cycle:monthly}", async () => {
+  it("clicking Upgrade to Pro with the default monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -205,7 +263,6 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /monthly/i }));
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     await waitFor(() => {
@@ -216,7 +273,7 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(args.data.billing_cycle).toBe("monthly");
   });
 
-  it("clicking Upgrade to Pro with the default yearly toggle fires {tier:PRO, billing_cycle:yearly}", async () => {
+  it("clicking Upgrade to Pro after switching to yearly fires {tier:PRO, billing_cycle:yearly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -228,6 +285,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
+    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     await waitFor(() => {
@@ -284,6 +342,90 @@ describe("PaywallModal — upgrade mutation", () => {
       "noopener,noreferrer",
     );
     expect(mutateFn).not.toHaveBeenCalled();
+  });
+
+  it("re-validates the session when the paywall mounts", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    expect(mockValidateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the current page as cancel_url so backing out of Stripe re-gates", async () => {
+    stubLocation();
+    Object.assign(window.location, { href: "https://app.test/copilot" });
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    const [args] = mutateFn.mock.calls[0];
+    expect(args.data.cancel_url).toBe("https://app.test/copilot");
+    expect(args.data.success_url).toBe(
+      "https://app.test/profile/credits?subscription=success",
+    );
+  });
+
+  it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError("Authorization header is missing", 401, null),
+      );
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/login");
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
+  it("non-401 ApiError surfaces a toast and stays on the paywall", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(new ApiError("Forbidden", 403, null));
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
   });
 
   it("422 from updateTier surfaces a toast and does not redirect", async () => {
@@ -426,6 +568,39 @@ describe("PaywallModal — empty / loading states", () => {
     // No upgrade buttons, no cycle toggle, no plan cards.
     expect(screen.queryByRole("radio", { name: /monthly/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /upgrade to/i })).toBeNull();
+  });
+
+  it("Retry in the unavailable fallback refetches the subscription status", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    expect(refetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Retry is disabled while the refetch is in flight", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+      isFetching: true,
+    });
+
+    render(<PaywallModal />);
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    expect(retryButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(retryButton);
+    expect(refetchFn).not.toHaveBeenCalled();
   });
 
   it("renders skeletons while subscription status is loading", () => {

@@ -39,13 +39,13 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         # Slant3D's API doesn't use events list, just register for all order updates
         payload = {"endPoint": ingress_url}
 
-        response = await Requests().post(
+        response = await Requests(raise_for_status=False).post(
             f"{self.BASE_URL}/customer/webhookSubscribe", headers=headers, json=payload
         )
 
         if not response.ok:
             error = response.json().get("error", "Unknown error")
-            raise RuntimeError(f"Failed to register webhook: {error}")
+            raise ValueError(f"Slant3D returned error: {error}")
 
         webhook_config = {
             "endpoint": ingress_url,
