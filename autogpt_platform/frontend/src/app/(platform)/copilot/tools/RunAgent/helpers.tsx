@@ -1,4 +1,5 @@
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
+import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
@@ -25,6 +26,7 @@ export interface RunAgentInput {
 export type RunAgentToolOutput =
   | SetupRequirementsResponse
   | ExecutionStartedResponse
+  | AgentOutputResponse
   | AgentDetailsResponse
   | NeedLoginResponse
   | ErrorResponse;
@@ -32,6 +34,7 @@ export type RunAgentToolOutput =
 const RUN_AGENT_OUTPUT_TYPES = new Set<string>([
   ResponseType.setup_requirements,
   ResponseType.execution_started,
+  ResponseType.agent_output,
   ResponseType.agent_details,
   ResponseType.need_login,
   ResponseType.error,
@@ -52,6 +55,12 @@ export function isRunAgentExecutionStartedOutput(
   return (
     output.type === ResponseType.execution_started || "execution_id" in output
   );
+}
+
+export function isRunAgentAgentOutputResponse(
+  output: RunAgentToolOutput,
+): output is AgentOutputResponse {
+  return output.type === ResponseType.agent_output;
 }
 
 export function isRunAgentAgentDetailsOutput(
@@ -142,6 +151,9 @@ export function getAnimationText(part: {
         return `Started "${output.graph_name}"`;
       }
       if (isRunAgentAgentDetailsOutput(output)) {
+        if (output.agent.trigger_info) {
+          return `Webhook trigger setup for "${output.agent.name}"`;
+        }
         return `Agent inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
@@ -156,6 +168,16 @@ export function getAnimationText(part: {
     default:
       return actionPhrase;
   }
+}
+
+export function getStreamingLoadingText(part: { input?: unknown }): string {
+  const input = part.input as RunAgentInput | undefined;
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  return isSchedule
+    ? "Scheduling agent, this might take a minute"
+    : "Running agent, this might take a minute";
 }
 
 export function ToolIcon({
@@ -213,7 +235,9 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
     return {
       icon,
       title: output.agent.name,
-      description: "Inputs required",
+      description: output.agent.trigger_info
+        ? "Webhook trigger setup"
+        : "Inputs required",
     };
   }
 
@@ -231,6 +255,14 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
         missingCredsCount > 0
           ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
           : output.message,
+    };
+  }
+
+  if (isRunAgentAgentOutputResponse(output)) {
+    return {
+      icon,
+      title: output.agent_name,
+      description: "Execution completed",
     };
   }
 

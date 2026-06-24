@@ -9,6 +9,8 @@ from backend.copilot.integration_creds import (
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
     PROVIDER_ENV_VARS,
+    _gh_identity_cache,
+    _gh_identity_null_cache,
     _null_cache,
     _token_cache,
     get_integration_env_vars,
@@ -49,9 +51,13 @@ def clear_caches():
     """Ensure clean caches before and after every test."""
     _token_cache.clear()
     _null_cache.clear()
+    _gh_identity_cache.clear()
+    _gh_identity_null_cache.clear()
     yield
     _token_cache.clear()
     _null_cache.clear()
+    _gh_identity_cache.clear()
+    _gh_identity_null_cache.clear()
 
 
 class TestInvalidateUserProviderCache:
@@ -76,6 +82,34 @@ class TestInvalidateUserProviderCache:
         _token_cache[other_key] = "other-tok"
         invalidate_user_provider_cache(_USER, _PROVIDER)
         assert other_key in _token_cache
+
+    def test_clears_gh_identity_cache_for_github_provider(self):
+        """When provider is 'github', identity caches must also be cleared."""
+        _gh_identity_cache[_USER] = {
+            "GIT_AUTHOR_NAME": "Old Name",
+            "GIT_AUTHOR_EMAIL": "old@example.com",
+            "GIT_COMMITTER_NAME": "Old Name",
+            "GIT_COMMITTER_EMAIL": "old@example.com",
+        }
+        invalidate_user_provider_cache(_USER, "github")
+        assert _USER not in _gh_identity_cache
+
+    def test_clears_gh_identity_null_cache_for_github_provider(self):
+        """When provider is 'github', the identity null-cache must also be cleared."""
+        _gh_identity_null_cache[_USER] = True
+        invalidate_user_provider_cache(_USER, "github")
+        assert _USER not in _gh_identity_null_cache
+
+    def test_does_not_clear_gh_identity_cache_for_other_providers(self):
+        """When provider is NOT 'github', identity caches must be left alone."""
+        _gh_identity_cache[_USER] = {
+            "GIT_AUTHOR_NAME": "Some Name",
+            "GIT_AUTHOR_EMAIL": "some@example.com",
+            "GIT_COMMITTER_NAME": "Some Name",
+            "GIT_COMMITTER_EMAIL": "some@example.com",
+        }
+        invalidate_user_provider_cache(_USER, "some-other-provider")
+        assert _USER in _gh_identity_cache
 
 
 class TestGetProviderToken:

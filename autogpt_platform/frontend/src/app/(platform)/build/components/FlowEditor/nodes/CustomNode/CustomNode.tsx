@@ -92,7 +92,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&
-      "error" in outputData;
+      "error" in outputData &&
+      Array.isArray(outputData.error) &&
+      outputData.error.some(
+        (v: unknown) => v !== "" && v !== null && v !== undefined,
+      );
 
     const hasErrors = hasConfigErrors || hasOutputError;
 

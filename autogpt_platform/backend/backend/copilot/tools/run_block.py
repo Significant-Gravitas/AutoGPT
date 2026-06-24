@@ -33,6 +33,8 @@ class RunBlockTool(BaseTool):
             "Execute a block. IMPORTANT: Always get block_id from find_block first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
+            "Pass `validate_only: true` to inspect a block without running it "
+            "(safe pre-flight — returns schema + detected missing inputs). "
             "If review_required, use continue_run_block."
         )
 
@@ -49,12 +51,20 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
-                "dry_run": {
+                "validate_only": {
                     "type": "boolean",
-                    "description": "Execute in preview mode.",
+                    "description": (
+                        "If true, describe what the block would do without "
+                        "executing it or rendering any picker cards. Use this "
+                        "as a safe pre-flight for blocks with no required "
+                        "inputs (where empty input_data would otherwise "
+                        "execute immediately) or to check what a call "
+                        "_would_ need before committing."
+                    ),
+                    "default": False,
                 },
             },
-            "required": ["block_id", "input_data", "dry_run"],
+            "required": ["block_id", "input_data"],
         }
 
     @property
@@ -68,8 +78,8 @@ class RunBlockTool(BaseTool):
         *,
         block_id: str = "",
         input_data: dict | None = None,
-        dry_run: bool,
-        **kwargs,
+        validate_only: bool = False,
+        **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
 
@@ -78,7 +88,6 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
-            dry_run: If True, simulate execution without side effects
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -88,9 +97,8 @@ class RunBlockTool(BaseTool):
         block_id = block_id.strip()
         if input_data is None:
             input_data = {}
-        # Session-level dry_run forces all tool calls to use dry-run mode.
-        if session.dry_run:
-            dry_run = True
+        # Session-level flag drives dry-run mode — not exposed to the LLM.
+        dry_run = session.dry_run
         session_id = session.session_id
 
         if not block_id:
@@ -120,6 +128,7 @@ class RunBlockTool(BaseTool):
             session=session,
             session_id=session_id,
             dry_run=dry_run,
+            validate_only=validate_only,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -167,10 +176,14 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
             )
 
-        # Show block details when required inputs are not yet provided.
-        # This is run_block's two-step UX: first call returns the schema,
-        # second call (with inputs) actually executes.
-        if not (prep.required_non_credential_keys <= prep.provided_input_keys):
+        # Show block details when required inputs are not yet provided
+        # (two-step UX: first call returns the schema, second call actually
+        # executes) or when the caller asked for introspection only via
+        # validate_only — in both cases we return BlockDetailsResponse and
+        # do not execute.
+        if validate_only or not (
+            prep.required_non_credential_keys <= prep.provided_input_keys
+        ):
             try:
                 output_schema: dict[str, Any] = prep.block.output_schema.jsonschema()
             except Exception as e:
@@ -184,17 +197,41 @@ class RunBlockTool(BaseTool):
                 )
 
             credentials_meta = list(prep.matched_credentials.values())
+            missing = sorted(
+                prep.required_non_credential_keys - prep.provided_input_keys
+            )
+            # Hide credential fields from the schema sent to the LLM — the
+            # backend resolves them automatically from the user's connected
+            # integrations, and exposing the picker shape (id/provider/type)
+            # tempts the LLM to fabricate values it cannot construct.
+            llm_input_schema = _strip_credentials_from_schema(
+                prep.input_schema, prep.credentials_fields
+            )
+            if validate_only and not missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — all required inputs "
+                    f"provided, ready to run."
+                )
+            elif missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — missing required input(s): "
+                    f"{', '.join(repr(m) for m in missing)}."
+                )
+            else:
+                detail_msg = (
+                    f"Block '{prep.block.name}' details. Provide input_data "
+                    f"matching the inputs schema to execute the block. "
+                    f"Credentials are auto-resolved by the backend — do not "
+                    f"include them in input_data."
+                )
             return BlockDetailsResponse(
-                message=(
-                    f"Block '{prep.block.name}' details. "
-                    "Provide input_data matching the inputs schema to execute the block."
-                ),
+                message=detail_msg,
                 session_id=session_id,
                 block=BlockDetails(
                     id=block_id,
                     name=prep.block.name,
                     description=prep.block.description or "",
-                    inputs=prep.input_schema,
+                    inputs=llm_input_schema,
                     outputs=output_schema,
                     credentials=credentials_meta,
                 ),
@@ -216,3 +253,28 @@ class RunBlockTool(BaseTool):
             matched_credentials=prep.matched_credentials,
             dry_run=dry_run,
         )
+
+
+def _strip_credentials_from_schema(
+    input_schema: dict[str, Any], credentials_fields: set[str]
+) -> dict[str, Any]:
+    """Return a copy of *input_schema* without credential properties.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out when it can't (see the Replicate "Seed Dance 2.0" copilot session).
+    """
+    if not credentials_fields:
+        return input_schema
+    cleaned = dict(input_schema)
+    properties = dict(cleaned.get("properties", {}))
+    for field in credentials_fields:
+        properties.pop(field, None)
+    cleaned["properties"] = properties
+    required = [r for r in cleaned.get("required", []) if r not in credentials_fields]
+    if required:
+        cleaned["required"] = required
+    elif "required" in cleaned:
+        del cleaned["required"]
+    return cleaned

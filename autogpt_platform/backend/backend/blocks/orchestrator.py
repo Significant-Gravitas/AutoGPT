@@ -6,7 +6,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Sequence
+from collections.abc import AsyncIterable, Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -36,6 +36,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
@@ -251,8 +252,13 @@ def _convert_raw_response_to_dict(
         # Already a dict (from tests or some providers)
         return raw_response
     elif _is_responses_api_object(raw_response):
-        # OpenAI Responses API: extract individual output items
-        items = [json.to_dict(item) for item in raw_response.output]
+        # OpenAI Responses API: extract individual output items.
+        # Strip 'status' — it's a response-only field that OpenAI rejects
+        # when the item is sent back as input on the next API call.
+        items = [
+            {k: v for k, v in json.to_dict(item).items() if k != "status"}
+            for item in raw_response.output
+        ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
         # Chat Completions / Anthropic return message objects
@@ -358,11 +364,51 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
             func["description"] = f"{original_desc} [Pre-configured: {summary}]"
 
 
+def _select_final_answer_parts(
+    text_parts: list[str],
+    has_tool_calls: bool,
+    current: list[str],
+) -> list[str]:
+    """Pick the text parts that should be treated as the agent's final
+    answer for the ``finished`` output pin in EXTENDED_THINKING SDK mode.
+
+    Contract: an assistant message contributes only when it carries text
+    AND no tool calls.  That means the model has stopped calling tools
+    and is composing a response — which is what ``finished`` is supposed
+    to surface to ``AgentOutputBlock``.  Messages with tool calls
+    (regardless of whether they also carry text) are intermediate
+    narration that belongs in ``conversations``, not the final answer.
+    Empty messages don't contribute.
+
+    The caller threads ``current`` across the SDK stream; the last
+    text-only message wins.  If no message in the run qualifies, the
+    returned list is empty and ``finished`` surfaces as ``""`` — useful
+    diagnostic signal that the agent's prompt didn't compose a final
+    answer.
+    """
+    if not has_tool_calls and any(part.strip() for part in text_parts):
+        return list(text_parts)
+    return current
+
+
 class OrchestratorBlock(Block):
+    """A block that uses a language model to orchestrate tool calls.
+
+    Supports both single-shot and iterative agent mode execution.
+
+    **InsufficientBalanceError propagation contract**: ``InsufficientBalanceError``
+    (IBE) must always re-raise through every ``except`` block in this class.
+    Swallowing IBE would let the agent loop continue with unpaid work. Every
+    exception handler that catches ``Exception`` includes an explicit IBE
+    re-raise carve-out for this reason.
     """
-    A block that uses a language model to orchestrate tool calls, supporting both
-    single-shot and iterative agent mode execution.
-    """
+
+    # OrchestratorBlock bills via BlockCostType.TOKENS + compute_token_credits,
+    # which aggregates input_token_count / output_token_count / cache_read /
+    # cache_creation across every LLM iteration into one post-flight charge.
+    # The per-iteration flat-fee path (Block.extra_runtime_cost →
+    # charge_extra_runtime_cost) would double-bill the same tokens, so
+    # OrchestratorBlock deliberately inherits the base-class no-op default.
 
     # MCP server name used by the Claude Code SDK execution mode.  Keep in sync
     # with _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
@@ -844,7 +890,10 @@ class OrchestratorBlock(Block):
             NodeExecutionStats(
                 input_token_count=resp.prompt_tokens,
                 output_token_count=resp.completion_tokens,
+                cache_read_token_count=resp.cache_read_tokens,
+                cache_creation_token_count=resp.cache_creation_tokens,
                 llm_call_count=1,
+                provider_cost=resp.provider_cost,
             )
         )
 
@@ -1069,7 +1118,10 @@ class OrchestratorBlock(Block):
                 input_data=input_value,
             )
 
-        assert node_exec_result is not None, "node_exec_result should not be None"
+        if node_exec_result is None:
+            raise RuntimeError(
+                f"upsert_execution_input returned None for node {sink_node_id}"
+            )
 
         # Create NodeExecutionEntry for execution manager
         node_exec_entry = NodeExecutionEntry(
@@ -1083,6 +1135,20 @@ class OrchestratorBlock(Block):
             inputs=final_input_data or {},
             execution_context=execution_params.execution_context,
         )
+
+        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Mirrors the normal queue-based path in _on_graph_execution, which
+        # merges nodes_input_masks[node_id] into queued_node_exec.inputs
+        # before execution so credential fields are present for the block run.
+        # isinstance coercion is load-bearing: tests pass MagicMock processors
+        # whose attribute chain otherwise returns coroutines under AsyncMock.
+        nodes_input_masks = execution_processor.nodes_input_masks
+        if not isinstance(nodes_input_masks, Mapping):
+            nodes_input_masks = None
+        if nodes_input_masks and (
+            node_input_mask := nodes_input_masks.get(sink_node_id)
+        ):
+            node_exec_entry.inputs.update(node_input_mask)
 
         # Use the execution manager to execute the tool node
         try:
@@ -1104,15 +1170,87 @@ class OrchestratorBlock(Block):
                 task=node_exec_future,
             )
 
-            # Execute the node directly since we're in the Orchestrator context
-            node_exec_future.set_result(
-                await execution_processor.on_node_execution(
+            # Execute the node directly since we're in the Orchestrator context.
+            # Wrap in try/except so the future is always resolved, even on
+            # error — an unresolved Future would block anything awaiting it.
+            #
+            # on_node_execution is decorated with @async_error_logged(swallow=True),
+            # which catches BaseException and returns None rather than raising.
+            # Treat a None return as a failure: set_exception so the future
+            # carries an error state rather than a None result, and return an
+            # error response so the LLM knows the tool failed.
+            try:
+                tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
-                    nodes_input_masks=None,
+                    nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
-            )
+                if tool_node_stats is None:
+                    nil_err = RuntimeError(
+                        f"on_node_execution returned None for node {sink_node_id} "
+                        "(error was swallowed by @async_error_logged)"
+                    )
+                    node_exec_future.set_exception(nil_err)
+                    resp = _create_tool_response(
+                        tool_call.id,
+                        "Tool execution returned no result",
+                        responses_api=responses_api,
+                    )
+                    resp["_is_error"] = True
+                    return resp
+                node_exec_future.set_result(tool_node_stats)
+            except Exception as exec_err:
+                node_exec_future.set_exception(exec_err)
+                raise
+
+            # Charge user credits AFTER successful tool execution. Tools
+            # spawned by the orchestrator bypass the main execution queue
+            # (where _charge_usage is called), so we must charge here to
+            # avoid free tool execution. Charging post-completion (vs.
+            # pre-execution) avoids billing users for failed tool calls.
+            # Skipped for dry runs.
+            #
+            # `error is None` intentionally excludes both Exception and
+            # BaseException subclasses (e.g. CancelledError) so cancelled
+            # or terminated tool runs are not billed.
+            #
+            # Billing errors (including non-balance exceptions) are kept
+            # in a separate try/except so they are never silently swallowed
+            # by the generic tool-error handler below.
+            if (
+                not execution_params.execution_context.dry_run
+                and tool_node_stats.error is None
+            ):
+                # Charge the sub-block for telemetry / wallet debit. The
+                # return value is intentionally discarded: on_node_execution
+                # above ran the sub-block against this graph's own
+                # graph_stats_pair (manager.py:659-668), so its cost already
+                # lands in graph_stats.cost on the sub-block's completion.
+                # Re-merging here would double-count in telemetry / UI / audit.
+                try:
+                    await execution_processor.charge_node_usage(node_exec_entry)
+                except InsufficientBalanceError:
+                    # IBE must propagate — see OrchestratorBlock class docstring.
+                    # Log the billing failure here so the discarded tool result
+                    # is traceable before the loop aborts.
+                    logger.warning(
+                        "Insufficient balance charging for tool node %s after "
+                        "successful execution; agent loop will be aborted",
+                        sink_node_id,
+                    )
+                    raise
+                except Exception:
+                    # Non-billing charge failures (DB outage, network, etc.)
+                    # must NOT propagate to the outer except handler because
+                    # the tool itself succeeded. Re-raising would mark the
+                    # tool as failed (_is_error=True), causing the LLM to
+                    # retry side-effectful operations. Log and continue.
+                    logger.exception(
+                        "Unexpected error charging for tool node %s; "
+                        "tool execution was successful",
+                        sink_node_id,
+                    )
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
@@ -1125,18 +1263,26 @@ class OrchestratorBlock(Block):
                 if node_outputs
                 else "Tool executed successfully"
             )
-            return _create_tool_response(
+            resp = _create_tool_response(
                 tool_call.id, tool_response_content, responses_api=responses_api
             )
+            resp["_is_error"] = False
+            return resp
 
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
-            logger.warning("Tool execution with manager failed: %s", e)
-            # Return error response
-            return _create_tool_response(
+            logger.warning("Tool execution with manager failed: %s", e, exc_info=True)
+            # Return a generic error to the LLM — internal exception messages
+            # may contain server paths, DB details, or infrastructure info.
+            resp = _create_tool_response(
                 tool_call.id,
-                f"Tool execution failed: {e}",
+                "Tool execution failed due to an internal error",
                 responses_api=responses_api,
             )
+            resp["_is_error"] = True
+            return resp
 
     async def _agent_mode_llm_caller(
         self,
@@ -1236,13 +1382,16 @@ class OrchestratorBlock(Block):
                 content = str(raw_content)
             else:
                 content = "Tool executed successfully"
-            tool_failed = content.startswith("Tool execution failed:")
+            tool_failed = result.get("_is_error", True)
             return ToolCallResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 content=content,
                 is_error=tool_failed,
             )
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
             logger.error("Tool execution failed: %s", e)
             return ToolCallResult(
@@ -1362,9 +1511,13 @@ class OrchestratorBlock(Block):
                             "arguments": tc.arguments,
                         },
                     )
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
-            # Catch all errors (validation, network, API) so that the block
-            # surfaces them as user-visible output instead of crashing.
+            # Catch all OTHER errors (validation, network, API) so that
+            # the block surfaces them as user-visible output instead of
+            # crashing.
             yield "error", str(e)
             return
 
@@ -1442,11 +1595,14 @@ class OrchestratorBlock(Block):
                             text = content
                         else:
                             text = json.dumps(content)
-                        tool_failed = text.startswith("Tool execution failed:")
+                        tool_failed = result.get("_is_error", True)
                         return {
                             "content": [{"type": "text", "text": text}],
                             "isError": tool_failed,
                         }
+                    except InsufficientBalanceError:
+                        # IBE must propagate — see class docstring.
+                        raise
                     except Exception as e:
                         logger.error("SDK tool execution failed: %s", e)
                         return {
@@ -1541,8 +1697,26 @@ class OrchestratorBlock(Block):
             return
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
-            # Route through OpenRouter proxy: set base URL + auth token,
-            # clear API key so the SDK uses AUTH_TOKEN instead.
+            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
+            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
+            # vars to the OpenRouter key.  OpenRouter accepts either
+            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
+            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
+            # whichever the Claude Code CLI happens to send on the wire is
+            # a valid OR credential.
+            #
+            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
+            # omit it or set it to an empty string.  The Claude Agent SDK
+            # merges ``options.env`` on top of ``os.environ``, so omitting
+            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
+            # (e.g. a deployment's direct-Anthropic key) leak through to
+            # OpenRouter and 401.  Setting it to ``""`` was the previous
+            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
+            # layer treats the empty string as set and emits
+            # ``x-api-key:`` (empty value), which OpenRouter rejects with
+            # ``invalid x-api-key``.  Using the OR key for both vars
+            # avoids both failure modes.
+            #
             # NOTE: We use the platform's global OpenRouter base URL from
             # ChatConfig.  Per-credential base URLs are not yet supported;
             # if the user's credential targets a custom proxy, the SDK will
@@ -1555,7 +1729,7 @@ class OrchestratorBlock(Block):
             sdk_env = {
                 "ANTHROPIC_BASE_URL": or_base,
                 "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+                "ANTHROPIC_API_KEY": api_key,
             }
         else:
             # Direct Anthropic key
@@ -1568,10 +1742,25 @@ class OrchestratorBlock(Block):
             prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
         )
 
-        response_parts: list[str] = []
+        # ``final_response_parts`` is the agent's *final answer* — only the
+        # text from the last assistant message that has no tool calls.  We
+        # intentionally do NOT accumulate every assistant TextBlock across
+        # the SDK stream: those intermediate texts are narration between
+        # tool calls, not the composed answer the user wired into
+        # ``AgentOutputBlock``.  This matches BUILT_IN's behaviour where
+        # ``tool_call_loop`` only yields ``response.response_text`` once
+        # the model stops calling tools.  If the agent never produces a
+        # text-only message (e.g. it keeps calling tools until max
+        # iterations), ``final_response_parts`` stays empty and the
+        # ``finished`` output surfaces as an empty string — that's useful
+        # signal for dry-run / autopilot diagnostics ("the agent didn't
+        # compose a final answer; repair the prompt") rather than a
+        # transcript dump that masks the missing composition.
+        final_response_parts: list[str] = []
         conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
         total_completion_tokens = 0
+        total_cost_usd: float | None = None
 
         sdk_error: Exception | None = None
         try:
@@ -1654,7 +1843,6 @@ class OrchestratorBlock(Block):
                             for content_block in sdk_msg.content:
                                 if isinstance(content_block, TextBlock):
                                     text_parts.append(content_block.text)
-                                    response_parts.append(content_block.text)
                                 elif isinstance(content_block, ToolUseBlock):
                                     raw_name = getattr(content_block, "name", "unknown")
                                     # Strip MCP prefix for readability in
@@ -1668,6 +1856,16 @@ class OrchestratorBlock(Block):
                                             ),
                                         }
                                     )
+                            # Capture the final answer: the last assistant
+                            # message that has only text (no tool calls)
+                            # wins.  See ``_select_final_answer_parts`` for
+                            # the contract + diagnostic-signal rationale.
+                            final_response_parts = _select_final_answer_parts(
+                                text_parts=text_parts,
+                                has_tool_calls=bool(tool_use_parts),
+                                current=final_response_parts,
+                            )
+
                             if text_parts or tool_use_parts:
                                 msg_content = "".join(text_parts)
                                 if tool_use_parts:
@@ -1715,6 +1913,8 @@ class OrchestratorBlock(Block):
                                 total_completion_tokens += getattr(
                                     sdk_msg.usage, "output_tokens", 0
                                 )
+                            if sdk_msg.total_cost_usd is not None:
+                                total_cost_usd = sdk_msg.total_cost_usd
                 finally:
                     if pending_task is not None and not pending_task.done():
                         pending_task.cancel()
@@ -1722,11 +1922,15 @@ class OrchestratorBlock(Block):
                             await pending_task
                         except (asyncio.CancelledError, StopAsyncIteration):
                             pass
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring. The `finally`
+            # block below still runs and records partial token usage.
+            raise
         except Exception as e:
-            # Surface SDK errors as user-visible output instead of crashing,
-            # consistent with _execute_tools_agent_mode error handling.
-            # Don't return yet — fall through to merge_stats below so
-            # partial token usage is always recorded.
+            # Surface OTHER SDK errors as user-visible output instead
+            # of crashing, consistent with _execute_tools_agent_mode
+            # error handling. Don't return yet — fall through to
+            # merge_stats below so partial token usage is always recorded.
             sdk_error = e
         finally:
             # Always record usage stats, even on error.  The SDK may have
@@ -1734,12 +1938,17 @@ class OrchestratorBlock(Block):
             # those stats would under-count resource usage.
             # llm_call_count=1 is approximate; the SDK manages its own
             # multi-turn loop and only exposes aggregate usage.
-            if total_prompt_tokens > 0 or total_completion_tokens > 0:
+            if (
+                total_prompt_tokens > 0
+                or total_completion_tokens > 0
+                or total_cost_usd is not None
+            ):
                 self.merge_stats(
                     NodeExecutionStats(
                         input_token_count=total_prompt_tokens,
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
+                        provider_cost=total_cost_usd,
                     )
                 )
             # Clean up execution-specific working directory.
@@ -1749,7 +1958,7 @@ class OrchestratorBlock(Block):
             yield "error", str(sdk_error)
             return
 
-        response_text = "".join(response_parts)
+        response_text = "".join(final_response_parts)
 
         yield "finished", response_text
         yield "conversations", conversation

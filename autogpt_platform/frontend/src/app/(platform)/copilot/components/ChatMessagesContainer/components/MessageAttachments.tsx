@@ -2,6 +2,7 @@ import {
   FileText as FileTextIcon,
   DownloadSimple as DownloadIcon,
 } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { FileUIPart } from "ai";
 import {
   globalRegistry,
@@ -14,10 +15,24 @@ import {
   ContentCardTitle,
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { filePartToArtifactRef } from "../helpers";
 
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
+  /** Force the artifact-card rendering path regardless of the
+   *  ``ARTIFACTS`` flag.  The public share viewer passes this so
+   *  anonymous readers always get the rich treatment — the flag
+   *  defaults off and we don't want it to gate the viewer UX. */
+  forceArtifacts?: boolean;
+  /** URL→file-ID pattern used by ``filePartToArtifactRef``.  Owner
+   *  side defaults to the workspace-file URL shape; the public viewer
+   *  passes a per-token pattern from ``lib/share/routes.ts``. */
+  filePattern?: RegExp;
+  /** Read-only mode — forwarded to ``ArtifactCard`` so clicks
+   *  download instead of trying to open a panel that isn't mounted. */
+  readOnly?: boolean;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -38,12 +53,36 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({ files, isUser }: Props) {
+export function MessageAttachments({
+  files,
+  isUser,
+  forceArtifacts,
+  filePattern,
+  readOnly,
+}: Props) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
   if (files.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) => {
+        if (isArtifactsEnabled) {
+          const artifactRef = filePartToArtifactRef(
+            file,
+            isUser ? "user-upload" : "agent",
+            filePattern,
+          );
+          if (artifactRef) {
+            return (
+              <ArtifactCard
+                key={`artifact-${artifactRef.id}-${i}`}
+                artifact={artifactRef}
+                readOnly={readOnly}
+              />
+            );
+          }
+        }
         const rendered = renderFileContent(file);
         return rendered ? (
           <div

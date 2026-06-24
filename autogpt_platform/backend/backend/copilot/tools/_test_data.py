@@ -12,7 +12,7 @@ from backend.api.features.store import db as store_db
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.data import db as db_module
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
@@ -42,17 +42,45 @@ async def _ensure_db_connected() -> None:
         await db_module.connect()
 
 
-def make_session(user_id: str):
-    return ChatSession(
+def make_session(user_id: str, *, guide_read: bool = True, library_check: bool = True):
+    """Build a fake ChatSession for tool tests.
+
+    ``guide_read=True`` (default) pre-populates the session with a
+    ``get_agent_building_guide`` tool-call history entry so the agent-
+    generation gate lets through any subsequent ``create_agent`` /
+    ``edit_agent`` / ``validate_agent_graph`` / ``fix_agent_graph`` call.
+
+    ``library_check=True`` (default) announces an in-flight
+    ``find_library_agent(for_creation=true)`` call so the create-time
+    library-similarity gate lets through ``create_agent``. The gate is
+    turn-scoped (in-flight only), so seeding via the in-flight buffer —
+    not the durable messages list — is the correct shape.
+    """
+    messages: list[ChatMessage] = []
+    if guide_read:
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
+            )
+        )
+    session = ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
-        messages=[],
+        messages=messages,
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         successful_agent_runs={},
         successful_agent_schedules={},
     )
+    if library_check:
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "test"},
+        )
+    return session
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

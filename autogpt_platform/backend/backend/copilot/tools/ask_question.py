@@ -1,5 +1,6 @@
-"""AskQuestionTool - Ask the user a clarifying question before proceeding."""
+"""AskQuestionTool - Ask the user one or more clarifying questions."""
 
+import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -7,14 +8,16 @@ from backend.copilot.model import ChatSession
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
 
+logger = logging.getLogger(__name__)
+
 
 class AskQuestionTool(BaseTool):
-    """Ask the user a clarifying question and wait for their answer.
+    """Ask the user one or more clarifying questions and wait for answers.
 
     Use this tool when the user's request is ambiguous and you need more
-    information before proceeding. Call find_block or other discovery tools
-    first to ground your question in real platform options, then call this
-    tool with a concrete question listing those options.
+    information before proceeding.  Call find_block or other discovery tools
+    first to ground your questions in real platform options, then call this
+    tool with concrete questions listing those options.
     """
 
     @property
@@ -24,9 +27,9 @@ class AskQuestionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Ask the user a clarifying question. Use when the request is "
-            "ambiguous and you need to confirm intent, choose between options, "
-            "or gather missing details before proceeding."
+            "Ask the user one or more clarifying questions. Use when the "
+            "request is ambiguous and you need to confirm intent, choose "
+            "between options, or gather missing details before proceeding."
         )
 
     @property
@@ -34,27 +37,34 @@ class AskQuestionTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "question": {
-                    "type": "string",
-                    "description": (
-                        "The concrete question to ask the user. Should list "
-                        "real options when applicable."
-                    ),
-                },
-                "options": {
+                "questions": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {
+                                "type": "string",
+                                "description": "The question text.",
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Options for this question.",
+                            },
+                            "keyword": {
+                                "type": "string",
+                                "description": "Short label for this question.",
+                            },
+                        },
+                        "required": ["question"],
+                    },
                     "description": (
-                        "Options for the user to choose from "
-                        "(e.g. ['Email', 'Slack', 'Google Docs'])."
+                        "One or more clarifying questions. Each item has "
+                        "'question' (required), 'options', and 'keyword'."
                     ),
-                },
-                "keyword": {
-                    "type": "string",
-                    "description": "Short label identifying what the question is about.",
                 },
             },
-            "required": ["question"],
+            "required": ["questions"],
         }
 
     @property
@@ -67,27 +77,61 @@ class AskQuestionTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        del user_id  # unused; required by BaseTool contract
-        question_raw = kwargs.get("question")
-        if not isinstance(question_raw, str) or not question_raw.strip():
-            raise ValueError("ask_question requires a non-empty 'question' string")
-        question = question_raw.strip()
-        raw_options = kwargs.get("options", [])
-        if not isinstance(raw_options, list):
-            raw_options = []
-        options: list[str] = [str(o) for o in raw_options if o]
-        raw_keyword = kwargs.get("keyword", "")
-        keyword: str = str(raw_keyword) if raw_keyword else ""
-        session_id = session.session_id if session else None
+        del user_id
+        raw_questions = kwargs.get("questions", [])
+        if not isinstance(raw_questions, list) or not raw_questions:
+            raise ValueError("ask_question requires a non-empty 'questions' array")
 
-        example = ", ".join(options) if options else None
-        clarifying_question = ClarifyingQuestion(
-            question=question,
-            keyword=keyword,
-            example=example,
-        )
+        questions = _parse_questions(raw_questions)
+        if not questions:
+            raise ValueError(
+                "ask_question requires at least one valid question in 'questions'"
+            )
+
         return ClarificationNeededResponse(
-            message=question,
-            session_id=session_id,
-            questions=[clarifying_question],
+            message="; ".join(q.question for q in questions),
+            session_id=session.session_id if session else None,
+            questions=questions,
         )
+
+
+def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
+    """Parse and validate raw question dicts into ClarifyingQuestion objects."""
+    return [
+        q for idx, item in enumerate(raw) if (q := _parse_one(item, idx)) is not None
+    ]
+
+
+def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
+    """Parse a single question item, returning None for invalid entries."""
+    if not isinstance(item, dict):
+        logger.warning("ask_question: skipping non-dict item at index %d", idx)
+        return None
+
+    text = item.get("question")
+    if not isinstance(text, str) or not text.strip():
+        logger.warning(
+            "ask_question: skipping item at index %d with missing/empty question",
+            idx,
+        )
+        return None
+
+    raw_keyword = item.get("keyword")
+    keyword = (
+        str(raw_keyword).strip()
+        if raw_keyword is not None and str(raw_keyword).strip()
+        else f"question-{idx}"
+    )
+
+    raw_options = item.get("options")
+    options = (
+        [str(o) for o in raw_options if o is not None and str(o).strip()]
+        if isinstance(raw_options, list)
+        else []
+    )
+
+    return ClarifyingQuestion(
+        question=text.strip(),
+        keyword=keyword,
+        example=", ".join(options) if options else None,
+    )

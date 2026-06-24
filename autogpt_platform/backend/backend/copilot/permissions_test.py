@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
+    DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
     CopilotPermissions,
@@ -257,6 +258,9 @@ class TestValidateToolNames:
     def test_valid_sdk_builtin(self):
         assert validate_tool_names(["Read", "Task", "WebSearch"]) == []
 
+    def test_disabled_legacy_tool_name_is_accepted(self):
+        assert validate_tool_names(["ask_question"]) == []
+
     def test_invalid_tool(self):
         result = validate_tool_names(["nonexistent_tool"])
         assert "nonexistent_tool" in result
@@ -408,12 +412,12 @@ class TestApplyToolPermissions:
         assert "Task" not in allowed
 
     def test_read_tool_always_included_even_when_blacklisted(self, mocker):
-        """mcp__copilot__Read must stay in allowed even if Read is explicitly blacklisted."""
+        """mcp__copilot__read_tool_result must stay in allowed even if Read is explicitly blacklisted."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "Task",
             ],
         )
@@ -432,17 +436,19 @@ class TestApplyToolPermissions:
         # Explicitly blacklist Read
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert (
+            "mcp__copilot__read_tool_result" in allowed
+        )  # always preserved for SDK internals
         assert "mcp__copilot__run_block" in allowed
         assert "Task" in allowed
 
     def test_read_tool_always_included_with_narrow_whitelist(self, mocker):
-        """mcp__copilot__Read must stay in allowed even when not in a whitelist."""
+        """mcp__copilot__read_tool_result must stay in allowed even when not in a whitelist."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "Task",
             ],
         )
@@ -461,7 +467,9 @@ class TestApplyToolPermissions:
         # Whitelist only run_block — Read not listed
         perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert (
+            "mcp__copilot__read_tool_result" in allowed
+        )  # always preserved for SDK internals
         assert "mcp__copilot__run_block" in allowed
 
     def test_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
@@ -470,7 +478,7 @@ class TestApplyToolPermissions:
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "mcp__copilot__write_file",
                 "Task",
@@ -500,13 +508,48 @@ class TestApplyToolPermissions:
         # Write not whitelisted — write_file should NOT be included
         assert "mcp__copilot__write_file" not in allowed
 
+    def test_non_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
+        """In non-E2B mode, whitelisting 'Write' must include mcp__copilot__Write."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Write",
+                "mcp__copilot__Edit",
+                "mcp__copilot__read_file",
+                "mcp__copilot__read_tool_result",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=["Bash"],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Write", "Edit", "Task"]),
+        )
+        # Whitelist Write and run_block — mcp__copilot__Write should be included
+        perms = CopilotPermissions(tools=["Write", "run_block"], tools_exclude=False)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=False)
+        assert "mcp__copilot__Write" in allowed
+        assert "mcp__copilot__run_block" in allowed
+        # Edit not whitelisted — should NOT be included
+        assert "mcp__copilot__Edit" not in allowed
+        # read_tool_result always preserved for SDK internals
+        assert "mcp__copilot__read_tool_result" in allowed
+
     def test_e2b_file_tools_excluded_when_sdk_builtin_blacklisted(self, mocker):
         """In E2B mode, blacklisting 'Read' must also remove mcp__copilot__read_file."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "Task",
             ],
@@ -532,8 +575,8 @@ class TestApplyToolPermissions:
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" not in allowed
         assert "mcp__copilot__run_block" in allowed
-        # mcp__copilot__Read is always preserved for SDK internals
-        assert "mcp__copilot__Read" in allowed
+        # mcp__copilot__read_tool_result is always preserved for SDK internals
+        assert "mcp__copilot__read_tool_result" in allowed
 
 
 # ---------------------------------------------------------------------------
@@ -543,7 +586,13 @@ class TestApplyToolPermissions:
 
 class TestSdkBuiltinToolNames:
     def test_expected_builtins_present(self):
+        # ``TodoWrite`` is DELIBERATELY absent: baseline ships an MCP-wrapped
+        # platform version for model-flexibility parity, so it appears in
+        # PLATFORM_TOOL_NAMES / TOOL_REGISTRY instead. ``Task`` remains
+        # SDK-only — baseline uses ``run_sub_session`` for the equivalent
+        # context-isolation role.
         expected = {
+            "Agent",
             "Read",
             "Write",
             "Edit",
@@ -551,9 +600,9 @@ class TestSdkBuiltinToolNames:
             "Grep",
             "Task",
             "WebSearch",
-            "TodoWrite",
         }
         assert expected.issubset(SDK_BUILTIN_TOOL_NAMES)
+        assert "TodoWrite" not in SDK_BUILTIN_TOOL_NAMES
 
     def test_platform_names_match_tool_registry(self):
         """PLATFORM_TOOL_NAMES (derived from ToolName Literal) must match TOOL_REGISTRY keys."""
@@ -577,3 +626,92 @@ class TestSdkBuiltinToolNames:
         assert "run_block" in known
         assert "Read" in known
         assert "Task" in known
+
+
+# ---------------------------------------------------------------------------
+# DREAM_PERMISSIONS preset (spec: dream/p0-spec.md §P0.5)
+# ---------------------------------------------------------------------------
+
+
+class TestDreamPermissionsPreset:
+    """The dream sub-agent must only touch memory + (future) web fact-check."""
+
+    def test_preset_is_whitelist_not_blacklist(self):
+        # Critical: blacklist semantics would *allow* everything not listed,
+        # which is the opposite of what we want for a restricted sub-agent.
+        assert DREAM_PERMISSIONS.tools_exclude is False
+
+    def test_memory_tools_are_allowed(self):
+        # All four Graphiti-backed memory ops the dream pass needs (read,
+        # write, find-for-forget, confirm-forget).
+        allowed = set(DREAM_PERMISSIONS.tools)
+        assert {
+            "memory_search",
+            "memory_store",
+            "memory_forget_search",
+            "memory_forget_confirm",
+        }.issubset(allowed)
+
+    def test_web_fact_check_is_listed_for_future_p0_5(self):
+        # web_fact_check ships with P0.5; preset is forward-compatible.
+        assert "web_fact_check" in DREAM_PERMISSIONS.tools
+
+    def test_shell_execution_is_blocked(self):
+        # Hard rule: dream sub-agent must never get a shell.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "bash_exec" not in effective
+
+    def test_general_web_browsing_is_blocked(self):
+        # web_fact_check is the *only* permitted web egress; raw fetch/search
+        # and browser tools must stay blocked.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "web_fetch" not in effective
+        assert "web_search" not in effective
+        assert "WebSearch" not in effective  # SDK built-in
+        assert "browser_act" not in effective
+        assert "browser_navigate" not in effective
+        assert "browser_screenshot" not in effective
+
+    def test_file_operations_are_blocked(self):
+        # No workspace file ops, no SDK built-in file editing.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        for tool in (
+            "read_workspace_file",
+            "write_workspace_file",
+            "delete_workspace_file",
+            "list_workspace_files",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+        ):
+            assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
+
+    def test_agent_graph_mutation_is_blocked(self):
+        # Dream pass reflects on memory; it does not edit or run agents.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        for tool in (
+            "create_agent",
+            "edit_agent",
+            "fix_agent_graph",
+            "run_agent",
+            "run_block",
+            "run_sub_session",
+            "Task",
+        ):
+            assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
+
+    def test_effective_set_matches_whitelist_intersection(self):
+        # Sanity: effective set = whitelist ∩ known universe.  web_fact_check
+        # is intentionally absent from the universe until P0.5 lands, so the
+        # effective set today is the four memory tools.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert effective == frozenset(
+            {
+                "memory_search",
+                "memory_store",
+                "memory_forget_search",
+                "memory_forget_confirm",
+            }
+        )

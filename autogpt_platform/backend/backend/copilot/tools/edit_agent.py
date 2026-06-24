@@ -3,11 +3,14 @@
 import logging
 from typing import Any
 
+from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
+from backend.data.model import is_credentials_field_name
 
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -24,7 +27,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -73,6 +76,28 @@ class EditAgentTool(BaseTool):
             library_agent_ids = []
         session_id = session.session_id if session else None
 
+        # Builder-bound sessions are locked to a specific graph: default
+        # missing agent_id to the bound graph, and reject any other id so
+        # the assistant cannot accidentally mutate a different agent.
+        builder_graph_id = session.metadata.builder_graph_id if session else None
+        if builder_graph_id:
+            if not agent_id:
+                agent_id = builder_graph_id
+            elif agent_id != builder_graph_id:
+                return ErrorResponse(
+                    message=(
+                        "This chat is bound to the builder's current agent. "
+                        "Editing a different agent is not allowed here — "
+                        "open that agent in the builder instead."
+                    ),
+                    error="builder_session_graph_mismatch",
+                    session_id=session_id,
+                )
+
+        guide_gate = require_guide_read(session, "edit_agent")
+        if guide_gate is not None:
+            return guide_gate
+
         if not agent_id:
             return ErrorResponse(
                 message="Please provide the agent ID to edit.",
@@ -106,6 +131,25 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        changed_trigger_fields = _changed_trigger_config_fields(
+            current_agent.get("nodes", []), nodes
+        )
+        if changed_trigger_fields:
+            return ErrorResponse(
+                message=(
+                    "This edit changes the webhook trigger block's configuration "
+                    f"({', '.join(changed_trigger_fields)}), which can't be set "
+                    "by editing the graph — that would change the agent's global "
+                    "default for everyone who uses it. A trigger's configuration "
+                    "lives on a per-trigger preset: use the "
+                    "setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "trigger block's config unchanged."
+                ),
+                error="trigger_config_edit_blocked",
+                session_id=session_id,
+            )
+
         agent_json["id"] = current_agent.get("id", agent_id)
         agent_json["version"] = current_agent.get("version", 1)
         agent_json.setdefault("is_active", True)
@@ -122,3 +166,46 @@ class EditAgentTool(BaseTool):
             default_name="Updated Agent",
             library_agents=library_agents,
         )
+
+
+def _changed_trigger_config_fields(
+    current_nodes: list[dict[str, Any]], new_nodes: list[dict[str, Any]]
+) -> list[str]:
+    """Trigger-config field names whose value this edit would change.
+
+    A webhook trigger block's config inputs (e.g. ``repo``/``events``) belong on
+    a per-trigger preset via ``setup_agent_webhook_trigger``; editing them in the
+    graph mutates the agent's global default and is the wrong path. Credentials
+    are ignored (they're not trigger config). Returns ``[]`` when there is no
+    trigger node, the node was removed wholesale (a structural edit, not a config
+    tweak), or nothing changed.
+    """
+    webhook_block_ids = set(get_webhook_block_ids())
+    current_trigger = next(
+        (n for n in current_nodes if n.get("block_id") in webhook_block_ids), None
+    )
+    if current_trigger is None:
+        return []
+
+    block = get_block(current_trigger["block_id"])
+    if block is None:
+        return []
+    config_fields = [
+        name
+        for name in block.input_schema.model_fields
+        if not is_credentials_field_name(name)
+    ]
+
+    new_trigger = next(
+        (n for n in new_nodes if n.get("id") == current_trigger.get("id")), None
+    )
+    if new_trigger is None:
+        return []
+
+    current_defaults = current_trigger.get("input_default") or {}
+    new_defaults = new_trigger.get("input_default") or {}
+    return [
+        name
+        for name in config_fields
+        if new_defaults.get(name) != current_defaults.get(name)
+    ]
