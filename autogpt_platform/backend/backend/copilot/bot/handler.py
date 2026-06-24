@@ -42,6 +42,11 @@ THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+# Cap on file IDs carried into a single turn — must stay <= the
+# ``BotChatRequest.file_ids`` ``max_length``. Batching several file-heavy
+# messages can accumulate more than that; cap so the turn runs (with a log)
+# instead of failing validation.
+MAX_TURN_FILE_IDS = 20
 
 
 @dataclass
@@ -231,6 +236,13 @@ class MessageHandler:
                 batch_file_ids = list(state.pending_file_ids)
                 state.pending.clear()
                 state.pending_file_ids.clear()
+                if len(batch_file_ids) > MAX_TURN_FILE_IDS:
+                    logger.warning(
+                        "Dropping %d batched file(s) over the per-turn cap of %d",
+                        len(batch_file_ids) - MAX_TURN_FILE_IDS,
+                        MAX_TURN_FILE_IDS,
+                    )
+                    batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
                 await self._stream_batch(
                     batch, ctx, adapter, target_id, file_ids=batch_file_ids
                 )

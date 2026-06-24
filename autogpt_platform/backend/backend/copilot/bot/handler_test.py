@@ -17,7 +17,13 @@ from .adapters.base import (
     ReferencedConversation,
 )
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
+from .handler import (
+    MAX_TURN_FILE_IDS,
+    MessageHandler,
+    TargetState,
+    build_thread_name,
+    clamp_thread_name,
+)
 
 
 def _ctx(
@@ -1006,6 +1012,30 @@ class TestAttachments:
 
         api.upload_workspace_files.assert_awaited_once()
         assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_batched_file_ids_capped_to_per_turn_limit(self):
+        # Several file-heavy messages batched together can exceed the
+        # BotChatRequest file_ids limit; the drain must cap, not fail.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        captured: list[list[str] | None] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+            captured.append(file_ids)
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        too_many = [f"f{i}" for i in range(MAX_TURN_FILE_IDS + 5)]
+
+        await handler._enqueue_and_process(
+            _ctx(channel_type="dm", server_id=None, channel_id="dm-1", text="hi"),
+            adapter,
+            "dm-1",
+            "hi",
+            too_many,
+        )
+
+        assert captured and len(captured[0]) == MAX_TURN_FILE_IDS
 
     @pytest.mark.asyncio
     async def test_file_only_message_with_all_uploads_rejected_does_not_enqueue(self):
