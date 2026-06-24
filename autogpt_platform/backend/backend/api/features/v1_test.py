@@ -11,6 +11,7 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
@@ -1495,8 +1496,6 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """A virus-scan rejection surfaces as a 400 client error, not a 500."""
-    from backend.api.features.store.exceptions import VirusDetectedError
-
     mocker.patch(
         "backend.api.features.v1.store_user_skill",
         AsyncMock(side_effect=VirusDetectedError("nasty")),
