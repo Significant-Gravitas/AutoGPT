@@ -86,14 +86,21 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 
-
 def AICredentialsField() -> AICredentials:
+    # Get all models that are NOT Ollama
+    required_models = [
+        model for model in LlmModel if model.metadata.provider != "ollama"
+    ]
+    
     return CredentialsField(
-        description="API key for the LLM provider.",
+        description="API key for the LLM provider. Not required for Ollama models.",
         discriminator="model",
         discriminator_mapping={
             model.value: model.metadata.provider for model in LlmModel
         },
+        # Explicitly tell the UI which models require this credential
+        optional=True, # Make it generally optional at the field level
+        required_for=[model.value for model in required_models], # But enforce it for non-Ollama models
     )
 
 
