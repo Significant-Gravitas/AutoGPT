@@ -39,18 +39,36 @@ afterEach(cleanup);
 beforeEach(() => {
   postHog.variant = undefined;
   useOnboardingWizardStore.getState().reset();
-  useOnboardingWizardStore.getState().goToStep(4);
+  // The paywall is the first step.
+  useOnboardingWizardStore.getState().goToStep(1);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
 });
 
 describe("subscription pricing experiment helpers", () => {
-  test("uses the current yearly Max experience as the default", () => {
+  test("defaults to monthly billing with no highlighted plan (matches the paywall)", () => {
     expect(getSubscriptionPricingExperimentConfig(undefined)).toMatchObject({
-      billing: "yearly",
-      highlightedPlan: "MAX",
+      billing: "monthly",
+      highlightedPlan: null,
       variant: "control",
+    });
+  });
+
+  test("highlights no plan when highlightedPlan is null", () => {
+    const plans = getSubscriptionPricingExperimentPlans(null);
+    const pro = plans.find((plan) => plan.key === "PRO");
+    const max = plans.find((plan) => plan.key === "MAX");
+
+    expect(pro).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+    expect(max).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
     });
   });
 
@@ -95,14 +113,18 @@ describe("SubscriptionStep", () => {
     expect(screen.getByRole("heading", { name: /^Team$/ })).toBeDefined();
   });
 
-  test("defaults to yearly billing with the monthly-equivalent price and the annual charge", () => {
+  test("defaults to monthly billing with the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
-    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
-    expect(screen.getByLabelText("$42.50")).toBeDefined();
-    expect(screen.getByLabelText("$272.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
-    expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
+    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
+  });
+
+  test("highlights no plan by default — no 'Best value' badge", () => {
+    render(<SubscriptionStep />);
+    expect(screen.queryByText(/Best value/i)).toBeNull();
   });
 
   test("PostHog monthly Pro variant starts on monthly billing", async () => {
@@ -116,7 +138,7 @@ describe("SubscriptionStep", () => {
       );
     });
     expect(screen.getByLabelText("$50.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
   });
 
   test("PostHog billing default does not override a user-selected cycle", async () => {
@@ -133,36 +155,27 @@ describe("SubscriptionStep", () => {
     expect(screen.getByLabelText("$42.50")).toBeDefined();
   });
 
-  test("switching to monthly shows the full monthly price and matching charged-today", () => {
+  test("switching to monthly shows the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
     fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
     expect(screen.getByLabelText("$50.00")).toBeDefined();
     expect(screen.getByLabelText("$320.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan, submits the profile, and redirects to Stripe Checkout", async () => {
-    useOnboardingWizardStore.getState().setName("Ada Lovelace");
-    useOnboardingWizardStore.getState().setRole("Engineer");
-    useOnboardingWizardStore.getState().togglePainPoint("Repetitive work");
-
+  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Welcome on success, paywall on cancel)", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
       cancel_url?: string;
     } | null = null;
-    let capturedProfileBody: {
-      user_name?: string;
-      user_role?: string;
-      pain_points?: string[];
-    } | null = null;
+    let profileCalled = false;
 
     server.use(
-      http.post("*/api/onboarding/profile", async ({ request }) => {
-        capturedProfileBody =
-          (await request.json()) as typeof capturedProfileBody;
+      http.post("*/api/onboarding/profile", () => {
+        profileCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
       http.post("*/api/credits/subscription", async ({ request }) => {
@@ -182,19 +195,20 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
+    // Success returns to Welcome (step 2) to begin onboarding; cancel returns
+    // to the paywall (step 1).
     expect(capturedTierBody!.success_url).toContain(
-      "/onboarding?step=5&subscription=success",
+      "/onboarding?step=2&subscription=success",
     );
     expect(capturedTierBody!.cancel_url).toContain(
-      "/onboarding?step=4&subscription=cancelled",
+      "/onboarding?step=1&subscription=cancelled",
     );
-    expect(capturedProfileBody).not.toBeNull();
-    expect(capturedProfileBody!.user_name).toBe("Ada Lovelace");
-    expect(capturedProfileBody!.user_role).toBe("Engineer");
-    expect(capturedProfileBody!.pain_points).toEqual(["Repetitive work"]);
+    // Paywall-first: no profile data exists yet, so nothing is POSTed here —
+    // the Preparing step submits the profile at the end of onboarding.
+    expect(profileCalled).toBe(false);
   });
 
-  test("default yearly + selecting Pro forwards billing_cycle=yearly", async () => {
+  test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {
     let capturedTierBody: {
       tier?: string;
       billing_cycle?: string;
@@ -211,6 +225,7 @@ describe("SubscriptionStep", () => {
     );
 
     render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Yearly billing/i }));
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
@@ -278,7 +293,7 @@ describe("SubscriptionStep", () => {
       );
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedPlan).toBeNull();
-      expect(state.currentStep).toBe(4);
+      expect(state.currentStep).toBe(1);
     } finally {
       openSpy.mockRestore();
     }
@@ -306,11 +321,12 @@ describe("SubscriptionStep", () => {
     await waitFor(() => {
       expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     });
-    // Local short-circuit: no Stripe Checkout, no pre-redirect profile POST
-    // (the Preparing step handles submission via useOnboardingPage).
+    // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
+    // step handles submission via useOnboardingPage). Advances from the
+    // paywall (step 1) to Welcome (step 2).
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {

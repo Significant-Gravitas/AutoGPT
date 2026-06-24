@@ -6,9 +6,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.platform_linking.models import WorkspaceArtifact
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
+from .adapters.base import (
+    ChannelType,
+    MessageContext,
+    MessageHistoryEntry,
+    ReferencedConversation,
+)
 from .bot_backend import LinkTokenResult, ResolveResult
 from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
@@ -24,6 +30,7 @@ def _ctx(
     text: str = "hello bot",
     bot_mentioned: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
+    referenced_conversations: tuple[ReferencedConversation, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -36,15 +43,18 @@ def _ctx(
         text=text,
         bot_mentioned=bot_mentioned,
         thread_history=thread_history,
+        referenced_conversations=referenced_conversations,
     )
 
 
 def _adapter() -> MagicMock:
     adapter = MagicMock()
     adapter.chunk_flush_at = 1900
+    adapter.max_attachment_bytes = 25 * 1024 * 1024
     adapter.send_message = AsyncMock()
     adapter.send_reply = AsyncMock()
     adapter.send_link = AsyncMock()
+    adapter.send_file = AsyncMock()
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
     adapter.create_thread = AsyncMock(return_value="thread-new")
@@ -63,6 +73,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
             expires_at="2099-01-01T00:00:00Z",
         )
     )
+    api.fetch_workspace_artifact = AsyncMock(return_value=None)
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -314,7 +325,8 @@ class TestThreadAdoption:
                     MessageHistoryEntry("Alice", "u-1", "I think option A"),
                     MessageHistoryEntry("Bob", "u-2", "Option B is safer"),
                 ),
-            )
+            ),
+            include_thread_history=True,
         )
 
         assert "Recent thread context" in text
@@ -322,6 +334,45 @@ class TestThreadAdoption:
         assert "I think option A" in text
         assert "Current message" in text
         assert "what should we do?" in text
+
+    @pytest.mark.asyncio
+    async def test_channel_mention_enqueues_referenced_conversation(self):
+        # A plain channel @mention (include_thread_history is False here) that
+        # references another conversation must still carry that fetched content
+        # into the enqueued prompt. Regression guard: the handler previously
+        # only rendered referenced conversations when pulling thread history,
+        # so channel mentions silently dropped them.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="channel",
+                    bot_mentioned=True,
+                    text="summarize the linked thread",
+                    referenced_conversations=(
+                        ReferencedConversation(
+                            title="Random Fact About Something",
+                            channel_id="c-1",
+                            messages=(
+                                MessageHistoryEntry("Krz", "u-2", "did you know X"),
+                            ),
+                        ),
+                    ),
+                ),
+                adapter,
+            )
+
+        enqueue.assert_awaited_once()
+        message_text = enqueue.await_args.args[3]
+        assert "[Content of #Random Fact About Something]" in message_text
+        assert "did you know X" in message_text
+        assert "can't open links or access Discord" in message_text
 
 
 class TestBatching:
@@ -704,3 +755,169 @@ class TestThreadNames:
 
     def test_clamp_thread_name_falls_back_when_blank(self):
         assert clamp_thread_name("   ") == "AutoPilot Chat"
+
+
+# ── Workspace artifact extraction & delivery ────────────────────────────
+
+
+class TestDeliverArtifact:
+    @pytest.mark.asyncio
+    async def test_small_file_attaches_inline(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(
+            return_value=WorkspaceArtifact(
+                file_id="abc",
+                filename="server.name",
+                mime_type="image/png",
+                size_bytes=10,
+                content=b"\x89PNG\r\n",
+            )
+        )
+        text = "Here is your result: [chart.png](workspace://abc#image/png)"
+
+        await handler._send_text_and_artifacts(
+            adapter, "target-1", text, _ctx(), "sess-1"
+        )
+
+        adapter.send_message.assert_awaited_once()
+        adapter.send_file.assert_awaited_once()
+        # The adapter's size cap must be forwarded so the backend enforces it.
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-1",
+            file_id="abc",
+            max_bytes=adapter.max_attachment_bytes,
+        )
+        sent_file = adapter.send_file.await_args.kwargs["file"]
+        # The bot uses the LLM's display name as the filename, not the
+        # backend's storage name — that's what the user expects to see.
+        assert sent_file.filename == "chart.png"
+        assert sent_file.content == b"\x89PNG\r\n"
+        adapter.send_link.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_too_large_falls_back_to_link_button(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(return_value=None)
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
+            await handler._send_text_and_artifacts(
+                adapter,
+                "target-1",
+                "[big.zip](workspace://big)",
+                _ctx(),
+                "sess-42",
+            )
+
+        adapter.send_file.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-42",
+            file_id="big",
+            max_bytes=adapter.max_attachment_bytes,
+        )
+        # send_link(target_id, text, link_label=..., link_url=...) — text is
+        # positional arg[1], the URL is a kwarg.
+        assert "big.zip" in adapter.send_link.await_args.args[1]
+        assert "sess-42" in adapter.send_link.await_args.kwargs["link_url"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_failure_falls_back_to_link_button(self):
+        # The backend call could raise (network blip, RPC timeout) — that
+        # must not crash the stream; we still surface the artifact via a
+        # link so the user has a way to grab it.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(
+            side_effect=RuntimeError("rpc down")
+        )
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
+            await handler._send_text_and_artifacts(
+                adapter, "target-1", "[x.png](workspace://x)", _ctx(), "sess-1"
+            )
+
+        adapter.send_file.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-1",
+            file_id="x",
+            max_bytes=adapter.max_attachment_bytes,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_session_id_drops_inline_note(self):
+        # If artifacts somehow arrive before we have a session id, we can't
+        # fetch or build a fallback URL — just tell the user.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+
+        await handler._send_text_and_artifacts(
+            adapter, "target-1", "[x.png](workspace://x)", _ctx(), None
+        )
+
+        handler._api.fetch_workspace_artifact.assert_not_awaited()
+        adapter.send_file.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert "x.png" in adapter.send_message.await_args.args[1]
+
+
+class TestMessageTextReferencedConversations:
+    def test_no_context_returns_bare_text(self):
+        handler = MessageHandler(_api())
+        assert (
+            handler._message_text(_ctx(text="hi"), include_thread_history=False) == "hi"
+        )
+
+    def test_referenced_conversation_is_rendered_with_access_instruction(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="find my mentions",
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="Release v0.6.61",
+                    channel_id="c-1",
+                    messages=(
+                        MessageHistoryEntry("Krz", "u-2", "remember to bump version"),
+                        MessageHistoryEntry("Nick", "u-3", "and tag the release"),
+                    ),
+                ),
+            ),
+        )
+        # include_thread_history=False on purpose: a plain channel @mention must
+        # still surface referenced conversations (the bug this guards against).
+        out = handler._message_text(ctx, include_thread_history=False)
+        assert "[Content of #Release v0.6.61]" in out
+        # Firm instruction so the model answers from the supplied content instead
+        # of claiming it can't access the platform.
+        assert "can't open links or access Discord" in out
+        assert "remember to bump version" in out
+        assert "and tag the release" in out
+        assert "[Current message]\nfind my mentions" in out
+
+    def test_referenced_and_thread_history_both_rendered(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="now",
+            thread_history=(MessageHistoryEntry("Alice", "u-1", "earlier point"),),
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="other-thread",
+                    channel_id="c-9",
+                    messages=(MessageHistoryEntry("Bob", "u-9", "linked content"),),
+                ),
+            ),
+        )
+        out = handler._message_text(ctx, include_thread_history=True)
+        assert "linked content" in out
+        assert "Recent thread context" in out
+        assert "earlier point" in out
+        # Referenced block precedes the immediate thread context.
+        assert out.index("linked content") < out.index("earlier point")

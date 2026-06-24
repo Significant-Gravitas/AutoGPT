@@ -72,6 +72,17 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
 
+    # Session kind — distinguishes regular chats from dream-pass and
+    # daydream artifacts so the frontend can render them differently
+    # (and so analytics / retention rules can filter them out).
+    # Open enum: future kinds (e.g. ``"daydream"``) can land without a
+    # migration; readers must tolerate unknown values.
+    kind: str = "normal"
+
+    # When ``kind == "dream"``, the originating pass id so the session
+    # links back to the orchestrator run that produced it.
+    dream_pass_id: str | None = None
+
 
 class ChatMessage(BaseModel):
     id: str | None = None

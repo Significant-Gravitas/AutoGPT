@@ -19,13 +19,16 @@ export type SubscriptionPricingExperimentVariant =
 
 interface SubscriptionPricingExperimentConfig {
   billing: BillingCycle;
-  highlightedPlan: HighlightedPlanKey;
+  highlightedPlan: HighlightedPlanKey | null;
   variant: SubscriptionPricingExperimentVariant | "control";
 }
 
+// Control (the flag isn't wired up yet) matches the paywall: monthly billing
+// and no highlighted plan. Each PostHog variant below opts back into a specific
+// billing cycle + highlighted plan when the experiment is live.
 const DEFAULT_EXPERIMENT_CONFIG: SubscriptionPricingExperimentConfig = {
-  billing: "yearly",
-  highlightedPlan: PLAN_KEYS.MAX,
+  billing: "monthly",
+  highlightedPlan: null,
   variant: "control",
 };
 
@@ -75,13 +78,14 @@ export function getSubscriptionPricingExperimentConfig(
 }
 
 export function getSubscriptionPricingExperimentPlans(
-  highlightedPlan: HighlightedPlanKey,
+  highlightedPlan: HighlightedPlanKey | null,
   plans: PlanDef[] = PLANS,
 ) {
   return plans.map((plan) => {
     if (!isPaidExperimentPlan(plan)) return plan;
 
-    const highlighted = plan.key === highlightedPlan;
+    const highlighted =
+      highlightedPlan !== null && plan.key === highlightedPlan;
     return {
       ...plan,
       highlighted,

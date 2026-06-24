@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import {
-  type InfiniteData,
-  keepPreviousData,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
-export type OriginFilter = "all" | "builder" | "autopilot";
+export type OriginFilter = "all" | "uploaded" | "generated";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
@@ -46,7 +42,10 @@ export function useArtifactsPage() {
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
-    placeholderData: keepPreviousData,
+    // No keepPreviousData: switching tabs/search must not flash the previous
+    // filter's files. Without it, an uncached filter shows the loading
+    // skeleton (isLoading) until its real results arrive; a cached filter
+    // still renders instantly from cache.
   });
 
   return {

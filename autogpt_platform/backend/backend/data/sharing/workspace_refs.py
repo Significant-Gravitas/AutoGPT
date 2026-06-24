@@ -24,6 +24,8 @@ All three forms are handled by a single recursive walker.
 import re
 from typing import Any
 
+from pydantic import BaseModel
+
 # Match ``workspace://<id>`` anywhere in a string.  Assistant messages
 # embed these URIs inside markdown (``![chart](workspace://uuid#mime)``)
 # so a whole-string ``startswith`` check used to miss them — the file
@@ -46,6 +48,71 @@ _FILE_ID_RE = re.compile(
     r'(?:file_id=|"file_id"\s*:\s*")'
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
+
+# Full markdown artifact reference the assistant emits — either a file link
+# ``[report.csv](workspace://<id>#text/csv)`` or an image embed
+# ``![chart](workspace://<id>#image/png)`` (the prompt instructs both forms,
+# see ``backend/copilot/prompting.py``). The leading ``!`` is consumed so image
+# embeds don't leave a dangling marker once the link is stripped. Builds on the
+# same ``workspace://<id>`` grammar as ``_WORKSPACE_URI_RE`` above, but also
+# captures the human label and optional ``#mime`` hint — chat-bot delivery needs
+# both to attach the file with a sensible filename.
+_WORKSPACE_ARTIFACT_LINK_RE = re.compile(
+    r"!?\[([^\]]+)\]\(workspace://([a-z0-9-]+)(?:#([^)]*))?\)"
+)
+
+
+class WorkspaceArtifactLink(BaseModel):
+    """A ``[name](workspace://id#mime)`` reference parsed out of assistant text."""
+
+    display_name: str
+    file_id: str
+    mime_hint: str | None = None
+
+
+def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]:
+    """Pull ``[name](workspace://id#mime)`` markdown links out of *text*.
+
+    Returns the text with those links removed (surrounding whitespace tidied)
+    plus the parsed artifacts in document order. Raw ``workspace://`` URIs are
+    useless to a chat-platform user, so callers strip them here and deliver the
+    referenced file (or a link to it) separately.
+    """
+    artifacts: list[WorkspaceArtifactLink] = []
+
+    def _capture(match: re.Match[str]) -> str:
+        artifacts.append(
+            WorkspaceArtifactLink(
+                display_name=match.group(1).strip(),
+                file_id=match.group(2),
+                mime_hint=match.group(3) or None,
+            )
+        )
+        return ""
+
+    stripped = _WORKSPACE_ARTIFACT_LINK_RE.sub(_capture, text)
+    # Clean up the gaps the removed links leave behind so surrounding prose
+    # still reads naturally.
+    stripped = re.sub(r"[ \t]+\n", "\n", stripped)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip(), artifacts
+
+
+def cut_lands_inside_artifact_link(text: str, cut: int) -> int:
+    """Move *cut* off any artifact link it would bisect, keeping the link whole.
+
+    Splitting a streamed buffer mid-``[name](workspace://...)`` would leave the
+    fragment unrecognisable to :func:`extract_artifact_links`, so the link is
+    kept intact. Normally we pull the cut back to the link's start so the link
+    travels into the remainder — but if the link sits at the very start of the
+    buffer, that yields an empty chunk and stalls the stream (the buffer never
+    advances). In that case we cut at the link's end instead, emitting the whole
+    link as one chunk. Either way the returned cut makes forward progress.
+    """
+    for match in _WORKSPACE_ARTIFACT_LINK_RE.finditer(text):
+        if match.start() < cut < match.end():
+            return match.start() if match.start() > 0 else match.end()
+    return cut
 
 
 def extract_workspace_file_ids(value: Any) -> set[str]:
