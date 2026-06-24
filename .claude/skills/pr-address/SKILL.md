@@ -25,42 +25,101 @@ Understand the **Why / What / How** before addressing comments — you need cont
 gh pr view {N} --json body --jq '.body'
 ```
 
+> If GraphQL is rate-limited, `gh pr view` fails. See [GitHub rate limits](#github-rate-limits) for REST fallbacks.
+
 ## Fetch comments (all sources)
 
 ### 1. Inline review threads — GraphQL (primary source of actionable items)
 
-Use GraphQL to fetch inline threads. It natively exposes `isResolved`, returns threads already grouped with all replies, and paginates via cursor — no manual thread reconstruction needed.
+> ⚠️ **WARNING — PAGINATE ALL PAGES BEFORE ADDRESSING ANYTHING**
+>
+> `reviewThreads(first: 100)` returns at most 100 threads per page AND returns threads **oldest-first**. On a PR with many review cycles (e.g. 373 threads), the oldest 100–200 threads are from past cycles and are **all already resolved**. Filtering client-side with `select(.isResolved == false)` on page 1 therefore yields **0 results** — even though pages 2–4 contain many unresolved threads from recent review cycles.
+>
+> **This is the most common failure mode:** agent fetches page 1, sees 0 unresolved after filtering, stops pagination, reports "done" — while hundreds of unresolved threads sit on later pages.
+>
+> One observed PR had 142 total threads: page 1 returned 0 unresolved (all old/resolved), while pages 2–3 had 111 unresolved. Another with 373 threads across 4 pages also had page 1 entirely resolved.
+>
+> **The rule: ALWAYS paginate to `hasNextPage == false` regardless of the per-page unresolved count. Never stop early because a page returns 0 unresolved.**
+
+**Step 1 — Fetch total count and sanity-check the newest threads:**
 
 ```bash
+# Get total count and the newest 100 threads (last: 100 returns newest-first)
 gh api graphql -f query='
 {
   repository(owner: "Significant-Gravitas", name: "AutoGPT") {
     pullRequest(number: {N}) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          path
-          comments(last: 1) {
-            nodes { databaseId body author { login } createdAt }
+      reviewThreads { totalCount }
+      newest: reviewThreads(last: 100) {
+        nodes { isResolved }
+      }
+    }
+  }
+}' | jq '{ total: .data.repository.pullRequest.reviewThreads.totalCount, newest_unresolved: [.data.repository.pullRequest.newest.nodes[] | select(.isResolved == false)] | length }'
+```
+
+If `total > 100`, you have multiple pages — you **must** paginate all of them regardless of what `newest_unresolved` shows. The `last: 100` check is a sanity signal only; the full loop below is mandatory.
+
+**Step 2 — Collect all unresolved thread IDs across all pages:**
+
+```bash
+# Accumulate all unresolved threads — loop until hasNextPage == false
+CURSOR=""
+ALL_THREADS="[]"
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: {N}) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            isResolved
+            path
+            line
+            comments(last: 1) {
+              nodes { databaseId body author { login } }
+            }
           }
         }
       }
     }
-  }
-}'
+  }")
+  # Append unresolved nodes from this page
+  PAGE_THREADS=$(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)]')
+  ALL_THREADS=$(echo "$ALL_THREADS $PAGE_THREADS" | jq -s 'add')
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+
+# Reverse so newest threads (last pages) are addressed first — GitHub returns oldest-first
+# and the most recent review cycle's comments are the ones blocking approval.
+ALL_THREADS=$(echo "$ALL_THREADS" | jq 'reverse')
+
+echo "Total unresolved threads: $(echo "$ALL_THREADS" | jq 'length')"
+echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[:200]}]'
 ```
 
-If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<endCursor>"` to `reviewThreads(first: 100, after: "...")` and repeat until `hasNextPage` is false.
+**Step 3 — Address every thread in `ALL_THREADS`, then resolve.**
+
+Only after this loop completes (all pages fetched, count confirmed) should you begin making fixes.
+
+> **Why reverse?** GraphQL returns threads oldest-first and exposes no `orderBy` option. A PR with 373 threads has ~4 pages; threads from the latest review cycle land on the last pages. Processing in reverse ensures the newest, most blocking comments are addressed first — the earlier pages mostly contain outdated threads from prior cycles.
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
+
+> If GraphQL is rate-limited, see [GitHub rate limits](#github-rate-limits) for the REST fallback (flat comment list — no thread grouping or `isResolved`).
 
 ### 2. Top-level reviews — REST (MUST paginate)
 
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
 ```
+
+> **Already REST — unaffected by GraphQL rate limits or outages. Continue polling reviews normally even when GraphQL is exhausted.**
 
 **CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-reviewer`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
 
@@ -80,20 +139,71 @@ Two things to extract:
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
 ```
 
+> **Already REST — unaffected by GraphQL rate limits.**
+
 Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`github-actions[bot]`), and author status updates. Scan for non-empty messages from non-bot human reviewers that aren't the PR author — those are the ones that need a response.
 
 ## For each unaddressed comment
 
-Address comments **one at a time**: fix → commit → push → inline reply → next.
+**CRITICAL: The only valid sequence is fix → commit → push → reply → resolve. Never resolve a thread without a real code commit.**
+
+Resolving a thread via `resolveReviewThread` without an actual fix is the most common failure mode — it makes unresolved counts drop without any real change, producing a false "done" signal. If the issue was genuinely a false positive (no code change needed), reply explaining why and then resolve. Otherwise:
+
+Address comments **one at a time**: fix → commit → push → inline reply → resolve.
 
 1. Read the referenced code, make the fix (or reply explaining why it's not needed)
 2. Commit and push the fix
 3. Reply **inline** (not as a new top-level comment) referencing the fixing commit — this is what resolves the conversation for bot reviewers (coderabbitai, sentry):
 
+Use a **markdown commit link** so GitHub renders it as a clickable reference. Always get the full SHA with `git rev-parse HEAD` **after** committing — never copy a SHA from a previous commit or hardcode one:
+
+```bash
+FULL_SHA=$(git rev-parse HEAD)
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies \
+  -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): <description>"
+```
+
 | Comment type | How to reply |
 |---|---|
-| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
-| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
+| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in [abc1234](https://github.com/Significant-Gravitas/AutoGPT/commit/FULL_SHA): <description>"` |
+| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in [abc1234](https://github.com/Significant-Gravitas/AutoGPT/commit/FULL_SHA): <description>"` |
+
+### What counts as a valid resolution
+
+Only two situations justify calling `resolveReviewThread`:
+
+1. **Real code fix**: you changed the code, committed + pushed, and replied with the SHA. The commit diff must actually address the concern — not just touch the same file.
+2. **Genuine false positive**: the reviewer's concern does not apply to this code, and you can give a specific technical reason (e.g. "Not applicable — `sdk_cwd` is pre-validated by `_make_sdk_cwd()` which applies normpath + prefix assertion before reaching this point").
+
+**Anti-patterns that look resolved but aren't — never do these:**
+- `"Accepted, tracked as follow-up"` — a deferral, not a fix. The concern is still open. Do not resolve.
+- `"Acknowledged"` or `"Same as above"` — these are acknowledgements, not fixes. Do not resolve.
+- `"Fixed in abc1234"` where `abc1234` is a commit that doesn't actually change the flagged line/logic — dishonest. Verify `git show abc1234 -- path/to/file` changes the right thing before posting.
+- Resolving without replying — the reviewer never sees what happened.
+
+When in doubt: if a code change is needed, make it. A deferred issue means the thread stays open until the follow-up PR is merged.
+
+## Codecov coverage
+
+Codecov patch target is **80%** on changed lines. Checks are **informational** (not blocking) but should be green.
+
+### Running coverage locally
+
+**Backend** (from `autogpt_platform/backend/`):
+```bash
+poetry run pytest -s -vv --cov=backend --cov-branch --cov-report term-missing
+```
+
+**Frontend** (from `autogpt_platform/frontend/`):
+```bash
+pnpm vitest run --coverage
+```
+
+### When codecov/patch fails
+
+1. Find uncovered files: `git diff --name-only $(gh pr view --json baseRefName --jq '.baseRefName')...HEAD`
+2. For each uncovered file — extract inline logic to `helpers.ts`/`helpers.py` and test those (highest ROI). Colocate tests as `*_test.py` (backend) or `__tests__/*.test.ts` (frontend).
+3. Run coverage locally to verify, commit, push.
 
 ## Format and commit
 
@@ -118,6 +228,22 @@ Then commit and **push immediately** — never batch commits without pushing. Ea
 **Never push empty commits** (`git commit --allow-empty`) to re-trigger CI or bot checks. When a check fails, investigate the root cause (unchecked PR checklist, unaddressed review comments, code issues) and fix those directly. Empty commits add noise to git history.
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
+
+## Coverage
+
+Codecov enforces patch coverage on new/changed lines — new code you write must be tested. Before pushing, verify you haven't left new lines uncovered:
+
+```bash
+cd autogpt_platform/backend
+poetry run pytest --cov=. --cov-report=term-missing {path/to/changed/module}
+```
+
+Look for lines marked `miss` — those are uncovered. Add tests for any new code you wrote as part of addressing comments.
+
+**Rules:**
+- New code you add should have tests
+- Don't remove existing tests when fixing comments
+- If a reviewer asks you to delete code, also delete its tests, but verify coverage hasn't dropped on remaining lines
 
 ## The loop
 
@@ -208,3 +334,162 @@ git push
 ```
 
 5. Restart the polling loop from the top — new commits reset CI status.
+
+## GitHub rate limits
+
+Three distinct rate limits exist — they have different causes, error shapes, and recovery times:
+
+| Error | HTTP code | Cause | Recovery |
+|---|---|---|---|
+| `{"code":"abuse"}` | 403 | Secondary rate limit — too many write operations (comments, mutations) in a short window | Wait **2–3 minutes**. 60s is often not enough. |
+| `{"message":"API rate limit exceeded"}` | 429 | Primary REST rate limit — 5000 calls/hr per user | Wait until `X-RateLimit-Reset` header timestamp |
+| `GraphQL: API rate limit already exceeded for user ID ...` | 403 on stderr, `gh` exits 1 | **GraphQL-specific** per-user limit — distinct from REST's 5000/hr and from the abuse secondary limit. Trips faster than REST because point costs per query. | Wait until the GraphQL window resets (typically ~1 hour from the first call in the window). REST still works — use fallbacks below. |
+
+**Prevention:** Add `sleep 3` between individual thread reply API calls. When posting >20 replies, increase to `sleep 5`.
+
+### Detection
+
+The `gh` CLI surfaces the GraphQL limit on stderr with the exact string `GraphQL: API rate limit already exceeded for user ID <id>` and exits 1 — any `gh api graphql ...` **or** `gh pr view ...` call fails. Check current quota and reset time via the REST endpoint that reports GraphQL quota (this call is REST and still works whether GraphQL is rate-limited OR fully down):
+
+```bash
+gh api rate_limit --jq '.resources.graphql'   # { "limit": 5000, "used": 5000, "remaining": 0, "reset": 1729...}
+# Human-readable reset:
+gh api rate_limit --jq '.resources.graphql.reset' | xargs -I{} date -r {}
+```
+
+Retry when `remaining > 0`. If you need to proceed sooner, sleep 2–5 min and probe again — the limit is per user, not per machine, so other concurrent agents under the same token also consume it.
+
+### What keeps working
+
+When GraphQL is unavailable (rate-limited or outage):
+
+- **Keeps working (REST):** top-level reviews fetch, conversation comments fetch, all inline-comment replies, CI status (`gh pr checks`), and the `gh api rate_limit` probe.
+- **Degraded:** inline thread list — fall back to flat `/pulls/{N}/comments` REST, which drops thread grouping, `isResolved`, and Relay thread IDs. You still get comment bodies and the `databaseId` as `id`, enough to read and reply.
+- **Blocked:** `gh pr view`, the `resolveReviewThread` mutation, and any new `gh api graphql` queries — wait for the quota to reset.
+
+### Fall back to REST
+
+**PR metadata reads** — `gh pr view` uses GraphQL under the hood; use the REST pulls endpoint instead, which returns the full PR object:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.body'           # == --json body
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.base.ref'       # == --json baseRefName
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.mergeable'      # == --json mergeable
+```
+
+Note: REST `mergeable` returns `true|false|null`; GraphQL returns `MERGEABLE|CONFLICTING|UNKNOWN`. The `null` case maps to `UNKNOWN` — treat it the same (still computing; poll again).
+
+**Inline comments (flat list)** — no thread grouping or `isResolved`, but enough to read and reply:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate \
+  | jq '[.[] | {id, path, line, user: .user.login, body: .body[:200], in_reply_to_id}]'
+```
+
+Use this degraded mode to make progress on the fix → reply loop, then return to GraphQL for `resolveReviewThread` once the rate limit resets.
+
+**Replies** — already REST-native (`/pulls/{N}/comments/{ID}/replies`); no change needed, use the same command as the main flow.
+
+**`resolveReviewThread`** — **no REST equivalent**; GitHub does not expose a REST endpoint for thread resolution. Queue the thread IDs needing resolution, wait for the GraphQL limit to reset, then run the resolve mutations in a batch (with `sleep 3` between calls, per the secondary-limit guidance).
+
+### Recovery from secondary rate limit (403 abuse)
+
+1. Stop all API writes immediately
+2. Wait **2 minutes minimum** (not 60s — secondary limits are stricter)
+3. Resume with `sleep 3` between each call
+4. If 403 persists after 2 min, wait another 2 min before retrying
+
+Never batch all replies in a tight loop — always space them out.
+
+## Parallel thread resolution
+
+When a PR has more than 10 unresolved threads, addressing one commit per thread is slow. Use this strategy instead:
+
+### Group by file, batch per commit
+
+1. Sort `ALL_THREADS` by `path` — threads in the same file can share a single commit.
+2. Fix all threads in one file → `git commit` → `git push` → reply to **all** those threads with the same SHA → resolve them all.
+3. Move to the next file group and repeat.
+
+This reduces N commits to (number of files touched), which is usually 3–5 instead of 15–30.
+
+### Posting replies concurrently (for large batches)
+
+For truly independent thread groups (different files, no shared logic), you can post replies in parallel using background subshells — but always space out API writes:
+
+```bash
+# Post replies to a batch of threads concurrently, 3s apart
+(
+  sleep 3
+  gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID1}/replies \
+    -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): ..."
+) &
+(
+  sleep 6
+  gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID2}/replies \
+    -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): ..."
+) &
+wait  # wait for all background replies before resolving
+```
+
+Then resolve sequentially (GraphQL mutations):
+```bash
+for THREAD_ID in "$THREAD1" "$THREAD2" "$THREAD3"; do
+  gh api graphql -f query="mutation { resolveReviewThread(input: {threadId: \"${THREAD_ID}\"}) { thread { isResolved } } }"
+  sleep 3
+done
+```
+
+**Always sleep 3s between individual API writes** — GitHub's secondary rate limit (403) triggers on bursts of >20 writes. Increase to `sleep 5` when posting more than 20 replies in a batch.
+
+## Resolving threads via GraphQL
+
+Use `resolveReviewThread` **only after** the commit is pushed and the reply is posted:
+
+```bash
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREAD_ID"}) { thread { isResolved } } }'
+```
+
+**Never call this mutation before committing the fix.** The orchestrator will verify actual unresolved counts via GraphQL after you output `ORCHESTRATOR:DONE` — false resolutions will be caught and you will be re-briefed.
+
+> `resolveReviewThread` is GraphQL-only — no REST equivalent. If GraphQL is rate-limited, see [GitHub rate limits](#github-rate-limits) for the queue-and-retry flow.
+
+### Verify actual count before outputting ORCHESTRATOR:DONE
+
+Before claiming "0 unresolved threads", always query GitHub directly — don't rely on your own bookkeeping. Paginate all pages — a single `first: 100` query misses threads beyond page 1:
+
+```bash
+# Step 1: get total thread count
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: {N}) {
+      reviewThreads { totalCount }
+    }
+  }
+}' | jq '.data.repository.pullRequest.reviewThreads.totalCount'
+
+# Step 2: paginate all pages, count truly unresolved
+CURSOR=""; UNRESOLVED=0
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: {N}) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes { isResolved }
+        }
+      }
+    }
+  }")
+  UNRESOLVED=$(( UNRESOLVED + $(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length') ))
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+echo "Unresolved threads: $UNRESOLVED"
+```
+
+Only output `ORCHESTRATOR:DONE` after this loop reports 0.

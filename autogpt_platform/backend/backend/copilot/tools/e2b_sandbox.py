@@ -31,14 +31,22 @@ The sandbox_id is stored in Redis.  The same key doubles as a creation lock:
 a ``"creating"`` sentinel value is written with a short TTL while a new sandbox
 is being provisioned, preventing duplicate creation under concurrent requests.
 
-E2B project-level "paused sandbox lifetime" should be set to match
-``_SANDBOX_ID_TTL`` (48 h) so orphaned paused sandboxes are auto-killed before
-the Redis key expires.
+Sandbox lifetime
+----------------
+E2B assigns each sandbox an absolute ``end_at`` timestamp at create time:
+``end_at = now + timeout``.  Pausing does NOT extend ``end_at``; only
+``connect()`` extends it (by ``timeout`` seconds from the moment of reconnect).
+Active sessions therefore stay alive as long as turns arrive within the timeout
+window.  Orphaned sandboxes (e.g. leaked by a failed create retry) are paused
+(not killed) at ``end_at`` under the default ``on_timeout="pause"`` lifecycle;
+they persist until explicitly killed or until E2B's platform-level cleanup
+applies (30-day limit during beta).
 """
 
 import asyncio
 import contextlib
 import logging
+import math
 from typing import Any, Awaitable, Callable, Literal
 
 from e2b import AsyncSandbox, SandboxLifecycle
@@ -50,11 +58,29 @@ logger = logging.getLogger(__name__)
 _SANDBOX_KEY_PREFIX = "copilot:e2b:sandbox:"
 _CREATING_SENTINEL = "creating"
 
+# Per-attempt timeout for AsyncSandbox.create().  E2B normally provisions a
+# sandbox in 5-15 s; 30 s gives generous headroom while ensuring a slow/hung
+# E2B API call fails fast rather than blocking an executor goroutine for hours.
+_SANDBOX_CREATE_TIMEOUT_SECONDS = 30
+
+# Number of creation attempts before giving up.  Three attempts with 1 s / 2 s
+# backoff means the worst-case wait is ~93 s (30+1+30+2+30) — far better than
+# the indefinite hang that caused the original incident.
+_SANDBOX_CREATE_MAX_RETRIES = 3
+
 # Short TTL for the "creating" sentinel — if the process dies mid-creation the
 # lock auto-expires so other callers are not blocked forever.
-_CREATION_LOCK_TTL = 60  # seconds
+# Must be ≥ worst-case retry time: _SANDBOX_CREATE_MAX_RETRIES ×
+# _SANDBOX_CREATE_TIMEOUT_SECONDS + inter-retry backoff ≈ 93 s → 120 s.
+_CREATION_LOCK_TTL = 120  # seconds
 
-_MAX_WAIT_ATTEMPTS = 20  # 20 × 0.5 s = 10 s max wait
+# Wait interval for followers polling the "creating" sentinel.
+_WAIT_INTERVAL_SECONDS = 0.5
+
+# Derive follower budget from the lock TTL so it automatically tracks future
+# TTL changes.  Add a 20% safety margin to handle slight clock drift / late
+# sentinel expiry.  Result: ceil(120 / 0.5 * 1.2) = 288 iterations ≈ 144 s.
+_MAX_WAIT_ATTEMPTS = math.ceil(_CREATION_LOCK_TTL / _WAIT_INTERVAL_SECONDS * 1.2)
 
 # Timeout for E2B API calls (pause/kill) — short because these are control-plane
 # operations; if the sandbox is unreachable, fail fast and retry on the next turn.
@@ -145,7 +171,7 @@ async def get_or_create_sandbox(
 
         if value == _CREATING_SENTINEL:
             # Another coroutine is creating — wait for it to finish.
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
             continue
 
         # No sandbox and no active creation — atomically claim the creation slot.
@@ -157,25 +183,79 @@ async def get_or_create_sandbox(
             await asyncio.sleep(0.1)
             continue
 
-        # We hold the slot — create the sandbox.
+        # We hold the slot — create the sandbox with per-attempt timeout and
+        # retry.  The sentinel remains held throughout so concurrent callers
+        # for the same session wait rather than racing to create duplicates.
+        sandbox: AsyncSandbox | None = None
         try:
             lifecycle = SandboxLifecycle(
                 on_timeout=on_timeout,
                 auto_resume=on_timeout == "pause",
             )
-            sandbox = await AsyncSandbox.create(
-                template=template,
-                api_key=api_key,
-                timeout=timeout,
-                lifecycle=lifecycle,
-            )
+            # Note: asyncio.wait_for() only cancels the client-side wait;
+            # E2B may complete provisioning server-side after a timeout.
+            # Since AsyncSandbox.create() returns no sandbox_id before
+            # completion, recovery via connect() is not possible and each
+            # timed-out attempt may leak a sandbox.  Under the default
+            # on_timeout="pause" lifecycle, leaked orphans are paused (not
+            # killed) at end_at and persist until explicitly cleaned up.
+            # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
+            # leak per incident.
+            last_exc: Exception | None = None
+            for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
+                try:
+                    sandbox = await asyncio.wait_for(
+                        AsyncSandbox.create(
+                            template=template,
+                            api_key=api_key,
+                            timeout=timeout,
+                            lifecycle=lifecycle,
+                        ),
+                        timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
+                    )
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning(
+                        "[E2B] Sandbox creation attempt %d/%d failed for session %.12s: %s",
+                        attempt,
+                        _SANDBOX_CREATE_MAX_RETRIES,
+                        session_id,
+                        exc,
+                    )
+                    if attempt < _SANDBOX_CREATE_MAX_RETRIES:
+                        await asyncio.sleep(2 ** (attempt - 1))  # 1 s, 2 s
+
+            if last_exc is not None:
+                raise last_exc
+
+            assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
             try:
                 await _set_stored_sandbox_id(session_id, sandbox.sandbox_id)
             except Exception:
                 # Redis save failed — kill the sandbox to avoid leaking it.
                 with contextlib.suppress(Exception):
-                    await sandbox.kill()
+                    await asyncio.wait_for(
+                        sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
+                    )
                 raise
+        except asyncio.CancelledError:
+            # Task cancelled during creation — release the slot so followers
+            # are not blocked for the full TTL (120 s).  CancelledError inherits
+            # from BaseException, not Exception, so it is not caught above.
+            # Kill the sandbox if it was already created to avoid leaking it
+            # (can happen when cancellation fires during _set_stored_sandbox_id).
+            # Suppress BaseException (including a second CancelledError) so a
+            # re-entrant cancellation during cleanup cannot skip the redis.delete.
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await redis.delete(key)
+            if sandbox is not None:
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await asyncio.wait_for(
+                        sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
+                    )
+            raise
         except Exception:
             # Release the creation slot so other callers can proceed.
             await redis.delete(key)

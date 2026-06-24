@@ -5,6 +5,10 @@ import uuid
 from pathlib import Path
 
 import pytest
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.config import AppConfig, ConfigBuilder
+from autogpt.app.main import _configure_llm_provider
+
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.local import (
     FileStorage,
@@ -14,23 +18,19 @@ from forge.file_storage.local import (
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.config import AppConfig, ConfigBuilder
-from autogpt.app.main import _configure_llm_provider
-
 pytest_plugins = [
     "tests.integration.agent_factory",
 ]
 
 
 @pytest.fixture()
-def tmp_project_root(tmp_path: Path) -> Path:
+def tmp_workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
 @pytest.fixture()
-def app_data_dir(tmp_project_root: Path) -> Path:
-    dir = tmp_project_root / "data"
+def app_data_dir(tmp_workspace: Path) -> Path:
+    dir = tmp_workspace / ".autogpt"
     dir.mkdir(parents=True, exist_ok=True)
     return dir
 
@@ -46,12 +46,12 @@ def storage(app_data_dir: Path) -> FileStorage:
 
 @pytest.fixture(scope="function")
 def config(
-    tmp_project_root: Path,
+    tmp_workspace: Path,
     app_data_dir: Path,
 ):
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
-    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
+    config = ConfigBuilder.build_config_from_env(workspace=tmp_workspace)
 
     config.app_data_dir = app_data_dir
 
@@ -93,7 +93,6 @@ def agent(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
             allow_fs_access=not config.restrict_to_workspace,
-            use_functions_api=config.openai_functions,
         ),
         history=Agent.default_settings.history.model_copy(deep=True),
     )

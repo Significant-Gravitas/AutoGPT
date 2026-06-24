@@ -1,5 +1,7 @@
 """Shared helpers for chat tools."""
 
+import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -14,17 +16,23 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
+    MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, workspace_db
+from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.auto_credentials import (
+    MissingAutoCredentialsError,
+    acquire_auto_credentials,
+)
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
@@ -48,27 +56,111 @@ logger = logging.getLogger(__name__)
 def get_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract input field info from JSON schema."""
+    """Extract input field info from JSON schema.
+
+    When *input_data* is provided, each field's ``value`` key is populated
+    with the value the CoPilot already supplied — so the frontend can
+    prefill the form instead of showing empty inputs.  Fields marked
+    ``advanced`` in the schema are flagged so the frontend can hide them
+    by default (matching the builder behaviour).
+    """
     if not isinstance(input_schema, dict):
         return []
 
     exclude = exclude_fields or set()
     properties = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
+    provided = input_data or {}
 
-    return [
-        {
+    results: list[dict[str, Any]] = []
+    for name, schema in properties.items():
+        if name in exclude:
+            continue
+        # Pass the schema through verbatim so the frontend's generic custom
+        # field dispatch (keyed on `format` / json_schema_extra) gets every
+        # hint it needs — any block-specific whitelist here would silently
+        # downgrade new picker/widget formats to plain text inputs.
+        entry: dict[str, Any] = {
+            **schema,
             "name": name,
             "title": schema.get("title", name),
             "type": schema.get("type", "string"),
             "description": schema.get("description", ""),
             "required": name in required,
             "default": schema.get("default"),
+            "advanced": schema.get("advanced", False),
         }
-        for name, schema in properties.items()
-        if name not in exclude
-    ]
+        if name in provided:
+            entry["value"] = provided[name]
+        results.append(entry)
+    return results
+
+
+async def _charge_block_credits(
+    _credit_db: Any,
+    *,
+    user_id: str,
+    block_name: str,
+    block_id: str,
+    node_exec_id: str,
+    cost: int,
+    cost_filter: dict[str, Any],
+    synthetic_graph_id: str,
+    synthetic_node_id: str,
+) -> None:
+    """Charge credits for a block execution and log any billing leak.
+
+    Centralised so the normal-path charge and the cancellation-recovery charge
+    (see ``execute_block``'s finally) use the same metadata and the same
+    leak-logging contract.
+    """
+    try:
+        await _credit_db.spend_credits(
+            user_id=user_id,
+            cost=cost,
+            metadata=UsageTransactionMetadata(
+                graph_exec_id=synthetic_graph_id,
+                graph_id=synthetic_graph_id,
+                node_id=synthetic_node_id,
+                node_exec_id=node_exec_id,
+                block_id=block_id,
+                block=block_name,
+                input=cost_filter,
+                reason="copilot_block_execution",
+            ),
+        )
+    except Exception as e:
+        # Block already executed (with possible side effects). Never
+        # return ErrorResponse here — the user received output and
+        # deserves it. Log the billing failure for reconciliation.
+        leak_type = (
+            "INSUFFICIENT_BALANCE"
+            if isinstance(e, InsufficientBalanceError)
+            else "UNEXPECTED_ERROR"
+        )
+        logger.error(
+            "BILLING_LEAK[%s]: block executed but credit charge failed — "
+            "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+            leak_type,
+            user_id,
+            block_id,
+            node_exec_id,
+            cost,
+            e,
+            extra={
+                "json_fields": {
+                    "billing_leak": True,
+                    "leak_type": leak_type,
+                    "user_id": user_id,
+                    "cost": str(cost),
+                }
+            },
+        )
+        # Intentionally swallow. Block already executed with possible side
+        # effects; the caller must still return BlockOutputResponse. The
+        # BILLING_LEAK log above is the signal for reconciliation.
 
 
 async def execute_block(
@@ -81,7 +173,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -100,7 +192,9 @@ async def execute_block(
             # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
             coerce_inputs_to_schema(input_data, block.input_schema)
             outputs: dict[str, list[Any]] = defaultdict(list)
-            async for output_name, output_data in simulate_block(block, input_data):
+            async for output_name, output_data in simulate_block(
+                block, input_data, user_id=user_id
+            ):
                 outputs[output_name].append(output_data)
             # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
             sim_error = outputs.get("error", [])
@@ -114,11 +208,9 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
-                message=(
-                    f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
-                ),
+                message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
@@ -136,6 +228,14 @@ async def execute_block(
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
+        # get_user_by_id raises ValueError on missing user; fall back to UTC
+        # so an orphaned-session block call still runs instead of crashing.
+        try:
+            user_timezone = get_user_timezone_or_utc(
+                (await user_db().get_user_by_id(user_id)).timezone
+            )
+        except ValueError:
+            user_timezone = "UTC"
 
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -150,6 +250,7 @@ async def execute_block(
             workspace_id=workspace.id,
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            user_timezone=user_timezone,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -180,85 +281,182 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-        # Coerce non-matching data types to the expected input schema.
-        coerce_inputs_to_schema(input_data, block.input_schema)
+        # Auto-credentials (picker-populated fields like GoogleDriveFileField).
+        # If the picker hasn't been filled, surface the existing setup-card so
+        # the user can pick inline via FormRenderer's google-drive-picker; the
+        # LLM re-invokes this tool once input_data carries `_credentials_id`.
+        auto_locks: list[Any] = []
+        try:
+            auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+                input_model=block.input_schema,
+                input_data=input_data,
+                creds_manager=creds_manager,
+                user_id=user_id,
+            )
+        except MissingAutoCredentialsError as e:
+            input_schema = block.input_schema.jsonschema()
+            credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+            return SetupRequirementsResponse(
+                message=str(e),
+                session_id=session_id,
+                setup_info=SetupInfo(
+                    agent_id=block_id,
+                    agent_name=block.name,
+                    user_readiness=UserReadiness(
+                        has_all_credentials=True,
+                        missing_credentials={},
+                        ready_to_run=False,
+                    ),
+                    requirements={
+                        "credentials": [],
+                        "inputs": get_inputs_from_schema(
+                            input_schema,
+                            exclude_fields=credentials_fields,
+                            input_data=input_data,
+                        ),
+                        "execution_modes": ["immediate"],
+                    },
+                ),
+                graph_id=None,
+                graph_version=None,
+            )
+        except ValueError as e:
+            return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
 
-        # Pre-execution credit check (courtesy; spend_credits is atomic)
-        cost, cost_filter = block_usage_cost(block, input_data)
-        has_cost = cost > 0
-        _credit_db = credit_db()
-        if has_cost:
-            balance = await _credit_db.get_credits(user_id)
-            if balance < cost:
+        # Everything from here owns the auto-cred locks; wrap so any early
+        # return / exception (coerce, credit check, execution, etc.) still
+        # releases them. Previously a raise between the acquire and the
+        # inner wait_for try could strand locks until Redis TTL.
+        try:
+            exec_kwargs.update(auto_extra_kwargs)
+
+            # Coerce non-matching data types to the expected input schema.
+            coerce_inputs_to_schema(input_data, block.input_schema)
+
+            # Pre-execution credit check (courtesy; spend_credits is atomic).
+            # Pass `use_preflight_estimate=False` because this path bypasses
+            # the executor manager and never runs reconciliation — locking in
+            # the historical-average estimate as the final charge would be
+            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
+            # those types, preserving the pre-#13031 contract.
+            cost, cost_filter = block_usage_cost(
+                block, input_data, use_preflight_estimate=False
+            )
+            has_cost = cost > 0
+            _credit_db = credit_db()
+            if has_cost:
+                balance = await _credit_db.get_credits(user_id)
+                if balance < cost:
+                    return ErrorResponse(
+                        message=(
+                            f"Insufficient credits to run '{block.name}'. "
+                            "Please top up your credits to continue."
+                        ),
+                        session_id=session_id,
+                    )
+
+            # Execute the block under the shared MCP wait cap. A block is
+            # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
+            # MCP handler would block the stream close to the idle timeout.
+            # wait_for cancels the generator on timeout, but the finally below
+            # still settles billing via asyncio.shield — external side effects
+            # may already have landed and the user should be charged for them.
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            charge_handled = False
+            try:
+                await asyncio.wait_for(
+                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                    timeout=MAX_TOOL_WAIT_SECONDS,
+                )
+
+                # Normal (non-cancelled) path. Mark charge_handled BEFORE the
+                # await so an outer cancellation landing mid-charge can't race
+                # the finally block into a double-charge. asyncio.shield keeps
+                # the spend running to completion even if the outer awaitable
+                # is cancelled.
+                if has_cost:
+                    charge_handled = True
+                    await asyncio.shield(
+                        _charge_block_credits(
+                            _credit_db,
+                            user_id=user_id,
+                            block_name=block.name,
+                            block_id=block_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            synthetic_graph_id=synthetic_graph_id,
+                            synthetic_node_id=synthetic_node_id,
+                        )
+                    )
+
+                return BlockOutputResponse(
+                    message=f"Block '{block.name}' executed successfully",
+                    block_id=block_id,
+                    block_name=block.name,
+                    outputs=dict(outputs),
+                    success=True,
+                    session_id=session_id,
+                )
+            except asyncio.TimeoutError:
+                # Structured record of tool-call timeouts (SECRT-2247 part 3).
+                # Grep prod logs for `copilot_tool_timeout` to find tools that
+                # keep hitting the cap — candidates for prompt tuning or
+                # escalation to the async start+poll pattern.
+                logger.warning(
+                    "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+                    "input_keys=%s user=%s session=%s cap_s=%d",
+                    block.name,
+                    block_id,
+                    sorted(input_data.keys()),
+                    user_id,
+                    session_id,
+                    MAX_TOOL_WAIT_SECONDS,
+                )
                 return ErrorResponse(
                     message=(
-                        f"Insufficient credits to run '{block.name}'. "
-                        "Please top up your credits to continue."
+                        f"Block '{block.name}' exceeded the "
+                        f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and "
+                        "was cancelled. Long-running work should go through "
+                        "run_agent (graph executions) or run_sub_session "
+                        "(sub-AutoPilot tasks) — those use async start+poll "
+                        "so nothing blocks the chat stream."
                     ),
                     session_id=session_id,
                 )
-
-        # Execute the block and collect outputs
-        outputs: dict[str, list[Any]] = defaultdict(list)
-        async for output_name, output_data in block.execute(
-            input_data,
-            **exec_kwargs,
-        ):
-            outputs[output_name].append(output_data)
-
-        # Charge credits for block execution
-        if has_cost:
-            try:
-                await _credit_db.spend_credits(
-                    user_id=user_id,
-                    cost=cost,
-                    metadata=UsageTransactionMetadata(
-                        graph_exec_id=synthetic_graph_id,
-                        graph_id=synthetic_graph_id,
-                        node_id=synthetic_node_id,
-                        node_exec_id=node_exec_id,
-                        block_id=block_id,
-                        block=block.name,
-                        input=cost_filter,
-                        reason="copilot_block_execution",
-                    ),
-                )
-            except Exception as e:
-                # Block already executed (with possible side effects). Never
-                # return ErrorResponse here — the user received output and
-                # deserves it. Log the billing failure for reconciliation.
-                leak_type = (
-                    "INSUFFICIENT_BALANCE"
-                    if isinstance(e, InsufficientBalanceError)
-                    else "UNEXPECTED_ERROR"
-                )
-                logger.error(
-                    "BILLING_LEAK[%s]: block executed but credit charge failed — "
-                    "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
-                    leak_type,
-                    user_id,
-                    block_id,
-                    node_exec_id,
-                    cost,
-                    e,
-                    extra={
-                        "json_fields": {
-                            "billing_leak": True,
-                            "leak_type": leak_type,
-                            "user_id": user_id,
-                            "cost": str(cost),
-                        }
-                    },
-                )
-
-        return BlockOutputResponse(
-            message=f"Block '{block.name}' executed successfully",
-            block_id=block_id,
-            block_name=block.name,
-            outputs=dict(outputs),
-            success=True,
-            session_id=session_id,
-        )
+            finally:
+                # Sentry r3105079148: asyncio.wait_for raises CancelledError
+                # into the generator. Normal `except Exception` doesn't catch
+                # it, so without this finally a cancelled block would skip
+                # credit charging entirely while external side effects still
+                # landed. Only run when the normal-path charge was NOT
+                # reached (the flag is set before the await, so any
+                # cancellation during charge still sets it and avoids
+                # double-billing — r3105216985).
+                if has_cost and outputs and not charge_handled:
+                    await asyncio.shield(
+                        _charge_block_credits(
+                            _credit_db,
+                            user_id=user_id,
+                            block_name=block.name,
+                            block_id=block_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            synthetic_graph_id=synthetic_graph_id,
+                            synthetic_node_id=synthetic_node_id,
+                        )
+                    )
+        finally:
+            # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
+            for lock in auto_locks:
+                try:
+                    await lock.release()
+                except Exception as release_exc:
+                    logger.warning(
+                        "Failed to release auto-credential lock: %s",
+                        release_exc,
+                    )
 
     except BlockError as e:
         logger.warning("Block execution failed: %s", e)
@@ -274,6 +472,23 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         )
+
+
+async def _collect_block_outputs(
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    exec_kwargs: dict[str, Any],
+    outputs: dict[str, list[Any]],
+) -> None:
+    """Drive ``block.execute`` and append each emitted pair to *outputs*.
+
+    Extracted so ``asyncio.wait_for`` can wrap exactly the generator-
+    consumption step; callers read ``outputs`` afterwards (including from
+    the cancellation path) to decide whether the block produced enough
+    side-effects to warrant billing.
+    """
+    async for output_name, output_data in block.execute(input_data, **exec_kwargs):
+        outputs[output_name].append(output_data)
 
 
 async def resolve_block_credentials(
@@ -337,7 +552,8 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
-    dry_run: bool = False,
+    dry_run: bool,
+    validate_only: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -393,6 +609,14 @@ async def prepare_block_for_execution(
             session_id=session_id,
         )
 
+    # LLMs sometimes pass `"credentials": null` instead of omitting the field.
+    # Treat null credential fields as absent so the injection path below can
+    # populate them, and so _base.validate_data doesn't reject null against a
+    # required object schema.
+    for field_name in block.input_schema.get_credentials_fields():
+        if field_name in input_data and input_data[field_name] is None:
+            input_data.pop(field_name)
+
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data
     )
@@ -424,31 +648,66 @@ async def prepare_block_for_execution(
             )
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+    required_keys = set(input_schema.get("required", []))
+    required_non_credential_keys = required_keys - credentials_fields
+    provided_input_keys = set(input_data.keys()) - credentials_fields
 
-    if missing_credentials and not dry_run:
+    # Picker-backed required fields that the caller hasn't filled surface the
+    # same setup card as missing OAuth credentials — the frontend renders
+    # the picker inline via FormRenderer's custom-field dispatch. Detecting
+    # it here (instead of only inside execute_block's auto-creds layer)
+    # saves a round trip when the caller omitted the field entirely.
+    picker_fields_missing = [
+        f
+        for f in required_non_credential_keys - provided_input_keys
+        if isinstance(input_schema.get("properties", {}).get(f), dict)
+        and (
+            input_schema["properties"][f].get("format") == "google-drive-picker"
+            or "auto_credentials" in input_schema["properties"][f]
+        )
+    ]
+
+    # validate_only suppresses the setup-card early-return — the caller is
+    # doing static introspection, rendering a picker would violate the
+    # documented no-side-effects contract of that mode.
+    if (missing_credentials or picker_fields_missing) and not (
+        dry_run or validate_only
+    ):
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
         missing_creds_list = list(missing_creds_dict.values())
+        if missing_credentials:
+            message = (
+                f"Block '{block.name}' requires credentials that are not "
+                "configured. Please set up the required credentials before "
+                "running this block."
+            )
+        else:
+            message = (
+                f"Block '{block.name}' needs "
+                f"{', '.join(repr(f) for f in picker_fields_missing)} "
+                "picked before it can run. Select in the card below; the "
+                "tool will re-run automatically."
+            )
         return SetupRequirementsResponse(
-            message=(
-                f"Block '{block.name}' requires credentials that are not configured. "
-                "Please set up the required credentials before running this block."
-            ),
+            message=message,
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=block_id,
                 agent_name=block.name,
                 user_readiness=UserReadiness(
-                    has_all_credentials=False,
+                    has_all_credentials=not missing_credentials,
                     missing_credentials=missing_creds_dict,
                     ready_to_run=False,
                 ),
                 requirements={
                     "credentials": missing_creds_list,
                     "inputs": get_inputs_from_schema(
-                        input_schema, exclude_fields=credentials_fields
+                        input_schema,
+                        exclude_fields=credentials_fields,
+                        input_data=input_data,
                     ),
                     "execution_modes": ["immediate"],
                 },
@@ -456,9 +715,6 @@ async def prepare_block_for_execution(
             graph_id=None,
             graph_version=None,
         )
-    required_keys = set(input_schema.get("required", []))
-    required_non_credential_keys = required_keys - credentials_fields
-    provided_input_keys = set(input_data.keys()) - credentials_fields
 
     valid_fields = set(input_schema.get("properties", {}).keys()) - credentials_fields
     unrecognized_fields = provided_input_keys - valid_fields
@@ -641,3 +897,160 @@ def _resolve_discriminated_credentials(
         resolved[field_name] = effective_field_info
 
     return resolved
+
+
+# ---------------------------------------------------------------------------
+# Agent-generation gate
+# ---------------------------------------------------------------------------
+#
+# Tools that produce or modify agent JSON (create_agent, edit_agent,
+# validate_agent_graph, fix_agent_graph) require the parent agent to have
+# read the agent-building guide first — otherwise it tends to generate
+# JSON that doesn't match the current block schemas, link semantics, or
+# AgentExecutorBlock conventions, then waste turns fixing validation
+# errors.  ``require_guide_read`` returns an ``ErrorResponse`` the caller
+# should short-circuit with, or ``None`` when the guide has been read.
+
+
+_AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+# Mirrors :data:`backend.copilot.tools.skills.DEFAULT_SKILLS` — the
+# agent-building guide now also ships as the canonical default skill,
+# so calling ``read_skill("agent_building_guide")`` satisfies the gate.
+_AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
+
+
+def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
+    """Return True iff the model has called ``read_skill(name=skill_name)``
+    in this session (durable history or current-turn in-flight calls).
+
+    Scans tool-call arguments — :meth:`ChatSession.has_tool_been_called`
+    only checks tool names, but the skill registry path discriminates by
+    argument.  Defensive against malformed JSON / missing args so a
+    badly-formed historical row does not crash the guard.
+
+    Same-turn safety: also inspects in-flight calls (captured via
+    :meth:`ChatSession.get_inflight_tool_call_args`) so a ``read_skill``
+    dispatched earlier in the *current* turn is recognised before its
+    row lands in ``session.messages``.
+    """
+    # In-flight first — newest calls live here and the dispatcher
+    # records argument dicts (not strings) so no JSON parsing needed.
+    for args in session.get_inflight_tool_call_args("read_skill"):
+        if str(args.get("name") or "").strip().lower() == skill_name:
+            return True
+    # Durable scan of past turns + already-flushed current turn.
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            # Defensive: a persisted row may carry ``function`` as ``None`` or
+            # a non-dict if a past producer ever shipped a malformed payload —
+            # treat the flat ``name`` / ``arguments`` shape as the fallback so
+            # the gate path never raises on bad data.
+            fn_raw = tc.get("function")
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or tc.get("name")
+            if name != "read_skill":
+                continue
+            raw_args = fn.get("arguments") if fn else tc.get("arguments")
+            if isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(raw_args, dict):
+                parsed = raw_args
+            else:
+                continue
+            if str(parsed.get("name") or "").strip().lower() == skill_name:
+                return True
+    return False
+
+
+def require_guide_read(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Accepts either the legacy ``get_agent_building_guide`` tool call OR
+    a ``read_skill(name="agent_building_guide")`` call — the skill
+    registry now seeds the same content as the canonical default skill,
+    so either path satisfies the contract.
+
+    Import inline to keep ``helpers.py`` free of tool-response imports.
+    Uses :meth:`ChatSession.has_tool_been_called` which checks both the
+    persisted ``messages`` list (session-wide) and the in-flight
+    announcement buffer — so a guide call dispatched earlier in the
+    *current* turn (before ``session.messages`` flushes at turn end) is
+    recognised too.  Otherwise a second tool in the same turn would
+    re-fire this guard despite the guide having been called — seen on
+    Kimi K2.6 in particular because its aggressive tool-call chaining
+    exercises this path far more than Sonnet does.
+    """
+    # Builder-bound sessions always receive the guide inline via the
+    # per-turn ``<builder_context>`` injection (see
+    # ``backend.copilot.builder_context``), so no tool-call gate is needed —
+    # requiring one would waste a round-trip every turn.
+    if session.metadata.builder_graph_id:
+        return None
+    if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
+        return None
+    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+        return None
+    return ErrorResponse(
+        message=(
+            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
+            f"first, then retry {tool_name}. The guide documents required block ids, "
+            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
+            "usage — generating agent JSON without it produces schema mismatches."
+        ),
+        session_id=session.session_id,
+    )
+
+
+_LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
+
+
+def _has_for_creation_args(args: dict) -> bool:
+    """``for_creation=True`` + non-empty ``goal_summary``: the inputs the
+    hybrid search actually needs. Empty goal_summary soft-fails without
+    running the search, so it must not satisfy the gate."""
+    if args.get("for_creation") is not True:
+        return False
+    goal_summary = args.get("goal_summary")
+    return isinstance(goal_summary, str) and bool(goal_summary.strip())
+
+
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff a satisfying ``find_library_agent`` call exists in the
+    current turn's in-flight buffer. Turn-scoped on purpose: a stale
+    call from an earlier turn's unrelated goal must not satisfy the
+    gate for a new create_agent request."""
+    for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
+        if _has_for_creation_args(args):
+            return True
+    return False
+
+
+def require_library_check(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
+    hasn't been called in this session. Bypassed in builder-bound sessions
+    (already editing a specific agent)."""
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if session.metadata.builder_graph_id:
+        return None
+    if _was_called_for_creation(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Before {tool_name} can run, search the user's library for an "
+            "agent that already does what they want. Call "
+            "`find_library_agent` with `for_creation=true` and "
+            "`goal_summary=<one-sentence description of the user's goal>` "
+            "(default-mode substring search does NOT satisfy this gate). "
+            "If any agents are returned, present them to the user and ask "
+            "whether they want to reuse one. Only retry "
+            f"{tool_name} with `library_check_ack=true` if the user "
+            "explicitly chooses to build a new agent anyway."
+        ),
+        session_id=session.session_id,
+    )

@@ -61,8 +61,9 @@ def _make_block(
     output_schema: dict | None = None,
     categories: list | None = None,
     static_output: bool = False,
+    ui_type: str | None = None,
 ) -> dict:
-    return {
+    block: dict = {
         "id": block_id,
         "name": name,
         "inputSchema": input_schema or {"properties": {}, "required": []},
@@ -70,6 +71,9 @@ def _make_block(
         "categories": categories or [],
         "staticOutput": static_output,
     }
+    if ui_type is not None:
+        block["uiType"] = ui_type
+    return block
 
 
 # ============================================================================
@@ -537,6 +541,112 @@ class TestValidateIoBlocks:
 
         assert v.validate_io_blocks(agent) is False
         assert len(v.errors) == 2
+
+    def test_subclass_input_block_satisfies_requirement(self):
+        # AgentGoogleDriveFileInputBlock is a subclass of AgentInputBlock with
+        # a different block_id, but it still exposes a user-facing input, so
+        # it should satisfy the input-block requirement on its own.
+        v = AgentValidator()
+        drive_input_block = _make_block(
+            block_id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
+            name="AgentGoogleDriveFileInputBlock",
+            ui_type="Input",
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+            ui_type="Output",
+        )
+        drive_node = _make_node(block_id="d3b32f15-6fd7-40e3-be52-e083f51b19a2")
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[drive_node, output_node])
+
+        assert v.validate_io_blocks(agent, [drive_input_block, output_block]) is True
+        assert v.errors == []
+
+    def test_subclass_output_block_satisfies_requirement(self):
+        v = AgentValidator()
+        input_block = _make_block(
+            block_id=AGENT_INPUT_BLOCK_ID,
+            name="AgentInputBlock",
+            ui_type="Input",
+        )
+        custom_output_block = _make_block(
+            block_id="custom-output-id",
+            name="CustomOutputBlock",
+            ui_type="Output",
+        )
+        input_node = _make_node(block_id=AGENT_INPUT_BLOCK_ID)
+        output_node = _make_node(block_id="custom-output-id")
+        agent = _make_agent(nodes=[input_node, output_node])
+
+        assert v.validate_io_blocks(agent, [input_block, custom_output_block]) is True
+        assert v.errors == []
+
+    def test_trigger_block_satisfies_input_requirement(self):
+        # A webhook trigger replaces the input block: a triggered agent is
+        # started by an external event and needs no user-facing input block.
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="webhook-trigger-id",
+            name="GithubTriggerBlock",
+            ui_type="Webhook",
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+            ui_type="Output",
+        )
+        trigger_node = _make_node(block_id="webhook-trigger-id")
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[trigger_node, output_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block, output_block]) is True
+        assert v.errors == []
+
+    def test_manual_webhook_trigger_satisfies_input_requirement(self):
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="manual-webhook-id",
+            name="ManualWebhookTriggerBlock",
+            ui_type="Webhook (manual)",
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+            ui_type="Output",
+        )
+        trigger_node = _make_node(block_id="manual-webhook-id")
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[trigger_node, output_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block, output_block]) is True
+        assert v.errors == []
+
+    def test_trigger_does_not_satisfy_output_requirement(self):
+        # The trigger only covers the input side; an output block is still
+        # required.
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="webhook-trigger-id",
+            name="GithubTriggerBlock",
+            ui_type="Webhook",
+        )
+        trigger_node = _make_node(block_id="webhook-trigger-id")
+        agent = _make_agent(nodes=[trigger_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block]) is False
+        assert len(v.errors) == 1
+        assert "AgentOutputBlock" in v.errors[0]
+
+    def test_missing_input_error_mentions_trigger_alternative(self):
+        v = AgentValidator()
+        node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 1
+        assert "trigger block" in v.errors[0]
 
 
 # ============================================================================

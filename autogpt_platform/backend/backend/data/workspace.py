@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,6 +15,10 @@ from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.util.json import SafeJson
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +204,22 @@ async def get_workspace_file(
     return WorkspaceFile.from_db(file) if file else None
 
 
+async def get_workspace_file_by_id(
+    file_id: str,
+) -> Optional[WorkspaceFile]:
+    """
+    Get a workspace file by ID without workspace scoping.
+
+    Only use this when access has already been validated through another
+    mechanism (e.g. SharedExecutionFile allowlist). For user-facing
+    endpoints, use get_workspace_file() which enforces workspace scoping.
+    """
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "isDeleted": False}
+    )
+    return WorkspaceFile.from_db(file) if file else None
+
+
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,
@@ -230,9 +251,13 @@ async def get_workspace_file_by_path(
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
+    path_not_starts_with: Optional[str] = None,
     include_deleted: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
+    name_contains: Optional[str] = None,
+    metadata_equals: Optional[dict] = None,
+    metadata_not_equals: Optional[dict] = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -240,9 +265,22 @@ async def list_workspace_files(
     Args:
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/documents/")
+        path_not_starts_with: Optional path prefix to *exclude* from results.
+            Generic path filter; the Artifacts origin filter is handled
+            separately via ``metadata_equals``/``metadata_not_equals``.
         include_deleted: Whether to include soft-deleted files
         limit: Maximum number of files to return
         offset: Number of files to skip
+        name_contains: Case-insensitive substring filter applied to
+            ``name``. Used by /search/global so files are findable by
+            literal name match without waiting on async embedding.
+        metadata_equals: Match files whose ``metadata`` JSON equals this
+            object exactly. Used by the Artifacts page "Uploaded" filter
+            (``{"origin": "user-upload"}``).
+        metadata_not_equals: Match files whose ``metadata`` JSON does *not*
+            equal this object. Used by the "Generated" filter. ``metadata``
+            is never SQL NULL (column default ``{}``), so whole-object
+            inequality is null-safe and covers untagged/legacy files.
 
     Returns:
         List of WorkspaceFile instances
@@ -257,6 +295,24 @@ async def list_workspace_files(
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
+
+    not_clause: list[UserWorkspaceFileWhereInput] = []
+    if path_not_starts_with:
+        if not path_not_starts_with.startswith("/"):
+            path_not_starts_with = f"/{path_not_starts_with}"
+        not_clause.append({"path": {"startswith": path_not_starts_with}})
+
+    if metadata_equals is not None:
+        where_clause["metadata"] = {"equals": SafeJson(metadata_equals)}
+
+    if metadata_not_equals is not None:
+        not_clause.append({"metadata": {"equals": SafeJson(metadata_not_equals)}})
+
+    if not_clause:
+        where_clause["NOT"] = not_clause
+
+    if name_contains:
+        where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
@@ -334,6 +390,48 @@ async def soft_delete_workspace_file(
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return WorkspaceFile.from_db(updated) if updated else None
+
+
+async def resolve_workspace_files(
+    user_id: str,
+    file_ids: list[str],
+) -> list[UserWorkspaceFile]:
+    """Return workspace-scoped file records for the given IDs.
+
+    Filters out non-UUID entries, then queries only IDs that belong to the
+    caller's workspace and are not soft-deleted.  Safe to call with
+    untrusted input — invalid IDs and cross-user IDs are silently dropped.
+    """
+    valid_ids = [fid for fid in file_ids if _UUID_RE.fullmatch(fid)]
+    if not valid_ids:
+        return []
+    workspace = await get_or_create_workspace(user_id)
+    return await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": valid_ids},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+
+
+def build_files_block(files: list[UserWorkspaceFile]) -> str:
+    """Return a formatted ``[Attached files]`` block for injection into a message.
+
+    Returns an empty string when *files* is empty so callers can do a simple
+    ``message += build_files_block(files)`` without an extra ``if`` check.
+    """
+    if not files:
+        return ""
+    lines = [
+        f"- {f.name} ({f.mimeType}, {round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
+        for f in files
+    ]
+    return (
+        "\n\n[Attached files]\n"
+        + "\n".join(lines)
+        + "\nUse read_workspace_file with the file_id to access file contents."
+    )
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:

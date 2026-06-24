@@ -33,6 +33,12 @@ export const useRunGraph = () => {
   const clearAllNodeErrors = useNodeStore(
     useShallow((state) => state.clearAllNodeErrors),
   );
+  const cleanNodesStatuses = useNodeStore(
+    useShallow((state) => state.cleanNodesStatuses),
+  );
+  const clearAllNodeExecutionResults = useNodeStore(
+    useShallow((state) => state.clearAllNodeExecutionResults),
+  );
 
   // Tutorial integration - force open dialog when tutorial requests it
   const forceOpenRunInputDialog = useTutorialStore(
@@ -137,6 +143,9 @@ export const useRunGraph = () => {
     if (!dryRun && (hasInputs() || hasCredentials())) {
       setOpenRunInputDialog(true);
     } else {
+      // Clear stale results so the UI shows fresh output from this execution
+      clearAllNodeExecutionResults();
+      cleanNodesStatuses();
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({

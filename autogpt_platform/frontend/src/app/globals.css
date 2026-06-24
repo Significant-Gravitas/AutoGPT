@@ -186,6 +186,14 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   color: white;
 }
 
+/* Markdown headings: rehype-autolink-headings wraps each heading's text in an
+   <a>, which `prose` then underlines and recolors. Keep the anchor clickable
+   but render it as plain heading text. */
+.markdown-output :is(h1, h2, h3, h4, h5, h6) a {
+  text-decoration: none;
+  color: inherit;
+}
+
 /* CoPilot chat table styling — remove left/right borders, increase padding */
 [data-streamdown="table-wrapper"] table {
   border-left: none;

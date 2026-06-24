@@ -614,6 +614,7 @@ export type CredentialsMetaResponse = {
   username?: string;
   host?: string;
   is_system?: boolean;
+  is_managed?: boolean;
 };
 
 /* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
@@ -830,7 +831,7 @@ export interface CreditTransaction {
   transaction_time: Date;
   transaction_type: CreditTransactionType;
   amount: number;
-  running_balance: number;
+  running_balance?: number;
   current_balance: number;
   description: string;
   usage_graph_id: GraphID;

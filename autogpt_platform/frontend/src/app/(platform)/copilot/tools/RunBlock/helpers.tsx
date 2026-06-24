@@ -99,7 +99,19 @@ export function isRunBlockReviewRequiredOutput(
 export function isRunBlockErrorOutput(
   output: RunBlockToolOutput,
 ): output is ErrorResponse {
-  return output.type === ResponseType.error || "error" in output;
+  // Only match actual error responses (type=error), not block outputs that
+  // happen to have an "error" key in their outputs dict.  The old
+  // `"error" in output` check was too broad and caused BlockOutputResponse
+  // to be mis-identified as errors, showing dry-run results as failed.
+  if (output.type === ResponseType.error) return true;
+  // Fallback for untyped payloads: match only if "error" exists at the top
+  // level AND there is no "block_id" (which distinguishes BlockOutputResponse
+  // from ErrorResponse).  Note: `type` is optional in both interfaces, so
+  // correctness here depends on `block_id` presence (always set on
+  // BlockOutputResponse), not on `type` presence.
+  if (!("type" in output) && "error" in output && !("block_id" in output))
+    return true;
+  return false;
 }
 
 function parseOutput(output: unknown): RunBlockToolOutput | null {
@@ -122,7 +134,9 @@ function parseOutput(output: unknown): RunBlockToolOutput | null {
     if ("block_id" in output) return output as BlockOutputResponse;
     if ("block" in output) return output as BlockDetailsResponse;
     if ("setup_info" in output) return output as SetupRequirementsResponse;
-    if ("error" in output || "details" in output)
+    // Only match error responses that have an "error" key but NOT "block_id"
+    // (which would indicate a BlockOutputResponse, not an error).
+    if (("error" in output || "details" in output) && !("block_id" in output))
       return output as ErrorResponse;
   }
   return null;

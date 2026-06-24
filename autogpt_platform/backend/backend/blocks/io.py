@@ -2,6 +2,8 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
+from pydantic import AliasChoices, Field
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -49,11 +51,6 @@ class AgentInputBlock(Block):
         )
         advanced: bool = SchemaField(
             description="Whether to show the input in the advanced section, if the field is not required.",
-            default=False,
-            advanced=True,
-        )
-        secret: bool = SchemaField(
-            description="Whether the input should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -139,11 +136,6 @@ class AgentOutputBlock(Block):
         )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
-            default=False,
-            advanced=True,
-        )
-        secret: bool = SchemaField(
-            description="Whether the output should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -415,7 +407,10 @@ class AgentFileInputBlock(AgentInputBlock):
             title="Default Value",
         )
         base_64: bool = SchemaField(
-            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            description=(
+                "Whether to produce output in base64 format "
+                "(not recommended; you can pass the file reference across blocks)."
+            ),
             default=False,
             advanced=True,
             title="Produce Base64 Output",
@@ -467,7 +462,8 @@ class AgentFileInputBlock(AgentInputBlock):
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values to present a dropdown.
+    A specialized text input block that presents a dropdown selector
+    restricted to a fixed set of values.
     """
 
     class Input(AgentInputBlock.Input):
@@ -477,16 +473,23 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        placeholder_values: list = SchemaField(
-            description="Possible values for the dropdown.",
+        # Use Field() directly (not SchemaField) to pass validation_alias,
+        # which handles backward compat for legacy "placeholder_values" across
+        # all construction paths (model_construct, __init__, model_validate).
+        options: list = Field(
             default_factory=list,
-            advanced=False,
             title="Dropdown Options",
+            description=(
+                "If provided, renders the input as a dropdown selector "
+                "restricted to these values. Leave empty for free-text input."
+            ),
+            validation_alias=AliasChoices("options", "placeholder_values"),
+            json_schema_extra={"advanced": False},
         )
 
         def generate_schema(self):
             schema = super().generate_schema()
-            if possible_values := self.placeholder_values:
+            if possible_values := self.options:
                 schema["enum"] = possible_values
             return schema
 
@@ -504,13 +507,13 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 {
                     "value": "Option A",
                     "name": "dropdown_1",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 2",
                 },
             ],
@@ -727,7 +730,22 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
         )
         super().__init__(
             id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
-            description="Block for selecting a file from Google Drive.",
+            description=(
+                "Agent-level input for a Google Drive file. REQUIRED for any "
+                "agent that reads or writes a Drive file (Sheets, Docs, "
+                "Slides, or generic Drive) — the picker is the only source "
+                "of the _credentials_id needed at runtime, so consuming "
+                "blocks cannot receive a hardcoded ID. Set allowed_views to "
+                'match the consumer: ["SPREADSHEETS"] for Sheets, '
+                '["DOCUMENTS"] for Docs, ["PRESENTATIONS"] for Slides '
+                "(leave default for generic Drive). Wire `result` to the "
+                "consumer block's Drive field and leave that field unset in "
+                "the consumer's input_default. Example link to a Google "
+                'Sheets block: {"source_name": "result", "sink_name": '
+                '"spreadsheet"} (use "document" for Docs, "presentation" '
+                "for Slides). Use one input block per distinct file; "
+                "multiple consumers of the same file share it."
+            ),
             disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentGoogleDriveFileInputBlock.Input,
             output_schema=AgentGoogleDriveFileInputBlock.Output,
