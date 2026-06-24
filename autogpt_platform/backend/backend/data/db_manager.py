@@ -8,18 +8,27 @@ from backend.api.features.library.db import (
     create_folder,
     create_graph_in_library,
     create_library_agent,
+    create_preset,
     delete_folder,
     get_folder_agents_map,
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_preset,
     get_root_agent_summaries,
     list_folders,
     list_library_agents,
+    list_presets,
+    list_trigger_agents,
     move_folder,
     update_folder,
     update_graph_in_library,
     update_library_agent,
+)
+from backend.api.features.library.triggers import (
+    delete_preset_with_webhook_cleanup,
+    setup_triggered_preset,
+    update_triggered_preset,
 )
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -306,6 +315,13 @@ class DatabaseManager(AppService):
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
+    setup_triggered_preset = _(setup_triggered_preset)
+    update_triggered_preset = _(update_triggered_preset)
+    delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
+    get_preset = _(get_preset)
+    create_preset = _(create_preset)
+    list_presets = _(list_presets)
+    list_trigger_agents = _(list_trigger_agents)
 
     create_folder = _(create_folder)
     list_folders = _(list_folders)
@@ -572,6 +588,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
+    setup_triggered_preset = d.setup_triggered_preset
+    update_triggered_preset = d.update_triggered_preset
+    delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup
+    get_preset = d.get_preset
+    create_preset = d.create_preset
+    list_presets = d.list_presets
+    list_trigger_agents = d.list_trigger_agents
 
     # ============ Library Folders ============ #
     create_folder = d.create_folder
