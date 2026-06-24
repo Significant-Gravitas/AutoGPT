@@ -1055,6 +1055,49 @@ class TestAttachments:
         assert captured and len(captured[0]) == MAX_TURN_FILE_IDS
 
     @pytest.mark.asyncio
+    async def test_file_only_thread_with_history_all_rejected_does_not_enqueue(self):
+        # First @-into an unowned thread renders its history into the prompt, so
+        # message_text is non-empty. A file-only message whose uploads all fail
+        # must STILL not enqueue a turn (it would answer old context only).
+        api = _api()
+        api.upload_workspace_files = AsyncMock(
+            return_value=[
+                WorkspaceUploadResult(filename="bad.exe", error="virus_detected")
+            ]
+        )
+        enqueued = []
+
+        async def _recording_stream(*args, **kwargs):
+            enqueued.append(kwargs)
+            if False:
+                yield ""
+
+        api.stream_chat = _recording_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(
+            channel_type="thread",
+            bot_mentioned=True,
+            text="",
+            thread_history=(MessageHistoryEntry("Alice", "u1", "old message"),),
+            attachments=(
+                InboundAttachment(
+                    filename="bad.exe",
+                    mime_type="application/octet-stream",
+                    content=b"x",
+                ),
+            ),
+        )
+
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(ctx, adapter)
+
+        assert enqueued == []  # no turn, despite the thread history
+
+    @pytest.mark.asyncio
     async def test_channel_file_only_all_rejected_unsubscribes_orphan_thread(self):
         # A channel @mention creates+subscribes a thread; if it's file-only and
         # every upload fails, we must unsubscribe the thread we just created so

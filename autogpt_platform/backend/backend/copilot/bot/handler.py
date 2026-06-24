@@ -115,18 +115,21 @@ class MessageHandler:
 
         file_ids = await self._upload_attachments(ctx, adapter, target_id)
 
-        message_text = self._message_text(ctx, include_thread_history)
-        if not message_text.strip():
-            if not file_ids:
-                # File-only message whose every upload was rejected — the user
-                # already got the rejection note, so don't enqueue a blank turn.
-                # If we just created a thread for a channel message, unsubscribe
-                # it so it doesn't linger orphaned-but-subscribed for 7 days.
-                if ctx.channel_type == "channel" and target_id != ctx.channel_id:
-                    await threads.unsubscribe(ctx.platform, target_id)
-                return
-            # File-only message — give AutoPilot a nudge to look at the uploads.
-            message_text = "(see the attached file(s))"
+        # Decide on NEW input only — typed text or a usable upload. Thread
+        # history (folded into the prompt below) is context, not a reason to
+        # respond, so don't let it keep an otherwise-empty turn alive.
+        if not ctx.text.strip() and not file_ids:
+            # The user already got any rejection note. Don't enqueue a blank
+            # turn, and unsubscribe a thread we just created for a channel
+            # message so it doesn't linger orphaned-but-subscribed for 7 days.
+            if ctx.channel_type == "channel" and target_id != ctx.channel_id:
+                await threads.unsubscribe(ctx.platform, target_id)
+            return
+
+        # A file-only message gets a nudge so AutoPilot looks at the uploads
+        # instead of seeing an empty "[Current message]".
+        current_text = ctx.text if ctx.text.strip() else "(see the attached file(s))"
+        message_text = self._message_text(ctx, include_thread_history, current_text)
         await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
 
     async def _upload_attachments(
@@ -182,14 +185,22 @@ class MessageHandler:
 
     # -- Batched streaming --
 
-    def _message_text(self, ctx: MessageContext, include_thread_history: bool) -> str:
+    def _message_text(
+        self,
+        ctx: MessageContext,
+        include_thread_history: bool,
+        current_text: str | None = None,
+    ) -> str:
+        # ``current_text`` overrides ``ctx.text`` as the "current message" body
+        # (e.g. a nudge for a file-only message); defaults to the raw text.
+        text = ctx.text if current_text is None else current_text
         # Referenced conversations (links/@-mentions the user pasted) are always
         # surfaced — that's the whole point of fetching them. Thread history is
         # only included on the first @-into a thread we don't own; a subscribed
         # thread's prior turns already live in the session.
         thread_history = ctx.thread_history if include_thread_history else ()
         if not thread_history and not ctx.referenced_conversations:
-            return ctx.text
+            return text
 
         platform_display = ctx.platform.capitalize()
         lines: list[str] = []
@@ -213,7 +224,7 @@ class MessageHandler:
             lines.append("\n[Recent thread context before this message]")
             for entry in thread_history:
                 lines.append(self._format_history_entry(entry, platform_display))
-        lines.append(f"\n[Current message]\n{ctx.text}")
+        lines.append(f"\n[Current message]\n{text}")
         return "\n".join(lines)
 
     @staticmethod
