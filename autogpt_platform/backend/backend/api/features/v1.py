@@ -16,6 +16,7 @@ from fastapi import (
     Body,
     Depends,
     File,
+    Header,
     HTTPException,
     Path,
     Query,
@@ -88,6 +89,7 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
@@ -125,7 +127,7 @@ from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -503,13 +505,21 @@ async def execute_graph_block(
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
@@ -638,10 +648,22 @@ async def get_user_credits(
     dependencies=[Security(requires_user)],
 )
 async def request_top_up(
-    request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
+    request: RequestTopUp,
+    user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ):
     user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
+    checkout_url = await user_credit_model.top_up_intent(
+        user_id,
+        request.credit_amount,
+        datafast_visitor_id=x_datafast_visitor_id,
+        datafast_session_id=x_datafast_session_id,
+    )
     return {"checkout_url": checkout_url}
 
 
@@ -1006,6 +1028,12 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -1089,6 +1117,8 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
@@ -1263,6 +1293,8 @@ async def update_subscription_tier(
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             billing_cycle=request.billing_cycle,
+            datafast_visitor_id=x_datafast_visitor_id,
+            datafast_session_id=x_datafast_session_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1631,11 +1663,16 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
+    # Validate node credentials (and clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. before_graph_activate may also mutate input_default; those
+    # edits need to be persisted, so it must run before create_graph.
+    graph = await before_graph_activate(graph, user_id=user_id)
+
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    return activated_graph
+    return graph
 
 
 @v1_router.delete(
@@ -1680,18 +1717,33 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. before_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=user_id)
+
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
         )
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
+
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -1727,8 +1779,11 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
+    new_active_graph = await before_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -1744,6 +1799,15 @@ async def set_graph_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=user_id,
+            graph_id=graph_id,
+            new_version=new_active_version,
+        )
 
 
 @v1_router.patch(

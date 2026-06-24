@@ -356,8 +356,27 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
+        "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
+        // Raycast/Linear-style markdown tables — clean borders, subtle row
+        // separators, light header, no outer-corner artifacts.
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border [&_table]:border-zinc-200 [&_table]:text-sm",
+        "[&_thead]:bg-zinc-50",
+        "[&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:text-zinc-600",
+        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:text-zinc-800",
+        "[&_tbody_tr:last-child_td]:border-b-0",
+        "[&_tbody_tr:hover_td]:bg-zinc-50/60",
         className,
       )}
+      components={{
+        // Tables can be wider than the chat column (long URLs, many columns).
+        // Wrap in an overflow-x-auto div so the page never grows past the
+        // chat container — the table scrolls internally instead.
+        table: ({ children, ...tableProps }) => (
+          <div className="my-4 max-w-full overflow-x-auto">
+            <table {...tableProps}>{children}</table>
+          </div>
+        ),
+      }}
       plugins={{ code, mermaid, math, cjk }}
       linkSafety={{
         enabled: true,
