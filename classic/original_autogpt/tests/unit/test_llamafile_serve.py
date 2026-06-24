@@ -3,9 +3,7 @@ from pathlib import Path
 
 import pytest
 
-SERVE_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "llamafile" / "serve.py"
-)
+SERVE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "llamafile" / "serve.py"
 
 
 def _load_serve_module():
