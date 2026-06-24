@@ -7,6 +7,7 @@ import pytest
 
 from backend.blocks.exa.helpers import (
     ContentSettings,
+    ExtrasSettings,
     SummarySettings,
     extract_exa_cost_usd,
     merge_exa_cost,
@@ -150,3 +151,19 @@ def test_summary_settings_backward_compatibility_with_schema_alias():
     # Test that model_validate also works with the old key
     summary3 = SummarySettings.model_validate({"schema": {"type": "object"}})
     assert summary3.output_schema == {"type": "object"}
+
+
+def test_process_contents_settings_omits_zero_extras():
+    """Zero int counts must be omitted, not emitted as ``0`` to the Exa API."""
+    contents = ContentSettings(extras=ExtrasSettings(links=0, image_links=0))
+    result = process_contents_settings(contents)
+
+    assert result["extras"] == {}
+
+
+def test_process_contents_settings_includes_positive_extras():
+    """Positive counts are included and mapped to the API's camelCase keys."""
+    contents = ContentSettings(extras=ExtrasSettings(links=0, image_links=2))
+    result = process_contents_settings(contents)
+
+    assert result["extras"] == {"imageLinks": 2}

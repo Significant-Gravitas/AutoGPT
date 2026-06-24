@@ -194,9 +194,11 @@ class ExaContentsBlock(Block):
             input_data.extras.links > 0 or input_data.extras.image_links > 0
         ):
             extras_dict = {}
-            if input_data.extras.links is not None:
+            # int counts default to 0; 0 means "none requested", so omit it
+            # rather than send ``0`` to the Exa API.
+            if input_data.extras.links > 0:
                 extras_dict["links"] = input_data.extras.links
-            if input_data.extras.image_links is not None:
+            if input_data.extras.image_links > 0:
                 extras_dict["image_links"] = input_data.extras.image_links
             sdk_kwargs["extras"] = extras_dict
 

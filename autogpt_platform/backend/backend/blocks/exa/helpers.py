@@ -398,9 +398,12 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
 
     if contents.extras is not None:
         extras_dict = {}
-        if contents.extras.links is not None:
+        # ``links``/``image_links`` are non-optional int counts (default 0); a
+        # value of 0 means "don't request any", so it must be omitted rather
+        # than sent as ``0`` to the Exa API.
+        if contents.extras.links > 0:
             extras_dict["links"] = contents.extras.links
-        if contents.extras.image_links is not None:
+        if contents.extras.image_links > 0:
             extras_dict["imageLinks"] = contents.extras.image_links
         content_settings["extras"] = extras_dict
 
