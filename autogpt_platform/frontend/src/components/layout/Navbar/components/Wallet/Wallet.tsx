@@ -307,7 +307,8 @@ export function Wallet({ compact = false }: Props) {
           </button>
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 rounded-md bg-violet-400 duration-2000 ease-in-out",
+              "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+              compact ? "rounded-xl" : "rounded-md",
               flash ? "opacity-50 duration-0" : "opacity-0",
             )}
           />

@@ -37,7 +37,9 @@ export function AppSidebarHeader() {
             onClick={toggleSidebar}
             className={cn(
               "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
-              isCollapsed ? "hidden group-hover:flex" : "flex",
+              isCollapsed
+                ? "hidden group-focus-within:flex group-hover:flex"
+                : "flex",
             )}
           >
             <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />

@@ -23,6 +23,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import { useRef } from "react";
 import { formatChatDate } from "../../helpers";
 
 interface Session {
@@ -71,6 +72,11 @@ export function RecentChatItem({
   const title = session.title || "Untitled chat";
   const hasPlatformLogo = !!resolvePlatformLogo(session.source_platform);
 
+  // Enter and Escape both blur the input, which would otherwise trigger a
+  // second (or contradictory) submit via onBlur. This flag lets onBlur skip
+  // the submit when the key handler already resolved the edit.
+  const skipBlurSubmitRef = useRef(false);
+
   if (isEditing) {
     return (
       <SidebarMenuItem>
@@ -80,10 +86,25 @@ export function RecentChatItem({
           value={editingTitle}
           onChange={(e) => onEditingTitleChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onSubmitRename(session.id);
-            if (e.key === "Escape") onCancelRename();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              skipBlurSubmitRef.current = true;
+              onSubmitRename(session.id);
+              e.currentTarget.blur();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              skipBlurSubmitRef.current = true;
+              onCancelRename();
+              e.currentTarget.blur();
+            }
           }}
-          onBlur={() => onSubmitRename(session.id)}
+          onBlur={() => {
+            if (skipBlurSubmitRef.current) {
+              skipBlurSubmitRef.current = false;
+              return;
+            }
+            onSubmitRename(session.id);
+          }}
           className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
         />
       </SidebarMenuItem>

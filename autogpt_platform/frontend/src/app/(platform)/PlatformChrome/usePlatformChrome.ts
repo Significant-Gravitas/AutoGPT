@@ -20,9 +20,10 @@ export function usePlatformChrome() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const isExcludedRoute = NEW_LAYOUT_EXCLUDED_PREFIXES.some((prefix) =>
-    pathname?.startsWith(prefix),
-  );
+  const isExcludedRoute = NEW_LAYOUT_EXCLUDED_PREFIXES.some((prefix) => {
+    if (!pathname) return false;
+    return pathname === prefix || pathname.startsWith(`${prefix}/`);
+  });
 
   return {
     showNewLayout: isMounted && isNewLayoutEnabled && !isExcludedRoute,

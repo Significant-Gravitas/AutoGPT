@@ -6,6 +6,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
@@ -41,7 +42,10 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
+  // hidden in lockstep with the layout swap — avoids a one-frame flash where
+  // the classic shell renders without its sidebar before the new layout mounts.
+  const { showNewLayout } = usePlatformChrome();
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -68,7 +72,7 @@ export function CopilotPage() {
       }}
       className="min-h-0"
     >
-      {!isMobile && !isNewLayoutEnabled && <ChatSidebar />}
+      {!isMobile && !showNewLayout && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}

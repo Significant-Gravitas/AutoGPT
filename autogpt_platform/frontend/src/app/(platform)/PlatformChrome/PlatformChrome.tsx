@@ -17,7 +17,9 @@ import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { usePlatformChrome } from "./usePlatformChrome";
 
-type Props = { children: ReactNode };
+interface Props {
+  children: ReactNode;
+}
 
 export function PlatformChrome({ children }: Props) {
   const { showNewLayout } = usePlatformChrome();
