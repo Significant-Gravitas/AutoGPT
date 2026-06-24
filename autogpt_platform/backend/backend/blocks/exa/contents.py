@@ -165,18 +165,18 @@ class ExaContentsBlock(Block):
             sdk_kwargs["highlights"] = highlights_dict
 
         # Handle summary - only include if modified from defaults
-        if input_data.summary and (
+        if input_data.summary is not None and (
             input_data.summary.query is not None
-            or input_data.summary.schema is not None
+            or input_data.summary.output_schema is not None
         ):
             summary_dict = {}
-            if input_data.summary.query:
+            if input_data.summary.query is not None:
                 summary_dict["query"] = input_data.summary.query
-            if input_data.summary.schema:
-                summary_dict["schema"] = input_data.summary.schema
+            if input_data.summary.output_schema is not None:
+                summary_dict["schema"] = input_data.summary.output_schema
             sdk_kwargs["summary"] = summary_dict
 
-        if input_data.livecrawl:
+        if input_data.livecrawl is not None:
             sdk_kwargs["livecrawl"] = input_data.livecrawl.value
 
         if input_data.livecrawl_timeout is not None:
@@ -185,17 +185,19 @@ class ExaContentsBlock(Block):
         if input_data.subpages is not None:
             sdk_kwargs["subpages"] = input_data.subpages
 
-        if input_data.subpage_target:
+        if input_data.subpage_target is not None:
             sdk_kwargs["subpage_target"] = input_data.subpage_target
 
         # Handle extras - only include if modified from defaults
-        if input_data.extras and (
+        if input_data.extras is not None and (
             input_data.extras.links > 0 or input_data.extras.image_links > 0
         ):
             extras_dict = {}
-            if input_data.extras.links:
+            # int counts default to 0; 0 means "none requested", so omit it
+            # rather than send ``0`` to the Exa API.
+            if input_data.extras.links > 0:
                 extras_dict["links"] = input_data.extras.links
-            if input_data.extras.image_links:
+            if input_data.extras.image_links > 0:
                 extras_dict["image_links"] = input_data.extras.image_links
             sdk_kwargs["extras"] = extras_dict
 

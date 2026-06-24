@@ -100,6 +100,21 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         )
 
     @classmethod
+    async def verify_signature(
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+    ) -> None:
+        # Telegram sends X-Telegram-Bot-Api-Secret-Token when secret_token was
+        # set in the setWebhook call (we always set it; see _register_webhook).
+        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not secret_header or not hmac.compare_digest(secret_header, webhook.secret):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid or missing X-Telegram-Bot-Api-Secret-Token",
+            )
+
+    @classmethod
     async def validate_payload(
         cls,
         webhook: integrations.Webhook,
@@ -109,20 +124,9 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         """
         Validates incoming Telegram webhook request.
 
-        Telegram sends X-Telegram-Bot-Api-Secret-Token header when secret_token
-        was set in setWebhook call.
-
         Returns:
             tuple: (payload dict, event_type string)
         """
-        # Verify secret token header
-        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if not secret_header or not hmac.compare_digest(secret_header, webhook.secret):
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid or missing X-Telegram-Bot-Api-Secret-Token",
-            )
-
         payload = await request.json()
 
         # Determine event type based on update content

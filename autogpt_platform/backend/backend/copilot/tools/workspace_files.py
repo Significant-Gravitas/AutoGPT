@@ -24,7 +24,7 @@ from backend.util.workspace import WorkspaceManager
 from pydantic import BaseModel
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData
 
 logger = logging.getLogger(__name__)
 
@@ -254,16 +254,6 @@ async def _resolve_file(
             message=f"File not found at path: {path}", session_id=session_id
         )
     return file_info.id, file_info
-
-
-class WorkspaceFileInfoData(BaseModel):
-    """Data model for workspace file information (not a response itself)."""
-
-    file_id: str
-    name: str
-    path: str
-    mime_type: str
-    size_bytes: int
 
 
 class WorkspaceFileListResponse(ToolResponseBase):

@@ -788,6 +788,202 @@ class TestLockedThread:
 
         callback.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_on_message_rewrites_referenced_links_in_text(self):
+        # End-to-end through on_message: a channel @mention linking another
+        # channel attaches that conversation and rewrites the raw link into a
+        # readable #name in the forwarded text.
+        adapter, client = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        ref = _referenced_channel(
+            "general", 111, [_prior(2000, "Krz", "the decision was X")]
+        )
+        client.get_channel.return_value = ref
+
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)  # a normal channel, not a Thread
+        msg.content = "<@1000> read https://discord.com/channels/111/222/333"
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = []
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        assert len(ctx.referenced_conversations) == 1
+        assert ctx.referenced_conversations[0].title == "general"
+        assert "#general" in ctx.text
+        assert "discord.com/channels" not in ctx.text
+
+
+class TestReplyContext:
+    @staticmethod
+    def _replied(content: str, author_name: str = "Bently") -> MagicMock:
+        replied = MagicMock(spec=discord.Message)
+        replied.content = content
+        replied.mentions = []
+        replied.message_snapshots = []
+        replied.author = MagicMock(display_name=author_name)
+        return replied
+
+    @pytest.mark.asyncio
+    async def test_resolve_reply_uses_resolved_message(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fact about space")
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+        assert await adapter._resolve_reply(msg) is replied
+
+    @pytest.mark.asyncio
+    async def test_no_reference_resolves_to_none(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.reference = None
+        assert await adapter._resolve_reply(msg) is None
+
+    @pytest.mark.asyncio
+    async def test_forward_is_not_treated_as_reply(self):
+        # A forward also populates ``reference`` but is handled via snapshots.
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.message_snapshots = [MagicMock()]
+        msg.reference = MagicMock(resolved=self._replied("x"))
+        assert await adapter._resolve_reply(msg) is None
+
+    @pytest.mark.asyncio
+    async def test_fetches_reply_when_not_resolved(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fetched body")
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.fetch_message = AsyncMock(return_value=replied)
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=None, message_id=42)
+        msg.channel = channel
+        assert await adapter._resolve_reply(msg) is replied
+        channel.fetch_message.assert_awaited_once_with(42)
+
+    @pytest.mark.asyncio
+    async def test_with_reply_context_prepends_quoted_message(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+        out = await adapter._with_reply_context(msg, "can you tell me?")
+        assert "[Replying to AutoBoostBot]" in out
+        assert "fact about space" in out
+        assert out.endswith("can you tell me?")
+
+    @pytest.mark.asyncio
+    async def test_with_reply_context_noop_without_reply(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.reference = None
+        assert await adapter._with_reply_context(msg, "hi") == "hi"
+
+    @pytest.mark.asyncio
+    async def test_on_message_includes_replied_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)  # a normal channel, not a Thread
+        msg.content = "<@1000> can you tell me?"
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        assert "fact about space" in ctx.text
+        assert "can you tell me?" in ctx.text
+
+    @pytest.mark.asyncio
+    async def test_links_inside_replied_message_are_not_fetched(self):
+        # A link that only appears in the quoted reply (not the user's own
+        # message) is context, not a request — it must not trigger a fetch or
+        # get rewritten. Guards against scanning the combined text.
+        adapter, client = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied(
+            "see https://discord.com/channels/111/222/333", author_name="Krz"
+        )
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> thanks!"  # no link of its own
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        # No channel history fetched, and the quoted link is left as-is.
+        client.get_channel.assert_not_called()
+        assert ctx.referenced_conversations == ()
+        assert "https://discord.com/channels/111/222/333" in ctx.text
+
+    @pytest.mark.asyncio
+    async def test_links_inside_forwarded_message_are_not_fetched(self):
+        # A link that only appears in a forwarded message is quoted context,
+        # not the user's request — it must not be fetched or rewritten.
+        adapter, client = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> look at this"  # no link of its own
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = [
+            _snapshot("see https://discord.com/channels/111/222/333")
+        ]
+        msg.reference = None
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        client.get_channel.assert_not_called()
+        assert ctx.referenced_conversations == ()
+        assert "[Forwarded message]" in ctx.text
+        assert "https://discord.com/channels/111/222/333" in ctx.text
+
 
 # ── Proactive output (backend → platform) ──────────────────────────────
 
@@ -957,3 +1153,255 @@ class TestProactiveOutput:
 
         assert ref is not None
         assert ref.id == "777"
+
+
+# ── Referenced-conversation fetch ──────────────────────────────────────
+
+
+def _referenced_channel(
+    name: str, guild_id: int, priors: list[MagicMock], *, can_access: bool = True
+) -> MagicMock:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.name = name
+    channel.guild = MagicMock(id=guild_id)
+    channel.history = MagicMock(return_value=_AsyncHistory(priors))
+    perms = MagicMock(view_channel=can_access, read_message_history=can_access)
+    channel.permissions_for = MagicMock(return_value=perms)
+    return channel
+
+
+def _referenced_thread(
+    guild_id: int,
+    priors: list[MagicMock],
+    *,
+    is_private: bool = True,
+    is_member: bool = True,
+    manage_threads: bool = False,
+) -> MagicMock:
+    thread = MagicMock(spec=discord.Thread)
+    thread.name = "secret-thread"
+    thread.guild = MagicMock(id=guild_id)
+    thread.history = MagicMock(return_value=_AsyncHistory(priors))
+    thread.is_private = MagicMock(return_value=is_private)
+    perms = MagicMock(
+        view_channel=True, read_message_history=True, manage_threads=manage_threads
+    )
+    thread.permissions_for = MagicMock(return_value=perms)
+    if is_member:
+        thread.fetch_member = AsyncMock(return_value=MagicMock())
+    else:
+        thread.fetch_member = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "not a member")
+        )
+    return thread
+
+
+def _prior(author_id: int, display_name: str, content: str) -> MagicMock:
+    msg = MagicMock()
+    msg.author = MagicMock(id=author_id, display_name=display_name)
+    msg.content = content
+    msg.mentions = []
+    return msg
+
+
+def _incoming(guild_id: int | None, channel_id: int) -> MagicMock:
+    message = MagicMock()
+    message.channel = MagicMock(id=channel_id)
+    message.author = MagicMock(id=42)
+    if guild_id is None:
+        message.guild = None
+    else:
+        guild = MagicMock(id=guild_id)
+        # By default the requester is a member of the guild; tests override
+        # get_member / channel perms to exercise the access checks.
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        message.guild = guild
+    return message
+
+
+class TestFetchReferencedConversations:
+    @pytest.mark.asyncio
+    async def test_fetches_same_guild_referenced_thread(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel(
+            "Release v0.6.61", 111, [_prior(2000, "Krz", "bump the version")]
+        )
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555),
+            "find my mentions in https://discord.com/channels/111/222/333",
+        )
+
+        assert len(result) == 1
+        assert result[0].title == "Release v0.6.61"
+        assert result[0].channel_id == "222"
+        assert result[0].messages[0].text == "bump the version"
+
+    @pytest.mark.asyncio
+    async def test_uses_message_author_when_member_cache_is_empty(self):
+        # The bot runs without the privileged members intent, so
+        # guild.get_member can return None. message.author is the authoritative
+        # Member for guild messages and must be used instead.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("general", 111, [_prior(1, "A", "hi there")])
+        client.get_channel.return_value = ref
+        message = _incoming(111, 555)
+        message.guild.get_member = MagicMock(return_value=None)  # cache miss
+        message.author = MagicMock(spec=discord.Member, id=42)
+
+        result = await adapter._fetch_referenced_conversations(
+            message, "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "hi there"
+
+    @pytest.mark.asyncio
+    async def test_fetches_specific_message_in_current_channel(self):
+        # A permalink to a specific message in the channel the user is posting
+        # in is a real "read this exact message" request, not redundant context.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("autopilot", 111, [_prior(1, "A", "the answer")])
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 222),  # current channel == the linked channel
+            "https://discord.com/channels/111/222/333",
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "the answer"
+
+    @pytest.mark.asyncio
+    async def test_skips_private_thread_when_requester_not_member(self):
+        # The bot is in the private thread, but the requester isn't — its
+        # content must not leak to them.
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(111, [_prior(1, "A", "secret")], is_member=False)
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_reads_private_thread_when_requester_is_member(self):
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(111, [_prior(1, "A", "secret")], is_member=True)
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
+        assert result[0].messages[0].text == "secret"
+
+    @pytest.mark.asyncio
+    async def test_reads_private_thread_with_manage_threads(self):
+        # manage_threads grants access like it does in the Discord client.
+        adapter, client = _bare_adapter()
+        thread = _referenced_thread(
+            111, [_prior(1, "A", "secret")], is_member=False, manage_threads=True
+        )
+        client.get_channel.return_value = thread
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_cross_guild_reference(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("Other", 999, [_prior(2000, "X", "secret")])
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/999/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_skips_channel_requester_cannot_view(self):
+        # The bot's gateway can read this channel, but the requesting member
+        # can't — its history must not leak to them.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel(
+            "Private", 111, [_prior(2000, "X", "secret")], can_access=False
+        )
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_requester_not_a_member(self):
+        adapter, client = _bare_adapter()
+        message = _incoming(111, 555)
+        message.guild.get_member = MagicMock(return_value=None)
+
+        result = await adapter._fetch_referenced_conversations(
+            message, "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+        client.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_reference_makes_no_fetch(self):
+        adapter, client = _bare_adapter()
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "just a normal message"
+        )
+        assert result == ()
+        client.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dm_with_no_guild_skips(self):
+        adapter, client = _bare_adapter()
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(None, 555), "<#222>"
+        )
+        assert result == ()
+        client.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_non_text_channel(self):
+        # A reference that resolves to e.g. a voice/category channel — not
+        # something we can read history from.
+        adapter, client = _bare_adapter()
+        client.get_channel.return_value = MagicMock()  # not a TextChannel/Thread
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_returns_nothing_when_history_errors(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("Boom", 111, [])
+        ref.history = MagicMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        client.get_channel.return_value = ref
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_skips_channel_with_no_readable_messages(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("Empty", 111, [])
+        client.get_channel.return_value = ref
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+        assert result == ()

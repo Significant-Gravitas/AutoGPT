@@ -15,7 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -731,7 +731,8 @@ class ChatConfig(BaseSettings):
         while ``main_client_credentials`` still routes to OpenRouter (gated on
         ``openrouter_active``) would send direct-Anthropic shape to an
         OpenRouter endpoint.  ``local`` is checked first because its default
-        ``api_key="ollama"`` also satisfies the shape-only ``openrouter_active``.
+        ``api_key`` of ``ollama`` also satisfies the shape-only
+        ``openrouter_active``.
         """
         if self.transport.name == "local":
             return "local"
@@ -1350,17 +1351,16 @@ class ChatConfig(BaseSettings):
         "onboarding": "prompts/onboarding_system.md",
     }
 
-    class Config:
-        """Pydantic config."""
-
-        env_prefix = "CHAT_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = SettingsConfigDict(
+        env_prefix="CHAT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra environment variables
         # Accept both the Python attribute name and the validation_alias when
         # constructing a ``ChatConfig`` directly (e.g. in tests passing
         # ``thinking_standard_model=...``).  Without this, pydantic only
         # accepts the alias names (``CHAT_THINKING_STANDARD_MODEL`` env) and
         # rejects field-name kwargs — breaking ``ChatConfig(field=...)`` in
         # every test that constructs a config.
-        populate_by_name = True
+        populate_by_name=True,
+    )

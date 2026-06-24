@@ -342,6 +342,23 @@ class SubSessionProgressSnapshot(BaseModel):
     )
 
 
+class WorkspaceFileInfoData(BaseModel):
+    """Workspace file metadata (not a response itself).
+
+    Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
+    on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
+    sub-AutoPilot wrote, ``path`` is already session-qualified
+    (``/sessions/<sub_id>/...``) and can be passed straight to
+    ``read_workspace_file(path=...)`` for cross-session retrieval.
+    """
+
+    file_id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
 
@@ -388,6 +405,16 @@ class SubSessionStatusResponse(ToolResponseBase):
     tool_calls: list[dict[str, Any]] | None = Field(
         default=None,
         description="Tool calls made during the sub-AutoPilot run.",
+    )
+    sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
+        default=None,
+        description=(
+            "Persistent workspace files the sub wrote during the run. "
+            "Populated when status=completed and the sub used "
+            "write_workspace_file — lets the parent recover work delivered "
+            "via files rather than inline text. Read each via "
+            "read_workspace_file(path=<read_path>)."
+        ),
     )
     error: str | None = Field(
         default=None,

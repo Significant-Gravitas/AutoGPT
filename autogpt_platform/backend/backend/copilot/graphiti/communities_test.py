@@ -30,6 +30,30 @@ def _free_rebuild_lock():
         yield redis
 
 
+@pytest.fixture(autouse=True)
+def _pin_openrouter_transport():
+    """Pin the chat transport to OpenRouter so the flex-tier path is taken
+    deterministically. ``rebuild_communities_for_user`` only takes the flex
+    branch when ``chat_cfg.transport.supports_flex_tier`` is True, which holds
+    only for the OpenRouter transport. That resolves from
+    ``config.openrouter_active``, which needs a non-empty ``api_key`` — absent
+    on fork-PR CI, where repo secrets (incl. ``OPENAI_API_KEY``) aren't exposed.
+    Without this pin the transport silently drops to ``direct_anthropic`` (no
+    flex), and tests that only patch ``make_flex_graphiti_client`` fall through
+    to the real sync client. The flag-driven sync test patches
+    ``community_rebuild_use_flex_tier`` itself, so it still takes the sync path.
+    """
+    with (
+        patch("backend.copilot.sdk.env.config.use_openrouter", True),
+        patch("backend.copilot.sdk.env.config.api_key", "or-key"),
+        patch(
+            "backend.copilot.sdk.env.config.base_url",
+            "https://openrouter.ai/api/v1",
+        ),
+    ):
+        yield
+
+
 def _neighbor(uuid: str, edge_count: int = 1):
     """Mimic graphiti's Neighbor namedtuple — only attributes touched by LP."""
     return SimpleNamespace(node_uuid=uuid, edge_count=edge_count)
