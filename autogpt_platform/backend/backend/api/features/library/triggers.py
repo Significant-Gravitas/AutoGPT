@@ -46,7 +46,7 @@ async def setup_triggered_preset(
     ingress URL to hand to the user for manual-setup webhooks.
 
     The preset's ``inputs`` hold the regular graph inputs (``constant_inputs``)
-    plus the trigger config nested under a per-node ``_trigger_params_{node_id}``
+    plus the trigger config nested under a per-node ``_node_input_mask_{node_id}``
     key, so a graph can have both input nodes and a trigger node. The executor
     separates the two again (see ``_execute_webhook_preset_trigger``).
 
@@ -86,7 +86,7 @@ async def setup_triggered_preset(
 
     trigger_node_id = trigger_node.id.split("-")[0]
     preset_inputs = dict(constant_inputs or {})
-    preset_inputs[f"_trigger_params_{trigger_node_id}"] = (
+    preset_inputs[f"_node_input_mask_{trigger_node_id}"] = (
         trigger_config_with_credentials
     )
 
@@ -144,7 +144,7 @@ async def update_triggered_preset(
             # Trigger config is nested under a per-node key alongside the regular
             # graph inputs (see setup_triggered_preset).
             trigger_node_id = trigger_node.id.split("-")[0]
-            trigger_config = inputs.get(f"_trigger_params_{trigger_node_id}")
+            trigger_config = inputs.get(f"_node_input_mask_{trigger_node_id}")
             if trigger_config is None:
                 raise InvalidInputError(
                     f"Missing trigger configuration for node {trigger_node.id}"

@@ -725,18 +725,11 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
-        logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
-        return
-    logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
-
-    # Separate trigger inputs from regular graph inputs
-    trigger_node_id = trigger_node.id.split("-")[0]
-    trigger_params_key = f"_trigger_params_{trigger_node_id}"
-
-    # Extract trigger parameters and regular inputs
+    # Separate the trigger node's input mask from the regular graph inputs. The
+    # trigger config is nested under a per-node key (see setup_triggered_preset).
+    node_input_mask_key = f"_node_input_mask_{trigger_node.id.split('-')[0]}"
     graph_inputs = preset.inputs.copy()
-    trigger_inputs = graph_inputs.pop(trigger_params_key, None)
+    trigger_inputs = graph_inputs.pop(node_input_mask_key, None)
     if trigger_inputs is None:
         # We can't run this, so log a warning and skip
         logger.warning(
@@ -744,6 +737,13 @@ async def _execute_webhook_preset_trigger(
             f"#{trigger_node.id}"
         )
         return
+
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
+        logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
+        return
+    logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     # Add webhook payload to trigger inputs
     trigger_inputs["payload"] = payload

@@ -3,7 +3,7 @@
 
   This migration converts existing triggered presets to use the new format where:
   - Regular graph input values are stored as-is in AgentNodeExecutionInputOutput
-  - Trigger-specific parameters are stored under a special key: _trigger_params_{node_prefix}
+  - Trigger-specific parameters are stored under a special key: _node_input_mask_{node_prefix}
 
   This allows graphs to have both trigger blocks and input blocks simultaneously.
 */
@@ -65,7 +65,7 @@ current_inputs AS (
 INSERT INTO "AgentNodeExecutionInputOutput" ("id", "name", "data", "agentPresetId")
 SELECT
     gen_random_uuid()::text,
-    '_trigger_params_' || ci.node_prefix,
+    '_node_input_mask_' || ci.node_prefix,
     jsonb_object_agg(ci.input_name, ci.input_data),
     ci.preset_id
 FROM current_inputs ci
@@ -73,6 +73,6 @@ GROUP BY ci.preset_id, ci.node_prefix;
 
 -- Note: This migration converts ALL existing inputs in triggered presets to trigger parameters
 -- In the new system, regular graph inputs would be stored alongside these trigger parameters
--- but without the special _trigger_params_ prefix
+-- but without the special _node_input_mask_ prefix
 
 COMMIT;
