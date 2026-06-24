@@ -76,6 +76,9 @@ export function useSkillListItem({ skill }: Args) {
     setIsDownloading(true);
     try {
       const res = await readCopilotSkill(skill.name);
+      if (res.status !== 200) {
+        throw new Error(`Failed to download skill (HTTP ${res.status})`);
+      }
       const skillDetail = res.data as CopilotSkillDetail;
       downloadTextFile(`${skill.name}.md`, renderSkillMarkdown(skillDetail));
     } catch (error) {

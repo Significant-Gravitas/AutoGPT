@@ -1489,3 +1489,19 @@ def test_upload_copilot_skill_returns_400_on_validation_error(
 
     response = client.post("/skills", json={"content": _VALID_SKILL_MD})
     assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_400_on_virus_detection(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A virus-scan rejection surfaces as a 400 client error, not a 500."""
+    from backend.api.features.store.exceptions import VirusDetectedError
+
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=VirusDetectedError("nasty")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+    assert "virus scan" in response.json()["detail"]

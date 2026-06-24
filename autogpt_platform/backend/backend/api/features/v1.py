@@ -35,6 +35,7 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
@@ -2569,6 +2570,11 @@ async def upload_copilot_skill(
         )
     except SkillLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except (VirusDetectedError, VirusScanError) as exc:
+        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Skill content rejected by virus scan"
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return CopilotSkillInfo(
