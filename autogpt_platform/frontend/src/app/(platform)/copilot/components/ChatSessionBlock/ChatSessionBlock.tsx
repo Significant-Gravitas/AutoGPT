@@ -64,7 +64,6 @@ export function ChatSessionBlock({
     <div
       className={cn("flex min-w-0 max-w-full items-center gap-2", className)}
     >
-      <ChatOriginIcon sourcePlatform={sourcePlatform} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center">
           <Text
@@ -77,9 +76,12 @@ export function ChatSessionBlock({
             {titleContent || displayTitle}
           </Text>
         </div>
-        <Text variant="small" className="text-neutral-400">
-          {formatDate(updatedAt)}
-        </Text>
+        <div className="flex items-center gap-1.5">
+          <Text variant="small" className="text-neutral-400">
+            {formatDate(updatedAt)}
+          </Text>
+          <ChatOriginIcon sourcePlatform={sourcePlatform} />
+        </div>
       </div>
       {chatStatus === "running" ? (
         <span

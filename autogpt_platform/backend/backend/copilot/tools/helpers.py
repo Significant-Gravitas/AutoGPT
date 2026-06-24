@@ -21,7 +21,7 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, workspace_db
+from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
@@ -32,6 +32,7 @@ from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
@@ -227,6 +228,14 @@ async def execute_block(
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
+        # get_user_by_id raises ValueError on missing user; fall back to UTC
+        # so an orphaned-session block call still runs instead of crashing.
+        try:
+            user_timezone = get_user_timezone_or_utc(
+                (await user_db().get_user_by_id(user_id)).timezone
+            )
+        except ValueError:
+            user_timezone = "UTC"
 
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -241,6 +250,7 @@ async def execute_block(
             workspace_id=workspace.id,
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            user_timezone=user_timezone,
         )
 
         exec_kwargs: dict[str, Any] = {

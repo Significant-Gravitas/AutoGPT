@@ -65,7 +65,29 @@ from backend.copilot.tools import TOOL_REGISTRY
 # extra ~270 chars on CI (env-flagged tool registrations push CI
 # higher than local) carry the LLM-decision-critical copy for
 # "search the library before building new" + "user-confirmed bypass".
-_CHAR_BUDGET = 39_500
+# Bumped 39500 -> 40500 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+_CHAR_BUDGET = 47_000
 
 
 @pytest.fixture(scope="module")
