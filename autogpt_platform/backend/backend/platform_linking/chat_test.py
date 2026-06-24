@@ -297,11 +297,12 @@ class TestUploadChatFile:
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
             await upload_chat_file(self._req(filename="../../etc/passwd"))
-        # The traversal segments must not reach the stored path; only the
-        # sanitized basename does.
-        stored_path = write.await_args.kwargs["path"]
-        assert ".." not in stored_path
-        assert stored_path.endswith("/passwd")
+        # Neither the storage path nor the filename passed to the storage
+        # backend may carry traversal segments — only the sanitized basename.
+        kwargs = write.await_args.kwargs
+        assert ".." not in kwargs["path"]
+        assert kwargs["path"].endswith("/passwd")
+        assert kwargs["filename"] == "passwd"
 
     @pytest.mark.asyncio
     async def test_unlinked_user_raises_not_found(self):
