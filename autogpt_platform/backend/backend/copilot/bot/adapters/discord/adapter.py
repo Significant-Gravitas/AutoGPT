@@ -21,6 +21,7 @@ from ..base import (
     ChannelInfo,
     ChannelType,
     FileAttachment,
+    InboundAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
@@ -54,6 +55,10 @@ _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 MAX_REFERENCED_CONVERSATIONS = 3
 REFERENCED_HISTORY_LIMIT = 200
 REFERENCED_CHAR_BUDGET = 8000
+
+# Cap how many attachments we pull off a single message into the workspace, so
+# a message with dozens of files can't fan out into that many uploads/scans.
+MAX_INBOUND_ATTACHMENTS = 10
 # When a link names a specific message, fetch that message plus a little of the
 # conversation leading up to it (rather than the channel's latest activity).
 REFERENCED_MESSAGE_CONTEXT = 15
@@ -457,8 +462,41 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
+                attachments=await self._extract_attachments(message),
             )
             await self._on_message_callback(ctx, self)
+
+    async def _extract_attachments(
+        self, message: discord.Message
+    ) -> tuple[InboundAttachment, ...]:
+        """Download the user's file attachments so the handler can upload them.
+
+        Bounded by count and the adapter's per-file byte cap; oversized files
+        are skipped (the model still sees the rest of the message). A single
+        failed download is skipped rather than failing the whole turn.
+        """
+        attachments: list[InboundAttachment] = []
+        for attachment in message.attachments[:MAX_INBOUND_ATTACHMENTS]:
+            if attachment.size > self.max_attachment_bytes:
+                logger.info(
+                    "Skipping oversized attachment %s (%d bytes)",
+                    attachment.filename,
+                    attachment.size,
+                )
+                continue
+            try:
+                content = await attachment.read()
+            except (discord.HTTPException, discord.NotFound):
+                logger.warning("Could not download attachment %s", attachment.filename)
+                continue
+            attachments.append(
+                InboundAttachment(
+                    filename=attachment.filename or "file",
+                    mime_type=attachment.content_type or "application/octet-stream",
+                    content=content,
+                )
+            )
+        return tuple(attachments)
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""

@@ -1406,3 +1406,65 @@ class TestFetchReferencedConversations:
             _incoming(111, 555), "https://discord.com/channels/111/222/333"
         )
         assert result == ()
+
+
+# ── Attachment extraction ──────────────────────────────────────────────
+
+
+def _discord_attachment(
+    filename: str, content_type: str | None, size: int, data: bytes = b"x"
+) -> MagicMock:
+    att = MagicMock()
+    att.filename = filename
+    att.content_type = content_type
+    att.size = size
+    att.read = AsyncMock(return_value=data)
+    return att
+
+
+class TestExtractAttachments:
+    @pytest.mark.asyncio
+    async def test_downloads_attachments_with_mime(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("a.png", "image/png", 10, b"png")]
+
+        result = await adapter._extract_attachments(msg)
+
+        assert len(result) == 1
+        assert result[0].filename == "a.png"
+        assert result[0].mime_type == "image/png"
+        assert result[0].content == b"png"
+
+    @pytest.mark.asyncio
+    async def test_skips_oversized_attachment(self):
+        adapter, _ = _bare_adapter()
+        big = adapter.max_attachment_bytes + 1
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("huge.bin", None, big)]
+
+        result = await adapter._extract_attachments(msg)
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_defaults_missing_mime_to_octet_stream(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("data", None, 5)]
+
+        result = await adapter._extract_attachments(msg)
+
+        assert result[0].mime_type == "application/octet-stream"
+
+    @pytest.mark.asyncio
+    async def test_skips_attachment_that_fails_to_download(self):
+        adapter, _ = _bare_adapter()
+        att = _discord_attachment("a.png", "image/png", 10)
+        att.read = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        msg = MagicMock()
+        msg.attachments = [att]
+
+        result = await adapter._extract_attachments(msg)
+
+        assert result == ()

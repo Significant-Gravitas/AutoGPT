@@ -17,6 +17,7 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
+from backend.platform_linking.models import WorkspaceUploadResult
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -55,6 +56,9 @@ class TargetState:
     processing: bool = False
     pending: list[tuple[str, str, str]] = field(default_factory=list)
     # Each entry: (username, user_id, text)
+    # Workspace file IDs uploaded for messages in `pending`, drained together
+    # with them so a batched turn carries every attached file.
+    pending_file_ids: list[str] = field(default_factory=list)
 
 
 class MessageHandler:
@@ -65,7 +69,7 @@ class MessageHandler:
         self._rename_tasks: set[asyncio.Task[None]] = set()
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        if not ctx.text.strip():
+        if not ctx.text.strip() and not ctx.attachments:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -104,8 +108,32 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
+        file_ids = await self._upload_attachments(ctx, adapter, target_id)
+
         message_text = self._message_text(ctx, include_thread_history)
-        await self._enqueue_and_process(ctx, adapter, target_id, message_text)
+        if not message_text.strip() and file_ids:
+            # File-only message — give AutoPilot a nudge to look at the uploads.
+            message_text = "(see the attached file(s))"
+        await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
+
+    async def _upload_attachments(
+        self, ctx: MessageContext, adapter: PlatformAdapter, target_id: str
+    ) -> list[str]:
+        """Upload the user's attachments to the workspace; return the IDs of the
+        ones that succeeded and tell the user about any that were rejected."""
+        if not ctx.attachments:
+            return []
+        results = await self._api.upload_workspace_files(
+            platform=ctx.platform,
+            platform_user_id=ctx.user_id,
+            platform_server_id=ctx.server_id,
+            attachments=ctx.attachments,
+        )
+        file_ids = [r.file_id for r in results if r.file_id]
+        failed = [r for r in results if not r.file_id]
+        if failed:
+            await adapter.send_message(target_id, _format_upload_failures(failed))
+        return file_ids
 
     # -- Target resolution --
 
@@ -180,9 +208,12 @@ class MessageHandler:
         adapter: PlatformAdapter,
         target_id: str,
         message_text: str | None = None,
+        file_ids: list[str] | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
+        if file_ids:
+            state.pending_file_ids.extend(file_ids)
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick
@@ -193,8 +224,12 @@ class MessageHandler:
         try:
             while state.pending:
                 batch = list(state.pending)
+                batch_file_ids = list(state.pending_file_ids)
                 state.pending.clear()
-                await self._stream_batch(batch, ctx, adapter, target_id)
+                state.pending_file_ids.clear()
+                await self._stream_batch(
+                    batch, ctx, adapter, target_id, file_ids=batch_file_ids
+                )
         finally:
             state.processing = False
             # Drop the empty state so the dict doesn't grow unbounded across
@@ -327,6 +362,7 @@ class MessageHandler:
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
+        file_ids: list[str] | None = None,
     ) -> None:
         prefixed = format_batch(batch, ctx.platform)
 
@@ -425,6 +461,7 @@ class MessageHandler:
                 message=prefixed,
                 session_id=active_session_id,
                 platform_server_id=ctx.server_id,
+                file_ids=file_ids,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
@@ -641,6 +678,23 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         raise
     except Exception:
         logger.debug("Typing loop error", exc_info=True)
+
+
+_UPLOAD_ERROR_TEXT: dict[str, str] = {
+    "virus_detected": "failed a virus scan",
+    "scan_unavailable": "couldn't be virus-scanned right now — try again shortly",
+    "rejected": "was too large or would exceed your storage limit",
+    "upload_failed": "couldn't be uploaded",
+}
+
+
+def _format_upload_failures(failed: list[WorkspaceUploadResult]) -> str:
+    """A short note listing which attachments were rejected and why."""
+    lines = ["⚠️ Some files couldn't be attached:"]
+    for result in failed:
+        reason = _UPLOAD_ERROR_TEXT.get(result.error or "", "couldn't be uploaded")
+        lines.append(f"• `{result.filename}` {reason}")
+    return "\n".join(lines)
 
 
 def build_thread_name(text: str, username: str) -> str:

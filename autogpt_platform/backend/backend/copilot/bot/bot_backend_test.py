@@ -18,6 +18,7 @@ from backend.platform_linking.models import (
     LinkTokenResponse,
     Platform,
     ResolveResponse,
+    WorkspaceUploadResult,
 )
 from backend.util.exceptions import (
     DuplicateChatMessageError,
@@ -25,6 +26,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
+from .adapters.base import InboundAttachment
 from .bot_backend import (
     BotBackend,
     BotStreamError,
@@ -403,3 +405,48 @@ class TestIsCorruptedSetupRequirements:
     def test_plain_text_and_dict_outputs_are_not_corrupted(self):
         assert not _is_corrupted_setup_requirements("plain text tool result")
         assert not _is_corrupted_setup_requirements({"type": "setup_requirements"})
+
+
+class TestUploadWorkspaceFiles:
+    @pytest.mark.asyncio
+    async def test_forwards_each_attachment_and_returns_results(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                WorkspaceUploadResult(filename="a.png", file_id="f1"),
+                WorkspaceUploadResult(filename="b.exe", error="virus_detected"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id="g1",
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.exe", mime_type="application/octet-stream", content=b"y"
+                ),
+            ),
+        )
+
+        assert [r.file_id for r in results] == ["f1", None]
+        assert results[1].error == "virus_detected"
+        assert api._client.upload_workspace_file.await_count == 2
+        first = api._client.upload_workspace_file.await_args_list[0].kwargs["request"]
+        assert first.platform == Platform.DISCORD
+        assert first.filename == "a.png"
+        assert first.platform_server_id == "g1"
+
+    @pytest.mark.asyncio
+    async def test_no_attachments_makes_no_calls(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock()
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(),
+        )
+        assert results == []
+        api._client.upload_workspace_file.assert_not_awaited()

@@ -60,6 +60,19 @@ class FileAttachment(BaseModel):
     content: bytes
 
 
+class InboundAttachment(BaseModel):
+    """A file the user attached to an inbound platform message.
+
+    The adapter downloads the bytes from the platform up-front (bounded by the
+    adapter's ``max_attachment_bytes``); the handler then uploads them to the
+    user's workspace so AutoPilot can read them during the turn.
+    """
+
+    filename: str
+    mime_type: str
+    content: bytes
+
+
 class ChannelInfo(BaseModel):
     """A channel the bot can post to, scoped to a server it's connected to.
 
@@ -108,6 +121,9 @@ class MessageContext:
     # Other threads/channels the message linked or @-referenced, fetched by the
     # bot up-front so the model has their content without web-fetching Discord.
     referenced_conversations: tuple[ReferencedConversation, ...] = ()
+    # Files the user attached to this message (bytes already downloaded). The
+    # handler uploads these to the workspace and passes their IDs to the turn.
+    attachments: tuple[InboundAttachment, ...] = ()
 
     @property
     def is_dm(self) -> bool:

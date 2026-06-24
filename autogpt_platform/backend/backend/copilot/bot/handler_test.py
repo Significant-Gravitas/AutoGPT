@@ -6,11 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.platform_linking.models import WorkspaceArtifact
+from backend.platform_linking.models import WorkspaceArtifact, WorkspaceUploadResult
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import (
     ChannelType,
+    InboundAttachment,
     MessageContext,
     MessageHistoryEntry,
     ReferencedConversation,
@@ -31,6 +32,7 @@ def _ctx(
     bot_mentioned: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
     referenced_conversations: tuple[ReferencedConversation, ...] = (),
+    attachments: tuple[InboundAttachment, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -44,6 +46,7 @@ def _ctx(
         bot_mentioned=bot_mentioned,
         thread_history=thread_history,
         referenced_conversations=referenced_conversations,
+        attachments=attachments,
     )
 
 
@@ -74,6 +77,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
         )
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
+    api.upload_workspace_files = AsyncMock(return_value=[])
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -396,7 +400,7 @@ class TestBatching:
 
         stream_calls: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid):
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -417,7 +421,7 @@ class TestBatching:
 
         seen: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid):
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
@@ -921,3 +925,84 @@ class TestMessageTextReferencedConversations:
         assert "earlier point" in out
         # Referenced block precedes the immediate thread context.
         assert out.index("linked content") < out.index("earlier point")
+
+
+class TestAttachments:
+    @staticmethod
+    def _upload_recording_api(results):
+        api = _api()
+        api.upload_workspace_files = AsyncMock(return_value=results)
+        captured: dict = {}
+
+        async def _recording_stream(*args, **kwargs):
+            captured["file_ids"] = kwargs.get("file_ids")
+            if False:
+                yield ""
+
+        api.stream_chat = _recording_stream
+        return api, captured
+
+    @staticmethod
+    def _dm_ctx(text, files):
+        return _ctx(
+            channel_type="dm",
+            server_id=None,
+            channel_id="dm-1",
+            text=text,
+            attachments=tuple(
+                InboundAttachment(filename=n, mime_type=m, content=b"x")
+                for n, m in files
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_uploads_attachments_and_passes_file_ids(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("look at this", [("a.png", "image/png")]), adapter
+        )
+
+        api.upload_workspace_files.assert_awaited_once()
+        assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_failed_upload_is_reported_and_good_files_still_sent(self):
+        results = [
+            WorkspaceUploadResult(filename="good.png", file_id="f1"),
+            WorkspaceUploadResult(filename="bad.exe", error="virus_detected"),
+        ]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx(
+                "files",
+                [("good.png", "image/png"), ("bad.exe", "application/octet-stream")],
+            ),
+            adapter,
+        )
+
+        # The clean file still reaches the turn.
+        assert captured["file_ids"] == ["f1"]
+        # The rejected one is surfaced to the user.
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "bad.exe" in note
+        assert "virus scan" in note
+
+    @pytest.mark.asyncio
+    async def test_file_only_message_is_processed(self):
+        results = [WorkspaceUploadResult(filename="a.pdf", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        # No text, just a file — must not be dropped as an "empty" message.
+        await handler.handle(self._dm_ctx("", [("a.pdf", "application/pdf")]), adapter)
+
+        api.upload_workspace_files.assert_awaited_once()
+        assert captured["file_ids"] == ["f1"]

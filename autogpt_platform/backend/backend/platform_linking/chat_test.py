@@ -217,3 +217,81 @@ class TestListUserChats:
             await list_user_chats(Platform.DISCORD, "pu1", limit=10_000, offset=-50)
 
         mock_get_sessions.assert_awaited_once_with("owner-1", limit=25, offset=0)
+
+
+class TestUploadChatFile:
+    @staticmethod
+    def _req(**overrides):
+        from .models import WorkspaceUploadRequest
+
+        defaults = dict(
+            platform=Platform.DISCORD,
+            platform_user_id="pu1",
+            filename="a.png",
+            mime_type="image/png",
+            content=b"data",
+        )
+        defaults.update(overrides)
+        return WorkspaceUploadRequest(**defaults)
+
+    @staticmethod
+    def _patches(write_file_mock):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        ws_db = MagicMock()
+        ws_db.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+        manager = MagicMock()
+        manager.write_file = write_file_mock
+        return (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.workspace_db", return_value=ws_db),
+            patch(
+                "backend.platform_linking.chat.WorkspaceManager", return_value=manager
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_success_returns_file_id(self):
+        from .chat import upload_chat_file
+
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_chat_file(self._req())
+        assert result.file_id == "file-1"
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_virus_detected_maps_to_error(self):
+        from backend.api.features.store.exceptions import VirusDetectedError
+
+        from .chat import upload_chat_file
+
+        write = AsyncMock(side_effect=VirusDetectedError("EICAR-Test"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_chat_file(self._req())
+        assert result.file_id is None
+        assert result.error == "virus_detected"
+
+    @pytest.mark.asyncio
+    async def test_size_or_quota_maps_to_rejected(self):
+        from .chat import upload_chat_file
+
+        write = AsyncMock(side_effect=ValueError("File too large"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_chat_file(self._req())
+        assert result.error == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_user_raises_not_found(self):
+        from .chat import upload_chat_file
+
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value=None)
+        with patch(
+            "backend.platform_linking.chat.platform_linking_db", return_value=db
+        ):
+            with pytest.raises(NotFoundError):
+                await upload_chat_file(self._req())
