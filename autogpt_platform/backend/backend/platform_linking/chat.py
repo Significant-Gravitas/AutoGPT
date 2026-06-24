@@ -76,6 +76,10 @@ async def upload_chat_file(request: WorkspaceUploadRequest) -> WorkspaceUploadRe
         request.platform_server_id,
         request.platform_user_id,
     )
+    # Strip any directory components a (possibly hostile) client put in the
+    # filename so it can't traverse the workspace path; keep the raw name only
+    # for the user-facing display field.
+    safe_name = request.filename.replace("\\", "/").rsplit("/", 1)[-1] or "file"
     try:
         workspace = await workspace_db().get_or_create_workspace(owner_user_id)
         manager = WorkspaceManager(owner_user_id, workspace.id)
@@ -84,7 +88,7 @@ async def upload_chat_file(request: WorkspaceUploadRequest) -> WorkspaceUploadRe
             filename=request.filename,
             # Unique sub-path so re-uploading a file with the same name (e.g.
             # two ``test.txt``) is a fresh file, not a path conflict.
-            path=f"uploads/{uuid4().hex}/{request.filename}",
+            path=f"uploads/{uuid4().hex}/{safe_name}",
             mime_type=request.mime_type,
             metadata={"origin": "user-upload"},
         )

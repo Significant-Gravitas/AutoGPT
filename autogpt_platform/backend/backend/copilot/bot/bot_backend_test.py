@@ -440,6 +440,35 @@ class TestUploadWorkspaceFiles:
         assert first.platform_server_id == "g1"
 
     @pytest.mark.asyncio
+    async def test_one_upload_failure_does_not_abort_the_rest(self, api: BotBackend):
+        # A transport/RPC failure on one file becomes an upload_failed result;
+        # later files still upload (and the handler never crashes).
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                RuntimeError("connection reset"),
+                WorkspaceUploadResult(filename="b.png", file_id="f2"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.png", mime_type="image/png", content=b"y"
+                ),
+            ),
+        )
+
+        assert results[0].error == "upload_failed"
+        assert results[0].file_id is None
+        assert results[1].file_id == "f2"
+
+    @pytest.mark.asyncio
     async def test_no_attachments_makes_no_calls(self, api: BotBackend):
         api._client.upload_workspace_file = AsyncMock()
         results = await api.upload_workspace_files(

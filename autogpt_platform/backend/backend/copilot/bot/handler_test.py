@@ -1006,3 +1006,21 @@ class TestAttachments:
 
         api.upload_workspace_files.assert_awaited_once()
         assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_file_only_message_with_all_uploads_rejected_does_not_enqueue(self):
+        # Every upload failed → no successful file_ids and no text. The user
+        # already got the rejection note, so we must NOT enqueue a blank turn.
+        results = [WorkspaceUploadResult(filename="bad.exe", error="virus_detected")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("", [("bad.exe", "application/octet-stream")]), adapter
+        )
+
+        # Rejection note sent, but the turn was never started.
+        assert "file_ids" not in captured
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "bad.exe" in note

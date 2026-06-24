@@ -476,6 +476,12 @@ class DiscordAdapter(PlatformAdapter):
         failed download is skipped rather than failing the whole turn.
         """
         attachments: list[InboundAttachment] = []
+        if len(message.attachments) > MAX_INBOUND_ATTACHMENTS:
+            logger.info(
+                "Ignoring %d attachment(s) beyond the per-message limit of %d",
+                len(message.attachments) - MAX_INBOUND_ATTACHMENTS,
+                MAX_INBOUND_ATTACHMENTS,
+            )
         for attachment in message.attachments[:MAX_INBOUND_ATTACHMENTS]:
             if attachment.size > self.max_attachment_bytes:
                 logger.info(

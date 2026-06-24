@@ -111,7 +111,11 @@ class MessageHandler:
         file_ids = await self._upload_attachments(ctx, adapter, target_id)
 
         message_text = self._message_text(ctx, include_thread_history)
-        if not message_text.strip() and file_ids:
+        if not message_text.strip():
+            if not file_ids:
+                # File-only message whose every upload was rejected — the user
+                # already got the rejection note, so don't enqueue a blank turn.
+                return
             # File-only message — give AutoPilot a nudge to look at the uploads.
             message_text = "(see the attached file(s))"
         await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)

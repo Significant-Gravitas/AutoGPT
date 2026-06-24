@@ -337,18 +337,30 @@ class BotBackend:
         platform_enum = Platform(platform.upper())
         results: list[WorkspaceUploadResult] = []
         for attachment in attachments:
-            results.append(
-                await self._client.upload_workspace_file(
-                    request=WorkspaceUploadRequest(
-                        platform=platform_enum,
-                        platform_server_id=platform_server_id,
-                        platform_user_id=platform_user_id,
-                        filename=attachment.filename,
-                        mime_type=attachment.mime_type,
-                        content=attachment.content,
+            # Isolate each upload: a transport/RPC failure (or an unlinked-owner
+            # error) on one file must not abort the rest or crash the handler.
+            try:
+                results.append(
+                    await self._client.upload_workspace_file(
+                        request=WorkspaceUploadRequest(
+                            platform=platform_enum,
+                            platform_server_id=platform_server_id,
+                            platform_user_id=platform_user_id,
+                            filename=attachment.filename,
+                            mime_type=attachment.mime_type,
+                            content=attachment.content,
+                        )
                     )
                 )
-            )
+            except Exception:
+                logger.exception(
+                    "Failed to upload inbound attachment %s", attachment.filename
+                )
+                results.append(
+                    WorkspaceUploadResult(
+                        filename=attachment.filename, error="upload_failed"
+                    )
+                )
         return results
 
     async def fetch_workspace_artifact(

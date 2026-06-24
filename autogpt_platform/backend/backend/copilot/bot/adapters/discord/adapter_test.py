@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    MAX_INBOUND_ATTACHMENTS,
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
@@ -1456,6 +1457,20 @@ class TestExtractAttachments:
         result = await adapter._extract_attachments(msg)
 
         assert result[0].mime_type == "application/octet-stream"
+
+    @pytest.mark.asyncio
+    async def test_caps_attachment_count(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [
+            _discord_attachment(f"f{i}.txt", "text/plain", 5)
+            for i in range(MAX_INBOUND_ATTACHMENTS + 3)
+        ]
+
+        result = await adapter._extract_attachments(msg)
+
+        assert len(result) == MAX_INBOUND_ATTACHMENTS
+        assert result[0].filename == "f0.txt"
 
     @pytest.mark.asyncio
     async def test_skips_attachment_that_fails_to_download(self):

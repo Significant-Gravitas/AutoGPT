@@ -5,10 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .chat import list_user_chats, start_chat_turn
-from .models import BotChatRequest, Platform
+from .chat import list_user_chats, start_chat_turn, upload_chat_file
+from .models import BotChatRequest, Platform, WorkspaceUploadRequest
 
 
 def _request(**overrides) -> BotChatRequest:
@@ -222,8 +223,6 @@ class TestListUserChats:
 class TestUploadChatFile:
     @staticmethod
     def _req(**overrides):
-        from .models import WorkspaceUploadRequest
-
         defaults = dict(
             platform=Platform.DISCORD,
             platform_user_id="pu1",
@@ -252,8 +251,6 @@ class TestUploadChatFile:
 
     @pytest.mark.asyncio
     async def test_success_returns_file_id(self):
-        from .chat import upload_chat_file
-
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
@@ -263,10 +260,6 @@ class TestUploadChatFile:
 
     @pytest.mark.asyncio
     async def test_virus_detected_maps_to_error(self):
-        from backend.api.features.store.exceptions import VirusDetectedError
-
-        from .chat import upload_chat_file
-
         write = AsyncMock(side_effect=VirusDetectedError("EICAR-Test"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
@@ -275,9 +268,15 @@ class TestUploadChatFile:
         assert result.error == "virus_detected"
 
     @pytest.mark.asyncio
-    async def test_size_or_quota_maps_to_rejected(self):
-        from .chat import upload_chat_file
+    async def test_scan_unavailable_maps_to_error(self):
+        write = AsyncMock(side_effect=VirusScanError("clamd down"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_chat_file(self._req())
+        assert result.error == "scan_unavailable"
 
+    @pytest.mark.asyncio
+    async def test_size_or_quota_maps_to_rejected(self):
         write = AsyncMock(side_effect=ValueError("File too large"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
@@ -285,9 +284,27 @@ class TestUploadChatFile:
         assert result.error == "rejected"
 
     @pytest.mark.asyncio
-    async def test_unlinked_user_raises_not_found(self):
-        from .chat import upload_chat_file
+    async def test_unexpected_error_maps_to_upload_failed(self):
+        write = AsyncMock(side_effect=RuntimeError("storage exploded"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_chat_file(self._req())
+        assert result.error == "upload_failed"
 
+    @pytest.mark.asyncio
+    async def test_filename_path_components_are_stripped_from_storage_path(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            await upload_chat_file(self._req(filename="../../etc/passwd"))
+        # The traversal segments must not reach the stored path; only the
+        # sanitized basename does.
+        stored_path = write.await_args.kwargs["path"]
+        assert ".." not in stored_path
+        assert stored_path.endswith("/passwd")
+
+    @pytest.mark.asyncio
+    async def test_unlinked_user_raises_not_found(self):
         db = MagicMock()
         db.find_user_link_owner = AsyncMock(return_value=None)
         with patch(
