@@ -9,7 +9,11 @@ import type { CopilotSkillDetail } from "@/app/api/__generated__/models/copilotS
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { describeSkill, downloadTextFile, renderSkillMarkdown } from "./helpers";
+import {
+  describeSkill,
+  downloadTextFile,
+  renderSkillMarkdown,
+} from "./helpers";
 
 interface Args {
   skill: CopilotSkillInfo;
@@ -73,10 +77,7 @@ export function useSkillListItem({ skill }: Args) {
     try {
       const res = await readCopilotSkill(skill.name);
       const skillDetail = res.data as CopilotSkillDetail;
-      downloadTextFile(
-        `${skill.name}.md`,
-        renderSkillMarkdown(skillDetail),
-      );
+      downloadTextFile(`${skill.name}.md`, renderSkillMarkdown(skillDetail));
     } catch (error) {
       toast({
         title: "Failed to download skill",

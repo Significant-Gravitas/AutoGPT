@@ -256,7 +256,9 @@ describe("SkillsPage", () => {
 
     const input = screen.getByTestId("skill-upload-input");
     const file = new File(
-      ['---\nname: uploaded_skill\ndescription: An uploaded recipe.\n---\n\n# Body\n'],
+      [
+        "---\nname: uploaded_skill\ndescription: An uploaded recipe.\n---\n\n# Body\n",
+      ],
       "uploaded_skill.md",
       { type: "text/markdown" },
     );
@@ -282,9 +284,13 @@ describe("SkillsPage", () => {
     await screen.findByTestId("skills-empty");
 
     const input = screen.getByTestId("skill-upload-input");
-    const file = new File(["---\nname: x\ndescription: y\n---\n\nbody"], "x.md", {
-      type: "text/markdown",
-    });
+    const file = new File(
+      ["---\nname: x\ndescription: y\n---\n\nbody"],
+      "x.md",
+      {
+        type: "text/markdown",
+      },
+    );
     fireEvent.change(input, { target: { files: [file] } });
 
     await vi.waitFor(() => {
