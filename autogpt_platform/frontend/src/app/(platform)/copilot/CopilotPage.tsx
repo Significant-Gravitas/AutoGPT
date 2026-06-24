@@ -64,12 +64,18 @@ export function CopilotPage() {
   return (
     <SidebarProvider
       defaultOpen={true}
-      // Explicit height: `h-full` against <section className="flex-1"> drifts
-      // out of sync with the navbar-driven --preview-banner-height var during
-      // re-renders, clipping the navbar when the sidebar toggles.
-      style={{
-        height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
-      }}
+      // New layout: fill the inset's flex-1 section (its 48px header is already
+      // accounted for by the parent), so don't subtract the old navbar height.
+      // Classic layout: an explicit height is needed because `h-full` against
+      // <section className="flex-1"> drifts out of sync with the navbar-driven
+      // --preview-banner-height var during re-renders, clipping the navbar.
+      style={
+        showNewLayout
+          ? { height: "100%" }
+          : {
+              height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+            }
+      }
       className="min-h-0"
     >
       {!isMobile && !showNewLayout && <ChatSidebar />}

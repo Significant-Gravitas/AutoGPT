@@ -26,7 +26,17 @@ export function formatChatDate(iso: string): string {
   });
 }
 
-export function getDateGroupLabel(iso: string): string {
+const DATE_GROUP_ORDER = [
+  "Today",
+  "Yesterday",
+  "Previous 7 days",
+  "Previous 30 days",
+  "Older",
+] as const;
+
+export function getDateGroupLabel(
+  iso: string,
+): (typeof DATE_GROUP_ORDER)[number] {
   const diffDays = diffInDays(iso);
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
@@ -35,21 +45,28 @@ export function getDateGroupLabel(iso: string): string {
   return "Older";
 }
 
+// Buckets sessions into a fixed chronological group order. Doesn't rely on the
+// input being pre-sorted, so an unsorted list can never produce duplicate
+// labels (e.g. "Today" … "Today"); within a group, input order is preserved.
 export function groupSessionsByDate<T extends { updated_at: string }>(
   sessions: T[],
 ): { label: string; sessions: T[] }[] {
-  const groups: { label: string; sessions: T[] }[] = [];
+  const buckets = new Map<string, T[]>();
 
   for (const session of sessions) {
     const label = getDateGroupLabel(session.updated_at);
-    const lastGroup = groups[groups.length - 1];
-
-    if (lastGroup && lastGroup.label === label) {
-      lastGroup.sessions.push(session);
+    const bucket = buckets.get(label);
+    if (bucket) {
+      bucket.push(session);
     } else {
-      groups.push({ label, sessions: [session] });
+      buckets.set(label, [session]);
     }
   }
 
-  return groups;
+  return DATE_GROUP_ORDER.filter((label) => buckets.has(label)).map(
+    (label) => ({
+      label,
+      sessions: buckets.get(label) ?? [],
+    }),
+  );
 }
