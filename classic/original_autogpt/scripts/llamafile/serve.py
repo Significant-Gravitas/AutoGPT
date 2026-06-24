@@ -12,6 +12,7 @@ import platform
 import subprocess
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import click
 
@@ -19,6 +20,15 @@ LLAMAFILE = Path("mistral-7b-instruct-v0.2.Q5_K_M.llamafile")
 LLAMAFILE_URL = f"https://huggingface.co/jartine/Mistral-7B-Instruct-v0.2-llamafile/resolve/main/{LLAMAFILE.name}"  # noqa
 LLAMAFILE_EXE = Path("llamafile.exe")
 LLAMAFILE_EXE_URL = "https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.6/llamafile-0.8.6"  # noqa
+
+# Hosts that are allowed to serve llamafile/model download artifacts. Restricting
+# downloads to these hosts prevents SSRF / fetching from arbitrary, attacker-controlled
+# URLs.
+ALLOWED_DOWNLOAD_HOSTS = (
+    "huggingface.co",
+    "github.com",
+    "objects.githubusercontent.com",
+)
 
 
 @click.command()
@@ -141,7 +151,34 @@ def main(
     # a lot of memory.
 
 
+def _assert_download_url_allowed(url: str) -> None:
+    """Validate a download URL before fetching it.
+
+    Requires an ``https`` scheme and a host within ``ALLOWED_DOWNLOAD_HOSTS``
+    (exact match or a proper subdomain). Raises ``ValueError`` otherwise to
+    prevent SSRF / downloads from arbitrary hosts.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(
+            f"Refusing to download from non-https URL: {url!r}. "
+            "Only https download URLs are allowed."
+        )
+
+    host = (parsed.hostname or "").lower()
+    is_allowed = any(
+        host == allowed or host.endswith(f".{allowed}")
+        for allowed in ALLOWED_DOWNLOAD_HOSTS
+    )
+    if not is_allowed:
+        raise ValueError(
+            f"Refusing to download from disallowed host {host!r}. "
+            f"Allowed hosts: {', '.join(ALLOWED_DOWNLOAD_HOSTS)}."
+        )
+
+
 def download_file(url: str, to_file: Path) -> None:
+    _assert_download_url_allowed(url)
     print(f"Downloading {to_file.name}...")
     import urllib.request
 

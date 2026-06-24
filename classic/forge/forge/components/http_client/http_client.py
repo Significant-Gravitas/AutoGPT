@@ -57,17 +57,27 @@ class HTTPClientComponent(
         yield self.http_delete
 
     def _is_domain_allowed(self, url: str) -> bool:
-        """Check if the URL's domain is in the allowed list."""
+        """Check if the URL's host is in the allowed list."""
         if not self.config.allowed_domains:
             return True
 
         from urllib.parse import urlparse
 
+        # Backslashes are normalized to forward slashes by requests/browsers,
+        # which lets userinfo tricks like "http://evil\@allowed.com" bypass the
+        # allowlist while the request goes elsewhere.
+        if "\\" in url:
+            return False
+
         parsed = urlparse(url)
-        domain = parsed.netloc.lower()
+        # .hostname strips userinfo and port and lowercases the host.
+        host = parsed.hostname
+        if not host:
+            return False
 
         for allowed in self.config.allowed_domains:
-            if domain == allowed.lower() or domain.endswith("." + allowed.lower()):
+            allowed_host = allowed.lower()
+            if host == allowed_host or host.endswith("." + allowed_host):
                 return True
         return False
 
