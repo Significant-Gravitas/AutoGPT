@@ -15,6 +15,8 @@ import math
 import re
 import threading
 
+from openai.types.completion_usage import PromptTokensDetails
+
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
@@ -22,6 +24,27 @@ from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Return cache-write token count from a ``PromptTokensDetails`` object.
+
+    Two provider-specific field names exist:
+    - OpenRouter streams ``cache_write_tokens`` (typed attr on newer SDK,
+      ``model_extra`` on older SDK).
+    - Direct Anthropic API uses ``cache_creation_input_tokens`` in
+      ``model_extra`` (never a typed attr on the OpenAI SDK).
+    """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
+    extras = ptd.model_extra or {}
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
+
 
 # Hold strong references to in-flight cost log tasks to prevent GC.
 _pending_log_tasks: set[asyncio.Task[None]] = set()
@@ -96,6 +119,11 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
+    block_name_override: str | None = None,
+    extra_metadata: dict | None = None,
+    graph_exec_id_override: str | None = None,
+    skip_daily: bool = False,
+    execution_path: str = "sync",
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -199,6 +227,7 @@ async def persist_and_record_usage(
         await record_cost_usage(
             user_id=user_id,
             cost_microdollars=cost_microdollars,
+            skip_daily=skip_daily,
         )
 
     # Log to PlatformCostLog for admin cost dashboard.
@@ -206,7 +235,11 @@ async def persist_and_record_usage(
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
     if user_id and (total_tokens > 0 or cost_float is not None):
-        session_id = session.session_id if session else None
+        session_id = (
+            graph_exec_id_override
+            if graph_exec_id_override is not None
+            else (session.session_id if session else None)
+        )
 
         if cost_float is not None:
             tracking_type = "cost_usd"
@@ -215,12 +248,35 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
+        metadata: dict = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
+        }
+        if extra_metadata:
+            # Caller-supplied keys override base keys (dream pass uses this
+            # to mark source="dream_pass"); base keys it doesn't touch stay.
+            metadata.update(extra_metadata)
+
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,
                 block_id=COPILOT_BLOCK_ID,
-                block_name=_copilot_block_name(log_prefix),
+                block_name=(
+                    block_name_override
+                    if block_name_override is not None
+                    else _copilot_block_name(log_prefix)
+                ),
                 provider=provider,
                 credential_id=COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
@@ -231,13 +287,7 @@ async def persist_and_record_usage(
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+                metadata=metadata,
             )
         )
 

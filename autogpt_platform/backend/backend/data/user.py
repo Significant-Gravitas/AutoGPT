@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -499,6 +500,22 @@ async def cleanup_user_managed_credentials(
     await cleanup_managed_credentials(user_id, store)
 
 
+# Strong refs to fire-and-forget tasks — the event loop only keeps weak
+# references, so an unretained task can be GC'd mid-flight and its
+# exception is never observed. Same pattern as
+# ``backend/copilot/chat_session_embeddings.py``.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _on_background_task_done(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("Background task %s failed", task.get_name(), exc_info=exc)
+
+
 async def update_user_timezone(user_id: str, timezone: str) -> User:
     """Update a user's timezone setting."""
     try:
@@ -518,6 +535,30 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         if user.email:
             get_user_by_email.cache_delete(user.email)
         get_or_create_user.cache_clear()
+
+        # Dream-system schedules are bound to the timezone at job-creation
+        # time; without an eager re-register they'd keep firing at the old
+        # local time. Fire-and-forget so this profile update returns
+        # immediately — the helper's lazy drift-detection path (via the
+        # Redis dedup key value) is the durable backstop if this
+        # fails or the user doesn't trigger a memory write within the
+        # 7-day key TTL.
+        try:
+            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+
+            task = asyncio.create_task(
+                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                name=f"tz-reregister-{user_id[:12]}",
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_on_background_task_done)
+        except Exception:
+            logger.warning(
+                "Failed to spawn dream-system re-register after timezone "
+                "update for user %s — lazy drift detection will catch it",
+                user_id[:12],
+                exc_info=True,
+            )
 
         return User.from_db(user)
     except Exception as e:

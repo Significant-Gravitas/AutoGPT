@@ -16,15 +16,19 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.block_cost_admin_routes
+import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -35,6 +39,7 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
@@ -52,8 +57,10 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -301,12 +308,19 @@ async def validation_error_handler(
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
+# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
+# maps to HTTP 402. log_error=False because it's not an error from the
+# server's perspective — the user just lacks entitlement.
+app.add_exception_handler(
+    UserPaywalledError, handle_internal_http_error(402, log_error=False)
+)
 app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
@@ -358,6 +372,21 @@ app.include_router(
     prefix="/api/admin",
 )
 app.include_router(
+    backend.api.features.admin.bot_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
+    backend.api.features.admin.block_cost_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.memory_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
@@ -380,6 +409,16 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
+    chat_share.owner_router,
+    tags=["v2", "chat", "share"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_share.public_router,
+    tags=["v2", "chat", "share", "public"],
+    prefix="/api/public/shared/chats",
+)
+app.include_router(
     workspace_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
@@ -398,6 +437,11 @@ app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
+)
+app.include_router(
+    search_routes.router,
+    tags=["search"],
+    prefix="/api/search",
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,

@@ -5,18 +5,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCopilotUIStore } from "../../store";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
@@ -24,6 +23,7 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -62,6 +62,7 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  sessionChatStatus,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -84,12 +85,12 @@ export const ChatContainer = ({
   turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  // When the flag is off we must not auto-open artifacts or let the panel's
-  // open state drive layout width; an artifact generated in a stale session
-  // state would otherwise shrink the chat column with no panel rendered.
-  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
-  useAutoOpenArtifacts({ sessionId });
+  useAutoOpenArtifacts({
+    sessionId,
+    messages,
+    isLoadingSession,
+    isArtifactsEnabled,
+  });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips
@@ -148,14 +149,9 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
+        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
-            <div
-              className={cn(
-                "mx-auto flex h-full min-h-0 w-full flex-col",
-                !isArtifactOpen && "max-w-3xl",
-              )}
-            >
+            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -165,6 +161,7 @@ export const ChatContainer = ({
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
@@ -179,7 +176,7 @@ export const ChatContainer = ({
                 transition={{ duration: 0.3 }}
                 className="relative px-3 pb-2 pt-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
+                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#fafafa]" />
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
@@ -188,9 +185,9 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(248,248,249,0.96)_0%,rgba(248,248,249,0.9)_42%,rgba(248,248,249,0.58)_68%,rgba(248,248,249,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                     >
-                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#f8f8f9]/80 blur-2xl" />
+                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
                       <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
                     <div className="pointer-events-auto relative px-3">
@@ -198,6 +195,7 @@ export const ChatContainer = ({
                     </div>
                   </div>
                 )}
+                <SharedChatNotice sessionId={sessionId} />
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>

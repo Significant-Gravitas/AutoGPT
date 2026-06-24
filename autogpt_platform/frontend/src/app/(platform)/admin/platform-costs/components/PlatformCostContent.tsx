@@ -50,6 +50,10 @@ export function PlatformCostContent({ searchParams }: Props) {
     setTypeInput,
     executionIDInput,
     setExecutionIDInput,
+    executionPathInput,
+    setExecutionPathInput,
+    sourceInput,
+    setSourceInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
@@ -254,6 +258,45 @@ export function PlatformCostContent({ searchParams }: Props) {
             onChange={(e) => setExecutionIDInput(e.target.value)}
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="execution-path-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Path
+          </label>
+          <select
+            id="execution-path-filter"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={executionPathInput}
+            onChange={(e) => setExecutionPathInput(e.target.value)}
+          >
+            <option value="">All</option>
+            <option value="sync">sync</option>
+            <option value="anthropic_batch">anthropic_batch</option>
+            <option value="openai_batch">openai_batch</option>
+            <option value="flex">flex</option>
+            <option value="sync_baseline">sync_baseline (dream)</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="source-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Source
+          </label>
+          <select
+            id="source-filter"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={sourceInput}
+            onChange={(e) => setSourceInput(e.target.value)}
+          >
+            <option value="">All</option>
+            <option value="copilot">copilot</option>
+            <option value="dream_pass">dream_pass</option>
+          </select>
+        </div>
         <button
           onClick={handleFilter}
           className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
@@ -270,6 +313,8 @@ export function PlatformCostContent({ searchParams }: Props) {
             setBlockInput("");
             setTypeInput("");
             setExecutionIDInput("");
+            setExecutionPathInput("");
+            setSourceInput("");
             updateUrl({
               start: "",
               end: "",
@@ -279,6 +324,8 @@ export function PlatformCostContent({ searchParams }: Props) {
               block_name: "",
               tracking_type: "",
               graph_exec_id: "",
+              execution_path: "",
+              source: "",
               page: "1",
             });
           }}

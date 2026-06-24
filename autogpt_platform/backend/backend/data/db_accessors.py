@@ -53,9 +53,22 @@ def store_db():
     return store_db
 
 
+def triggers_db():
+    if db.is_connected():
+        from backend.api.features.library import triggers as _triggers_db
+
+        triggers_db = _triggers_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        triggers_db = get_database_manager_async_client()
+
+    return triggers_db
+
+
 def search():
     if db.is_connected():
-        from backend.api.features.store import hybrid_search as _search
+        from backend.api.features.search import hybrid_search as _search
 
         search = _search
     else:
@@ -168,3 +181,16 @@ def platform_linking_db():
         platform_linking_db = get_database_manager_async_client()
 
     return platform_linking_db
+
+
+def bot_analytics_db():
+    if db.is_connected():
+        from backend.data import bot_analytics as _bot_analytics_db
+
+        bot_analytics_db = _bot_analytics_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        bot_analytics_db = get_database_manager_async_client()
+
+    return bot_analytics_db
