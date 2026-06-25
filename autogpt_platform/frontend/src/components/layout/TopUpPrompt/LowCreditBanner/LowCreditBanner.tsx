@@ -23,12 +23,7 @@ export function LowCreditBanner({ className }: Props) {
           You&apos;re out of automation credits. Top up to keep your agents
           running.
         </AlertDescription>
-        <Button
-          variant="primary"
-          size="small"
-          onClick={openTopUp}
-          className="border-orange-600 bg-orange-600 hover:border-orange-700 hover:bg-orange-700"
-        >
+        <Button variant="primary" size="small" onClick={openTopUp}>
           Top up
         </Button>
         <Button

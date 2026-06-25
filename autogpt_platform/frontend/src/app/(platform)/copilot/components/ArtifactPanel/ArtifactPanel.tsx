@@ -21,6 +21,7 @@ export function ArtifactPanel({ mobile }: Props) {
     setIsSourceView,
     clearArtifactPreview,
     goBackArtifact,
+    showFilesTab,
     canCopy,
     handleCopy,
     handleDownload,
@@ -84,6 +85,7 @@ export function ArtifactPanel({ mobile }: Props) {
               onClose={clearArtifactPreview}
               onCopy={handleCopy}
               onDownload={handleDownload}
+              onOpenFiles={showFilesTab}
               onSourceToggle={setIsSourceView}
             />
             <ArtifactContent
@@ -122,6 +124,7 @@ export function ArtifactPanel({ mobile }: Props) {
           onClose={clearArtifactPreview}
           onCopy={handleCopy}
           onDownload={handleDownload}
+          onOpenFiles={showFilesTab}
           onSourceToggle={setIsSourceView}
         />
         <ArtifactContent
