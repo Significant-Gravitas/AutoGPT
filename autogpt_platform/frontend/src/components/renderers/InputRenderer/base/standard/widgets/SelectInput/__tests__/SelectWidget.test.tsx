@@ -116,6 +116,32 @@ describe("SelectWidget", () => {
     });
   });
 
+  it("preserves falsy non-empty values like false", () => {
+    render(
+      <SelectWidget
+        {...createProps({
+          schema: { type: "boolean" },
+          value: false,
+          options: {
+            enumOptions: [
+              { value: false, label: "Disabled" },
+              { value: true, label: "Enabled" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(selectSpy).toHaveBeenCalledOnce();
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      value: "0",
+      options: [
+        { value: "0", label: "Disabled" },
+        { value: "1", label: "Enabled" },
+      ],
+    });
+  });
+
   it("falls back to an empty option list when enumOptions are missing", () => {
     render(
       <SelectWidget
