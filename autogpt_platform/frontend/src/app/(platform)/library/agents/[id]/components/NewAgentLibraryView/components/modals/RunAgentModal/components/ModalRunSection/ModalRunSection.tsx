@@ -18,12 +18,17 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
+    constantInputValues,
+    setConstantInputValue,
+    constantInputFields,
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
   } = useRunAgentModalContext();
 
+  const isTriggerRunType = defaultRunType.includes("trigger");
   const inputFields = Object.entries(agentInputFields || {});
+  const constantFields = Object.entries(constantInputFields || {});
 
   const credentialFields = useMemo(() => {
     if (!agentCredentialsInputFields) return [];
@@ -80,8 +85,12 @@ export function ModalRunSection() {
 
       {inputFields.length > 0 ? (
         <ModalSection
-          title="Task Inputs"
-          subtitle="Enter the information you want to provide to the agent for this task"
+          title={isTriggerRunType ? "Trigger Configuration" : "Task Inputs"}
+          subtitle={
+            isTriggerRunType
+              ? "Configure what this trigger listens for"
+              : "Enter the information you want to provide to the agent for this task"
+          }
         >
           {inputFields.map(([key, inputSubSchema]) => (
             <RunAgentInputs
@@ -91,6 +100,24 @@ export function ModalRunSection() {
               placeholder={inputSubSchema.description}
               onChange={(value) => setInputValue(key, value)}
               data-testid={`agent-input-${key}`}
+            />
+          ))}
+        </ModalSection>
+      ) : null}
+
+      {constantFields.length > 0 ? (
+        <ModalSection
+          title="Task Inputs"
+          subtitle="Enter the information you want to provide to the agent for this task"
+        >
+          {constantFields.map(([key, inputSubSchema]) => (
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={constantInputValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setConstantInputValue(key, value)}
+              data-testid={`agent-constant-input-${key}`}
             />
           ))}
         </ModalSection>

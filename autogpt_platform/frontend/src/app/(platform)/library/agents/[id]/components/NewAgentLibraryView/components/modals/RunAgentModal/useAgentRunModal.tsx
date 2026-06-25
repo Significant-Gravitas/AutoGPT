@@ -51,6 +51,12 @@ export function useAgentRunModal(
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     callbacks?.initialInputCredentials || {},
   );
+  // For triggered agents the form is split in two: `inputValues` holds the
+  // trigger node's config (sent as `trigger_config`), and these hold the
+  // graph's regular inputs (sent as `constant_inputs`).
+  const [constantInputValues, setConstantInputValues] = useState<
+    Record<string, any>
+  >({});
 
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
@@ -67,6 +73,7 @@ export function useAgentRunModal(
   useEffect(() => {
     setInputValues(callbacks?.initialInputValues || {});
     setInputCredentials(callbacks?.initialInputCredentials || {});
+    setConstantInputValues({});
   }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
   const allProviders = useContext(CredentialsProvidersContext);
@@ -206,7 +213,10 @@ export function useAgentRunModal(
     },
   });
 
-  // Input schema validation (use trigger schema for triggered agents)
+  const isTriggeredAgent = Boolean(agent.trigger_setup_info);
+
+  // Primary input fields: the trigger node's config for triggered agents,
+  // otherwise the graph's regular inputs.
   const agentInputSchema = useMemo(() => {
     if (agent.trigger_setup_info?.config_schema) {
       return agent.trigger_setup_info.config_schema;
@@ -214,22 +224,22 @@ export function useAgentRunModal(
     return agent.input_schema || { properties: {}, required: [] };
   }, [agent.input_schema, agent.trigger_setup_info]);
 
-  const agentInputFields = useMemo(() => {
-    if (
-      !agentInputSchema ||
-      typeof agentInputSchema !== "object" ||
-      !("properties" in agentInputSchema) ||
-      !agentInputSchema.properties
-    ) {
-      return {};
-    }
-    const properties = agentInputSchema.properties as Record<string, any>;
-    return Object.fromEntries(
-      Object.entries(properties).filter(
-        ([_, subSchema]: [string, any]) => !subSchema.hidden,
-      ),
-    );
-  }, [agentInputSchema]);
+  const agentInputFields = useMemo(
+    () => getVisibleInputFields(agentInputSchema),
+    [agentInputSchema],
+  );
+
+  // A triggered agent can also have regular input nodes. Those are collected
+  // separately and sent as `constant_inputs` alongside the trigger config.
+  const constantInputSchema = useMemo(
+    () => (isTriggeredAgent ? agent.input_schema : undefined),
+    [isTriggeredAgent, agent.input_schema],
+  );
+
+  const constantInputFields = useMemo(
+    () => getVisibleInputFields(constantInputSchema),
+    [constantInputSchema],
+  );
 
   const agentCredentialsInputFields = useMemo(() => {
     if (
@@ -245,17 +255,23 @@ export function useAgentRunModal(
 
   // Validation logic
   const [allRequiredInputsAreSetRaw, missingInputs] = useMemo(() => {
-    const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
-    );
-    const requiredInputs = new Set(
-      (agentInputSchema.required as string[]) || [],
-    );
-    const missing = [...requiredInputs].filter(
-      (input) => !nonEmptyInputs.has(input),
-    );
+    const missingFor = (
+      schema: { required?: unknown } | undefined,
+      values: Record<string, any>,
+    ) => {
+      const nonEmpty = new Set(
+        Object.keys(values).filter((k) => !isEmpty(values[k])),
+      );
+      const required = new Set((schema?.required as string[]) || []);
+      return [...required].filter((field) => !nonEmpty.has(field));
+    };
+
+    const missing = [
+      ...missingFor(agentInputSchema, inputValues),
+      ...missingFor(constantInputSchema, constantInputValues),
+    ];
     return [missing.length === 0, missing];
-  }, [agentInputSchema.required, inputValues]);
+  }, [agentInputSchema, inputValues, constantInputSchema, constantInputValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const requiredCredentials = new Set(
@@ -329,6 +345,7 @@ export function useAgentRunModal(
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
           trigger_config: inputValues,
+          constant_inputs: constantInputValues,
           agent_credentials: inputCredentials,
         },
       });
@@ -351,6 +368,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     defaultRunType,
     inputValues,
+    constantInputValues,
     inputCredentials,
     agent,
     presetName,
@@ -375,8 +393,11 @@ export function useAgentRunModal(
   }, [agent, inputValues, executeGraphMutation]);
 
   const hasInputFields = useMemo(() => {
-    return Object.keys(agentInputFields).length > 0;
-  }, [agentInputFields]);
+    return (
+      Object.keys(agentInputFields).length > 0 ||
+      Object.keys(constantInputFields).length > 0
+    );
+  }, [agentInputFields, constantInputFields]);
 
   return {
     isOpen,
@@ -384,6 +405,8 @@ export function useAgentRunModal(
     defaultRunType: defaultRunType as RunVariant,
     inputValues,
     setInputValues,
+    constantInputValues,
+    setConstantInputValues,
     inputCredentials,
     setInputCredentials,
     presetName,
@@ -393,6 +416,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     missingInputs,
     agentInputFields,
+    constantInputFields,
     agentCredentialsInputFields,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
@@ -400,4 +424,23 @@ export function useAgentRunModal(
     handleRun,
     handleSimulate,
   };
+}
+
+// Pull the non-hidden field schemas out of a JSON schema object, tolerating a
+// missing/malformed schema (returns an empty map).
+function getVisibleInputFields(schema: unknown): Record<string, any> {
+  if (
+    !schema ||
+    typeof schema !== "object" ||
+    !("properties" in schema) ||
+    !schema.properties
+  ) {
+    return {};
+  }
+  const properties = (schema as { properties: Record<string, any> }).properties;
+  return Object.fromEntries(
+    Object.entries(properties).filter(
+      ([_, subSchema]: [string, any]) => !subSchema.hidden,
+    ),
+  );
 }

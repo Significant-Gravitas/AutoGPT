@@ -16,6 +16,10 @@ export interface RunAgentModalContextValue {
   inputValues: Record<string, any>;
   setInputValue: (key: string, value: any) => void;
   agentInputFields: Record<string, any>;
+  // Regular graph inputs for a triggered agent (sent as `constant_inputs`)
+  constantInputValues: Record<string, any>;
+  setConstantInputValue: (key: string, value: any) => void;
+  constantInputFields: Record<string, any>;
   // Credentials
   inputCredentials: Record<string, any>;
   setInputCredentialsValue: (key: string, value: any | undefined) => void;
