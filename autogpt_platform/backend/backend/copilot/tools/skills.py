@@ -371,6 +371,7 @@ async def store_user_skill(
     description: str,
     body: str,
     triggers: list[str] | None = None,
+    version: str | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -479,19 +480,23 @@ async def store_user_skill(
             description=description,
             body=body,
             triggers=tuple(triggers),
+            version=version,
         )
         rendered = render_skill_markdown(parsed)
+        metadata: dict[str, Any] = {
+            _META_KIND: _META_KIND_VALUE,
+            _META_DESCRIPTION: description,
+            _META_TRIGGERS: list(triggers),
+        }
+        if version:
+            metadata[_META_VERSION] = version
         await manager.write_file(
             content=rendered.encode("utf-8"),
             filename="SKILL.md",
             path=_skill_md_path(name),
             mime_type="text/markdown",
             overwrite=True,
-            metadata={
-                _META_KIND: _META_KIND_VALUE,
-                _META_DESCRIPTION: description,
-                _META_TRIGGERS: list(triggers),
-            },
+            metadata=metadata,
         )
         await invalidate_skills_index_cache(user_id)
         return parsed
