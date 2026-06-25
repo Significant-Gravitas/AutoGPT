@@ -35,6 +35,7 @@ from backend.copilot.tools.skills import (
     parse_skill_markdown,
     render_skill_markdown,
     render_skills_index,
+    store_user_skill,
 )
 
 # ---------------------------------------------------------------------------
@@ -569,6 +570,25 @@ async def test_store_skill_upsert_does_not_trip_cap():
         )
     assert isinstance(result, StoreSkillResponse)
     assert "new" in fake_manager.files["/skills/skill_0/SKILL.md"].decode()
+
+
+@pytest.mark.asyncio
+async def test_store_user_skill_persists_version():
+    """An uploaded skill's version must survive the write so a
+    download → re-upload round-trip does not silently drop it."""
+    fake_manager = _FakeWorkspaceManager()
+    with _patch_skills_path(fake_manager):
+        stored = await store_user_skill(
+            "user-1",
+            name="versioned_skill",
+            description="desc",
+            body="body",
+            version="2",
+        )
+    assert stored.version == "2"
+    written = fake_manager.files["/skills/versioned_skill/SKILL.md"].decode()
+    assert parse_skill_markdown(written).version == "2"
+    assert fake_manager.metadata["/skills/versioned_skill/SKILL.md"]["version"] == "2"
 
 
 # ---------------------------------------------------------------------------
