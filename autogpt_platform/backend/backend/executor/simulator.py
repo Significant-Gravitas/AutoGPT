@@ -39,18 +39,40 @@ from openai.types import CompletionUsage
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.llm import LlmModel
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.util.clients import get_openai_client
+from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  Same provider
-# as Flash ($0.10 / $0.40 per MTok vs $0.30 / $1.20 — ~3× cheaper) with JSON-mode
-# reliability that's more than enough for dry-run shape-matching.  Configurable
-# via ChatConfig.simulation_model (CHAT_SIMULATION_MODEL env var).
-_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash-lite"
+# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  The
+# choice is forced by three independent routing constraints; Flash-Lite
+# is the smallest enum member that satisfies all three:
+#
+# 1. **LLM-simulation path** (``_call_llm_for_simulation``) calls
+#    OpenRouter's OpenAI-compat endpoint with
+#    ``response_format=json_object`` and ``json.loads()`` the response.
+#    Claude via OR's OpenAI-compat wraps JSON in markdown code fences
+#    (```​``json\\n{...}\\n``​```) even when JSON mode is requested
+#    — ``json.loads`` trips on the leading backtick with
+#    ``Expecting value: line 1 column 1 (char 0)``.  Gemini emits raw JSON.
+# 2. **Orchestrator BUILT_IN dry-run path** (``llm.llm_call``) dispatches
+#    on ``llm_model.metadata.provider``, not credential type.  A Claude
+#    default would land in the Anthropic-Python-SDK branch against
+#    ``api.anthropic.com`` with the platform OR key → 401.  Gemini has
+#    ``metadata.provider == "open_router"`` so dispatch routes through
+#    the OpenRouter branch correctly.
+# 3. **Orchestrator EXTENDED_THINKING dry-run path** would impose
+#    ``model.value.startswith("claude")`` (orchestrator.py SDK guard) —
+#    Flash-Lite would fail that check, which is why we override
+#    ``execution_mode`` to BUILT_IN below regardless of user choice.
+#
+# Configurable via ``ChatConfig.simulation_model``
+# (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
+# constraints (1) and (2).
+_DEFAULT_SIMULATOR_MODEL = LlmModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
@@ -60,9 +82,13 @@ _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 def _simulator_model() -> str:
     try:
-        from backend.copilot.config import ChatConfig  # noqa: PLC0415
+        # Reuse the module-level ChatConfig singleton from copilot.sdk.env
+        # rather than constructing a fresh one — the validator chain runs
+        # at import time, so a per-call ``ChatConfig()`` re-reads ``.env``
+        # and re-runs every model_validator on every dry-run turn.
+        from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
 
-        return ChatConfig().simulation_model or _DEFAULT_SIMULATOR_MODEL
+        return chat_cfg.simulation_model or _DEFAULT_SIMULATOR_MODEL
     except Exception:
         return _DEFAULT_SIMULATOR_MODEL
 
@@ -132,9 +158,33 @@ async def _call_llm_for_simulation(
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
         raise RuntimeError(
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
-            "(missing OpenAI/OpenRouter API key)."
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available. "
+            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
+            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
+            "docs/platform/copilot-local-llm.md."
         )
+
+    # ``_OPENROUTER_INCLUDE_USAGE_COST`` is OpenRouter-specific
+    # (``{"usage": {"include": True}}``). Cloud OpenAI ignores unknown
+    # body keys; stricter local OpenAI-compat backends (LiteLLM proxy
+    # with strict mode, some vLLM configs) reject them. Mirror the
+    # ``baseline/service.py`` policy: only send when actually routing
+    # through OpenRouter.
+    #
+    # Local backends govern their own context window at launch (e.g.
+    # OLLAMA_CONTEXT_LENGTH), so we send no per-request num_ctx hint —
+    # Ollama's OpenAI shim ignores ``options.num_ctx`` anyway.
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    if chat_cfg.transport.name == "local":
+        extra_body: dict[str, Any] = {}
+    else:
+        # Shallow-copy the constant rather than sharing the reference — see
+        # the matching pattern in ``baseline/service.py`` and
+        # ``activity_status_generator.py``. Defends against intermediate
+        # layers ever mutating ``extra_body`` and corrupting the shared
+        # module-level dict for every future call.
+        extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
 
     model = _simulator_model()
     last_error: Exception | None = None
@@ -148,7 +198,7 @@ async def _call_llm_for_simulation(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
+                extra_body=extra_body,
             )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
@@ -171,7 +221,16 @@ async def _call_llm_for_simulation(
                     "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
                 )
 
-            await _track_simulator_cost(usage=usage, user_id=user_id, model=model)
+            await _track_simulator_cost(
+                usage=usage,
+                user_id=user_id,
+                model=model,
+                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
+                # non-local call physically hits OpenRouter regardless of the chat
+                # transport identity — label it accordingly (not ``cost_log_provider``,
+                # which would mislabel subscription / direct_anthropic as ``anthropic``).
+                provider=openrouter_helper_cost_provider(),
+            )
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -234,6 +293,7 @@ async def _track_simulator_cost(
     usage: CompletionUsage | None,
     user_id: str | None,
     model: str,
+    provider: str,
 ) -> None:
     """Record platform cost for a single simulator LLM call.
 
@@ -255,7 +315,7 @@ async def _track_simulator_cost(
             log_prefix="[simulator]",
             cost_usd=cost_usd,
             model=model,
-            provider="open_router",
+            provider=provider,
         )
     except Exception as exc:
         logger.warning("[simulator] usage tracking failed: %s", exc)
@@ -398,17 +458,68 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # untouched so a tiny bounded cap was asymmetric anyway.
         original = input_data.get("agent_mode_max_iterations", 0)
         max_iters = min(original, 10) if original != 0 else 0
-        sim_model = _simulator_model()
+        # Resolve the configured simulator model (typically an OpenRouter
+        # slug like "anthropic/claude-haiku-4-5") to its canonical
+        # ``LlmModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
+        # to do this BEFORE injecting into ``input["model"]`` because the
+        # block runs through ``validate_data`` → ``jsonschema.validate``
+        # before Pydantic gets the value, and the JSON Schema's ``enum``
+        # is the literal list of ``LlmModel.value``s — the
+        # ``_OPENROUTER_ALIASES`` map in ``LlmModel._missing_`` does NOT
+        # surface in the generated schema, so the OR-slug is rejected
+        # with ``"'<slug>' is not one of [...]"``.  After this
+        # translation, the OrchestratorBlock receives a model identifier
+        # that both validators accept; the OR-routing still works
+        # because OpenRouter's Anthropic-compat endpoint (which the
+        # orchestrator's SDK mode hits when credentials are OPEN_ROUTER)
+        # accepts both the snapshot and the OR slug.
+        #
+        # Fall back to the default if the configured override is malformed
+        # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
+        # shouldn't take out every dry-run.  The default is asserted as
+        # ``LlmModel``-parseable by ``TestDefaultSimulatorModel``, so the
+        # fallback ``LlmModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
+        # unless someone breaks that pin too.
+        configured_sim_model = _simulator_model()
+        try:
+            sim_model = LlmModel(configured_sim_model).value
+        except ValueError:
+            logger.warning(
+                "Dry-run: invalid simulation model %r; falling back to default %r",
+                configured_sim_model,
+                _DEFAULT_SIMULATOR_MODEL,
+            )
+            sim_model = LlmModel(_DEFAULT_SIMULATOR_MODEL).value
 
         # Keep the original credentials dict in input_data so the block's
         # JSON schema validation passes (validate_data strips None values,
         # making the field absent and failing the "required" check).
         # The actual credentials are injected via extra_exec_kwargs in
         # manager.py using _dry_run_api_key.
+        #
+        # Force ``execution_mode = BUILT_IN`` for the dry-run, regardless
+        # of what the user picked.  With Flash-Lite as the sim model:
+        #
+        #   - BUILT_IN routes ``llm.llm_call`` to the open_router branch
+        #     (dispatch on ``metadata.provider``) → OpenAI SDK against
+        #     openrouter.ai with the platform OR key → works.
+        #   - EXTENDED_THINKING would hit the SDK subprocess's
+        #     ``model.value.startswith("claude")`` guard
+        #     (orchestrator.py) and ``ValueError`` immediately — Flash-Lite
+        #     is not Claude.
+        #
+        # Honouring the user's pick of EXTENDED_THINKING would force the
+        # sim model back to Claude (Haiku, etc.), which then trips the
+        # JSON-mode markdown-wrap on the LLM-simulation path for every
+        # *other* block in the same graph.  BUILT_IN sidesteps every
+        # path-specific quirk by staying on the simpler OpenAI-SDK-
+        # with-tool-calling route — the actual purpose of dry-run is a
+        # smoke check, not a perfect mirror of EXTENDED_THINKING.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
+            "execution_mode": ExecutionMode.BUILT_IN.value,
             "_dry_run_api_key": or_key,
         }
 

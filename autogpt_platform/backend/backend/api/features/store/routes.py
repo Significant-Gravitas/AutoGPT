@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
@@ -10,12 +11,12 @@ from pydantic import BaseModel
 
 import backend.data.graph
 import backend.util.json
+from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
 from . import db as store_db
-from . import hybrid_search as store_hybrid_search
 from . import image_gen as store_image_gen
 from . import media as store_media
 from . import model as store_model
@@ -23,6 +24,9 @@ from . import model as store_model
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
+SubmissionSortKey = Literal["submitted", "runs"]
+SubmissionSortDir = Literal["asc", "desc"]
 
 
 ##############################################
@@ -91,7 +95,7 @@ async def unified_search(
     """
 
     # Perform unified hybrid search
-    results, total = await store_hybrid_search.unified_hybrid_search(
+    results, total = await search_engine.unified_hybrid_search(
         query=query,
         content_types=content_types,
         user_id=user_id,
@@ -334,6 +338,7 @@ async def get_my_unpublished_agents(
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
+    search_query: str | None = Query(default=None, max_length=100),
 ) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
     agents = await store_db.get_my_agents(
@@ -341,6 +346,7 @@ async def get_my_unpublished_agents(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
+        search_query=search_query,
     )
     return agents
 
@@ -373,14 +379,44 @@ async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    search_query: str | None = Query(default=None, max_length=100),
+    statuses: str | None = Query(default=None),
+    sort_key: SubmissionSortKey | None = Query(default=None),
+    sort_dir: SubmissionSortDir = Query(default="desc"),
 ) -> store_model.StoreSubmissionsResponse:
     """List the authenticated user's marketplace listing submissions"""
+    parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        search_query=search_query,
+        statuses=parsed_statuses,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
     )
     return listings
+
+
+def _parse_status_filter(
+    raw: str | None,
+) -> list[prisma.enums.SubmissionStatus] | None:
+    """Parse a comma-separated `statuses` query value into a typed list.
+
+    Orval's fetch client serializes array query params with `value.toString()`,
+    which produces a single comma-joined string (`?statuses=PENDING,APPROVED`)
+    instead of the FastAPI-default repeated form. Accept that shape here and
+    surface invalid enum members as a 422.
+    """
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    try:
+        return [prisma.enums.SubmissionStatus(p) for p in parts]
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(

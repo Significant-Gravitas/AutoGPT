@@ -8,10 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import SubscriptionTier
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
+    UserCredit,
+    _is_stripe_reconcilable,
+    build_price_to_tier_map,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -51,10 +54,9 @@ async def test_set_subscription_tier_updates_db():
         patch("backend.data.credit.get_user_by_id"),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        mock_prisma.return_value.update.assert_awaited_once_with(
-            where={"id": "user-1"},
-            data={"subscriptionTier": SubscriptionTier.PRO},
-        )
+        update_call = mock_prisma.return_value.update.await_args
+        assert update_call.kwargs["where"] == {"id": "user-1"}
+        assert update_call.kwargs["data"]["subscriptionTier"] == SubscriptionTier.PRO
 
 
 @pytest.mark.asyncio
@@ -123,6 +125,55 @@ async def test_sync_subscription_from_stripe_active():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_tracks_upgrade():
+    mock_user = _make_user(tier=SubscriptionTier.BASIC)
+    stripe_sub = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_pro_yearly"}}]},
+        "metadata": {"billing_cycle": "yearly"},
+    }
+    track_mock = MagicMock()
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+            return "price_pro_yearly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit._cleanup_stale_subscriptions", new_callable=AsyncMock
+        ),
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_upgraded"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "previous_subscription_tier": "BASIC",
+        "subscription_tier": "PRO",
+        "billing_cycle": "yearly",
+    }
 
 
 @pytest.mark.asyncio
@@ -272,6 +323,40 @@ async def test_sync_subscription_from_stripe_cancelled():
 
 
 @pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
+    """``past_due`` is NOT active/trialing, so it falls into the non-active else
+    branch: with no OTHER active/trialing sub, the user is revoked to NO_TIER.
+
+    This locks the product decision that an unpaid (past_due) subscription
+    immediately loses its tier rather than coasting until cancellation."""
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_pastdue",
+        "customer": "cus_123",
+        "status": "past_due",
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+    }
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+
+
+@pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_limit():
     """After unsubscribe takes effect, workspace storage resolves against NO_TIER."""
     from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
@@ -287,7 +372,10 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     empty_list.data = []
     empty_list.has_more = False
 
-    async def _set_tier(_user_id: str, tier: SubscriptionTier) -> None:
+    async def _set_tier(
+        _user_id: str,
+        tier: SubscriptionTier,
+    ) -> None:
         mock_user.subscriptionTier = tier
 
     with (
@@ -471,6 +559,37 @@ async def test_cancel_stripe_subscription_cancels_active():
     ):
         await cancel_stripe_subscription("user-1")
         mock_modify.assert_called_once_with("sub_abc123", cancel_at_period_end=True)
+
+
+@pytest.mark.asyncio
+async def test_cancel_stripe_subscription_tracks_cancellation():
+    mock_user = _make_user_with_stripe("cus_123")
+    mock_user.subscription_tier = SubscriptionTier.PRO
+    track_mock = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit._cancel_customer_subscriptions",
+            new_callable=AsyncMock,
+            return_value=1,
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        result = await cancel_stripe_subscription("user-1")
+
+    assert result is True
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_cancellation_scheduled"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {"subscription_tier": "PRO"}
 
 
 @pytest.mark.asyncio
@@ -1678,6 +1797,174 @@ async def test_handle_subscription_payment_success_skips_when_disabled():
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_disabled():
+    """Successful paid subscription invoices emit the subscription analytics."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_paid_yearly",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {
+                "tier": "PRO",
+                "billing_cycle": "yearly",
+            },
+        },
+    }
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=AsyncMock(),
+        ) as add_tx_mock,
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    add_tx_mock.assert_not_called()
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_payment_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "yearly"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_metadata_absent_uses_user_tier():
+    """When invoice metadata lacks tier/billing_cycle, falls back to user."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_no_meta",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch(
+            "backend.data.credit.get_user_billing_cycle",
+            new_callable=AsyncMock,
+            return_value="monthly",
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "monthly"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_reads_parent_metadata():
+    """Stripe API ≥2025-04-01 nests subscription_details under parent."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
+    invoice = {
+        "id": "in_parent",
+        "customer": "cus_123",
+        "amount_paid": 5000,
+        "parent": {
+            "subscription_details": {
+                "subscription": "sub_abc123",
+                "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+            }
+        },
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "yearly"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_swallows_posthog_errors():
+    """PostHog failures must not abort the surrounding webhook handler."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_err",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+        },
+    }
+    track_mock = MagicMock(side_effect=RuntimeError("posthog down"))
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_tracking_when_posthog_disabled():
+    """No API key configured → no capture call."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_disabled",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+        },
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new=""),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_success_skips_non_subscription_invoice():
     """Invoices with no subscription field (one-off invoices) are no-ops —
     short-circuit lands before the flag check, so no LD eval is needed."""
@@ -2000,6 +2287,106 @@ async def test_top_up_intent_references_product_id_when_flag_set():
     }
     # No product_data — that path is mutually exclusive with product reference.
     assert "product_data" not in price_data
+
+
+@pytest.mark.asyncio
+async def test_top_up_credits_tracks_success():
+    credit_system = UserCredit()
+    payment_method = MagicMock()
+    payment_method.id = "pm_123"
+    payment_intent = MagicMock()
+    payment_intent.status = "succeeded"
+    payment_intent.id = "pi_123"
+    track_mock = MagicMock()
+
+    with (
+        patch.object(
+            credit_system,
+            "_add_transaction",
+            new_callable=AsyncMock,
+            return_value=(0, "tx_123"),
+        ),
+        patch.object(
+            credit_system,
+            "_enable_transaction",
+            new_callable=AsyncMock,
+            return_value=(500, "pi_123"),
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.stripe.PaymentMethod.list",
+            return_value=[payment_method],
+        ),
+        patch(
+            "backend.data.credit.stripe.PaymentIntent.create",
+            return_value=payment_intent,
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+    ):
+        await credit_system._top_up_credits("user-1", 500)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "amount_credits": 500,
+        "top_up_type": "UNCATEGORIZED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_fulfill_checkout_tracks_credit_topup_success():
+    credit_system = UserCredit()
+    transaction = MagicMock()
+    transaction.transactionKey = "cs_test_topup"
+    transaction.userId = "user-1"
+    transaction.amount = 2500
+    checkout_session = stripe.checkout.Session.construct_from(
+        {
+            "id": "cs_test_topup",
+            "payment_status": "paid",
+            "payment_intent": stripe.PaymentIntent.construct_from(
+                {"id": "pi_test_topup"}, "k"
+            ),
+        },
+        "k",
+    )
+    track_mock = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.CreditTransaction.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=transaction)),
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.retrieve",
+            return_value=checkout_session,
+        ),
+        patch.object(
+            credit_system,
+            "_enable_transaction",
+            new_callable=AsyncMock,
+            return_value=(2500, "pi_test_topup"),
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+    ):
+        await credit_system.fulfill_checkout(session_id="cs_test_topup")
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "amount_credits": 2500,
+        "top_up_type": "CHECKOUT",
+    }
 
 
 @pytest.mark.asyncio
@@ -2357,6 +2744,65 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
         },
     )
     mock_schedule_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
+    """When ``set_subscription_tier`` fails after a successful Stripe modify,
+    the immediate ``subscription_upgraded`` emit must be skipped — the webhook
+    is the fallback emit path and would otherwise produce a duplicate event."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+            side_effect=PrismaError("db down"),
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    track_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -4094,3 +4540,85 @@ async def test_modify_stripe_subscription_tier_upgrade_yearly_still_immediate():
     _, kwargs = mock_modify.call_args
     assert kwargs["proration_behavior"] == "always_invoice"
     mock_schedule_create.assert_not_called()
+
+
+def _reconcilable_user(tier: SubscriptionTier, customer_id: str | None) -> MagicMock:
+    user = MagicMock()
+    user.subscription_tier = tier
+    user.stripe_customer_id = customer_id
+    return user
+
+
+def test_is_stripe_reconcilable_payer():
+    # Stripe customer on a paid, non-ENTERPRISE tier -> reconcilable.
+    user = _reconcilable_user(SubscriptionTier.PRO, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_enterprise_immune():
+    # ENTERPRISE is never auto-downgraded, even with a Stripe customer.
+    user = _reconcilable_user(SubscriptionTier.ENTERPRISE, "cus_1")
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_manual_grant_without_customer():
+    # A paid tier with no Stripe customer models a manual/admin grant.
+    user = _reconcilable_user(SubscriptionTier.PRO, None)
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_no_tier_with_customer():
+    # NO_TIER with a Stripe customer is still reconcilable (a missed-upgrade row).
+    user = _reconcilable_user(SubscriptionTier.NO_TIER, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_free_user():
+    user = _reconcilable_user(SubscriptionTier.NO_TIER, None)
+    assert _is_stripe_reconcilable(user) is False
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_includes_monthly_and_yearly():
+    """Every priceable tier's monthly AND yearly price ID must map back to that
+    tier, so a yearly plan resolves to the same tier as its monthly twin."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        return f"price_{tier.value.lower()}_{billing_cycle}"
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    for tier in (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ):
+        assert price_to_tier[f"price_{tier.value.lower()}_monthly"] == tier
+        assert price_to_tier[f"price_{tier.value.lower()}_yearly"] == tier
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_skips_unconfigured_prices():
+    """A tier/cycle with no configured price ID (None) is simply omitted from
+    the map rather than crashing or mapping an empty key."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        # Only PRO monthly is configured.
+        if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+            return "price_pro_monthly"
+        return None
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    assert price_to_tier == {"price_pro_monthly": SubscriptionTier.PRO}
