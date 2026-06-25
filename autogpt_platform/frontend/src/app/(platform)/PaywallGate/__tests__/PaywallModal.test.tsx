@@ -39,6 +39,11 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
+const mockLogOut = vi.fn();
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ logOut: mockLogOut }),
+}));
+
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -131,8 +136,22 @@ describe("PaywallModal — dynamic plan rendering", () => {
   });
 });
 
+describe("PaywallModal — logout", () => {
+  it("logs out when the Log out button is clicked", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+
+    expect(mockLogOut).toHaveBeenCalled();
+  });
+});
+
 describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
-  it("displays monthly prices by default", () => {
+  it("defaults to yearly billing with the monthly-equivalent price and the annual total", () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -143,12 +162,15 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    // PRO monthly = 5000 cents = $50.00
-    expect(screen.getByText("$50.00")).toBeDefined();
-    expect(screen.getByText("$320.00")).toBeDefined();
+    // PRO yearly = 51000 cents → $42.50/mo primary, $510.00 charged today.
+    // MAX yearly = 326400 cents → $272.00/mo primary, $3,264.00 charged today.
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
+    expect(screen.getByLabelText("$272.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
   });
 
-  it("toggling Yearly switches displayed prices to tier_costs_yearly", async () => {
+  it("toggling Monthly switches displayed prices to the full monthly amounts", async () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -159,12 +181,14 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /monthly/i }));
 
-    // PRO yearly = 51000 cents = $510.00; MAX yearly = 326400 cents = $3,264.00
+    // PRO monthly = 5000 cents = $50.00 (primary), $50.00 charged today
     await waitFor(() => {
-      expect(screen.getByText("$510.00")).toBeDefined();
-      expect(screen.getByText("$3,264.00")).toBeDefined();
+      expect(screen.getByLabelText("$50.00")).toBeDefined();
+      expect(screen.getByLabelText("$320.00")).toBeDefined();
+      expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+      expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
     });
   });
 });
@@ -188,7 +212,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
   }
 
-  it("clicking Upgrade to Pro with monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
+  it("clicking Upgrade to Pro after switching to monthly fires {tier:PRO, billing_cycle:monthly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -200,6 +224,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
+    fireEvent.click(screen.getByRole("radio", { name: /monthly/i }));
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     await waitFor(() => {
@@ -210,7 +235,7 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(args.data.billing_cycle).toBe("monthly");
   });
 
-  it("clicking Upgrade to Pro with yearly toggle fires {tier:PRO, billing_cycle:yearly}", async () => {
+  it("clicking Upgrade to Pro with the default yearly toggle fires {tier:PRO, billing_cycle:yearly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -222,7 +247,6 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     await waitFor(() => {

@@ -20,6 +20,8 @@ import { filePartToArtifactRef } from "../helpers";
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
+  filePattern?: RegExp;
+  readOnly?: boolean;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -40,7 +42,12 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({ files, isUser }: Props) {
+export function MessageAttachments({
+  files,
+  isUser,
+  filePattern,
+  readOnly,
+}: Props) {
   if (files.length === 0) return null;
 
   return (
@@ -49,12 +56,14 @@ export function MessageAttachments({ files, isUser }: Props) {
         const artifactRef = filePartToArtifactRef(
           file,
           isUser ? "user-upload" : "agent",
+          filePattern,
         );
         if (artifactRef) {
           return (
             <ArtifactCard
               key={`artifact-${artifactRef.id}-${i}`}
               artifact={artifactRef}
+              readOnly={readOnly}
             />
           );
         }

@@ -16,6 +16,7 @@ import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/Copilo
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
@@ -23,6 +24,7 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -61,6 +63,7 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  sessionChatStatus,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -82,8 +85,7 @@ export const ChatContainer = ({
   onDroppedFilesConsumed,
   turnStats,
 }: ChatContainerProps) => {
-  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  const isArtifactOpen = isArtifactPanelOpen;
+  const isArtifactOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -164,6 +166,7 @@ export const ChatContainer = ({
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
@@ -197,6 +200,7 @@ export const ChatContainer = ({
                     </div>
                   </div>
                 )}
+                <SharedChatNotice sessionId={sessionId} />
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>

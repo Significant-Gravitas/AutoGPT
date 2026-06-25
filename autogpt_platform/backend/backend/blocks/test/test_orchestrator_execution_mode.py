@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks.llm import LlmModel
-from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.blocks.orchestrator import (
+    ExecutionMode,
+    OrchestratorBlock,
+    _select_final_answer_parts,
+)
 
 # ---------------------------------------------------------------------------
 # ExecutionMode enum integrity
@@ -200,3 +204,106 @@ class TestExtendedThinkingValidationRaisesInBlock:
                 execution_context=MagicMock(),
                 execution_processor=MagicMock(),
             )
+
+
+# ---------------------------------------------------------------------------
+# _select_final_answer_parts — pins the SDK-mode "finished" contract:
+# only the last text-only assistant message contributes; messages with
+# tool calls (text or no) are intermediate narration.
+# ---------------------------------------------------------------------------
+
+
+class TestSelectFinalAnswerParts:
+    """The helper is the testable extraction of the inline branch in
+    ``_execute_tools_sdk_mode`` that decides which assistant-message
+    texts make it into the ``finished`` output pin.  Covering it here
+    keeps the SDK path's contract pinned without mocking the full
+    Claude Agent SDK + MCP stream."""
+
+    def test_text_only_message_replaces_current(self) -> None:
+        # Model stopped calling tools and emitted text — that's the
+        # composed final answer.  Replaces any prior selection.
+        assert _select_final_answer_parts(
+            text_parts=["final answer"],
+            has_tool_calls=False,
+            current=["prior"],
+        ) == ["final answer"]
+
+    def test_text_with_tool_calls_keeps_current(self) -> None:
+        # Mixed text+tool messages are intermediate narration — keep
+        # the last text-only selection unchanged.
+        assert _select_final_answer_parts(
+            text_parts=["narration before tool"],
+            has_tool_calls=True,
+            current=["earlier final answer"],
+        ) == ["earlier final answer"]
+
+    def test_tool_only_message_keeps_current(self) -> None:
+        # Message with no text and only tool calls — keep current.
+        assert _select_final_answer_parts(
+            text_parts=[],
+            has_tool_calls=True,
+            current=["earlier final"],
+        ) == ["earlier final"]
+
+    def test_empty_message_keeps_current(self) -> None:
+        # Defensive: empty assistant message contributes nothing.
+        assert _select_final_answer_parts(
+            text_parts=[],
+            has_tool_calls=False,
+            current=["earlier final"],
+        ) == ["earlier final"]
+
+    def test_no_qualifying_message_returns_empty(self) -> None:
+        # The agent never composes a final answer (e.g. keeps calling
+        # tools until max iterations) — ``current`` stays empty so
+        # ``finished`` surfaces as ``""``, the diagnostic signal for
+        # autopilot / dry-run.
+        current: list[str] = []
+        for text, has_tools in [
+            (["narration"], True),
+            ([], True),
+            (["more narration"], True),
+        ]:
+            current = _select_final_answer_parts(
+                text_parts=text, has_tool_calls=has_tools, current=current
+            )
+        assert current == []
+
+    def test_last_text_only_message_wins_in_sequence(self) -> None:
+        # Multiple text-only messages over the run — the **last** one
+        # is the agent's answer (most recent composition).
+        current: list[str] = []
+        current = _select_final_answer_parts(
+            text_parts=["first answer"], has_tool_calls=False, current=current
+        )
+        current = _select_final_answer_parts(
+            text_parts=["narration"], has_tool_calls=True, current=current
+        )
+        current = _select_final_answer_parts(
+            text_parts=["second answer"], has_tool_calls=False, current=current
+        )
+        assert current == ["second answer"]
+
+    def test_returns_copy_not_reference(self) -> None:
+        # Defensive: the SDK call site reuses the ``text_parts`` list
+        # per-message; the helper must return a copy so subsequent
+        # mutations don't poison the captured final answer.
+        text_parts = ["final"]
+        result = _select_final_answer_parts(
+            text_parts=text_parts, has_tool_calls=False, current=[]
+        )
+        text_parts.clear()
+        assert result == ["final"]
+
+    def test_blank_text_only_message_keeps_current(self) -> None:
+        # Whitespace-only / empty-string text blocks with no tool calls
+        # would otherwise look like a "final" answer and clobber a real
+        # one captured earlier in the stream. The docstring says empty
+        # messages don't contribute — enforce that for blank strings too.
+        for blank in [[""], ["   "], ["\n"], ["", "  ", "\t"]]:
+            assert _select_final_answer_parts(
+                text_parts=blank,
+                has_tool_calls=False,
+                current=["real final answer"],
+            ) == ["real final answer"], f"blank={blank!r} clobbered current"

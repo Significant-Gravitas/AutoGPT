@@ -145,6 +145,13 @@ class TestResolveBaselineModel:
         monkeypatch.setenv("CHAT_MODEL", "legacy/sonnet-via-chat-model")
         monkeypatch.setenv("CHAT_ADVANCED_MODEL", "legacy/opus-via-advanced")
         monkeypatch.setenv("CHAT_FAST_MODEL", "legacy/fast-via-fast-model")
+        # Force OR mode so the SDK-vendor validator doesn't reject the
+        # non-Anthropic legacy slugs — this test only cares about env-var
+        # binding, not transport compatibility.  (Default is now
+        # ``use_openrouter=False`` so we have to opt in explicitly.)
+        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
+        monkeypatch.setenv("CHAT_API_KEY", "or-key")
+        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
 
         cfg = ChatConfig()
 
@@ -168,6 +175,12 @@ class TestResolveBaselineModel:
         monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "explicit/fast-adv")
         monkeypatch.setenv("CHAT_THINKING_STANDARD_MODEL", "explicit/think-std")
         monkeypatch.setenv("CHAT_THINKING_ADVANCED_MODEL", "explicit/think-adv")
+        # Force OR mode so the SDK-vendor validator doesn't reject the
+        # non-Anthropic explicit slugs — this test only cares about
+        # env-var binding, not transport compatibility.
+        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
+        monkeypatch.setenv("CHAT_API_KEY", "or-key")
+        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
         # Clear the legacy aliases so they don't win priority in
         # ``AliasChoices`` (first match wins).
         for legacy in ("CHAT_MODEL", "CHAT_ADVANCED_MODEL", "CHAT_FAST_MODEL"):

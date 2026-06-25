@@ -1032,6 +1032,10 @@ async def extract_context_messages(
     current user turn at ``session_messages[-1]`` is excluded — callers append
     it themselves.
     """
+    # Drop reasoning rows — their content lives in transcript paths,
+    # not the public turn list.  Queue lifecycle is tracked on the
+    # owning ChatSession, not per message, so no per-row filtering
+    # for queued/running rows is needed here.
     session_messages = [m for m in session_messages if m.role != "reasoning"]
     prior = session_messages[:-1]
 

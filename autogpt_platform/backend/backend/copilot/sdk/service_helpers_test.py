@@ -393,6 +393,10 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the new
+            # ``_validate_aux_client_for_direct_main`` validator — these
+            # tests target the SDK normalizer, not the aux check.
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -426,10 +430,7 @@ class TestNormalizeModelName:
             _normalize_model_name("google/gemini-2.5-flash")
 
     def test_already_normalized_unchanged(self, _direct_anthropic_config):
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
     def test_empty_string_unchanged(self, _direct_anthropic_config):
         assert _normalize_model_name("") == ""
@@ -533,6 +534,8 @@ class TestEffectiveTransport:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the aux-credential validator.
+            aux_api_key="or-aux-key",
         )
         assert cfg.effective_transport == "direct_anthropic"
 
@@ -542,6 +545,11 @@ class TestEffectiveTransport:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` runs in subscription
+            # mode now (PR #13034 review): pin a direct key + Anthropic
+            # title model so the aux 401-trap validator is satisfied.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.effective_transport == "subscription"
 

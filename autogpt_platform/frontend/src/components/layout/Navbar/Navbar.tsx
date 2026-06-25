@@ -97,8 +97,8 @@ export function Navbar() {
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu
-                  userName={profile?.username}
-                  userEmail={profile?.name}
+                  userName={profile?.name || profile?.username}
+                  userEmail={user?.email}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}
                   isLoading={isLoadingProfile}
