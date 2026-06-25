@@ -84,32 +84,23 @@ Forge your own agent! The Forge is a ready-to-go template for your agent applica
 
 ---
 
----
-
 ## 🔧 CLI
 [CLI]: #cli
 
-The project CLI makes it easy to use all of the components of AutoGPT Classic in the repo, separately or
-together. To install its dependencies, simply run `./run setup`, and you're ready to go!
+AutoGPT Classic is run via [Poetry](https://python-poetry.org/) from the `classic/` directory. Install its dependencies with `poetry install`, and you're ready to go:
 
 ```shell
-$ ./run
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  agent      Commands to create, start and stop agents
-  benchmark  Commands to start the benchmark and list tests and categories
-  setup      Installs dependencies needed for your system.
+cd classic
+poetry install
 ```
 
 Common commands:
 
-* `./run agent start autogpt` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT Classic agent
-* `./run agent create <name>` &ndash; creates a new Forge-based agent project at `agents/<name>`
-* `./run benchmark start <agent>` &ndash; benchmarks the specified agent
+* `poetry run autogpt` &ndash; runs the AutoGPT Classic agent in interactive CLI mode
+* `poetry run serve --debug` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the agent in Agent Protocol server mode
+* `poetry run direct-benchmark run` &ndash; benchmarks the agent (run with `--help` to list options)
+
+See the [classic README](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic) for full setup instructions.
 
 ---
 

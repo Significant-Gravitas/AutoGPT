@@ -123,14 +123,14 @@ If you don't know which to choose, you can safely go with OpenAI*.
         `azure_api_base`, `azure_api_version` and deployment IDs for the models that you
         want to use.
 
-        E.g. if you want to use `gpt-5.4` and `gpt-5.4-mini`:
+        E.g. if you want to use `gpt-3.5-turbo` and `gpt-4-turbo`:
 
         ```yaml
         # Please specify all of these values as double-quoted strings
         # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            gpt-5.4: "<gpt-54-deployment-id>"
-            gpt-5.4-mini: "<gpt-54-mini-deployment-id>"
+            gpt-3.5-turbo: "<gpt-35-turbo-deployment-id>"
+            gpt-4-turbo: "<gpt-4-turbo-deployment-id>"
             ...
         ```
 
