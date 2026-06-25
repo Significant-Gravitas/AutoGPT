@@ -119,6 +119,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..budget import MIN_VIABLE_TASK_BUDGET_USD
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -208,16 +209,6 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 
-# Minimum viable per-query budget (USD).  A turn dispatched with less than
-# this is almost certainly doomed — the median task cost is ~$5.37 (p50)
-# and even a lightweight follow-up needs ~$1 of headroom.  When the
-# user's *actual* remaining daily/weekly budget is below this threshold
-# we short-circuit with a rate-limit error instead of dispatching a turn
-# that will be hard-killed mid-stream by the CLI's ``max_budget_usd``
-# enforcement, producing a confusing "budget exceeded" ErrorCard.
-_MIN_VIABLE_BUDGET_USD = 1.0
-
-
 async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     """Pick the per-query ``max_budget_usd`` for this user *now*.
 
@@ -229,7 +220,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     internal turn run without auth).
 
     Returns ``0.0`` when the user's *actual* remaining budget is positive
-    but below ``_MIN_VIABLE_BUDGET_USD`` — the turn would be doomed (the
+    but below ``MIN_VIABLE_TASK_BUDGET_USD`` — the turn would be doomed (the
     CLI would hard-kill it mid-stream).  Callers must check for ``0.0``
     and short-circuit with a rate-limit error instead of dispatching.
     """
@@ -259,7 +250,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     # If the user's actual remaining budget is below the viable threshold
     # the turn is doomed — it will be hard-killed mid-stream.  Signal this
     # to the caller so it can surface a rate-limit error instead.
-    if 0 < remaining < _MIN_VIABLE_BUDGET_USD:
+    if 0 < remaining < MIN_VIABLE_TASK_BUDGET_USD:
         return 0.0
     return min(static_cap, remaining)
 
@@ -4139,7 +4130,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # can short-circuit with a rate-limit error when the user's
         # remaining daily/weekly budget is too low for a viable turn.
         # ``_resolve_dynamic_max_budget_usd`` returns 0.0 when the actual
-        # remaining is positive but below ``_MIN_VIABLE_BUDGET_USD`` —
+        # remaining is positive but below ``MIN_VIABLE_TASK_BUDGET_USD`` —
         # dispatching in that case would produce a doomed turn that the
         # CLI hard-kills mid-stream.
         resolved_budget = await _resolve_dynamic_max_budget_usd(user_id)
@@ -4148,7 +4139,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "%s Remaining budget below viable threshold ($%.2f); "
                 "rejecting turn with rate-limit error",
                 log_prefix,
-                _MIN_VIABLE_BUDGET_USD,
+                MIN_VIABLE_TASK_BUDGET_USD,
             )
             _append_error_marker(
                 session,

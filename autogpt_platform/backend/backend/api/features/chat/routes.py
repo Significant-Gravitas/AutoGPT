@@ -21,6 +21,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
+from backend.copilot.budget import MIN_VIABLE_TASK_BUDGET_USD
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
@@ -1114,14 +1115,13 @@ async def stream_chat_post(
             # the turn is doomed before it starts (median task cost ~$5).
             # Block early and surface the rate-limit / credit-reset UI
             # instead of dispatching a turn that will die mid-stream.
-            _MIN_VIABLE_TASK_BUDGET_USD = 1.0
             remaining = await get_remaining_usd_budget(
                 user_id=user_id,
                 daily_cost_limit=daily_limit,
                 weekly_cost_limit=weekly_limit,
                 floor_usd=0.0,  # faithful signal, no floor
             )
-            if 0 <= remaining < _MIN_VIABLE_TASK_BUDGET_USD:
+            if 0 <= remaining < MIN_VIABLE_TASK_BUDGET_USD:
                 raise HTTPException(
                     status_code=429,
                     detail=(

@@ -1894,10 +1894,9 @@ class TestResolveDynamicMaxBudgetUsd:
         assert result == 0.0
 
     @pytest.mark.asyncio
-    async def test_clamps_to_floor_when_remaining_is_at_viable(self):
-        # When remaining is at or above the viable threshold, the floor
-        # still applies so a near-capped user gets enough headroom to
-        # dispatch the turn (and surface the wrap-up reminder).
+    async def test_uses_remaining_when_at_viable_threshold(self):
+        # When remaining is at or above the viable threshold, the resolver
+        # uses the smaller of the static cap and actual remaining budget.
         with (
             patch(
                 "backend.copilot.sdk.service.get_global_rate_limits",
@@ -1913,9 +1912,8 @@ class TestResolveDynamicMaxBudgetUsd:
             ),
         ):
             result = await _resolve_dynamic_max_budget_usd("u-1")
-        # remaining=1.0 is >= _MIN_VIABLE_BUDGET_USD (1.0), so the viable
-        # gate does NOT fire.  The resolver returns min(static_cap, remaining)
-        # = min(10.0, 1.0) = 1.0.
+        # remaining=1.0 is at the viable threshold, so the viable gate does
+        # not fire. The resolver returns min(static_cap, remaining) = 1.0.
         assert result == 1.0
 
     @pytest.mark.asyncio
