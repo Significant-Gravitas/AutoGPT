@@ -41,6 +41,6 @@ CREATE INDEX "InvitedUser_tallyStatus_idx"
 ON "InvitedUser"("tallyStatus");
 -- AddForeignKey
 ALTER TABLE "InvitedUser" ADD CONSTRAINT "InvitedUser_authUserId_fkey" FOREIGN KEY("authUserId") REFERENCES "User"("id")
-ON DELETE
+ON DELETE 
 SET NULL
 ON UPDATE CASCADE;
