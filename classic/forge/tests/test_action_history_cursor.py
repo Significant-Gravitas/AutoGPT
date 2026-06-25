@@ -103,7 +103,7 @@ class TestFinishContinuationFlow:
         finish_episode.result = None
         history.episodes.append(finish_episode)
         assert history.current_episode is finish_episode
-        assert history.current_episode.result is None
+        assert finish_episode.result is None
 
         # 2. AgentFinished caught -> main.py closes the episode via
         #    register_result so the loop won't reuse the finish proposal.
