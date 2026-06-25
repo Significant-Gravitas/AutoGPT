@@ -70,11 +70,14 @@ def _make_graph(
     manual: bool,
     regular_credentials: dict | None = None,
     config_schema: dict | None = None,
+    input_schema: dict | None = None,
 ):
     """Build a fake graph with a webhook trigger node.
 
     ``config_schema`` defaults to an empty (no-required) schema so the trigger
     config check passes; pass one with ``required`` to exercise that path.
+    ``input_schema`` is the graph's regular input schema (for agents with input
+    nodes alongside the trigger); defaults to empty (no required inputs).
     """
     node = MagicMock()
     node.id = "trigger-node"
@@ -87,6 +90,7 @@ def _make_graph(
     graph.webhook_input_node = node
     graph.regular_credentials_inputs = regular_credentials or {}
     graph.trigger_setup_info = MagicMock(config_schema=config_schema or {})
+    graph.input_schema = input_schema or {}
     return graph
 
 
@@ -331,6 +335,86 @@ async def test_provider_webhook_config_and_creds_provided_proceeds(tool, session
     assert isinstance(result, TriggerSetupResponse)
     setup_mock.assert_awaited_once()
     assert setup_mock.await_args.kwargs["trigger_config"] == {"repo": "owner/repo"}
+
+
+@pytest.mark.asyncio
+async def test_constant_inputs_forwarded_to_setup(tool, session):
+    """Regular graph inputs (input nodes alongside the trigger) are passed
+    through to setup_triggered_preset as `constant_inputs`."""
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(
+        provider="generic_webhook",
+        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+    )
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            name="My Trigger",
+            graph_id="graph-1",
+            constant_inputs={"topic": "weather"},
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    setup_mock.assert_awaited_once()
+    assert setup_mock.await_args.kwargs["constant_inputs"] == {"topic": "weather"}
+
+
+@pytest.mark.asyncio
+async def test_missing_required_inputs_asks_user(tool, session):
+    """A graph with required regular inputs the LLM didn't supply -> ask the
+    user conversationally and surface the input schema; don't attempt setup."""
+    graph = _make_graph(
+        manual=True,
+        regular_credentials={},
+        input_schema={
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    )
+    ctxs, setup_mock = _patches(graph)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert isinstance(result, TriggerConfigRequiredResponse)
+    assert result.missing_inputs == ["topic"]
+    assert result.input_schema == {
+        "properties": {"topic": {"type": "string"}},
+        "required": ["topic"],
+    }
+    setup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_required_inputs_provided_proceeds(tool, session):
+    """Once the required regular inputs are supplied, setup proceeds and forwards
+    them as `constant_inputs`."""
+    graph = _make_graph(
+        manual=True,
+        regular_credentials={},
+        input_schema={
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    )
+    preset = _make_preset(
+        provider="generic_webhook",
+        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+    )
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            name="My Trigger",
+            graph_id="graph-1",
+            constant_inputs={"topic": "weather"},
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    setup_mock.assert_awaited_once()
+    assert setup_mock.await_args.kwargs["constant_inputs"] == {"topic": "weather"}
 
 
 @pytest.mark.asyncio

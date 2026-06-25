@@ -68,18 +68,22 @@ class TriggerSetupResponse(ToolResponseBase):
 
 
 class TriggerConfigRequiredResponse(ToolResponseBase):
-    """Returned when the webhook trigger block needs configuration the LLM must
-    collect from the user (e.g. a GitHub repo + which events to subscribe to).
+    """Returned when the trigger setup needs values the LLM must collect from the
+    user: the trigger block's config (e.g. a GitHub repo + which events to
+    subscribe to) and/or the agent's regular graph inputs.
 
-    The config is gathered conversationally rather than via a card, because a
+    The values are gathered conversationally rather than via a card, because a
     trigger block's config (event filters etc.) can be arbitrarily structured.
-    The LLM should ask the user for the fields in ``config_schema`` — never
-    guess — then re-call with ``trigger_config`` filled in.
+    The LLM should ask the user for the fields in ``config_schema`` /
+    ``input_schema`` — never guess — then re-call with ``trigger_config`` and/or
+    ``constant_inputs`` filled in.
     """
 
     type: ResponseType = ResponseType.TRIGGER_CONFIG_REQUIRED
     missing_config: list[str]
     config_schema: dict[str, Any]
+    missing_inputs: list[str] = []
+    input_schema: dict[str, Any] | None = None
     graph_id: str
     graph_version: int
 
@@ -147,6 +151,17 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                     ),
                     "additionalProperties": True,
                 },
+                "constant_inputs": {
+                    "type": "object",
+                    "description": (
+                        "Regular graph input values (from the agent's "
+                        "input_schema) for agents that have input nodes "
+                        "alongside the trigger block. Ask the user for any "
+                        "required inputs and pass them here; omit trigger config "
+                        "(use trigger_config) and credential fields."
+                    ),
+                    "additionalProperties": True,
+                },
                 "credentials": {
                     "type": "object",
                     "description": (
@@ -197,8 +212,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 session_id=session_id,
             )
 
-        config_required = self._missing_trigger_config(
-            graph, kwargs.get("trigger_config") or {}, session_id
+        config_required = self._missing_setup_config(
+            graph,
+            kwargs.get("trigger_config") or {},
+            kwargs.get("constant_inputs") or {},
+            session_id,
         )
         if config_required:
             return config_required
@@ -218,6 +236,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 name=name,
                 description=(kwargs.get("description") or "").strip(),
                 trigger_config=kwargs.get("trigger_config") or {},
+                constant_inputs=kwargs.get("constant_inputs") or {},
                 agent_credentials=agent_credentials,
             )
         except (
@@ -281,40 +300,56 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             )
         return graph, None
 
-    def _missing_trigger_config(
+    def _missing_setup_config(
         self,
         graph: GraphModel,
         trigger_config: dict[str, Any],
+        constant_inputs: dict[str, Any],
         session_id: str | None,
     ) -> TriggerConfigRequiredResponse | None:
-        """Return a config-required response if the trigger block has required
-        config inputs (e.g. a repo + event filter) the caller hasn't supplied.
+        """Return a config-required response if setup needs values the caller
+        hasn't supplied: required trigger-block config (e.g. a repo + event
+        filter) and/or required regular graph inputs (for agents that have input
+        nodes alongside the trigger).
 
         These are collected from the user conversationally — the LLM must ask
         for them and never guess — rather than via the credentials card.
         """
         info = graph.trigger_setup_info
-        schema = info.config_schema if info else None
-        if not isinstance(schema, dict):
-            return None
-        required = schema.get("required", [])
-        missing = [
-            name for name in required if not _is_filled(trigger_config.get(name))
+        config_schema = info.config_schema if info else None
+        config_schema = config_schema if isinstance(config_schema, dict) else {}
+        missing_config = [
+            name
+            for name in config_schema.get("required", [])
+            if not _is_filled(trigger_config.get(name))
         ]
-        if not missing:
+
+        input_schema = graph.input_schema
+        if not isinstance(input_schema, dict):
+            input_schema = {}
+        missing_inputs = [
+            name
+            for name in input_schema.get("required", [])
+            if not _is_filled(constant_inputs.get(name))
+        ]
+
+        if not missing_config and not missing_inputs:
             return None
         return TriggerConfigRequiredResponse(
             message=(
-                "Before this trigger can be set up, ask the user for its "
-                "configuration and pass it as `trigger_config` — do NOT guess "
-                "values (e.g. don't invent a repository name). The required "
-                "fields and their schema are below; once you have the user's "
-                "answers, call setup_agent_webhook_trigger again with "
-                "`trigger_config` filled in."
+                "Before this trigger can be set up, ask the user for the "
+                "required values and pass them back — do NOT guess (e.g. don't "
+                "invent a repository name). Pass trigger-block config as "
+                "`trigger_config` and regular graph inputs as `constant_inputs`. "
+                "The required fields and their schemas are below; once you have "
+                "the user's answers, call setup_agent_webhook_trigger again with "
+                "them filled in."
             ),
             session_id=session_id,
-            missing_config=missing,
-            config_schema=schema,
+            missing_config=missing_config,
+            config_schema=config_schema,
+            missing_inputs=missing_inputs,
+            input_schema=input_schema or None,
             graph_id=graph.id,
             graph_version=graph.version,
         )
