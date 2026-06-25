@@ -43,9 +43,9 @@ export function formatEdgeID(conn: Link | Connection): string {
  * - updateBlockIDs was 8+ months past its removal date (2025-10-01)
  * - removeCredentials was too aggressive, stripping legitimate input data
  */
-export function sanitizeImportedGraph(graph: Graph): void {
-  // No-op — backend handles credential validation and block ID resolution.
-  // See validate_graph() and on_graph_activate() in the backend.
+export function sanitizeImportedGraph(_graph: Graph): void {
+  // Intentionally no-op: importing should not mutate user-provided graph
+  // payloads. Backend validation is the source of truth.
 }
 
 /**

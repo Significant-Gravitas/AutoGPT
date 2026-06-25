@@ -1034,10 +1034,20 @@ class GraphModel(Graph, GraphMeta):
                 else:
                     fields = block.input_schema.get_fields()
 
-                # If the schema has no fields (dynamic sub-graph schemas),
-                # fall back to a permissive mode that allows any connection.
-                allow_any_field = not fields and block.block_type == BlockType.AGENT
-                if not allow_any_field and sanitized_name not in fields and not is_tool_pin(name):
+                # AgentExecutorBlock exposes runtime-defined pins from the
+                # referenced sub-graph. During import validation that sub-graph
+                # schema may be absent or incomplete, so do not reject AGENT
+                # pins solely because they are not present in the static block
+                # schema. Non-AGENT blocks remain strict.
+                allow_dynamic_agent_pin = (
+                    block.block_type == BlockType.AGENT
+                    and sanitized_name not in fields
+                )
+                if (
+                    sanitized_name not in fields
+                    and not allow_dynamic_agent_pin
+                    and not is_tool_pin(name)
+                ):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
