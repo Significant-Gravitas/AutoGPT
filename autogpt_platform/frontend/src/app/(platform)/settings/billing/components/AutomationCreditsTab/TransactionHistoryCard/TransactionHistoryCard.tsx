@@ -64,9 +64,6 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
                   <Th className="hidden sm:table-cell">Date</Th>
                   <Th>Description</Th>
                   <Th align="right">Amount</Th>
-                  <Th align="right" className="hidden sm:table-cell">
-                    Balance
-                  </Th>
                 </tr>
               </thead>
               <motion.tbody
@@ -112,15 +109,6 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
                         }
                       >
                         {transaction.amount}
-                      </Text>
-                    </td>
-                    <td className="hidden px-2 py-4 text-right sm:table-cell sm:px-4">
-                      <Text
-                        variant="body-medium"
-                        as="span"
-                        className="tabular-nums text-textBlack"
-                      >
-                        {transaction.balance}
                       </Text>
                     </td>
                   </motion.tr>

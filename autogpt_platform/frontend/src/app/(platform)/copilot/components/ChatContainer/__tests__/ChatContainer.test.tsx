@@ -1,14 +1,25 @@
 import React from "react";
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
+import { server } from "@/mocks/mock-server";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatContainer } from "../ChatContainer";
 import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
 const mockArtifactsEnabled = vi.fn(() => false);
+const clipboardWrite = vi.fn(async (_text: string) => {});
 
 const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
 const ARTIFACT_B_ID = "22222222-0000-0000-0000-000000000000";
+const SHARED_TOKEN = "33333333-0000-0000-0000-000000000000";
 
 function makeArtifact(id: string, title = `${id}.txt`) {
   return {
@@ -24,13 +35,27 @@ function resetCopilotStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
     },
   });
+}
+
+function mockShareState(state: Partial<ChatShareStateResponse>) {
+  server.use(
+    getGetV2GetChatShareStateMockHandler200(
+      (): ChatShareStateResponse => ({
+        is_shared: false,
+        share_token: null,
+        auto_share_executions: false,
+        message_count: 0,
+        linked_run_count: 0,
+        file_count: 0,
+        ...state,
+      }),
+    ),
+  );
 }
 
 vi.mock("framer-motion", () => ({
@@ -159,7 +184,13 @@ describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
     mockArtifactsEnabled.mockReturnValue(false);
+    mockShareState({ is_shared: false });
     resetCopilotStore();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: clipboardWrite },
+    });
+    clipboardWrite.mockClear();
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
   });
 
@@ -190,6 +221,41 @@ describe("ChatContainer", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("does not render the shared-chat notice for unshared chats", async () => {
+    render(<ChatContainer {...baseProps} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("This chat is shared")).toBeNull();
+    });
+  });
+
+  it("renders the shared-chat notice for chats the user has shared", async () => {
+    mockShareState({ is_shared: true, share_token: SHARED_TOKEN });
+
+    render(<ChatContainer {...baseProps} />);
+
+    expect(await screen.findByText("This chat is shared")).toBeDefined();
+    expect(screen.getByRole("button", { name: /copy link/i })).toBeDefined();
+  });
+
+  it("copies the shared-chat link from the owner notice", async () => {
+    mockShareState({ is_shared: true, share_token: SHARED_TOKEN });
+
+    render(<ChatContainer {...baseProps} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /copy link/i }));
+
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0][0]).toMatch(
+      new RegExp(`/share/chat/${SHARED_TOKEN}$`),
+    );
+    expect(
+      await screen.findByRole("button", { name: /copied/i }),
+    ).toBeDefined();
+  });
+
   describe("auto-open artifact panel behavior", () => {
     it("does not auto-open the artifact panel on initial render", () => {
       mockArtifactsEnabled.mockReturnValue(true);
@@ -216,7 +282,7 @@ describe("ChatContainer", () => {
       expect(wrapper?.className).toContain("max-w-3xl");
     });
 
-    it("resets the panel state when sessionId changes", () => {
+    it("clears the artifact preview when sessionId changes", () => {
       mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
@@ -229,12 +295,16 @@ describe("ChatContainer", () => {
         <ChatContainer {...baseProps} sessionId="s1" />,
       );
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_B_ID);
 
       rerender(<ChatContainer {...baseProps} sessionId="s2" />);
 
+      // `isOpen` is shared with ContextPanel and intentionally left alone
+      // on session switches; the drawer hides via activeArtifact being null.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
       const wrapper = screen.getByTestId(
@@ -264,18 +334,22 @@ describe("ChatContainer", () => {
       expect(panel.history).toEqual([]);
     });
 
-    it("closes the panel on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
+    it("clears artifact preview on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
       mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_A_ID);
 
       const { unmount } = render(<ChatContainer {...baseProps} />);
       unmount();
 
+      // The drawer's visibility is gated on activeArtifact, so clearing it
+      // is what prevents a resurrection on nav-away. `isOpen` belongs to
+      // ContextPanel and must not be flipped here.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
     });
@@ -285,11 +359,9 @@ describe("ChatContainer", () => {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          isMinimized: false,
-          isMaximized: false,
-          width: 600,
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
+          activeTab: "files",
         },
       });
 
@@ -298,7 +370,12 @@ describe("ChatContainer", () => {
 
       render(<ChatContainer {...baseProps} />);
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+      // The drawer is gated on activeArtifact — clearing it is enough to
+      // suppress the stale preview. `isOpen` is owned by ContextPanel and
+      // is no longer flipped by the unmount cleanup.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact,
+      ).toBeNull();
       const wrapper = screen.getByTestId(
         "chat-messages-container",
       ).parentElement;

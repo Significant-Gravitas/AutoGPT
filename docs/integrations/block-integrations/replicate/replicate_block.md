@@ -21,6 +21,8 @@ The block waits for completion and returns the model output along with status in
 |-------|-------------|------|----------|
 | model_name | The Replicate model name (format: 'owner/model-name') | str | Yes |
 | model_inputs | Dictionary of inputs to pass to the model. Values may be strings, integers, floats, or booleans — Replicate model schemas commonly require booleans (e.g. ``generate_audio``, ``safety_checker``) and floats (e.g. ``temperature``, ``guidance_scale``). | Dict[str, str \| int \| float \| bool] | No |
+| files | Files (image, audio, video, etc.) to send to the model. Each file is uploaded to Replicate and passed to the model under the field named by ``file_input_field``. Pass file references (URLs, uploaded files) here instead of inlining base64 in ``model_inputs``. | List[str (file)] | No |
+| file_input_field | Name of the model input field that receives the uploaded ``files``. Defaults to ``image``, the most common name. Check the model's schema on Replicate for the exact name (common alternatives: ``input_image``, ``img``, ``image_input``, ``audio``, ``video``, ``mask``). A single file is sent as one value; multiple files are sent as a list. | str | No |
 | version | Specific version hash of the model (optional) | str | No |
 
 ### Outputs

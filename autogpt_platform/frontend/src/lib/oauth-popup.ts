@@ -181,14 +181,93 @@ export function openOAuthPopup(
       );
     }
 
-    // Detect popup closed by user (without completing sign-in)
-    if (popup) {
+    // Detect popup closed without completing sign-in.
+    //
+    // Three timeouts apply to the OAuth flow, only the outermost bounds
+    // user time:
+    //   1. ``timeout`` (default 5 min) — overall deadline; rejects with
+    //      OAUTH_ERROR_FLOW_TIMED_OUT if the user never finishes signing
+    //      in.  This is the only timeout that limits how long the user
+    //      has to log in.
+    //   2. 500 ms polling on ``popup.closed`` — only fires after the
+    //      popup window actually goes away (user closed it OR callback
+    //      page self-closed).  Doesn't run while the popup is open.
+    //   3. POPUP_CLOSE_GRACE_MS (3000 ms) — only starts after step 2
+    //      observes a closed popup; gives in-flight result messages a
+    //      chance to land before we declare failure.
+    //
+    // Why the grace at all?  The callback page (see
+    // ``frontend/src/app/(platform)/auth/integrations/mcp_callback/route.ts``)
+    // does:
+    //   bc.postMessage(...); localStorage.setItem(...); setTimeout(close, 1500)
+    // BroadcastChannel delivery is async across-origin; the parent's
+    // localStorage poll fires every 500 ms.  Without a grace window the
+    // ``popup.closed`` rejection can win the race against a successful
+    // result that's a few hundred ms behind, surfacing the bogus
+    // "Sign-in window was closed" error John screenshotted.
+    //
+    // On detected close we ALSO do one synchronous final localStorage
+    // read — covers the case where the BroadcastChannel listener never
+    // fired (storage-partitioning / BCG isolation) and the poll tick
+    // hasn't run yet.  The grace then handles any remaining
+    // post-message latency.
+    //
+    // The setTimeout lives in a plain JS closure, not React state — it
+    // does NOT stack across re-renders, and the AbortController cleanup
+    // tears it down if the caller aborts before grace expires.
+    // Skip the close-poll entirely when the popup was blocked.  The
+    // ``window.open("about:blank", ...)`` reference can be non-null but
+    // already-closed in that branch (we fell back to a separate new-tab
+    // ``window.open(loginUrl, "_blank")`` whose handle we deliberately
+    // don't keep — the new tab is the user's primary surface and
+    // pre-emptively rejecting on its ``closed`` state would short-circuit
+    // a successful sign-in arriving via BroadcastChannel/localStorage.
+    if (popup && !popupBlocked) {
+      // Grace window only applies to cross-origin flows.  Same-origin
+      // OAuth resolves via ``window.opener.postMessage`` which the
+      // parent receives synchronously on the same event-loop tick the
+      // popup posts it — there's no async delivery race to wait for,
+      // and adding 3 s of fake spinner after a manual close hurts UX.
+      const POPUP_CLOSE_GRACE_MS = useCrossOriginListeners ? 3000 : 0;
+      const finalLocalStorageCheck = () => {
+        if (!useCrossOriginListeners || handled) return;
+        try {
+          const stored = localStorage.getItem(scopedLocalStorageKey);
+          if (stored) {
+            const data = JSON.parse(stored);
+            localStorage.removeItem(scopedLocalStorageKey);
+            handleResult(data);
+          }
+        } catch {}
+      };
+
       const closedPollInterval = setInterval(() => {
         if (popup.closed && !handled) {
           clearInterval(closedPollInterval);
-          handled = true;
-          reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
-          controller.abort("popup_closed");
+          finalLocalStorageCheck();
+          if (handled) return;
+          if (POPUP_CLOSE_GRACE_MS === 0) {
+            // Same-origin path: the ``window.addEventListener("message", …)``
+            // at line 149 fires synchronously when the popup posts before
+            // closing, so any successful result has already been handled
+            // by the time ``popup.closed`` flips.  Reject immediately —
+            // no async-delivery race to wait for.
+            handled = true;
+            reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+            controller.abort("popup_closed");
+            return;
+          }
+          const graceTimeout = setTimeout(() => {
+            if (handled) return;
+            finalLocalStorageCheck();
+            if (handled) return;
+            handled = true;
+            reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+            controller.abort("popup_closed");
+          }, POPUP_CLOSE_GRACE_MS);
+          controller.signal.addEventListener("abort", () =>
+            clearTimeout(graceTimeout),
+          );
         }
       }, 500);
       controller.signal.addEventListener("abort", () =>

@@ -1,5 +1,4 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +7,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  CheckCircle,
-  CircleNotch,
   MagnifyingGlass,
   PlusIcon,
-  SpeakerHigh,
-  SpeakerSlash,
   SpinnerGapIcon,
   X,
 } from "@phosphor-icons/react";
@@ -27,32 +22,10 @@ import { useSessionDeletion } from "../../useSessionDeletion";
 import { useSessionList } from "../../useSessionList";
 import { ChatSearchResults } from "../ChatSearchModal/ChatSearchResults";
 import { useChatSearch } from "../ChatSearchModal/useChatSearch";
+import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
+import { NotificationToggle } from "../ChatSidebar/components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  const day = date.getDate();
-  const ordinal =
-    day % 10 === 1 && day !== 11
-      ? "st"
-      : day % 10 === 2 && day !== 12
-        ? "nd"
-        : day % 10 === 3 && day !== 13
-          ? "rd"
-          : "th";
-  const month = date.toLocaleDateString("en-US", { month: "short" });
-  const year = date.getFullYear();
-
-  return `${day}${ordinal} ${month} ${year}`;
-}
+import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
 export function MobileDrawer() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -64,8 +37,6 @@ export function MobileDrawer() {
   const {
     completedSessionIDs,
     clearCompletedSession,
-    isSoundEnabled,
-    toggleSound,
     isDrawerOpen,
     setDrawerOpen,
     isSearchOpen,
@@ -134,21 +105,8 @@ export function MobileDrawer() {
                   Your chats
                 </Drawer.Title>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={toggleSound}
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:text-zinc-600"
-                    aria-label={
-                      isSoundEnabled
-                        ? "Disable notification sound"
-                        : "Enable notification sound"
-                    }
-                  >
-                    {isSoundEnabled ? (
-                      <SpeakerHigh className="h-4 w-4" />
-                    ) : (
-                      <SpeakerSlash className="h-4 w-4" />
-                    )}
-                  </button>
+                  <UsagePopover />
+                  <NotificationToggle />
                   {isChatSearchEnabled ? (
                     <ShadcnButton
                       type="button"
@@ -172,6 +130,7 @@ export function MobileDrawer() {
                     size="icon"
                     aria-label="Close sessions"
                     onClick={closeDrawer}
+                    className="ml-3"
                   >
                     <X width="1rem" height="1rem" />
                   </Button>
@@ -265,46 +224,28 @@ export function MobileDrawer() {
                         : "hover:bg-zinc-50",
                     )}
                   >
-                    <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                      <div className="flex min-w-0 max-w-full items-center gap-1.5">
-                        <Text
-                          variant="body"
-                          className={cn(
-                            "truncate font-normal",
-                            session.id === currentSessionId
-                              ? "text-zinc-600"
-                              : "text-zinc-800",
-                          )}
-                        >
-                          {session.title || "Untitled chat"}
-                        </Text>
-                        {session.is_processing &&
-                          shouldShowSessionProcessingIndicator({
-                            sessionId: session.id,
-                            currentSessionId,
-                            isProcessing: session.is_processing,
-                            hasCompletedIndicator: completedSessionIDs.has(
-                              session.id,
-                            ),
-                            needsReload: !!sessionNeedsReload[session.id],
-                          }) && (
-                            <CircleNotch
-                              className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-                              weight="bold"
-                            />
-                          )}
-                        {completedSessionIDs.has(session.id) &&
-                          session.id !== currentSessionId && (
-                            <CheckCircle
-                              className="h-4 w-4 shrink-0 text-green-500"
-                              weight="fill"
-                            />
-                          )}
-                      </div>
-                      <Text variant="small" className="text-neutral-400">
-                        {formatDate(session.updated_at)}
-                      </Text>
-                    </div>
+                    <ChatSessionBlock
+                      title={session.title}
+                      updatedAt={session.updated_at}
+                      sourcePlatform={session.source_platform}
+                      isActive={session.id === currentSessionId}
+                      showProcessing={
+                        !!session.is_processing &&
+                        shouldShowSessionProcessingIndicator({
+                          sessionId: session.id,
+                          currentSessionId,
+                          isProcessing: session.is_processing,
+                          hasCompletedIndicator: completedSessionIDs.has(
+                            session.id,
+                          ),
+                          needsReload: !!sessionNeedsReload[session.id],
+                        })
+                      }
+                      showCompleted={
+                        completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId
+                      }
+                    />
                   </button>
                 ))
               )}

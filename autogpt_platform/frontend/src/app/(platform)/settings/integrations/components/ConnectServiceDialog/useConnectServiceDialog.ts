@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 
-import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   filterConnectableProviders,
   toConnectableProviders,
