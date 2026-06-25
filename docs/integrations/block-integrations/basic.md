@@ -1493,6 +1493,44 @@ The search is performed against the Mem0 memory store and returns memories ranke
 
 ---
 
+## Sort List
+
+### What it is
+Sorts a list directly or by a key on dictionary items.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Sort List creates a sorted copy of the input list. Without a key, it sorts list
+items directly using Python's built-in ordering. With a key, each item must be a
+dictionary and the block sorts by that dictionary value. If the values cannot be
+compared, the block returns an error output instead of failing the workflow.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list | The list to sort. | List[Any] | Yes |
+| key | Dictionary key to sort by. Leave empty to sort list items directly. | str | No |
+| reverse | Whether to sort in descending order. | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if sorting failed. | str |
+| sorted_list | The sorted list. | List[Any] |
+| length | The number of items in the sorted list. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+Use Sort List after collecting records from another block, such as ordering
+tasks by priority, products by price, or search results by score before passing
+them to later workflow steps.
+<!-- END MANUAL -->
+
+---
+
 ## Store Value
 
 ### What it is
