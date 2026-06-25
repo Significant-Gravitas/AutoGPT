@@ -16,7 +16,6 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
-    _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _hidden_short_names_for_permissions,
@@ -1914,7 +1913,10 @@ class TestResolveDynamicMaxBudgetUsd:
             ),
         ):
             result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == _MAX_BUDGET_USD_FLOOR
+        # remaining=1.0 is >= _MIN_VIABLE_BUDGET_USD (1.0), so the viable
+        # gate does NOT fire.  The resolver returns min(static_cap, remaining)
+        # = min(10.0, 1.0) = 1.0.
+        assert result == 1.0
 
     @pytest.mark.asyncio
     async def test_static_cap_wins_when_smaller_than_remaining(self):

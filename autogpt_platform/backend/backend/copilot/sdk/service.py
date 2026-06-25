@@ -208,12 +208,6 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 
-# Floor on the per-query SDK budget — too small and the CLI refuses to
-# start a turn at all.  Caller (``_resolve_dynamic_max_budget_usd``) clamps
-# to this so a user near (but not yet at) their cap still gets a chance to
-# wrap up gracefully instead of hitting an immediate hard stop.
-_MAX_BUDGET_USD_FLOOR = 0.5
-
 # Minimum viable per-query budget (USD).  A turn dispatched with less than
 # this is almost certainly doomed — the median task cost is ~$5.37 (p50)
 # and even a lightweight follow-up needs ~$1 of headroom.  When the
@@ -232,9 +226,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
       * the user's remaining daily/weekly USD cap (from Redis)
 
     Falls back to the static cap when no ``user_id`` is available (e.g. an
-    internal turn run without auth).  Floored at ``_MAX_BUDGET_USD_FLOOR``
-    so a near-capped user still gets enough headroom to surface the
-    "wrap up" reminder rather than failing to dispatch.
+    internal turn run without auth).
 
     Returns ``0.0`` when the user's *actual* remaining budget is positive
     but below ``_MIN_VIABLE_BUDGET_USD`` — the turn would be doomed (the
@@ -269,7 +261,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     # to the caller so it can surface a rate-limit error instead.
     if 0 < remaining < _MIN_VIABLE_BUDGET_USD:
         return 0.0
-    return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
+    return min(static_cap, remaining)
 
 
 @dataclass
