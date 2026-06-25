@@ -381,10 +381,9 @@ Here's the complete `_auth.py` pattern (using ZeroBounce as a reference):
 ```python title="backend/blocks/my_provider/_auth.py"
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
-from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 # Type aliases for your provider
@@ -429,7 +428,7 @@ class MyBlock(Block):
         credentials: MyProviderCredentialsInput = MyProviderCredentialsField()
         # ... other inputs
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -438,6 +437,7 @@ class MyBlock(Block):
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
         # ... use the API key
+        yield "result", ...
 ```
 
 !!! note
@@ -866,7 +866,14 @@ By following these steps, you can create new blocks that extend the functionalit
 
 In addition to the inline `test_input`/`test_output`/`test_mock` approach described above, you can write standalone unit tests for more complex validation. Place test files alongside your block as `{block_name}_test.py` (e.g., `my_block_test.py`).
 
+!!! warning "Test file naming and auto-discovery"
+    The block loader in `backend/blocks/__init__.py` skips files whose names start with `test_` but still auto-imports files ending in `_test.py` at startup. Keep `_test.py` modules free of module-level side effects (no top-level `patch(...)` / network calls / fixtures-with-side-effects), or name your file `test_{block_name}.py` to opt out of auto-import entirely.
+
 ### Test Structure
+
+Two patterns are supported:
+
+**1. Drive the block directly** (mirror `backend/blocks/slack/slack_test.py`) — gives you full control over inputs, mocks, and output assertions:
 
 ```python title="backend/blocks/my_provider/my_block_test.py"
 import pytest
@@ -874,38 +881,58 @@ from unittest.mock import AsyncMock, patch
 
 from backend.blocks.my_provider._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.my_provider.my_block import MyBlock
-from backend.util.test import execute_block_test
+
+
+async def _collect_outputs(block, input_data, credentials):
+    outputs: dict[str, object] = {}
+    async for name, value in block.run(input_data, credentials=credentials):
+        outputs[name] = value
+    return outputs
 
 
 @pytest.mark.asyncio
 async def test_my_block_success():
-    mock_response = {"result": "test data"}
+    block = MyBlock()
+    input_data = MyBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        query="test query",
+    )
+    mock_resp = AsyncMock()
+    mock_resp.json.return_value = {"result": "test data"}
 
+    # Patch where the symbol is *used*. The block ecosystem uses
+    # `backend.util.request.Requests` (httpx under the hood), not stdlib `requests`.
     with patch(
-        "backend.blocks.my_provider.my_block.requests.post",
+        "backend.blocks.my_provider.my_block.Requests.post",
         new_callable=AsyncMock,
-        return_value=mock_response,
+        return_value=mock_resp,
     ):
-        outputs = await execute_block_test(
-            block=MyBlock(),
-            input_data=MyBlock.Input(
-                credentials=TEST_CREDENTIALS_INPUT,
-                query="test query",
-            ),
-            credentials=TEST_CREDENTIALS,
-        )
+        outputs = await _collect_outputs(block, input_data, TEST_CREDENTIALS)
 
-    assert "result" in outputs
     assert outputs["result"] == "test data"
+```
+
+**2. Run the block's inline `test_input` / `test_output` / `test_mock`** via the framework helper. The helper takes a block instance only and reads the test data defined on the block itself:
+
+```python title="backend/blocks/my_provider/my_block_test.py"
+import pytest
+
+from backend.blocks.my_provider.my_block import MyBlock
+from backend.util.test import execute_block_test
+
+
+@pytest.mark.asyncio
+async def test_my_block_inline_fixtures():
+    await execute_block_test(MyBlock())
 ```
 
 ### Key Points
 
 - **`TEST_CREDENTIALS_INPUT`** (from `_auth.py`) is used to construct the `Input` object — it contains the credential metadata (provider, id, type).
-- **`TEST_CREDENTIALS`** (from `_auth.py`) is passed as the `credentials` parameter — it contains the actual mock API key/token.
-- **`execute_block_test`** (from `backend.util.test`) is the standard helper for running block tests. It handles credential injection and output collection.
+- **`TEST_CREDENTIALS`** (from `_auth.py`) is passed to `block.run(..., credentials=...)` — it contains the actual mock API key/token.
+- **`execute_block_test(block)`** runs the block against its own inline `test_input` / `test_output` / `test_mock` attributes (set in `__init__`). It does **not** accept `input_data=` or `credentials=` and does **not** return outputs.
 - The block attribute for test credentials is `test_credentials` (not `test_credentials_input`) when using the inline test pattern in `__init__`.
-- Use `pytest.mark.asyncio` for async block `run()` methods and `patch`/`AsyncMock` to mock external API calls.
+- Use `pytest.mark.asyncio` for async block `run()` methods. Mock the HTTP layer where it is *used* — typically `backend.util.request.Requests` (or `httpx.AsyncClient`), not stdlib `requests`.
 
 ### Running Tests
 

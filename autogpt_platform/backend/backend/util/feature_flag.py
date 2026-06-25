@@ -41,12 +41,29 @@ class Flag(str, Enum):
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
     CHAT_MODE_OPTION = "chat-mode-option"
+    # Gates the "share chat results" feature end-to-end.  Backend create
+    # routes refuse when off so a stale frontend cannot enable shares;
+    # frontend share button hides when off so the UI doesn't tease a
+    # feature that won't take.  Existing public viewer routes stay on
+    # regardless so previously-shared URLs remain valid mid-flight.
+    CHAT_SHARING = "chat-sharing"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
+    # Self-distilled skills registry (store_skill / read_skill /
+    # delete_skill / list_skills + the per-turn <available_skills>
+    # context block).  Default-on — flip off in LaunchDarkly to disable
+    # the feature without a redeploy.
+    COPILOT_SKILLS = "copilot-skills"
+    # Scheduled copilot turn followups (schedule_followup MCP tool +
+    # the pending_followups awareness inside <session_context>).  The
+    # current_session_id line stays regardless — only the followup
+    # surface is gated.  Default-on.
+    COPILOT_SCHEDULED_FOLLOWUPS = "copilot-scheduled-followups"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
     # per Checkout). When set to a real Stripe Product ID, line items reference

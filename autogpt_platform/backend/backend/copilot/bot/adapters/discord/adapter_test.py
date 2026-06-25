@@ -9,6 +9,7 @@ import pytest
 from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
+    _resolve_mentions,
 )
 
 
@@ -134,6 +135,43 @@ class TestChannelType:
 # ── _is_mentioned ──────────────────────────────────────────────────────
 
 
+class TestShouldIgnoreMessage:
+    def test_ignores_own_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=1000, bot=True)
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_ignores_unmentioned_bot_message(self):
+        # A bot that doesn't @mention us is skipped — otherwise two bots
+        # sharing a thread (our own dev + prod included) loop forever.
+        adapter, client = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = False
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_allows_mentioned_bot_message(self):
+        # Another bot can still reach us by explicitly @mentioning us.
+        adapter, client = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = True
+
+        assert adapter._should_ignore_message(msg) is False
+
+    def test_allows_human_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=False)
+
+        assert adapter._should_ignore_message(msg) is False
+
+
 class TestIsMentioned:
     def test_dm_always_counts_as_mentioned(self):
         adapter, _ = _bare_adapter(bot_id=1000)
@@ -220,7 +258,12 @@ class TestSendMethods:
 
         await adapter.send_message("123", "hi")
 
-        channel.send.assert_awaited_once_with("hi", tts=False)
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("hi",)
+        assert kwargs["tts"] is False
+        # Default empty mentionable_users → AllowedMentions.none()
+        assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
 
     @pytest.mark.asyncio
     async def test_send_message_silently_drops_when_channel_missing(self):
@@ -261,7 +304,35 @@ class TestSendMethods:
 
         await adapter.send_reply("123", "hello", "999")
 
-        channel.send.assert_awaited_once_with("hello", tts=False)
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("hello",)
+        assert kwargs["tts"] is False
+        assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
+
+
+class TestRenameThread:
+    @pytest.mark.asyncio
+    async def test_renames_resolved_thread(self):
+        adapter, client = _bare_adapter()
+        thread = MagicMock(spec=discord.Thread)
+        thread.edit = AsyncMock()
+        client.get_channel.return_value = thread
+
+        assert await adapter.rename_thread("123", "Generated Web Title") is True
+
+        thread.edit.assert_awaited_once_with(name="Generated Web Title")
+
+    @pytest.mark.asyncio
+    async def test_refuses_non_thread_channel(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.edit = AsyncMock()
+        client.get_channel.return_value = channel
+
+        assert await adapter.rename_thread("123", "Generated Web Title") is False
+
+        channel.edit.assert_not_awaited()
 
 
 # ── properties ─────────────────────────────────────────────────────────
@@ -308,3 +379,138 @@ class TestProperties:
     def test_chunk_flush_at_is_under_message_limit(self):
         adapter, _ = _bare_adapter()
         assert adapter.chunk_flush_at < adapter.max_message_length
+
+
+class TestResolveMentions:
+    def test_empty_allowlist_returns_text_unchanged_and_no_mentions(self):
+        text = "Hello @World, ping @everyone"
+        rendered, allowed = _resolve_mentions(text, ())
+        assert rendered == text
+        assert allowed.everyone is False
+        assert allowed.users is False
+
+    def test_resolves_allowlisted_displayname_to_id_markup(self):
+        rendered, allowed = _resolve_mentions(
+            "Hey @Sue, did you see this?",
+            (("Sue", "12345"),),
+        )
+        assert rendered == "Hey <@12345>, did you see this?"
+        assert isinstance(allowed.users, list)
+        assert [getattr(u, "id", None) for u in allowed.users] == [12345]
+        assert allowed.everyone is False
+
+    def test_leaves_unknown_handles_as_plain_text(self):
+        rendered, allowed = _resolve_mentions(
+            "Hey @Sue and @Random",
+            (("Sue", "12345"),),
+        )
+        assert "<@12345>" in rendered
+        assert "@Random" in rendered  # not on allowlist → stays plain
+        assert isinstance(allowed.users, list)
+        assert [getattr(u, "id", None) for u in allowed.users] == [12345]
+
+    def test_longest_name_wins_when_handles_share_a_prefix(self):
+        # "@John Smith" should match before "@John" so the right user pings.
+        rendered, allowed = _resolve_mentions(
+            "Ask @John Smith about it",
+            (("John", "111"), ("John Smith", "222")),
+        )
+        assert "<@222>" in rendered
+        assert "<@111>" not in rendered
+        assert isinstance(allowed.users, list)
+        assert any(getattr(u, "id", None) == 222 for u in allowed.users)
+
+    def test_does_not_ping_everyone_or_here(self):
+        rendered, allowed = _resolve_mentions(
+            "Heads up @everyone and @here",
+            (("everyone", "9"),),  # even if a user is named "everyone"…
+        )
+        # "@everyone" gets substituted to <@9> because the user is on the
+        # allowlist, but AllowedMentions.everyone is False so Discord
+        # won't ping the @everyone role. "@here" stays plain text.
+        assert "<@9>" in rendered
+        assert "@here" in rendered
+        assert allowed.everyone is False
+        assert allowed.roles is False
+
+    def test_does_not_match_inside_emails_or_urls(self):
+        # The whole point of word boundaries: a stray "@Sue" inside an
+        # email address must stay an email, not a ping.
+        rendered, allowed = _resolve_mentions(
+            "Email me at hello@Sue.example.com or visit https://Sue.dev",
+            (("Sue", "12345"),),
+        )
+        assert rendered == (
+            "Email me at hello@Sue.example.com or visit https://Sue.dev"
+        )
+        assert allowed.everyone is False
+
+    def test_resolves_standalone_mention_alongside_email_in_same_message(self):
+        rendered, _ = _resolve_mentions(
+            "@Sue, can you check sue@Sue.com?",
+            (("Sue", "12345"),),
+        )
+        # Leading "@Sue" resolves; the one inside the email survives intact.
+        assert rendered == "<@12345>, can you check sue@Sue.com?"
+
+
+class TestCollectMentionableUsers:
+    def test_excludes_the_bot_itself(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message(
+            "<@1000> please tell <@2000> something",
+            mentions=[
+                _mention(1000, "AutoPilot"),
+                _mention(2000, "Sue"),
+            ],
+        )
+        result = adapter._collect_mentionable_users(msg)
+        assert result == (("Sue", "2000"),)
+
+    def test_returns_empty_when_only_bot_mentioned(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoPilot")])
+        assert adapter._collect_mentionable_users(msg) == ()
+
+
+def _bare_adapter_with_api() -> tuple[DiscordAdapter, MagicMock, MagicMock]:
+    adapter, client = _bare_adapter(bot_id=1000)
+    api = MagicMock()
+    api.refresh_server_name = AsyncMock()
+    adapter._api = api
+    return adapter, client, api
+
+
+def _guild(guild_id: int, name: str | None) -> MagicMock:
+    g = MagicMock()
+    g.id = guild_id
+    g.name = name
+    return g
+
+
+class TestRefreshServerNames:
+    @pytest.mark.asyncio
+    async def test_pushes_every_guild_to_the_backend(self):
+        adapter, client, api = _bare_adapter_with_api()
+        client.guilds = [_guild(1, "Server One"), _guild(2, "Server Two")]
+        await adapter._refresh_known_server_names()
+        assert api.refresh_server_name.await_count == 2
+        api.refresh_server_name.assert_any_await(
+            platform="discord", platform_server_id="1", server_name="Server One"
+        )
+        api.refresh_server_name.assert_any_await(
+            platform="discord", platform_server_id="2", server_name="Server Two"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_guild_with_blank_name(self):
+        adapter, _, api = _bare_adapter_with_api()
+        await adapter._refresh_server_name(_guild(99, ""))
+        api.refresh_server_name.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_swallows_backend_errors(self):
+        adapter, _, api = _bare_adapter_with_api()
+        api.refresh_server_name.side_effect = RuntimeError("rpc down")
+        # Must not raise — refreshing names is never critical-path.
+        await adapter._refresh_server_name(_guild(1, "Server One"))

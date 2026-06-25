@@ -217,6 +217,8 @@ describe("YourPlanCard cycle toggle", () => {
         billing_cycle: "monthly",
         tier_costs: { PRO: 5000, MAX: 32000 },
         tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        proration_credit_cents: 2500,
+        current_period_end: 1900000000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -231,14 +233,132 @@ describe("YourPlanCard cycle toggle", () => {
     fireEvent.click(yearly);
 
     expect(
-      await screen.findByText(/Switch billing to Yearly\?/i),
+      await screen.findByText(/Switch Pro to yearly billing\?/i),
     ).toBeDefined();
+    // Each line splits into a bold label span + regular value span, so we
+    // assert the two pieces separately.
+    expect(screen.getByText(/^Save 15% with yearly billing\.$/)).toBeDefined();
+    expect(screen.getByText("Pro yearly:")).toBeDefined();
     expect(
-      screen.getByText(/charged the prorated difference immediately/i),
+      screen.getByText(/^\$510\.00\/year \(\$42\.50\/month\)\.$/),
     ).toBeDefined();
-    expect(screen.getByText(/\$510\.00/)).toBeDefined();
+    // 51000 yearly - 2500 proration credit = 48500 cents = $485.00 charged today.
+    expect(screen.getByText("Charged today:")).toBeDefined();
+    expect(
+      screen.getByText(/^\$485\.00 \(prorated from your monthly plan\)\.$/),
+    ).toBeDefined();
+    expect(screen.getByText("Renews")).toBeDefined();
+    expect(screen.getByText(/^\$510\.00\/year on /)).toBeDefined();
     expect(
       screen.getByRole("button", { name: /switch to yearly/i }),
+    ).toBeDefined();
+  });
+
+  it("shows Max-specific yearly savings copy in the confirmation dialog", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+
+    expect(
+      await screen.findByText(/Switch Max to yearly billing\?/i),
+    ).toBeDefined();
+    expect(screen.getByText("Max yearly:")).toBeDefined();
+    expect(
+      screen.getByText(/^\$3,264\.00\/year \(\$272\.00\/month\)\.$/),
+    ).toBeDefined();
+    // No proration_credit_cents in this fixture → falls back to generic
+    // "prorated difference today" line instead of an exact dollar amount.
+    expect(
+      screen.getByText(/^You'll be charged the prorated difference today\.$/),
+    ).toBeDefined();
+    expect(screen.getByText("Renews")).toBeDefined();
+    expect(
+      screen.getByText(/^at \$3,264\.00\/year after this period\.$/),
+    ).toBeDefined();
+  });
+
+  it("opens the confirmation dialog with end-of-period copy when a yearly Pro user clicks Monthly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /monthly/i }));
+
+    expect(
+      await screen.findByText(/Switch Pro to monthly billing\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /^Switches to monthly at the end of your current yearly period\.$/,
+      ),
+    ).toBeDefined();
+    expect(screen.getByText("New price:")).toBeDefined();
+    expect(screen.getByText(/^\$50\.00\/month\.$/)).toBeDefined();
+    expect(screen.getByText(/^No charge today\.$/)).toBeDefined();
+  });
+
+  it("falls back to the generic dialog title when prices are missing (NO_TIER-like)", async () => {
+    // BUSINESS tier exercises the generic-title fallback in getDialogTitle —
+    // the cycle toggle is still visible (BUSINESS isn't in the hidden set),
+    // but the title shouldn't read "Switch Team to yearly billing?" since
+    // BUSINESS is contact-sales and not a user-managed yearly tier.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BUSINESS",
+        monthly_cost: 50000,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+
+    expect(
+      await screen.findByText(/Switch billing to Yearly\?/i),
+    ).toBeDefined();
+    // No tier_costs / tier_costs_yearly in the payload — body falls back to
+    // proration-only copy without the savings/pricing lines.
+    expect(
+      screen.getByText(/^You'll be charged the prorated difference today\.$/),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /^Renews on the new yearly cadence after this period\.$/,
+      ),
     ).toBeDefined();
   });
 

@@ -7,12 +7,22 @@ discord/telegram/slack code never touches Pyro / Redis Streams plumbing.
 """
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
-from typing import AsyncGenerator, Awaitable, Callable, Optional
+from datetime import datetime
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+
+from pydantic import BaseModel
 
 from backend.copilot import stream_registry
-from backend.copilot.response_model import StreamError, StreamFinish, StreamTextDelta
+from backend.copilot.model import get_chat_session
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
 from backend.platform_linking.models import (
     BotChatRequest,
     CreateLinkTokenRequest,
@@ -35,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BotBackend",
+    "ChatSummary",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -53,6 +64,18 @@ class LinkTokenResult:
     token: str
     link_url: str
     expires_at: str
+
+
+class ChatSummary(BaseModel):
+    session_id: str
+    title: str | None
+    updated_at: datetime
+
+
+SetupRequiredCallback = Callable[
+    [str, dict[str, Any], str | None],
+    Awaitable[None],
+]
 
 
 class BotBackend:
@@ -81,6 +104,25 @@ class BotBackend:
             platform_user_id=platform_user_id,
         )
         return ResolveResult(linked=resp.linked)
+
+    async def refresh_server_name(
+        self, platform: str, platform_server_id: str, server_name: str
+    ) -> None:
+        """Push the bot's authoritative display name for a server into the DB.
+
+        Called by adapters whenever they learn or re-learn a server's name —
+        e.g. Discord's on_ready and on_guild_join. The Bots settings page
+        renders whatever is in the DB, so this keeps stale or missing names
+        in sync with what the bot is actually connected to. Best-effort:
+        failures are logged on the manager side, never raised.
+        """
+        if not server_name:
+            return
+        await self._client.refresh_server_link_name(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            server_name=server_name,
+        )
 
     async def create_link_token(
         self,
@@ -126,6 +168,27 @@ class BotBackend:
             expires_at=resp.expires_at.isoformat(),
         )
 
+    async def get_session_title(self, session_id: str) -> str | None:
+        session = await get_chat_session(session_id)
+        return session.title if session else None
+
+    async def list_user_chats(
+        self, platform: str, platform_user_id: str, limit: int = 25
+    ) -> list[ChatSummary]:
+        resp = await self._client.list_user_chats(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            limit=limit,
+        )
+        return [
+            ChatSummary(
+                session_id=s.session_id,
+                title=s.title,
+                updated_at=s.updated_at,
+            )
+            for s in resp.sessions
+        ]
+
     async def stream_chat(
         self,
         platform: str,
@@ -134,6 +197,7 @@ class BotBackend:
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_setup_required: SetupRequiredCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -161,6 +225,8 @@ class BotBackend:
             yield "\n[Error: failed to subscribe to response stream]"
             return
 
+        setup_notified = False
+
         try:
             while True:
                 try:
@@ -178,6 +244,15 @@ class BotBackend:
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
                         yield chunk.delta
+                elif isinstance(chunk, StreamToolOutputAvailable):
+                    setup_output = _extract_setup_requirements(chunk.output)
+                    if setup_output and on_setup_required and not setup_notified:
+                        setup_notified = True
+                        await on_setup_required(
+                            handle.session_id,
+                            setup_output,
+                            chunk.toolName,
+                        )
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -192,3 +267,20 @@ class BotBackend:
                 session_id=handle.session_id,
                 subscriber_queue=queue,
             )
+
+
+def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] | None:
+    """Return setup-requirements payloads from structured tool output."""
+    if isinstance(output, str):
+        try:
+            parsed: Any = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+    else:
+        parsed = output
+
+    if not isinstance(parsed, dict):
+        return None
+    if parsed.get("type") != "setup_requirements":
+        return None
+    return parsed

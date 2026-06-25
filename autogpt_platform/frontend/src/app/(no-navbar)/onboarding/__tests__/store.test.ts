@@ -16,6 +16,12 @@ describe("useOnboardingWizardStore", () => {
       expect(state.painPoints).toEqual([]);
       expect(state.otherPainPoint).toBe("");
     });
+
+    it("defaults to yearly billing", () => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
   });
 
   describe("setName", () => {

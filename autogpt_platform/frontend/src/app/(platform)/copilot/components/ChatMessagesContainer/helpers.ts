@@ -31,6 +31,7 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-view_agent_output",
   "tool-search_feature_requests",
   "tool-create_feature_request",
+  "tool-decompose_goal",
 ]);
 
 const REASONING_TOOL_TYPES = new Set([
@@ -47,8 +48,17 @@ export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
 }
 
-const WORKSPACE_FILE_PATTERN =
-  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9-]+)\/download/;
+// Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
+// Other surfaces (e.g. public share viewer) pass their own pattern into
+// ``filePartToArtifactRef`` rather than loosen this one — keeping the
+// match anchored to a known prefix per surface prevents an unrelated
+// future ``FileUIPart`` source from accidentally rendering as an
+// artifact.  ``^`` and ``$`` are required — without them, the pattern
+// matches as a substring inside longer URLs (e.g. an attacker-controlled
+// file URL prefixed with the proxy path) and surfaces the embedded UUID
+// as a renderable artifact id.
+export const WORKSPACE_FILE_PATTERN =
+  /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
@@ -62,6 +72,7 @@ const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.suggested_goal,
   ResponseType.agent_builder_preview,
   ResponseType.agent_builder_saved,
+  ResponseType.task_decomposition,
 ]);
 
 export function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
@@ -263,9 +274,14 @@ export function parseSpecialMarkers(text: string): {
 export function filePartToArtifactRef(
   file: FileUIPart,
   origin: ArtifactRef["origin"] = "user-upload",
+  /** Pattern that extracts the file UUID from ``file.url``.  Defaults
+   *  to the workspace-file shape; the public share viewer passes a
+   *  per-token pattern from ``lib/share/routes.ts`` so its file URLs
+   *  match without loosening the default. */
+  pattern: RegExp = WORKSPACE_FILE_PATTERN,
 ): ArtifactRef | null {
   if (!file.url) return null;
-  const match = file.url.match(WORKSPACE_FILE_PATTERN);
+  const match = file.url.match(pattern);
   if (!match) return null;
   return {
     id: match[1],
@@ -276,7 +292,20 @@ export function filePartToArtifactRef(
   };
 }
 
-export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
+const FULL_UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+
+/** Build the default workspace-file URL — used wherever a caller
+ *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
+ *  keeps the owner-side default in one place. */
+function defaultWorkspaceFileUrl(fileId: string): string {
+  return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
+}
+
+export function extractWorkspaceArtifacts(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): ArtifactRef[] {
   const seen = new Set<string>();
   const artifacts: ArtifactRef[] = [];
 
@@ -285,6 +314,11 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
     const parsed = parseWorkspaceURI(fullUri);
 
     if (!parsed || seen.has(parsed.fileID)) continue;
+
+    // During streaming, workspace:// URIs arrive character-by-character.
+    // The regex matches progressively longer partial IDs — reject them so
+    // ArtifactCards don't mount/unmount with garbage IDs.
+    if (!FULL_UUID.test(parsed.fileID)) continue;
 
     // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
     // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
@@ -303,7 +337,7 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
       id: parsed.fileID,
       title,
       mimeType: parsed.mimeType,
-      sourceUrl: `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(parsed.fileID)}`,
+      sourceUrl: fileUrlBuilder(parsed.fileID),
       origin: "agent",
     });
   }
@@ -313,29 +347,95 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
 
 export function getMessageArtifacts(
   message: UIMessage<unknown, UIDataTypes, UITools>,
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+  } = {},
 ): ArtifactRef[] {
-  const seen = new Set<string>();
-  const artifacts: ArtifactRef[] = [];
+  const byId = new Map<string, ArtifactRef>();
 
+  // Process file parts first — they carry richer metadata (mediaType from the
+  // server, real filename) compared to workspace:// URIs extracted from text,
+  // which often lack a MIME fragment and fall back to "File {id}".
   for (const part of message.parts) {
-    if (part.type === "text") {
-      for (const artifact of extractWorkspaceArtifacts(part.text)) {
-        if (seen.has(artifact.id)) continue;
-        seen.add(artifact.id);
-        artifacts.push(artifact);
-      }
-    }
-
     if (part.type === "file") {
       const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin);
-      if (!artifact || seen.has(artifact.id)) continue;
-      seen.add(artifact.id);
-      artifacts.push(artifact);
+      const artifact = filePartToArtifactRef(part, origin, options.filePattern);
+      if (artifact) {
+        byId.set(artifact.id, artifact);
+      }
     }
   }
 
-  return artifacts;
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      for (const artifact of extractWorkspaceArtifacts(
+        part.text,
+        options.fileUrlBuilder,
+      )) {
+        if (!byId.has(artifact.id)) {
+          byId.set(artifact.id, artifact);
+        }
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+export function getMostRecentArtifact(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+    origin?: ArtifactRef["origin"];
+  } = {},
+): ArtifactRef | null {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    for (
+      let partIndex = message.parts.length - 1;
+      partIndex >= 0;
+      partIndex--
+    ) {
+      const part = message.parts[partIndex];
+      if (part.type === "file") {
+        const origin = message.role === "user" ? "user-upload" : "agent";
+        const artifact = filePartToArtifactRef(
+          part,
+          origin,
+          options.filePattern,
+        );
+        if (
+          artifact &&
+          (!options.origin || artifact.origin === options.origin)
+        ) {
+          return artifact;
+        }
+      }
+      if (part.type === "text") {
+        const artifacts = extractWorkspaceArtifacts(
+          part.text,
+          options.fileUrlBuilder,
+        );
+        for (
+          let artifactIndex = artifacts.length - 1;
+          artifactIndex >= 0;
+          artifactIndex--
+        ) {
+          const artifact = artifacts[artifactIndex];
+          if (!options.origin || artifact.origin === options.origin) {
+            return artifact;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -346,13 +446,15 @@ export function getMessageArtifacts(
  * inspected so that videos can be rendered with a `<video>` element via the
  * custom img component.
  */
-export function resolveWorkspaceUrls(text: string): string {
+export function resolveWorkspaceUrls(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): string {
   // Handle image links: ![alt](workspace://id#mime)
   let resolved = text.replace(
     /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-      const url = `/api/proxy${apiPath}`;
+      const url = fileUrlBuilder(fileId);
       if (mimeHint?.startsWith("video/")) {
         return `![video:${alt || "Video"}](${url})`;
       }
@@ -369,11 +471,11 @@ export function resolveWorkspaceUrls(text: string): string {
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = fileUrlBuilder(fileId);
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/api/proxy${apiPath}`;
-      return `[${linkText || "Download file"}](${url})`;
+      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
+      return `[${linkText || "Download file"}](${absoluteUrl})`;
     },
   );
 

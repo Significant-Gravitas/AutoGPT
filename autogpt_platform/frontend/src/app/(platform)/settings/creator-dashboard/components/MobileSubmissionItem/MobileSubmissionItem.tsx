@@ -1,8 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowSquareOutIcon,
   DotsThreeVerticalIcon,
   EyeIcon,
   ImageBrokenIcon,
@@ -38,6 +40,7 @@ interface Props {
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
 }
 
 const ROW_EASE = [0.16, 1, 0.3, 1] as const;
@@ -51,17 +54,25 @@ export function MobileSubmissionItem({
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const {
     canModify,
+    marketplaceUrl,
     handleView,
     handleEdit,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     isDeleting,
     handleConfirmDelete,
-  } = useSubmissionItem({ submission, onView, onEdit, onDelete });
+  } = useSubmissionItem({
+    submission,
+    onView,
+    onEdit,
+    onDelete,
+    creatorUsername,
+  });
 
   const visual = getStatusVisual(submission.status);
   const StatusIcon = visual.Icon;
@@ -111,13 +122,36 @@ export function MobileSubmissionItem({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
-            <Text
-              variant="body-medium"
-              as="span"
-              className="truncate text-textBlack"
-            >
-              {submission.name}
-            </Text>
+            {marketplaceUrl ? (
+              <Link
+                href={marketplaceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                data-testid="submission-marketplace-link"
+              >
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="truncate text-textBlack"
+                >
+                  {submission.name}
+                </Text>
+                <ArrowSquareOutIcon
+                  size={14}
+                  className="shrink-0 text-zinc-500"
+                  aria-hidden
+                />
+              </Link>
+            ) : (
+              <Text
+                variant="body-medium"
+                as="span"
+                className="truncate text-textBlack"
+              >
+                {submission.name}
+              </Text>
+            )}
             <Text variant="small" as="span" className="shrink-0 text-zinc-600">
               v{submission.graph_version}
             </Text>
@@ -166,6 +200,20 @@ export function MobileSubmissionItem({
                 View submission
               </DropdownMenuItem>
             )}
+            {marketplaceUrl ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex cursor-pointer items-center gap-2"
+                  data-testid="submission-marketplace-menu-link"
+                >
+                  <ArrowSquareOutIcon size={14} />
+                  View on marketplace
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             {canModify ? (
               <>
                 <DropdownMenuSeparator />

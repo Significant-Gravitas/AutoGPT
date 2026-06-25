@@ -4,11 +4,18 @@ import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 export interface TurnStats {
   durationMs?: number;
   createdAt?: string;
+  /** Raw ChatMessage.id (UUID).  Carried for the badge's cancel handler. */
+  rawMessageId?: string | null;
+  /** True iff this is the latest user message in the session.  The
+   *  "Queued" badge anchors on this row whenever the OWNING session's
+   *  ``chat_status === "queued"`` (checked at render time). */
+  isLatestUserMessage?: boolean;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
 
 interface SessionChatMessage {
+  id: string | null;
   role: string;
   content: string | null;
   tool_call_id: string | null;
@@ -30,6 +37,7 @@ function coerceSessionChatMessages(
       if (!role) return null;
 
       return {
+        id: typeof msg.id === "string" ? msg.id : null,
         role,
         content:
           typeof msg.content === "string"
@@ -75,7 +83,17 @@ const ATTACHED_FILES_RE =
   /\n?\n?\[Attached files\]\n([\s\S]*?)Use read_workspace_file with the file_id to access file contents\./;
 const FILE_LINE_RE = /^- (.+) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
 
-function extractFileParts(content: string): {
+/** Default file URL builder — routes through the authed workspace
+ *  download endpoint.  Public viewers override this via the
+ *  ``fileUrlBuilder`` option on the conversion helper. */
+function defaultWorkspaceFileUrl(fileId: string): string {
+  return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
+}
+
+function extractFileParts(
+  content: string,
+  fileUrlBuilder: (fileId: string) => string,
+): {
   cleanText: string;
   fileParts: FileUIPart[];
 } {
@@ -90,12 +108,11 @@ function extractFileParts(content: string): {
     const m = line.trim().match(FILE_LINE_RE);
     if (!m) continue;
     const [, filename, mimeType, fileId] = m;
-    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
     fileParts.push({
       type: "file",
       filename,
       mediaType: mimeType,
-      url: `/api/proxy${apiPath}`,
+      url: fileUrlBuilder(fileId),
     });
   }
 
@@ -209,12 +226,24 @@ export function convertChatSessionMessagesToUiMessages(
     isComplete?: boolean;
     /** Tool outputs from adjacent pages, for cross-page tool_call matching. */
     extraToolOutputs?: Map<string, unknown>;
+    /** Override the URL emitted for attached-file ``FileUIPart``s.
+     *  The default routes through the authed workspace download
+     *  endpoint; public-share viewers pass a token-aware builder that
+     *  hits ``/api/public/shared/chats/<token>/files/<id>/download``
+     *  so anonymous readers can render attachments. */
+    fileUrlBuilder?: (fileId: string) => string;
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   stats: TurnStatsMap;
 } {
+  const fileUrlBuilder = options?.fileUrlBuilder ?? defaultWorkspaceFileUrl;
   const messages = coerceSessionChatMessages(rawMessages);
+  // Find the most-recent user message — when the session is queued, this
+  // is the message that's waiting and renders the "Queued" badge.
+  const latestUserMessageIndex = messages.findLastIndex(
+    (m) => m.role === "user",
+  );
   const toolOutputsByCallId = new Map<string, unknown>();
 
   // Seed with extra tool outputs from adjacent pages first;
@@ -249,6 +278,11 @@ export function convertChatSessionMessagesToUiMessages(
     )
       return;
 
+    // Cancelled rows stay visible in the conversation as orphan user
+    // bubbles (no AI follow-up after them).  We don't emit a separate
+    // "Cancelled" indicator — the row's lack of a response, combined
+    // with the user remembering they just clicked X, communicates it.
+
     // Role=="reasoning" rows carry extended_thinking content.  Treat them as
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
@@ -266,7 +300,10 @@ export function convertChatSessionMessagesToUiMessages(
           state: "done",
         } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number]);
       } else if (msg.role === "user") {
-        const { cleanText, fileParts } = extractFileParts(msg.content);
+        const { cleanText, fileParts } = extractFileParts(
+          msg.content,
+          fileUrlBuilder,
+        );
         if (cleanText) {
           parts.push({ type: "text", text: cleanText, state: "done" });
         }
@@ -387,6 +424,14 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
       patch.durationMs = msg.duration_ms;
+    }
+    if (uiRole === "user") {
+      // Queue badge consumes ``rawMessageId`` for its cancel handler and
+      // ``isLatestUserMessage`` to pick the anchor row.  The badge's
+      // gating on ``session.chat_status === "queued"`` is the consumer's
+      // (ChatMessagesContainer's) concern.
+      patch.rawMessageId = msg.id;
+      patch.isLatestUserMessage = idx === latestUserMessageIndex;
     }
     if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });

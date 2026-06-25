@@ -294,6 +294,9 @@ async def _build_cached_search_results(
             search_term=search_query or None,
             page=1,
             page_size=MAX_LIBRARY_AGENT_RESULTS,
+            # Hide trigger agents — they're parent-coupled, not
+            # generally reusable as a sub-agent block.
+            is_hidden=False,
         )
         total_items["my_agents"] = library_response.pagination.total_items
         scored_items.extend(

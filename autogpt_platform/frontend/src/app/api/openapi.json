@@ -7,6 +7,81 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/blocks/cost-estimates": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "blocks"],
+        "summary": "Export Block Cost Estimates",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "operationId": "getV2Export block cost estimates",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum executions per block to include",
+              "default": 10,
+              "title": "Min Samples"
+            },
+            "description": "Minimum executions per block to include"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -1662,6 +1737,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2109,6 +2187,11 @@
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
                     { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    {
+                      "$ref": "#/components/schemas/TaskDecompositionResponse"
+                    },
+                    { "$ref": "#/components/schemas/ScheduleListResponse" },
+                    { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
                     { "$ref": "#/components/schemas/MemorySearchResponse" },
                     {
@@ -2367,7 +2450,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
-        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "description": "Cancel an in-flight task for a session.\n\nHandles both lifecycle states uniformly:\n\n* **Queued** (``chatStatus='queued'``) — the dispatcher hasn't\n  claimed the row yet.  Flip the session back to ``idle`` and\n  return; no executor cancel event needed.\n* **Running** (``chatStatus='running'``) — publish a cancel event\n  to the executor via RabbitMQ FANOUT, then poll Redis until the\n  task status flips out of ``running`` or a 5 s timeout is hit.",
         "operationId": "postV2CancelSessionTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2500,6 +2583,124 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/share": {
+      "delete": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Disable Chat Sharing",
+        "description": "Revoke sharing for a chat session.\n\nCascade-revokes linked executions whose share originated here\n(``sharedVia == CHAT_LINK``).  User-initiated execution shares\nsurvive — see :func:`backend.copilot.sharing.db.disable_chat_session_share`.",
+        "operationId": "deleteV2DisableChatSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Enable Chat Sharing",
+        "description": "Enable sharing for a chat session.\n\nFlag-gated: refuses with 403 when ``chat-sharing`` is off so a stale\nfrontend cannot enable shares post-rollback.",
+        "operationId": "postV2EnableChatSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EnableShareRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__chat__share__ShareResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": { "description": "Chat sharing is not enabled for this user" },
+          "404": { "description": "Chat session not found for user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/share/state": {
+      "get": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Get Chat Share State",
+        "description": "Return the chat's current share state.\n\nThe share modal calls this on open so it can render in the right\nmode (share-vs-revoke) and pre-select the auto-share toggle.",
+        "operationId": "getV2GetChatShareState",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatShareStateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -2592,6 +2793,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
@@ -2602,7 +2806,7 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit or call-frequency cap exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
           },
           "503": {
             "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
@@ -3901,6 +4105,82 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/executions/cost-summary": {
+      "get": {
+        "tags": ["v1", "graphs"],
+        "summary": "User cost summary",
+        "description": "Aggregated cost breakdown for the calling user's graph executions.",
+        "operationId": "getV1User cost summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window start (UTC). Defaults to start of current calendar month.",
+              "title": "Since"
+            },
+            "description": "Window start (UTC). Defaults to start of current calendar month."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window end (UTC). Defaults to now.",
+              "title": "Until"
+            },
+            "description": "Window end (UTC). Defaults to now."
+          },
+          {
+            "name": "top_runs_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Maximum number of top-cost runs to return.",
+              "default": 10,
+              "title": "Top Runs Limit"
+            },
+            "description": "Maximum number of top-cost runs to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserExecutionCostSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
@@ -4232,6 +4512,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4239,7 +4522,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -4429,7 +4713,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ShareResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__v1__ShareResponse"
+                }
               }
             }
           },
@@ -5473,6 +5759,17 @@
               "title": "Include Root Only"
             },
             "description": "Only return agents without a folder (root-level agents)"
+          },
+          {
+            "name": "is_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents.",
+              "title": "Is Hidden"
+            },
+            "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents."
           }
         ],
         "responses": {
@@ -5823,6 +6120,48 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/{library_agent_id}/triggers": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Trigger Agents",
+        "description": "List trigger agents linked to the given parent agent.",
+        "operationId": "getV2List trigger agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2List Trigger Agents"
+                }
               }
             }
           },
@@ -6474,6 +6813,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6481,7 +6823,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -7317,6 +7660,31 @@
         }
       }
     },
+    "/api/platform-linking/platforms": {
+      "get": {
+        "tags": ["platform-linking"],
+        "summary": "List bot platforms enabled on this deployment plus the caller's links",
+        "operationId": "list_bot_platforms",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/BotPlatformInfo" },
+                  "type": "array",
+                  "title": "Response List Bot Platforms"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/platform-linking/tokens/{token}/confirm": {
       "post": {
         "tags": ["platform-linking"],
@@ -7500,6 +7868,147 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Get Shared Chat",
+        "operationId": "getV2GetSharedChat",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SharedChatSession" }
+              }
+            }
+          },
+          "404": { "description": "Shared chat not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}/files/{file_id}/download": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Download a file from a shared chat",
+        "description": "Download a workspace file allowlisted by a shared chat (no auth).\n\nReturns uniform 404 for every failure mode to prevent enumeration —\nindistinguishable from \"unknown token\" or \"wrong file id\".",
+        "operationId": "download_shared_chat_file",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "404": {
+            "description": "Uniform 404 for every failure mode (unknown token, wrong file id, file no longer present) — prevents enumeration."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}/messages": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Get Shared Chat Messages",
+        "operationId": "getV2GetSharedChatMessages",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Limit" }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "title": "Before Sequence"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedChatMessagesPage"
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid limit (must be 1..200)" },
+          "404": { "description": "Shared chat not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7859,6 +8368,34 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List copilot follow-up schedules for a user",
+        "description": "Return only copilot-turn schedules for the current user.\n\nSibling of :func:`list_all_graphs_execution_schedules`; one route per kind\nkeeps the generated frontend client typed to a single concrete return type\ninstead of a discriminated union.",
+        "operationId": "listCopilotFollowupSchedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CopilotTurnJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Listcopilotfollowupschedules"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -7894,6 +8431,121 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "List user-distilled copilot skills",
+        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "operationId": "listCopilotSkills",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
+                  "type": "array",
+                  "title": "Response Listcopilotskills"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skills/{name}": {
+      "delete": {
+        "tags": ["v1", "skills"],
+        "summary": "Delete a user-distilled copilot skill",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "operationId": "deleteCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to delete",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" },
+                  "title": "Response Deletecopilotskill"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Read a single copilot skill with its full SKILL.md body",
+        "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
+        "operationId": "readCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to read",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to read"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8616,6 +9268,15 @@
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MyAgentsSortBy",
+              "default": "most_recent"
             }
           }
         ],
@@ -9676,6 +10337,11 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
+          "match_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Match Score",
+            "description": "Combined relevance score in [0, 1] when this agent was returned from a similarity search (e.g. the create-time library check). Null for non-similarity sources."
+          },
           "input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -10129,11 +10795,67 @@
             "type": "integer",
             "title": "Cost Divisor",
             "default": 1
+          },
+          "token_rate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenRateDisplay" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
+      },
+      "BlockCostEstimateRow": {
+        "properties": {
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "cost_type": { "type": "string", "title": "Cost Type" },
+          "samples": { "type": "integer", "title": "Samples" },
+          "mean_credits": { "type": "integer", "title": "Mean Credits" },
+          "p50_credits": { "type": "integer", "title": "P50 Credits" },
+          "p95_credits": { "type": "integer", "title": "P95 Credits" }
+        },
+        "type": "object",
+        "required": [
+          "block_id",
+          "block_name",
+          "cost_type",
+          "samples",
+          "mean_credits",
+          "p50_credits",
+          "p95_credits"
+        ],
+        "title": "BlockCostEstimateRow"
+      },
+      "BlockCostEstimatesResponse": {
+        "properties": {
+          "estimates": {
+            "items": { "$ref": "#/components/schemas/BlockCostEstimateRow" },
+            "type": "array",
+            "title": "Estimates"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" },
+          "min_samples": { "type": "integer", "title": "Min Samples" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimates",
+          "total_rows",
+          "window_days",
+          "max_window_days",
+          "min_samples",
+          "generated_at"
+        ],
+        "title": "BlockCostEstimatesResponse"
       },
       "BlockCostType": {
         "type": "string",
@@ -10597,6 +11319,32 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "BotPlatformInfo": {
+        "properties": {
+          "platform": { "type": "string", "title": "Platform" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "icon": { "type": "string", "title": "Icon" },
+          "add_bot_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Add Bot Url"
+          },
+          "dm_link": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
+              { "type": "null" }
+            ]
+          },
+          "server_links": {
+            "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
+            "type": "array",
+            "title": "Server Links"
+          }
+        },
+        "type": "object",
+        "required": ["platform", "display_name", "icon"],
+        "title": "BotPlatformInfo",
+        "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -10670,11 +11418,51 @@
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
           }
         },
         "type": "object",
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
+      "ChatShareStateResponse": {
+        "properties": {
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          },
+          "linked_run_count": {
+            "type": "integer",
+            "title": "Linked Run Count",
+            "default": 0
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ChatShareStateResponse",
+        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -10793,6 +11581,106 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotSkillDetail": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          },
+          "body": { "type": "string", "title": "Body" },
+          "version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "sibling_files": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Sibling Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "body"],
+        "title": "CopilotSkillDetail",
+        "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description"],
+        "title": "CopilotSkillInfo",
+        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded — they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
+      },
+      "CopilotTurnJobInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "copilot_turn",
+            "title": "Kind",
+            "default": "copilot_turn"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Run At"
+          },
+          "cap_retry_count": {
+            "type": "integer",
+            "title": "Cap Retry Count",
+            "default": 0
+          },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
+        "title": "CopilotTurnJobInfo"
       },
       "CopilotUsageExportResponse": {
         "properties": {
@@ -11211,6 +12099,40 @@
         ],
         "title": "CreditTransactionsExportResponse"
       },
+      "DecompositionStepModel": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id",
+            "description": "Unique step identifier, e.g. 'step_1'"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Plain-English description of what this step does for the user. Do not put block class names or wiring verbs here — block_name and action carry that technical detail."
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "Action type: 'add_block', 'connect_blocks', 'configure', etc."
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name",
+            "description": "Block being added, if applicable"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Step status: pending, in_progress, completed, failed",
+            "default": "pending"
+          }
+        },
+        "type": "object",
+        "required": ["step_id", "description", "action"],
+        "title": "DecompositionStepModel",
+        "description": "A single step in a decomposed agent-building plan."
+      },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
         "type": "object",
@@ -11344,6 +12266,18 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "EnableShareRequest": {
+        "properties": {
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "EnableShareRequest",
+        "description": "Whether to auto-link every ``run_agent`` execution in this chat.\n\nWhen true, the backend creates ``ChatLinkedShare`` rows for every\nexisting agent run AND auto-links any new runs that land while the\nshare is active.  When false, only the chat messages are shared\n(cards in the viewer render in their \"execution not shared\" state)."
+      },
       "ErrorResponse": {
         "properties": {
           "type": {
@@ -11354,6 +12288,10 @@
           "session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Id"
+          },
+          "execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Id"
           },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -12031,6 +12969,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -12832,6 +13776,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "is_hidden": {
+            "type": "boolean",
+            "title": "Is Hidden",
+            "default": false
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -13102,6 +14051,11 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
+          },
+          "is_hidden": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Hidden",
+            "description": "Whether to hide the agent from the library listing"
           },
           "settings": {
             "anyOf": [
@@ -13582,6 +14536,11 @@
         "type": "object",
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
+      },
+      "MyAgentsSortBy": {
+        "type": "string",
+        "enum": ["most_recent", "name"],
+        "title": "MyAgentsSortBy"
       },
       "MyUnpublishedAgent": {
         "properties": {
@@ -15207,10 +16166,15 @@
           "agent_builder_clarification_needed",
           "agent_builder_validation_result",
           "agent_builder_fix_result",
+          "task_decomposition",
           "block_list",
           "block_details",
           "block_output",
           "review_required",
+          "schedule_list",
+          "schedule_deleted",
+          "schedule_created",
+          "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",
@@ -15240,7 +16204,11 @@
           "memory_forget_candidates",
           "memory_forget_confirm",
           "todo_write",
-          "platform_info"
+          "platform_info",
+          "skill_stored",
+          "skill_loaded",
+          "skill_deleted",
+          "skill_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -15470,6 +16438,24 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "ScheduleDeletedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_deleted"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id"],
+        "title": "ScheduleDeletedResponse",
+        "description": "Response confirming a schedule was deleted."
+      },
       "ScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
@@ -15571,6 +16557,75 @@
         "title": "ScheduleHealthMetrics",
         "description": "Summary of schedule health diagnostics"
       },
+      "ScheduleListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/ScheduleSummary" },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": ["message", "schedules"],
+        "title": "ScheduleListResponse",
+        "description": "Response containing a list of schedules."
+      },
+      "ScheduleSummary": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "kind",
+          "name",
+          "timezone",
+          "next_run_time"
+        ],
+        "title": "ScheduleSummary",
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -15666,6 +16721,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
           },
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
+          },
           "messages": {
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
@@ -15715,7 +16775,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "is_processing": { "type": "boolean", "title": "Is Processing" }
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
+          },
+          "is_processing": { "type": "boolean", "title": "Is Processing" },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],
@@ -15790,15 +16859,140 @@
         "title": "ShareRequest",
         "description": "Optional request body for share endpoint."
       },
-      "ShareResponse": {
+      "SharedChatLinkedExecution": {
         "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Name"
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          }
         },
         "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse",
-        "description": "Response from share endpoints."
+        "required": ["execution_id", "graph_id", "graph_name", "share_token"],
+        "title": "SharedChatLinkedExecution",
+        "description": "Drill-in pointer for an AgentGraphExecution shared alongside a chat."
+      },
+      "SharedChatMessage": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "role": { "type": "string", "title": "Role" },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "tool_call_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Tool Calls"
+          },
+          "function_call": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Function Call"
+          },
+          "sequence": { "type": "integer", "title": "Sequence" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "name",
+          "tool_call_id",
+          "tool_calls",
+          "function_call",
+          "sequence",
+          "created_at"
+        ],
+        "title": "SharedChatMessage",
+        "description": "Public-safe projection of a single chat message."
+      },
+      "SharedChatMessagesPage": {
+        "properties": {
+          "messages": {
+            "items": { "$ref": "#/components/schemas/SharedChatMessage" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "has_more": { "type": "boolean", "title": "Has More" },
+          "oldest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Oldest Sequence"
+          }
+        },
+        "type": "object",
+        "required": ["messages", "has_more", "oldest_sequence"],
+        "title": "SharedChatMessagesPage",
+        "description": "Paginated message window for the public viewer."
+      },
+      "SharedChatSession": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "shared_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Shared At"
+          },
+          "linked_executions": {
+            "items": {
+              "$ref": "#/components/schemas/SharedChatLinkedExecution"
+            },
+            "type": "array",
+            "title": "Linked Executions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "shared_at",
+          "linked_executions"
+        ],
+        "title": "SharedChatSession",
+        "description": "Public-safe projection of a chat session (header only)."
       },
       "SharedExecutionResponse": {
         "properties": {
@@ -16821,6 +18015,39 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TaskDecompositionResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "task_decomposition"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "The original user goal"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/DecompositionStepModel" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "description": "Number of steps (auto-derived from steps list)",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["message", "goal", "steps"],
+        "title": "TaskDecompositionResponse",
+        "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
       "TimezoneResponse": {
         "properties": {
           "timezone": {
@@ -17517,6 +18744,32 @@
         "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Input Usd Per 1M"
+          },
+          "output_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
+          }
+        },
+        "type": "object",
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay",
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {
@@ -18397,6 +19650,16 @@
         "title": "UsageWindowPublic",
         "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
+      "UserAgentCostRollup": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["graph_id", "cost_cents", "run_count"],
+        "title": "UserAgentCostRollup"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -18444,6 +19707,56 @@
           "request_count"
         ],
         "title": "UserCostSummary"
+      },
+      "UserDailyCost": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["date", "cost_cents", "run_count"],
+        "title": "UserDailyCost"
+      },
+      "UserExecutionCostSummary": {
+        "properties": {
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "billable_run_count": {
+            "type": "integer",
+            "title": "Billable Run Count"
+          },
+          "failed_cost_cents": {
+            "type": "integer",
+            "title": "Failed Cost Cents"
+          },
+          "by_agent": {
+            "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
+            "type": "array",
+            "title": "By Agent"
+          },
+          "top_runs": {
+            "items": { "$ref": "#/components/schemas/UserTopRun" },
+            "type": "array",
+            "title": "Top Runs"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/UserDailyCost" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cents",
+          "run_count",
+          "billable_run_count",
+          "failed_cost_cents",
+          "by_agent",
+          "top_runs",
+          "daily"
+        ],
+        "title": "UserExecutionCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -18709,6 +20022,32 @@
         "required": ["user_id", "tier"],
         "title": "UserTierResponse"
       },
+      "UserTopRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "duration_seconds": { "type": "number", "title": "Duration Seconds" },
+          "node_error_count": { "type": "integer", "title": "Node Error Count" }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "cost_cents",
+          "started_at",
+          "status",
+          "duration_seconds",
+          "node_error_count"
+        ],
+        "title": "UserTopRun"
+      },
       "UserTransaction": {
         "properties": {
           "transaction_key": {
@@ -18873,6 +20212,25 @@
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "backend__api__features__chat__share__ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse"
+      },
+      "backend__api__features__v1__ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse",
+        "description": "Response from share endpoints."
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {
