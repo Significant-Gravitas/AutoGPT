@@ -2,7 +2,6 @@
 
 import type { ToolUIPart } from "ai";
 import React from "react";
-import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import {
   globalRegistry,
   OutputItem,
@@ -47,7 +46,7 @@ interface Props {
   part: ViewAgentOutputToolPart;
 }
 
-function resolveForRenderer(value: unknown): {
+export function resolveForRenderer(value: unknown): {
   value: unknown;
   metadata?: OutputMetadata;
 } {
@@ -56,17 +55,17 @@ function resolveForRenderer(value: unknown): {
   const parsed = parseWorkspaceURI(value);
   if (!parsed) return { value };
 
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(parsed.fileID);
-  const url = `/api/proxy${apiPath}`;
-
+  // Pass workspace URIs through to the registry unchanged.
+  // WorkspaceFileRenderer (priority 50) matches workspace:// URIs and
+  // handles URL building, loading skeletons, and error states internally.
+  // Previously this converted to a proxy URL which bypassed
+  // WorkspaceFileRenderer, causing ImageRenderer (bare <img>) to match.
   const metadata: OutputMetadata = {};
   if (parsed.mimeType) {
     metadata.mimeType = parsed.mimeType;
-    if (parsed.mimeType.startsWith("image/")) metadata.type = "image";
-    else if (parsed.mimeType.startsWith("video/")) metadata.type = "video";
   }
 
-  return { value: url, metadata };
+  return { value, metadata };
 }
 
 function RenderOutputValue({ value }: { value: unknown }) {
@@ -83,16 +82,6 @@ function RenderOutputValue({ value }: { value: unknown }) {
         metadata={resolved.metadata}
         renderer={renderer}
       />
-    );
-  }
-
-  // Fallback for audio workspace refs
-  if (
-    isWorkspaceURI(value) &&
-    resolved.metadata?.mimeType?.startsWith("audio/")
-  ) {
-    return (
-      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
     );
   }
 

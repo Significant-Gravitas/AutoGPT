@@ -9,21 +9,21 @@ import pytest
 from fastapi import HTTPException
 
 from backend.api.features.chat.routes import reset_copilot_usage
-from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 from backend.util.exceptions import InsufficientBalanceError
 
 
 # Minimal config mock matching ChatConfig fields used by the endpoint.
 def _make_config(
     rate_limit_reset_cost: int = 500,
-    daily_token_limit: int = 2_500_000,
-    weekly_token_limit: int = 12_500_000,
+    daily_cost_limit_microdollars: int = 10_000_000,
+    weekly_cost_limit_microdollars: int = 50_000_000,
     max_daily_resets: int = 5,
 ):
     cfg = MagicMock()
     cfg.rate_limit_reset_cost = rate_limit_reset_cost
-    cfg.daily_token_limit = daily_token_limit
-    cfg.weekly_token_limit = weekly_token_limit
+    cfg.daily_cost_limit_microdollars = daily_cost_limit_microdollars
+    cfg.weekly_cost_limit_microdollars = weekly_cost_limit_microdollars
     cfg.max_daily_resets = max_daily_resets
     return cfg
 
@@ -53,6 +53,18 @@ def _mock_settings(enable_credit: bool = True):
     return mock
 
 
+def _mock_rate_limits(
+    daily: int = 2_500_000,
+    weekly: int = 12_500_000,
+    tier: SubscriptionTier = SubscriptionTier.PRO,
+):
+    """Mock get_global_rate_limits to return fixed limits (no tier multiplier)."""
+    return patch(
+        f"{_MODULE}.get_global_rate_limits",
+        AsyncMock(return_value=(daily, weekly, tier)),
+    )
+
+
 @pytest.mark.asyncio
 class TestResetCopilotUsage:
     async def test_feature_disabled_returns_400(self):
@@ -65,15 +77,12 @@ class TestResetCopilotUsage:
             assert "not available" in exc_info.value.detail
 
     async def test_no_daily_limit_returns_400(self):
-        """When daily_token_limit=0 (unlimited), endpoint returns 400."""
+        """When daily_cost_limit=0 (unlimited), endpoint returns 400."""
 
         with (
-            patch(f"{_MODULE}.config", _make_config(daily_token_limit=0)),
+            patch(f"{_MODULE}.config", _make_config(daily_cost_limit_microdollars=0)),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(0, 12_500_000)),
-            ),
+            _mock_rate_limits(daily=0),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await reset_copilot_usage(user_id="user-1")
@@ -87,10 +96,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
@@ -120,10 +126,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
@@ -153,10 +156,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
@@ -187,10 +187,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=3)),
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -228,10 +225,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
@@ -252,10 +246,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", _make_config()),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=None)),
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -273,10 +264,7 @@ class TestResetCopilotUsage:
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
@@ -294,23 +282,22 @@ class TestResetCopilotUsage:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 503
             assert "not been charged" in exc_info.value.detail
-            mock_credit_model.top_up_credits.assert_awaited_once()
+            mock_credit_model.grant_credits.assert_awaited_once()
+            # Refund must NOT route through Stripe top-up.
+            mock_credit_model.top_up_credits.assert_not_called()
 
     async def test_redis_reset_failure_refund_also_fails(self):
         """When both reset and refund fail, error message reflects the truth."""
 
         mock_credit_model = AsyncMock()
         mock_credit_model.spend_credits.return_value = 1500
-        mock_credit_model.top_up_credits.side_effect = RuntimeError("db down")
+        mock_credit_model.grant_credits.side_effect = RuntimeError("db down")
 
         cfg = _make_config()
         with (
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.settings", _mock_settings()),
-            patch(
-                f"{_MODULE}.get_global_rate_limits",
-                AsyncMock(return_value=(2_500_000, 12_500_000)),
-            ),
+            _mock_rate_limits(),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()),

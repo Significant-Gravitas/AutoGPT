@@ -10,7 +10,7 @@ from backend.blocks.jina._auth import (
     JinaCredentialsField,
     JinaCredentialsInput,
 )
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.request import Requests
 
 
@@ -45,5 +45,13 @@ class JinaEmbeddingBlock(Block):
         }
         data = {"input": input_data.texts, "model": input_data.model}
         response = await Requests().post(url, headers=headers, json=data)
-        embeddings = [e["embedding"] for e in response.json()["data"]]
+        resp_json = response.json()
+        embeddings = [e["embedding"] for e in resp_json["data"]]
+        usage = resp_json.get("usage", {})
+        if usage.get("total_tokens"):
+            self.merge_stats(
+                NodeExecutionStats(
+                    input_token_count=usage.get("total_tokens", 0),
+                )
+            )
         yield "embeddings", embeddings

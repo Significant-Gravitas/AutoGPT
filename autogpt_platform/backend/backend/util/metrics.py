@@ -1,13 +1,23 @@
 import logging
 from enum import Enum
 
-import sentry_sdk
 from pydantic import SecretStr
+from sentry_sdk._init_implementation import init as _sentry_init
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.integrations import DidNotEnable
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+
+try:
+    from sentry_sdk.integrations.anthropic import AnthropicIntegration
+except ImportError:
+    AnthropicIntegration = None  # type: ignore[assignment,misc]
+
+try:
+    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
+except ImportError:
+    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
 from backend.util.settings import BehaveAs, Settings
@@ -44,6 +54,21 @@ _AMQP_KEYWORDS = [
 ]
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
+
+# Pika reconnect noise: `conn_retry` already handles these. Drop only the
+# four known signatures so genuine pika ERRORs (auth, declare failures) still
+# reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
+_PIKA_RECONNECT_LOGGERS = {
+    "pika.adapters.utils.io_services_utils",
+    "pika.adapters.blocking_connection",
+    "pika.adapters.base_connection",
+}
+_PIKA_RECONNECT_SIGNATURES = (
+    "streamlosterror",
+    "transport indicated eof",
+    "socket eof",
+    "connection_lost",
+)
 
 
 def _before_send(event, hint):
@@ -84,11 +109,7 @@ def _before_send(event, hint):
         ):
             return None
 
-        # Prisma UniqueViolationError — always caught and handled in our codebase.
-        # These arise from concurrent create operations racing on unique constraints
-        # (workspace files, credits, library folders, store listings, chat messages).
-        # Every call site has an except handler; the global FastAPI handler also
-        # catches them and returns 400.  Safe to drop unconditionally.
+        # Prisma UniqueViolationError is always handled (FastAPI returns 400).
         if exc_type and exc_type.__name__ == "UniqueViolationError":
             return None
 
@@ -109,7 +130,11 @@ def _before_send(event, hint):
     log_msg = (
         logentry.get("formatted") or logentry.get("message") or event.get("message")
     )
-    if event.get("logger") and log_msg:
+    logger_name = event.get("logger")
+    if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
+        if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name and log_msg:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
@@ -131,32 +156,34 @@ def _before_send(event, hint):
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
-    if feature_flag.is_configured():
+    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
         try:
             integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
         except DidNotEnable as e:
             logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
-    sentry_sdk.init(
+    optional_integrations = (
+        [AnthropicIntegration(include_prompts=False)]
+        if AnthropicIntegration is not None
+        else []
+    )
+    _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
-        _experiments={"enable_logs": True},
         before_send=_before_send,
         integrations=[
             AsyncioIntegration(),
-            LoggingIntegration(sentry_logs_level=logging.INFO),
-            AnthropicIntegration(
-                include_prompts=False,
-            ),
+            LoggingIntegration(),
         ]
+        + optional_integrations
         + integrations,
     )
 
 
 def sentry_capture_error(error: BaseException):
-    sentry_sdk.capture_exception(error)
-    sentry_sdk.flush()
+    _sentry_capture_exception(error)
+    _sentry_flush()
 
 
 async def discord_send_alert(

@@ -4,26 +4,25 @@ import pytest
 from prisma.enums import NotificationType
 
 from backend.data.notifications import LowBalanceData
-from backend.executor.manager import ExecutionProcessor
+from backend.executor import billing
 from backend.util.test import SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
-    """Test that _handle_low_balance triggers notification when crossing threshold."""
+    """Test that handle_low_balance triggers notification when crossing threshold."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     current_balance = 400  # $4 - below $5 threshold
     transaction_cost = 600  # $6 transaction
 
     # Mock dependencies
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings:
 
         # Setup mocks
@@ -37,7 +36,7 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the low balance handler
-        execution_processor._handle_low_balance(
+        billing.handle_low_balance(
             db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
@@ -69,7 +68,6 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 ):
     """Test that no notification is sent when not crossing the threshold."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     current_balance = 600  # $6 - above $5 threshold
     transaction_cost = (
@@ -78,11 +76,11 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 
     # Mock dependencies
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings:
 
         # Setup mocks
@@ -94,7 +92,7 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
         mock_db_client = MagicMock()
 
         # Test the low balance handler
-        execution_processor._handle_low_balance(
+        billing.handle_low_balance(
             db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
@@ -112,7 +110,6 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 ):
     """Test that no notification is sent when already below threshold."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     current_balance = 300  # $3 - below $5 threshold
     transaction_cost = (
@@ -121,11 +118,11 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 
     # Mock dependencies
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings:
 
         # Setup mocks
@@ -137,7 +134,7 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
         mock_db_client = MagicMock()
 
         # Test the low balance handler
-        execution_processor._handle_low_balance(
+        billing.handle_low_balance(
             db_client=mock_db_client,
             user_id=user_id,
             current_balance=current_balance,
