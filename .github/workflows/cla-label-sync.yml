@@ -358,7 +358,7 @@ jobs:
             <summary>Common issues</summary>
             
             - **Email mismatch:** Make sure your Git commit email matches your GitHub account email
-            - **Merge commits:** If you merged \`dev\` into your branch, try rebasing instead: \`git rebase origin/dev && git push --force-with-lease\`
+            - **Stale branch:** Sync your branch with the current \`dev\` branch and push the updated branch normally
             - **Multiple authors:** All commit authors need to sign, not just the PR author
             
             </details>
