@@ -295,9 +295,25 @@ When it's useful:
 - It produces a **fresh backend coverage upload** for a branch that didn't otherwise run
   backend CI (for example, to refresh coverage on a long-lived branch).
 
+#### Refreshing an open PR's coverage status
+
+If the branch has an open PR, pass `pr_number` so the upload is attached to that PR and
+Codecov re-evaluates its `codecov/project/platform-backend` status against the PR base:
+
+```bash
+gh workflow run platform-backend-ci.yml --ref <pr-head-branch> -f pr_number=<PR#>
+```
+
+This is handy when a PR's `codecov/project/platform-backend` check is red only because
+the branch never ran backend CI (so Codecov is comparing stale carried-forward coverage);
+a dispatch with `pr_number` produces a current upload for the PR head and refreshes the
+check. Internally this sets the Codecov action's `override_pr`; for all automatic events
+it is left empty, so normal PR/commit detection is unchanged.
+
 > Note: `workflow_dispatch` is only available once the trigger exists on the repository's
-> **default branch** (`master`); dispatching against another branch with `--ref` still
-> requires that.
+> **default branch** (`master`); dispatching another branch with `--ref` still requires
+> that. The `pr_number` / `override_pr` refresh path therefore can't be exercised until
+> this change reaches `master` — validate it with one real dispatch then.
 
 ## Troubleshooting
 

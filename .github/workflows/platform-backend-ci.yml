@@ -21,7 +21,15 @@ on:
   # automatic push/pull_request runs are skipped) but you still want to run the
   # suite and produce a fresh coverage upload for that branch's HEAD commit.
   #   gh workflow run platform-backend-ci.yml --ref <branch>
+  # Pass pr_number to attach the coverage upload to an open PR (refreshes that
+  # PR's codecov/project/platform-backend status):
+  #   gh workflow run platform-backend-ci.yml --ref <branch> -f pr_number=<PR#>
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Open PR number to attach this coverage upload to (refreshes that PR's codecov status). Leave blank for a plain branch run."
+        required: false
+        type: string
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -401,6 +409,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
           files: ./autogpt_platform/backend/coverage.xml
+          # On a manual workflow_dispatch, attach the upload to the given PR so
+          # codecov re-evaluates that PR's project status against its base.
+          # Empty for all automatic events (push/pull_request/merge_group), so
+          # their normal PR/commit detection is unchanged.
+          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
 
     env:
       CI: true
