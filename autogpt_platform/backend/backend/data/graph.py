@@ -1040,8 +1040,7 @@ class GraphModel(Graph, GraphMeta):
                 # pins solely because they are not present in the static block
                 # schema. Non-AGENT blocks remain strict.
                 allow_dynamic_agent_pin = (
-                    block.block_type == BlockType.AGENT
-                    and sanitized_name not in fields
+                    block.block_type == BlockType.AGENT and sanitized_name not in fields
                 )
                 if (
                     sanitized_name not in fields
@@ -1777,8 +1776,7 @@ async def fix_llm_provider_credentials():
 
     broken_nodes = []
     try:
-        broken_nodes = await query_raw_with_schema(
-            """
+        broken_nodes = await query_raw_with_schema("""
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
@@ -1787,8 +1785,7 @@ async def fix_llm_provider_credentials():
             ON        node."agentGraphId" = graph.id
             WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
             ORDER BY  graph."userId";
-            """
-        )
+            """)
         logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
     except Exception as e:
         logger.error(f"Error fixing LLM credential inputs: {e}")
