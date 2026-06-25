@@ -54,6 +54,8 @@ triggered_presets AS (
 
 -- Get all current input data for triggered presets. Join via the child FK
 -- `agentPresetId` — `InputPresets` is a Prisma relation field, not a SQL column.
+-- LEFT JOIN so presets with no existing input rows (e.g. an empty generic
+-- webhook config) still get an (empty) mask, matching setup_triggered_preset.
 current_inputs AS (
     SELECT
         tp.preset_id,
@@ -62,17 +64,22 @@ current_inputs AS (
         aneio."name" as input_name,
         aneio."data" as input_data
     FROM triggered_presets tp
-    JOIN "AgentNodeExecutionInputOutput" aneio
+    LEFT JOIN "AgentNodeExecutionInputOutput" aneio
         ON aneio."agentPresetId" = tp.preset_id
 ),
 
 -- Create the aggregated `_node_input_mask_{node_prefix}` entry per preset.
+-- COALESCE/FILTER yields an empty object for presets with no input rows.
 inserted_masks AS (
     INSERT INTO "AgentNodeExecutionInputOutput" ("id", "name", "data", "agentPresetId")
     SELECT
         gen_random_uuid()::text,
         '_node_input_mask_' || ci.node_prefix,
-        jsonb_object_agg(ci.input_name, ci.input_data),
+        COALESCE(
+            jsonb_object_agg(ci.input_name, ci.input_data)
+                FILTER (WHERE ci.input_name IS NOT NULL),
+            '{}'::jsonb
+        ),
         ci.preset_id
     FROM current_inputs ci
     GROUP BY ci.preset_id, ci.node_prefix
@@ -84,7 +91,7 @@ inserted_masks AS (
 -- legacy per-input rows behind would re-send the trigger config as graph input.
 -- Deleting by captured id never touches the freshly-inserted mask rows.
 DELETE FROM "AgentNodeExecutionInputOutput"
-WHERE "id" IN (SELECT input_id FROM current_inputs);
+WHERE "id" IN (SELECT input_id FROM current_inputs WHERE input_id IS NOT NULL);
 
 -- Note: this migration folds ALL existing inputs of a triggered preset into the
 -- wrapped `_node_input_mask_{node_prefix}` entry and removes the originals.
