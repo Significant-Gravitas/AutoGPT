@@ -12,6 +12,7 @@ import prisma.models
 
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
+from backend.api.features.library.db import _fetch_schedule_info
 from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -117,4 +118,5 @@ async def add_graph_to_library(
         f"for store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    return library_model.LibraryAgent.from_db(added_agent)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
+    return library_model.LibraryAgent.from_db(added_agent, schedule_info=schedule_info)

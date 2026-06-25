@@ -18,7 +18,8 @@ from typing import (
 
 import jsonref
 import jsonschema
-from pydantic import BaseModel
+from jsonschema.validators import validator_for as _jsonschema_validator_for
+from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.model import (
@@ -96,27 +97,83 @@ class BlockCategory(Enum):
 
 
 class BlockCostType(str, Enum):
-    RUN = "run"  # cost X credits per run
-    BYTE = "byte"  # cost X credits per byte
-    SECOND = "second"  # cost X credits per second
+    # RUN       : cost_amount credits per run.
+    # BYTE      : cost_amount credits per byte of input data.
+    # SECOND    : cost_amount credits per cost_divisor walltime seconds.
+    # ITEMS     : cost_amount credits per cost_divisor items (from stats).
+    # COST_USD  : cost_amount credits per USD of stats.provider_cost.
+    # TOKENS    : per-(model, provider) rate table lookup; see TOKEN_COST.
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
+
+    @property
+    def is_dynamic(self) -> bool:
+        """Real charge is computed post-flight from stats.
+
+        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight and
+        settle against stats via charge_reconciled_usage once the block runs.
+        """
+        return self in _DYNAMIC_COST_TYPES
+
+
+_DYNAMIC_COST_TYPES: frozenset[BlockCostType] = frozenset(
+    {
+        BlockCostType.SECOND,
+        BlockCostType.ITEMS,
+        BlockCostType.COST_USD,
+        BlockCostType.TOKENS,
+    }
+)
+
+
+class TokenRateDisplay(BaseModel):
+    """Public per-1M-token USD rates surfaced to the builder UI.
+
+    Populated only on LLM block costs whose model has a TOKEN_COST rate.
+    cache_* fields are set only when the provider publishes a distinct
+    cached-token rate (Anthropic). Display-only — billing always uses the
+    internal credit math in `BlockCost.cost_amount`.
+    """
+
+    input_usd_per_1m: float = Field(ge=0)
+    output_usd_per_1m: float = Field(ge=0)
+    cache_read_usd_per_1m: Optional[float] = Field(default=None, ge=0)
+    cache_creation_usd_per_1m: Optional[float] = Field(default=None, ge=0)
 
 
 class BlockCost(BaseModel):
     cost_amount: int
     cost_filter: BlockInput
     cost_type: BlockCostType
+    # cost_divisor: interpret cost_amount as "credits per cost_divisor units".
+    # Only meaningful for SECOND / ITEMS. TOKENS routes through TOKEN_COST
+    # rate tables (per-model input/output/cache pricing) and ignores
+    # cost_divisor entirely. Defaults to 1 so existing RUN/BYTE entries stay
+    # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
+    # "1 credit per 10 seconds of walltime".
+    cost_divisor: int = 1
+    # LLM-specific display rate card. None on non-LLM blocks and on LLM
+    # entries whose model isn't in TOKEN_COST yet (those render
+    # "Pay-as-you-go" / flat-tier).
+    token_rate: Optional[TokenRateDisplay] = None
 
     def __init__(
         self,
         cost_amount: int,
         cost_type: BlockCostType = BlockCostType.RUN,
         cost_filter: Optional[BlockInput] = None,
+        cost_divisor: int = 1,
         **data: Any,
     ) -> None:
         super().__init__(
             cost_amount=cost_amount,
             cost_filter=cost_filter or {},
             cost_type=cost_type,
+            cost_divisor=max(1, cost_divisor),
             **data,
         )
 
@@ -168,15 +225,77 @@ class BlockSchema(BaseModel):
         return cls.cached_jsonschema
 
     @classmethod
-    def validate_data(cls, data: BlockInput) -> str | None:
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        schema = cls.jsonschema()
+        if exclude_fields:
+            # Drop the excluded fields from both the properties and the
+            # ``required`` list so jsonschema doesn't flag them as missing.
+            # Used by the dry-run path to skip credentials validation while
+            # still validating the remaining block inputs.
+            schema = {
+                **schema,
+                "properties": {
+                    k: v
+                    for k, v in schema.get("properties", {}).items()
+                    if k not in exclude_fields
+                },
+                "required": [
+                    r for r in schema.get("required", []) if r not in exclude_fields
+                ],
+            }
+            data = {k: v for k, v in data.items() if k not in exclude_fields}
         return json.validate_with_jsonschema(
-            schema=cls.jsonschema(),
+            schema=schema,
             data={k: v for k, v in data.items() if v is not None},
         )
 
     @classmethod
     def get_mismatch_error(cls, data: BlockInput) -> str | None:
         return cls.validate_data(data)
+
+    # JSON-schema keywords whose violations are NOT already prevented at the
+    # widget level (number bounds and length bounds are bypassable by typing
+    # or pasting). ``enum``/``const`` come from dropdowns and ``pattern``/
+    # ``multipleOf``/``type`` are enforced by custom render rules, so leaving
+    # them out avoids surfacing errors the user can't actually trigger.
+    _INLINE_FIELD_ERROR_KEYWORDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+        }
+    )
+
+    @classmethod
+    def get_field_errors(cls, data: BlockInput) -> dict[str, str]:
+        """
+        Validate ``data`` against this schema and return per-field errors for
+        violations that are not already blocked by the form widget — i.e.
+        bound checks the user can bypass by typing/pasting. Lets these surface
+        inline on the offending block field via the standard ``node_errors``
+        path, rather than as a single string raised at execute time.
+        """
+        schema = cls.jsonschema()
+        cleaned = {k: v for k, v in data.items() if v is not None}
+        validator_cls = _jsonschema_validator_for(schema)
+        errors: dict[str, str] = {}
+        for err in validator_cls(schema).iter_errors(cleaned):
+            if err.validator not in cls._INLINE_FIELD_ERROR_KEYWORDS:
+                continue
+            if not err.absolute_path:
+                continue
+            field = str(err.absolute_path[0])
+            errors.setdefault(field, err.message)
+        return errors
 
     @classmethod
     def get_field_schema(cls, field_name: str) -> dict[str, Any]:
@@ -311,6 +430,8 @@ class BlockSchema(BaseModel):
                 "credentials_provider": [config.get("provider", "google")],
                 "credentials_types": [config.get("type", "oauth2")],
                 "credentials_scopes": config.get("scopes"),
+                "is_auto_credential": True,
+                "input_field_name": info["field_name"],
             }
             result[kwarg_name] = CredentialsFieldInfo.model_validate(
                 auto_schema, by_alias=True
@@ -418,21 +539,17 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
     # --8<-- [end:BlockWebhookConfig]
 
 
+# Default wall-clock cap on a single block-run invocation. Leaf compute blocks
+# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# instance attribute to None to opt out. The executor consults
+# `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
+# the value is not None.
+DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS: int = 30 * 60
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
-
-    def extra_runtime_cost(self, execution_stats: NodeExecutionStats) -> int:
-        """Return extra runtime cost to charge after this block run completes.
-
-        Called by the executor after a block finishes with COMPLETED status.
-        The return value is the number of additional base-cost credits to
-        charge beyond the single credit already collected by charge_usage
-        at the start of execution. Defaults to 0 (no extra charges).
-
-        Override in blocks (e.g. OrchestratorBlock) that make multiple LLM
-        calls within one run and should be billed per call.
-        """
-        return 0
+    execution_timeout_seconds: int | None = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     def __init__(
         self,
@@ -607,9 +724,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             uiType=self.block_type.value,
         )
 
-    async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+    async def execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
         try:
-            async for output_name, output_data in self._execute(input_data, **kwargs):
+            async for output_name, output_data in self._execute(
+                input_data, execution_context=execution_context, **kwargs
+            ):
                 yield output_name, output_data
         except Exception as ex:
             if isinstance(ex, BlockError):
@@ -691,21 +816,19 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
         return False, reviewed_data
 
-    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Check for review requirement only if running within a graph execution context
-        # Direct block execution (e.g., from chat) skips the review process
-        has_graph_context = all(
-            key in kwargs
-            for key in (
-                "node_exec_id",
-                "graph_exec_id",
-                "graph_id",
-                "execution_context",
-            )
-        )
-        if has_graph_context:
+    async def _execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
+        # Review is only meaningful inside a graph execution. Direct block
+        # execution (e.g. from the /blocks/{id}/execute API) has no graph
+        # context and skips the review path.
+        if execution_context.graph_exec_id is not None:
             should_pause, input_data = await self.is_block_exec_need_review(
-                input_data, **kwargs
+                input_data, execution_context=execution_context, **kwargs
             )
             if should_pause:
                 return
@@ -715,13 +838,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # that would fail JSON schema required checks.  We still validate the
         # non-credential fields so blocks that execute for real during dry-run
         # (e.g. AgentExecutorBlock) get proper input validation.
-        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
+        is_dry_run = execution_context.dry_run
         if is_dry_run:
+            # Credential fields may be absent (LLM-built agents often skip
+            # wiring them) or nullified earlier in the pipeline. Validate
+            # the non-credential inputs against a schema with those fields
+            # excluded — stripping only the data while keeping them in the
+            # ``required`` list would falsely report ``'credentials' is a
+            # required property``.
             cred_field_names = set(self.input_schema.get_credentials_fields().keys())
-            non_cred_data = {
-                k: v for k, v in input_data.items() if k not in cred_field_names
-            }
-            if error := self.input_schema.validate_data(non_cred_data):
+            if error := self.input_schema.validate_data(
+                input_data, exclude_fields=cred_field_names
+            ):
                 raise BlockInputError(
                     message=f"Unable to execute block with invalid input data: {error}",
                     block_name=self.name,
@@ -735,9 +863,65 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_id=self.id,
                 )
 
+        # Ensure auto-credential kwargs are present before we hand off to
+        # run(). A missing auto-credential means the upstream field (e.g.
+        # a Google Drive picker) didn't embed a _credentials_id, or the
+        # executor couldn't resolve it. Without this guard, run() would
+        # crash with a TypeError (missing required kwarg) or an opaque
+        # AttributeError deep inside the provider SDK.
+        #
+        # Only raise when the field is ALSO not populated in input_data.
+        # ``_acquire_auto_credentials`` intentionally skips setting the
+        # kwarg in two legitimate cases — ``_credentials_id`` is ``None``
+        # (chained from upstream) or the field is missing from
+        # ``input_data`` at prep time (connected from upstream block).
+        # In both cases the upstream block is expected to populate the
+        # field value by execute time; raising here would break the
+        # documented ``AgentGoogleDriveFileInputBlock`` chaining pattern.
+        # Dry-run skips because the executor intentionally runs blocks
+        # without resolved creds for schema validation.
+        if not is_dry_run:
+            for (
+                kwarg_name,
+                info,
+            ) in self.input_schema.get_auto_credentials_fields().items():
+                kwargs.setdefault(kwarg_name, None)
+                if kwargs[kwarg_name] is not None:
+                    continue
+                # Upstream-chained pattern: the field was populated by a
+                # prior node (e.g. AgentGoogleDriveFileInputBlock) whose
+                # output carries a resolved ``_credentials_id``.
+                # ``_acquire_auto_credentials`` deliberately doesn't set
+                # the kwarg in that case because the value isn't available
+                # at prep time; the executor fills it in before we reach
+                # ``_execute``. Trust it if the ``_credentials_id`` KEY
+                # is present — its value may be explicitly ``None`` in
+                # the chained case (see sentry thread
+                # PRRT_kwDOJKSTjM58sJfA). Checking truthiness here would
+                # falsely preempt run() for every valid chained graph
+                # that ships ``_credentials_id=None`` in the picker
+                # object. Mirror ``_acquire_auto_credentials``'s own
+                # skip rule, which treats ``cred_id is None`` as a
+                # chained-skip signal.
+                field_name = info["field_name"]
+                field_value = input_data.get(field_name)
+                if isinstance(field_value, dict) and "_credentials_id" in field_value:
+                    continue
+                raise BlockExecutionError(
+                    message=(
+                        f"Missing credentials for '{kwarg_name}'. "
+                        "Select a file via the picker (which carries "
+                        "its credentials), or connect credentials for "
+                        "this block."
+                    ),
+                    block_name=self.name,
+                    block_id=self.id,
+                )
+
         # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            execution_context=execution_context,
             **kwargs,
         ):
             if output_name == "error":

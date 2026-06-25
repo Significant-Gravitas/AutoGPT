@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ArtifactRef } from "../store";
 import { useCopilotUIStore } from "../store";
 
 vi.mock("@sentry/nextjs", () => ({
@@ -11,6 +12,206 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
+function makeArtifact(id: string, title = `file-${id}`): ArtifactRef {
+  return {
+    id,
+    title,
+    mimeType: "text/plain",
+    sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
+    origin: "agent",
+  };
+}
+
+function resetStore() {
+  useCopilotUIStore.setState({
+    artifactPanel: {
+      isOpen: false,
+      activeArtifact: null,
+      history: [],
+      activeTab: "files",
+    },
+  });
+  // Clear the module-level auto-open flags so each test starts isolated —
+  // closeArtifactPanel/toggleContextPanel set _autoOpenUserClosed, which
+  // would otherwise leak into later tests' openContextPanelFor* calls.
+  useCopilotUIStore.getState().resetAutoOpenState();
+}
+
+describe("artifactPanel store actions", () => {
+  beforeEach(resetStore);
+
+  it("openArtifact sets the active artifact, opens the context region, and expands the artifact", () => {
+    const a = makeArtifact("a");
+    useCopilotUIStore.getState().openArtifact(a);
+    const s = useCopilotUIStore.getState().artifactPanel;
+    // openArtifact opens the context region (isOpen) so closing the artifact
+    // returns to the expanded Context Panel, and marks the artifact as the
+    // expanded panel.
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe("a");
+    expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact pushes the previous artifact onto history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("b");
+    expect(s.history.map((h) => h.id)).toEqual(["a"]);
+  });
+
+  it("openArtifact does NOT push history when re-opening the same artifact", () => {
+    const a = makeArtifact("a");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(a);
+    expect(useCopilotUIStore.getState().artifactPanel.history).toEqual([]);
+  });
+
+  it("openArtifact pops the top of history when returning to it (A→B→A)", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().openArtifact(a); // ping-pong
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a");
+    // History was [a]; returning to a should pop, not push.
+    expect(s.history).toEqual([]);
+  });
+
+  it("goBackArtifact pops the last entry and becomes active", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().goBackArtifact();
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a");
+    expect(s.history).toEqual([]);
+  });
+
+  it("goBackArtifact is a no-op when history is empty", () => {
+    const a = makeArtifact("a");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().goBackArtifact();
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a");
+  });
+
+  it("closeArtifactPanel clears the preview (activeArtifact + history) and isOpen", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().closeArtifactPanel();
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    // Drawer is gated on activeArtifact — closing must drop it so it can't float.
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact does not resurrect a previously closed artifact into history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().openArtifact(b);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("b");
+    expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact opens even non-previewable artifacts", () => {
+    const binary = {
+      ...makeArtifact("bin", "artifact.bin"),
+      mimeType: "application/octet-stream",
+    };
+
+    useCopilotUIStore.getState().openArtifact(binary);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("bin");
+  });
+
+  it("resetArtifactPanel clears active artifact and history without touching isOpen", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+
+    useCopilotUIStore.getState().resetArtifactPanel();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    // isOpen is intentionally left alone by resetArtifactPanel — it's shared
+    // with ContextPanel and reset runs on every session change.
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
+  it("history is capped at 25 entries (MAX_HISTORY)", () => {
+    // Open 27 artifacts sequentially (A0..A26). History should never exceed 25.
+    for (let i = 0; i < 27; i++) {
+      useCopilotUIStore.getState().openArtifact(makeArtifact(`a${i}`));
+    }
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a26");
+    expect(s.history.length).toBe(25);
+    // The oldest entry (a0) should have been dropped; a1 is the earliest surviving.
+    expect(s.history[0].id).toBe("a1");
+    expect(s.history[24].id).toBe("a25");
+  });
+
+  it("clearCopilotLocalData resets artifact panel to default", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+
+    useCopilotUIStore.getState().clearCopilotLocalData();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+});
+
+describe("context panel open/close guards", () => {
+  beforeEach(resetStore);
+
+  it("toggleContextPanel closing also clears the active artifact (no floating drawer)", () => {
+    useCopilotUIStore.getState().openContextPanelForFiles(); // isOpen true
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a")); // drawer up
+    useCopilotUIStore.getState().toggleContextPanel(); // closes the panel
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+  });
+
+  it("closeArtifactPanel does NOT suppress auto-open (it is also the collapse path)", () => {
+    // useCollapseContextPanelOnSession calls closeArtifactPanel on every session
+    // entry, immediately before the auto-open hooks reopen the panel. Closing
+    // must therefore NOT set the user-closed flag, or auto-open would break.
+    useCopilotUIStore.getState().openContextPanelForFiles();
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().openContextPanelForFiles();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+  });
+
+  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
+    useCopilotUIStore.getState().openContextPanelForProgress();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
+    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+});
+
 describe("useCopilotUIStore", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -18,6 +219,7 @@ describe("useCopilotUIStore", () => {
       initialPrompt: null,
       sessionToDelete: null,
       isDrawerOpen: false,
+      isSearchOpen: false,
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
@@ -71,6 +273,20 @@ describe("useCopilotUIStore", () => {
 
       useCopilotUIStore.getState().setDrawerOpen(false);
       expect(useCopilotUIStore.getState().isDrawerOpen).toBe(false);
+    });
+  });
+
+  describe("search", () => {
+    it("starts closed", () => {
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
+    });
+
+    it("opens and closes", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(true);
+
+      useCopilotUIStore.getState().setSearchOpen(false);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
     });
   });
 
@@ -199,6 +415,7 @@ describe("useCopilotUIStore", () => {
 
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
       useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setNotificationsEnabled(true);
@@ -208,6 +425,7 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().clearCopilotLocalData();
 
       const state = useCopilotUIStore.getState();
+      expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
       expect(state.isNotificationsEnabled).toBe(false);

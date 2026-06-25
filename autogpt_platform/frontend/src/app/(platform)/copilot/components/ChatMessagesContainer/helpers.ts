@@ -2,7 +2,24 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
+import type { TodoItem } from "../ContextPanel/components/ProgressTab/helpers";
+
+export function shouldShowTaskListNotice({
+  isContextPanelEnabled,
+  isChatStreaming,
+  latestTaskList,
+}: {
+  isContextPanelEnabled: boolean;
+  isChatStreaming: boolean;
+  latestTaskList: TodoItem[] | null;
+}): boolean {
+  if (!isContextPanelEnabled || !isChatStreaming || !latestTaskList) {
+    return false;
+  }
+  return latestTaskList.some((t) => t.status !== "completed");
+}
 
 export type MessagePart = UIMessage<
   unknown,
@@ -12,7 +29,8 @@ export type MessagePart = UIMessage<
 
 export type RenderSegment =
   | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] };
+  | { kind: "collapsed-group"; parts: ToolUIPart[] }
+  | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
 
 const CUSTOM_TOOL_TYPES = new Set([
   "tool-ask_question",
@@ -21,24 +39,52 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-find_library_agent",
   "tool-search_docs",
   "tool-get_doc_page",
+  "tool-connect_integration",
   "tool-run_block",
   "tool-continue_run_block",
+  "tool-connect_integration",
   "tool-run_mcp_tool",
   "tool-run_agent",
   "tool-schedule_agent",
+  "tool-setup_agent_webhook_trigger",
   "tool-create_agent",
   "tool-edit_agent",
   "tool-view_agent_output",
   "tool-search_feature_requests",
   "tool-create_feature_request",
+  "tool-decompose_goal",
 ]);
 
-const WORKSPACE_FILE_PATTERN =
-  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9-]+)\/download/;
+const REASONING_TOOL_TYPES = new Set([
+  "tool-find_block",
+  "tool-find_agent",
+  "tool-find_library_agent",
+  "tool-search_docs",
+  "tool-get_doc_page",
+  "tool-search_feature_requests",
+  "tool-ask_question",
+]);
+
+export function isReasoningToolPart(part: MessagePart): boolean {
+  return REASONING_TOOL_TYPES.has(part.type);
+}
+
+// Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
+// Other surfaces (e.g. public share viewer) pass their own pattern into
+// ``filePartToArtifactRef`` rather than loosen this one — keeping the
+// match anchored to a known prefix per surface prevents an unrelated
+// future ``FileUIPart`` source from accidentally rendering as an
+// artifact.  ``^`` and ``$`` are required — without them, the pattern
+// matches as a substring inside longer URLs (e.g. an attacker-controlled
+// file URL prefixed with the proxy path) and surfaces the embedded UUID
+// as a renderable artifact id.
+export const WORKSPACE_FILE_PATTERN =
+  /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.setup_requirements,
+  ResponseType.trigger_setup,
   ResponseType.agent_details,
   ResponseType.block_details,
   ResponseType.review_required,
@@ -48,6 +94,7 @@ const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.suggested_goal,
   ResponseType.agent_builder_preview,
   ResponseType.agent_builder_saved,
+  ResponseType.task_decomposition,
 ]);
 
 export function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
@@ -87,69 +134,113 @@ export function buildRenderSegments(
   baseIndex = 0,
 ): RenderSegment[] {
   const segments: RenderSegment[] = [];
-  let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingTools: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingReasoning: Array<{ part: MessagePart; index: number }> | null =
+    null;
 
-  function flushGroup() {
-    if (!pendingGroup) return;
-    if (pendingGroup.length >= 2) {
+  function flushTools() {
+    if (!pendingTools) return;
+    if (pendingTools.length >= 2) {
       segments.push({
         kind: "collapsed-group",
-        parts: pendingGroup.map((p) => p.part),
+        parts: pendingTools.map((p) => p.part),
       });
     } else {
-      for (const p of pendingGroup) {
+      for (const p of pendingTools) {
         segments.push({ kind: "part", part: p.part, index: p.index });
       }
     }
-    pendingGroup = null;
+    pendingTools = null;
+  }
+
+  // Native reasoning parts (one per agentic turn) are always emitted as a
+  // reasoning-group — including a lone part. This folds a multi-step task's
+  // consecutive reasoning into one collapsed block instead of a stacked wall of
+  // "Reasoning" accordions, and gives the run a single stable identity
+  // (`reasoning-group` keyed by its first index) so a single block doesn't
+  // remount — losing its open/closed state — the moment a second consecutive
+  // block arrives and turns it into a group.
+  function flushReasoning() {
+    if (!pendingReasoning) return;
+    segments.push({
+      kind: "reasoning-group",
+      parts: pendingReasoning.map((p) => p.part),
+      index: pendingReasoning[0].index,
+    });
+    pendingReasoning = null;
   }
 
   parts.forEach((part, i) => {
     const absoluteIndex = baseIndex + i;
+
+    // `step-start` markers delimit turns in multi-step agentic streams and
+    // render as nothing. Treat them as transparent: skipping them (rather than
+    // flushing) keeps the reasoning blocks on either side in a single run, which
+    // is exactly the consecutive-reasoning case this grouping targets.
+    if (part.type === "step-start") return;
+
     const isGenericCompletedTool =
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
-      if (!pendingGroup) pendingGroup = [];
-      pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
+      flushReasoning();
+      if (!pendingTools) pendingTools = [];
+      pendingTools.push({ part: part as ToolUIPart, index: absoluteIndex });
+    } else if (part.type === "reasoning") {
+      flushTools();
+      if (!pendingReasoning) pendingReasoning = [];
+      pendingReasoning.push({ part, index: absoluteIndex });
     } else {
-      flushGroup();
+      flushTools();
+      flushReasoning();
       segments.push({ kind: "part", part, index: absoluteIndex });
     }
   });
 
-  flushGroup();
+  flushTools();
+  flushReasoning();
   return segments;
+}
+
+function isReasoningBoundary(part: MessagePart): boolean {
+  return part.type === "reasoning" || isReasoningToolPart(part);
 }
 
 export function splitReasoningAndResponse(parts: MessagePart[]): {
   reasoning: MessagePart[];
   response: MessagePart[];
 } {
-  const lastToolIndex = parts.findLastIndex((p) => p.type.startsWith("tool-"));
+  const lastReasoningIndex = parts.findLastIndex(isReasoningBoundary);
 
-  if (lastToolIndex === -1) {
+  if (lastReasoningIndex === -1) {
     return { reasoning: [], response: parts };
   }
 
-  const hasResponseAfterTools = parts
-    .slice(lastToolIndex + 1)
+  const hasResponseAfterReasoning = parts
+    .slice(lastReasoningIndex + 1)
     .some((p) => p.type === "text");
 
-  if (!hasResponseAfterTools) {
+  if (!hasResponseAfterReasoning) {
     return { reasoning: [], response: parts };
   }
 
-  const rawReasoning = parts.slice(0, lastToolIndex + 1);
-  const rawResponse = parts.slice(lastToolIndex + 1);
+  const rawReasoning = parts.slice(0, lastReasoningIndex + 1);
+  const rawResponse = parts.slice(lastReasoningIndex + 1);
 
   const reasoning: MessagePart[] = [];
   const pinnedParts: MessagePart[] = [];
 
   for (const part of rawReasoning) {
-    if (isInteractiveToolPart(part)) {
+    // Corrupted card-capable parts are pinned too: their output failed to
+    // parse, so isInteractiveToolPart can't recognize them, but hiding them
+    // in the steps modal would silently swallow a lost sign-in/setup card.
+    // Pinning lets the tool renderer surface a visible error instead.
+    if (isInteractiveToolPart(part) || isCorruptedCardToolPart(part)) {
       pinnedParts.push(part);
     } else {
+      // Reasoning / thinking parts stay inside the outer "Show steps" modal
+      // alongside the tool-use timeline — their own inline accordion handles
+      // expansion inside the modal so there's no visual collision.
       reasoning.push(part);
     }
   }
@@ -242,9 +333,14 @@ export function parseSpecialMarkers(text: string): {
 export function filePartToArtifactRef(
   file: FileUIPart,
   origin: ArtifactRef["origin"] = "user-upload",
+  /** Pattern that extracts the file UUID from ``file.url``.  Defaults
+   *  to the workspace-file shape; the public share viewer passes a
+   *  per-token pattern from ``lib/share/routes.ts`` so its file URLs
+   *  match without loosening the default. */
+  pattern: RegExp = WORKSPACE_FILE_PATTERN,
 ): ArtifactRef | null {
   if (!file.url) return null;
-  const match = file.url.match(WORKSPACE_FILE_PATTERN);
+  const match = file.url.match(pattern);
   if (!match) return null;
   return {
     id: match[1],
@@ -255,7 +351,20 @@ export function filePartToArtifactRef(
   };
 }
 
-export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
+const FULL_UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+
+/** Build the default workspace-file URL — used wherever a caller
+ *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
+ *  keeps the owner-side default in one place. */
+function defaultWorkspaceFileUrl(fileId: string): string {
+  return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
+}
+
+export function extractWorkspaceArtifacts(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): ArtifactRef[] {
   const seen = new Set<string>();
   const artifacts: ArtifactRef[] = [];
 
@@ -264,6 +373,11 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
     const parsed = parseWorkspaceURI(fullUri);
 
     if (!parsed || seen.has(parsed.fileID)) continue;
+
+    // During streaming, workspace:// URIs arrive character-by-character.
+    // The regex matches progressively longer partial IDs — reject them so
+    // ArtifactCards don't mount/unmount with garbage IDs.
+    if (!FULL_UUID.test(parsed.fileID)) continue;
 
     // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
     // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
@@ -282,7 +396,7 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
       id: parsed.fileID,
       title,
       mimeType: parsed.mimeType,
-      sourceUrl: `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(parsed.fileID)}`,
+      sourceUrl: fileUrlBuilder(parsed.fileID),
       origin: "agent",
     });
   }
@@ -292,29 +406,95 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
 
 export function getMessageArtifacts(
   message: UIMessage<unknown, UIDataTypes, UITools>,
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+  } = {},
 ): ArtifactRef[] {
-  const seen = new Set<string>();
-  const artifacts: ArtifactRef[] = [];
+  const byId = new Map<string, ArtifactRef>();
 
+  // Process file parts first — they carry richer metadata (mediaType from the
+  // server, real filename) compared to workspace:// URIs extracted from text,
+  // which often lack a MIME fragment and fall back to "File {id}".
   for (const part of message.parts) {
-    if (part.type === "text") {
-      for (const artifact of extractWorkspaceArtifacts(part.text)) {
-        if (seen.has(artifact.id)) continue;
-        seen.add(artifact.id);
-        artifacts.push(artifact);
-      }
-    }
-
     if (part.type === "file") {
       const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin);
-      if (!artifact || seen.has(artifact.id)) continue;
-      seen.add(artifact.id);
-      artifacts.push(artifact);
+      const artifact = filePartToArtifactRef(part, origin, options.filePattern);
+      if (artifact) {
+        byId.set(artifact.id, artifact);
+      }
     }
   }
 
-  return artifacts;
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      for (const artifact of extractWorkspaceArtifacts(
+        part.text,
+        options.fileUrlBuilder,
+      )) {
+        if (!byId.has(artifact.id)) {
+          byId.set(artifact.id, artifact);
+        }
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+export function getMostRecentArtifact(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+    origin?: ArtifactRef["origin"];
+  } = {},
+): ArtifactRef | null {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    for (
+      let partIndex = message.parts.length - 1;
+      partIndex >= 0;
+      partIndex--
+    ) {
+      const part = message.parts[partIndex];
+      if (part.type === "file") {
+        const origin = message.role === "user" ? "user-upload" : "agent";
+        const artifact = filePartToArtifactRef(
+          part,
+          origin,
+          options.filePattern,
+        );
+        if (
+          artifact &&
+          (!options.origin || artifact.origin === options.origin)
+        ) {
+          return artifact;
+        }
+      }
+      if (part.type === "text") {
+        const artifacts = extractWorkspaceArtifacts(
+          part.text,
+          options.fileUrlBuilder,
+        );
+        for (
+          let artifactIndex = artifacts.length - 1;
+          artifactIndex >= 0;
+          artifactIndex--
+        ) {
+          const artifact = artifacts[artifactIndex];
+          if (!options.origin || artifact.origin === options.origin) {
+            return artifact;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -325,13 +505,15 @@ export function getMessageArtifacts(
  * inspected so that videos can be rendered with a `<video>` element via the
  * custom img component.
  */
-export function resolveWorkspaceUrls(text: string): string {
+export function resolveWorkspaceUrls(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): string {
   // Handle image links: ![alt](workspace://id#mime)
   let resolved = text.replace(
     /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-      const url = `/api/proxy${apiPath}`;
+      const url = fileUrlBuilder(fileId);
       if (mimeHint?.startsWith("video/")) {
         return `![video:${alt || "Video"}](${url})`;
       }
@@ -348,11 +530,11 @@ export function resolveWorkspaceUrls(text: string): string {
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = fileUrlBuilder(fileId);
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/api/proxy${apiPath}`;
-      return `[${linkText || "Download file"}](${url})`;
+      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
+      return `[${linkText || "Download file"}](${absoluteUrl})`;
     },
   );
 

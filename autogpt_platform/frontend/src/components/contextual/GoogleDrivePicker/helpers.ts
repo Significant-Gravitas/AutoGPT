@@ -4,7 +4,9 @@ import { loadScript } from "@/services/scripts/scripts";
 export async function loadGoogleAPIPicker(): Promise<void> {
   validateWindow();
 
-  await loadScript("https://apis.google.com/js/api.js");
+  await loadScript("https://apis.google.com/js/api.js", {
+    referrerPolicy: "no-referrer-when-downgrade",
+  });
 
   const googleAPI = window.gapi;
   if (!googleAPI) {
@@ -27,7 +29,9 @@ export async function loadGoogleIdentityServices(): Promise<void> {
     throw new Error("Google Identity Services cannot load on server");
   }
 
-  await loadScript("https://accounts.google.com/gsi/client");
+  await loadScript("https://accounts.google.com/gsi/client", {
+    referrerPolicy: "no-referrer-when-downgrade",
+  });
 
   const google = window.google;
   if (!google?.accounts?.oauth2) {

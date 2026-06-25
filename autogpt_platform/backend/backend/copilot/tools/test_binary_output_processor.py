@@ -1,7 +1,7 @@
 """Tests for embedded binary detection in block outputs."""
 
 import base64
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -164,23 +164,11 @@ class TestExpandToMarkers:
 # =============================================================================
 
 
-@pytest.fixture
-def mock_scan():
-    """Patch virus scanner for tests."""
-    with patch(
-        "backend.copilot.tools.binary_output_processor.scan_content_safe",
-        new_callable=AsyncMock,
-    ) as mock:
-        yield mock
-
-
 class TestProcessBinaryOutputs:
     """Tests for process_binary_outputs function."""
 
     @pytest.mark.asyncio
-    async def test_detects_embedded_pdf_in_stdout_logs(
-        self, mock_workspace_manager, mock_scan
-    ):
+    async def test_detects_embedded_pdf_in_stdout_logs(self, mock_workspace_manager):
         """Should detect and replace embedded PDF in stdout_logs."""
         pdf_b64 = _make_pdf_base64()
         stdout = f"PDF generated!\n---BASE64_START---\n{pdf_b64}\n---BASE64_END---\n"
@@ -198,9 +186,7 @@ class TestProcessBinaryOutputs:
         mock_workspace_manager.write_file.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_detects_embedded_png_without_markers(
-        self, mock_workspace_manager, mock_scan
-    ):
+    async def test_detects_embedded_png_without_markers(self, mock_workspace_manager):
         """Should detect embedded PNG even without markers."""
         png_b64 = _make_png_base64()
         stdout = f"Image created: {png_b64} done"
@@ -216,7 +202,7 @@ class TestProcessBinaryOutputs:
         assert "done" in result["stdout_logs"][0]
 
     @pytest.mark.asyncio
-    async def test_preserves_small_strings(self, mock_workspace_manager, mock_scan):
+    async def test_preserves_small_strings(self, mock_workspace_manager):
         """Should not process small strings."""
         outputs = {"stdout_logs": ["small output"]}
 
@@ -228,9 +214,7 @@ class TestProcessBinaryOutputs:
         mock_workspace_manager.write_file.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_preserves_non_binary_large_strings(
-        self, mock_workspace_manager, mock_scan
-    ):
+    async def test_preserves_non_binary_large_strings(self, mock_workspace_manager):
         """Should preserve large strings that don't contain valid binary."""
         large_text = "A" * 5000  # Large string - decodes to nulls, no magic number
 
@@ -244,9 +228,7 @@ class TestProcessBinaryOutputs:
         mock_workspace_manager.write_file.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_deduplicates_identical_content(
-        self, mock_workspace_manager, mock_scan
-    ):
+    async def test_deduplicates_identical_content(self, mock_workspace_manager):
         """Should save identical content only once."""
         pdf_b64 = _make_pdf_base64()
         stdout1 = f"First: {pdf_b64}"
@@ -266,7 +248,7 @@ class TestProcessBinaryOutputs:
 
     @pytest.mark.asyncio
     async def test_handles_multiple_binaries_in_one_string(
-        self, mock_workspace_manager, mock_scan
+        self, mock_workspace_manager
     ):
         """Should handle multiple embedded binaries in a single string."""
         pdf_b64 = _make_pdf_base64()
@@ -284,7 +266,7 @@ class TestProcessBinaryOutputs:
         assert mock_workspace_manager.write_file.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_processes_nested_structures(self, mock_workspace_manager, mock_scan):
+    async def test_processes_nested_structures(self, mock_workspace_manager):
         """Should recursively process nested dicts and lists."""
         pdf_b64 = _make_pdf_base64()
 
@@ -297,9 +279,7 @@ class TestProcessBinaryOutputs:
         assert "workspace://" in result["result"][0]["nested"]["deep"]
 
     @pytest.mark.asyncio
-    async def test_graceful_degradation_on_save_failure(
-        self, mock_workspace_manager, mock_scan
-    ):
+    async def test_graceful_degradation_on_save_failure(self, mock_workspace_manager):
         """Should preserve original on save failure."""
         mock_workspace_manager.write_file = AsyncMock(
             side_effect=Exception("Storage error")
@@ -455,13 +435,9 @@ class TestPdfMarkerExpansion:
 
         outputs = {"stdout_logs": [stdout]}
 
-        with patch(
-            "backend.copilot.tools.binary_output_processor.scan_content_safe",
-            new_callable=AsyncMock,
-        ):
-            result = await process_binary_outputs(
-                outputs, mock_workspace_manager, "TestBlock"
-            )
+        result = await process_binary_outputs(
+            outputs, mock_workspace_manager, "TestBlock"
+        )
 
         # Should have workspace reference
         assert "workspace://" in result["stdout_logs"][0]
@@ -474,52 +450,42 @@ class TestPdfMarkerExpansion:
 
 
 # =============================================================================
-# Virus Scanning Tests
+# Workspace Write Tests
 # =============================================================================
 
 
-class TestVirusScanning:
-    """Tests for virus scanning integration."""
+class TestWorkspaceWrites:
+    """Tests for workspace write integration."""
 
     @pytest.mark.asyncio
-    async def test_calls_virus_scanner_before_save(self, mock_workspace_manager):
-        """Should call scan_content_safe before writing file."""
+    async def test_writes_binary_to_workspace_manager(self, mock_workspace_manager):
+        """Should delegate saving to WorkspaceManager."""
         pdf_b64 = _make_pdf_base64()
         stdout = f"PDF: {pdf_b64}"
         outputs = {"stdout_logs": [stdout]}
 
-        with patch(
-            "backend.copilot.tools.binary_output_processor.scan_content_safe",
-            new_callable=AsyncMock,
-        ) as mock_scan:
-            result = await process_binary_outputs(
-                outputs, mock_workspace_manager, "TestBlock"
-            )
+        result = await process_binary_outputs(
+            outputs, mock_workspace_manager, "TestBlock"
+        )
 
-            # Verify scanner was called
-            mock_scan.assert_called_once()
-            # Verify file was written after scan
-            mock_workspace_manager.write_file.assert_called_once()
-            # Verify result has workspace reference
-            assert "workspace://" in result["stdout_logs"][0]
+        mock_workspace_manager.write_file.assert_called_once()
+        assert "workspace://" in result["stdout_logs"][0]
 
     @pytest.mark.asyncio
-    async def test_virus_scan_failure_preserves_original(self, mock_workspace_manager):
-        """Should preserve original if virus scan fails."""
+    async def test_workspace_write_failure_preserves_original(
+        self, mock_workspace_manager
+    ):
+        """Should preserve original if workspace write fails."""
         pdf_b64 = _make_pdf_base64()
         stdout = f"PDF: {pdf_b64}"
         outputs = {"stdout_logs": [stdout]}
 
-        with patch(
-            "backend.copilot.tools.binary_output_processor.scan_content_safe",
-            new_callable=AsyncMock,
-            side_effect=Exception("Virus detected"),
-        ):
-            result = await process_binary_outputs(
-                outputs, mock_workspace_manager, "TestBlock"
-            )
+        mock_workspace_manager.write_file = AsyncMock(
+            side_effect=Exception("Storage error")
+        )
+        result = await process_binary_outputs(
+            outputs, mock_workspace_manager, "TestBlock"
+        )
 
-            # Should keep original since scan failed
-            assert pdf_b64 in result["stdout_logs"][0]
-            # File should not have been written
-            mock_workspace_manager.write_file.assert_not_called()
+        assert pdf_b64 in result["stdout_logs"][0]
+        mock_workspace_manager.write_file.assert_called_once()

@@ -1,5 +1,6 @@
 import {
   PromptInputBody,
+  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -7,10 +8,17 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
+import { BlockCaret } from "./components/BlockCaret";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { ModelToggleButton } from "./components/ModelToggleButton";
@@ -27,6 +35,8 @@ interface Props {
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
+  /** Called to enqueue a message when copilot is streaming and user has typed text. */
+  onEnqueue?: (message: string) => void | Promise<void>;
   placeholder?: string;
   className?: string;
   inputId?: string;
@@ -44,6 +54,7 @@ export function ChatInput({
   isStreaming = false,
   isUploadingFiles = false,
   onStop,
+  onEnqueue,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
@@ -86,11 +97,11 @@ export function ChatInput({
       title:
         next === "advanced"
           ? "Switched to Advanced model"
-          : "Switched to Standard model",
+          : "Switched to Balanced model",
       description:
         next === "advanced"
           ? "Using the highest-capability model."
-          : "Using the balanced standard model.",
+          : "Using the balanced default model.",
     });
   }
 
@@ -114,7 +125,12 @@ export function ChatInput({
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasFiles = files.length > 0;
+  // isBusy disables non-essential interactions (attachment menu, voice recording)
+  // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
+  // The textarea is only truly disabled when the session is unavailable, not
+  // during normal streaming (users can type and queue the next message).
+  const isTextareaDisabled = disabled || isUploadingFiles;
 
   const {
     value,
@@ -127,10 +143,12 @@ export function ChatInput({
       // Only clear files after successful send (onSend throws on failure)
       setFiles([]);
     },
-    disabled: isBusy,
+    disabled: isTextareaDisabled,
     canSendEmpty: hasFiles,
     inputId,
   });
+
+  const [isEnqueueing, setIsEnqueueing] = useState(false);
 
   const {
     isRecording,
@@ -143,10 +161,10 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: isBusy,
-    isStreaming,
+    disabled: isTextareaDisabled,
     value,
     inputId,
+    isStreaming,
   });
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -197,7 +215,9 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
+            className="caret-transparent placeholder:indent-3"
           />
+          <BlockCaret textareaId={inputId} />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <RecordingIndicator
@@ -255,8 +275,37 @@ export function ChatInput({
                 onClick={toggleRecording}
               />
             )}
+            {isStreaming && canSend && onEnqueue && (
+              <PromptInputButton
+                aria-label="Queue message"
+                tooltip="Queue message"
+                variant="default"
+                disabled={isEnqueueing}
+                onClick={async () => {
+                  if (isEnqueueing) return;
+                  const trimmed = value.trim();
+                  if (trimmed) {
+                    setIsEnqueueing(true);
+                    try {
+                      await onEnqueue(trimmed);
+                      setValue("");
+                    } finally {
+                      setIsEnqueueing(false);
+                    }
+                  }
+                }}
+                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
+              >
+                <ArrowUpIcon className="size-4" weight="bold" />
+              </PromptInputButton>
+            )}
             {isStreaming ? (
-              <PromptInputSubmit status="streaming" onStop={onStop} />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PromptInputSubmit status="streaming" onStop={onStop} />
+                </TooltipTrigger>
+                <TooltipContent side="top">Stop</TooltipContent>
+              </Tooltip>
             ) : (
               <PromptInputSubmit disabled={!canSend} />
             )}

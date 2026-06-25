@@ -9,6 +9,7 @@ import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/
 import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_FLOW_TIMED_OUT,
+  OAUTH_ERROR_POPUP_BLOCKED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
 } from "@/lib/oauth-popup";
@@ -55,6 +56,7 @@ export function useCredentialsInput({
   const [isCredentialTypeSelectorOpen, setCredentialTypeSelectorOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
+  const [oAuthPopupBlocked, setOAuthPopupBlocked] = useState(false);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
@@ -154,6 +156,7 @@ export function useCredentialsInput({
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
+    upgradeableCredentials,
     oAuthCallback,
     mcpOAuthCallback,
     isSystemProvider,
@@ -163,8 +166,11 @@ export function useCredentialsInput({
   // Split credentials into user and system
   const userCredentials = filterSystemCredentials(savedCredentials);
   const systemCredentials = getSystemCredentials(savedCredentials);
+  const userUpgradeableCredentials = filterSystemCredentials(
+    upgradeableCredentials,
+  );
 
-  async function handleOAuthLogin() {
+  async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
 
     // Abort any previous OAuth flow
@@ -187,19 +193,36 @@ export function useCredentialsInput({
         ({ login_url, state_token } = await api.oAuthLogin(
           provider,
           schema.credentials_scopes,
+          credentialID,
         ));
       }
 
       setOAuth2FlowInProgress(true);
+      setOAuthPopupBlocked(false);
 
-      const { promise, cleanup } = openOAuthPopup(login_url, {
+      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
         stateToken: state_token,
-        useCrossOriginListeners: isMCP,
-        // Standard OAuth uses "oauth_popup_result", MCP uses "mcp_oauth_result"
+        // Always enable BroadcastChannel + localStorage listeners — they are
+        // the only path that works when the popup is blocked and we fall back
+        // to a new tab (window.opener can be severed by cross-origin COOP).
+        useCrossOriginListeners: true,
         acceptMessageTypes: isMCP
           ? ["mcp_oauth_result"]
           : ["oauth_popup_result"],
       });
+
+      // The blank popup window was rejected by the browser — the helper has
+      // already fallen back to opening the login URL in a new tab, but that
+      // tab is easy to miss. Track the state so the waiting modal can
+      // change its copy and direct the user to the right place, and emit a
+      // toast in case they've already dismissed the modal.
+      if (popupBlocked) {
+        setOAuthPopupBlocked(true);
+        toast({
+          title: "Popup blocked",
+          description: OAUTH_ERROR_POPUP_BLOCKED,
+        });
+      }
 
       oauthAbortRef.current = cleanup.abort;
 
@@ -251,6 +274,14 @@ export function useCredentialsInput({
       setOAuth2FlowInProgress(false);
       oauthAbortRef.current = null;
     }
+  }
+
+  async function handleOAuthLogin() {
+    return executeOAuthFlow();
+  }
+
+  async function handleScopeUpgrade(credentialID: string) {
+    return executeOAuthFlow(credentialID);
   }
 
   const hasMultipleCredentialTypes =
@@ -372,6 +403,7 @@ export function useCredentialsInput({
     isHostScopedCredentialsModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
+    oAuthPopupBlocked,
     cancelOAuthFlow,
     credentialToDelete,
     deleteWarningMessage,
@@ -393,6 +425,8 @@ export function useCredentialsInput({
     handleDeleteCredential,
     handleDeleteConfirm,
     handleOAuthLogin,
+    handleScopeUpgrade,
+    userUpgradeableCredentials,
     onSelectCredential,
     schema,
     siblingInputs,

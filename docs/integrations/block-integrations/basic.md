@@ -143,7 +143,6 @@ The block is part of the Agent Input family, allowing you to collect structured 
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -183,7 +182,6 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 | options | If provided, renders the input as a dropdown selector restricted to these values. Leave empty for free-text input. | List[Any] | No |
 
 ### Outputs
@@ -224,8 +222,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
-| base_64 | Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks). | bool | No |
+| base_64 | Whether to produce output in base64 format (not recommended; you can pass the file reference across blocks). | bool | No |
 
 ### Outputs
 
@@ -247,7 +244,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 ## Agent Google Drive File Input
 
 ### What it is
-Block for selecting a file from Google Drive.
+Agent-level input for a Google Drive file. REQUIRED for any agent that reads or writes a Drive file (Sheets, Docs, Slides, or generic Drive) — the picker is the only source of the _credentials_id needed at runtime, so consuming blocks cannot receive a hardcoded ID. Set allowed_views to match the consumer: ["SPREADSHEETS"] for Sheets, ["DOCUMENTS"] for Docs, ["PRESENTATIONS"] for Slides (leave default for generic Drive). Wire `result` to the consumer block's Drive field and leave that field unset in the consumer's input_default. Example link to a Google Sheets block: {"source_name": "result", "sink_name": "spreadsheet"} (use "document" for Docs, "presentation" for Slides). Use one input block per distinct file; multiple consumers of the same file share it.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -265,7 +262,6 @@ You can configure which file types to display (documents, spreadsheets, presenta
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 | allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" \| "DOCUMENTS" \| "SPREADSHEETS" \| "PRESENTATIONS" \| "DOCS_IMAGES" \| "FOLDERS"] | No |
 | allow_folder_selection | Whether to allow selecting folders. | bool | No |
 
@@ -305,7 +301,6 @@ It accepts a value from the user, along with metadata such as name and descripti
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -341,7 +336,6 @@ The block is ideal for collecting longer-form content like messages, description
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -381,7 +375,6 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -421,7 +414,6 @@ It accepts an input value along with a name, description, and optional format st
 | format | The format string to be used to format the recorded_value. Use Jinja2 syntax. | str | No |
 | escape_html | Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text. | bool | No |
 | advanced | Whether to treat the output as advanced. | bool | No |
-| secret | Whether the output should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -458,7 +450,6 @@ The input displays as a standard text field and passes the entered text to downs
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -498,7 +489,6 @@ The table input is ideal for structured data entry where users need to provide m
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 | column_headers | Column headers for the table. | List[str] | No |
 
 ### Outputs
@@ -539,7 +529,6 @@ The time picker provides a user-friendly interface for selecting times without r
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
@@ -579,7 +568,6 @@ The toggle is ideal for binary choices like enabling features, confirming action
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
-| secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
 
