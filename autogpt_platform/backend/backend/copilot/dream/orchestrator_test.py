@@ -752,8 +752,6 @@ class TestTransientIntentFilter:
         assert orchestrator_mod._is_transient_intent(content) is False
 
     def test_clamp_drops_transient_writes_and_proposals(self):
-        from .schemas import ConsolidatedFact, DreamOperations, ProposedFinding
-
         ops = DreamOperations(
             writes=[
                 ConsolidatedFact(
