@@ -10,7 +10,7 @@ from strenum import StrEnum
 import backend.data.integrations as integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
 
 from .utils import webhook_ingress_url
@@ -211,9 +211,16 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         if register:
             if not credentials:
                 raise TypeError("credentials are required if register = True")
-            provider_webhook_id, config = await self._register_webhook(
-                credentials, webhook_type, resource, events, ingress_url, secret
-            )
+            try:
+                provider_webhook_id, config = await self._register_webhook(
+                    credentials, webhook_type, resource, events, ingress_url, secret
+                )
+            except Exception as e:
+                if isinstance(e, WebhookRegistrationError):
+                    raise
+                raise WebhookRegistrationError(
+                    f"Failed to register webhook: {e}"
+                ) from e
         else:
             provider_webhook_id, config = "", {}
 

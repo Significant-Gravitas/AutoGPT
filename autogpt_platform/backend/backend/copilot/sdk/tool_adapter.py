@@ -94,8 +94,9 @@ _STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
 
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
-# Keyed by tool_name → full output string. Consumed (popped) by the
-# response adapter when it builds StreamToolOutputAvailable.
+# Keyed by a (tool_name + canonical input) composite — see ``_output_key`` —
+# → FIFO of full output strings. Consumed (popped) by the response adapter
+# when it builds StreamToolOutputAvailable.
 _pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
     "pending_tool_outputs",
     default=None,  # type: ignore[arg-type]
@@ -173,41 +174,89 @@ def reset_tool_failure_counters() -> None:
     _consecutive_tool_failures.set({})
 
 
-def pop_pending_tool_output(tool_name: str) -> str | None:
-    """Pop and return the oldest stashed output for *tool_name*.
+def reset_pending_tool_outputs() -> None:
+    """Drop stashed tool outputs left over from a previous stream attempt.
+
+    The stash is a per-call FIFO (see ``_output_key``), not keyed by
+    tool_call_id. A rolled-back attempt that executed tools but never consumed
+    their results leaves orphaned entries, so on the retry every
+    ``pop_pending_tool_output`` for that key returns the stale first-attempt
+    output — shifting all
+    subsequent pops off-by-one and attaching wrong payloads to the frontend's
+    ``StreamToolOutputAvailable`` events (e.g. a ``setup_requirements`` card
+    silently replaced by an older result). Called at the top of each retry
+    attempt, where no tool call can be in flight.
+    """
+    _pending_tool_outputs.set({})
+
+
+def _output_key(tool_name: str, tool_input: Any = None) -> str:
+    """Build the stash key correlating a tool call to its output.
+
+    Tool *name* alone is insufficient (OPEN-3158): the model can issue two
+    parallel calls to the same tool in one turn (e.g. two ``web_search``
+    queries).  Their outputs are stashed in completion order but consumed in
+    tool-result order — with a name-only key those orders diverge and the
+    outputs attach to the wrong ``tool_call_id``, swapping the two cards in
+    the UI.  Including a canonical serialization of the call's input
+    disambiguates the common case where the two calls differ.
+
+    The in-process MCP handler never sees the SDK ``tool_use_id`` (only the
+    arguments), so the input is the most specific key available on the stash
+    side.  Empty/falsy input falls back to the name-only key: such calls
+    can't be disambiguated, and two identical calls produce interchangeable
+    outputs so a swap between them is not user-visible.
+    """
+    if not tool_input:
+        return tool_name
+    try:
+        canonical = json.dumps(tool_input, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        canonical = str(tool_input)
+    return f"{tool_name}\x00{canonical}"
+
+
+def pop_pending_tool_output(tool_name: str, tool_input: Any = None) -> str | None:
+    """Pop and return the oldest stashed output for a tool call.
 
     The SDK CLI may truncate large tool results (writing them to disk and
     replacing the content with a file reference). This stash keeps the
     original MCP output so the response adapter can forward it to the
     frontend for proper widget rendering.
 
-    Uses a FIFO queue per tool name so duplicate calls to the same tool
-    in one turn each get their own output.
+    Matched by ``_output_key(tool_name, tool_input)`` so parallel calls to
+    the same tool with different inputs each get their own output instead of
+    being swapped.  Falls back to a FIFO queue when several calls share the
+    same key.
 
-    Returns ``None`` if nothing was stashed for *tool_name*.
+    Returns ``None`` if nothing was stashed for this call.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return None
-    queue = pending.get(tool_name)
+    key = _output_key(tool_name, tool_input)
+    queue = pending.get(key)
     if not queue:
-        pending.pop(tool_name, None)
+        pending.pop(key, None)
         return None
     value = queue.pop(0)
     if not queue:
-        del pending[tool_name]
+        del pending[key]
     return value
 
 
-def stash_pending_tool_output(tool_name: str, output: Any) -> None:
+def stash_pending_tool_output(
+    tool_name: str, output: Any, tool_input: Any = None
+) -> None:
     """Stash tool output for later retrieval by the response adapter.
 
-    Used by the PostToolUse hook to capture SDK built-in tool outputs
-    (WebSearch, Read, etc.) that aren't available through the MCP stash
-    mechanism in ``_execute_tool_sync``.
+    Used by the MCP truncating wrapper and the PostToolUse hook (for SDK
+    built-in tools like WebSearch/Read that aren't available through the MCP
+    stash mechanism in ``_execute_tool_sync``).
 
-    Appends to a FIFO queue per tool name so multiple calls to the same
-    tool in one turn are all preserved.
+    Keyed by ``_output_key(tool_name, tool_input)`` so the response adapter
+    can pop the output belonging to a *specific* tool call rather than the
+    next one for that tool name — see ``_output_key`` for why this matters.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
@@ -219,7 +268,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
             text = json.dumps(output)
         except (TypeError, ValueError):
             text = str(output)
-    pending.setdefault(tool_name, []).append(text)
+    pending.setdefault(_output_key(tool_name, tool_input), []).append(text)
     # Signal any waiters that new output is available.
     event = _stash_event.get(None)
     if event is not None:
@@ -669,12 +718,22 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _make_truncating_wrapper(
-    fn, tool_name: str, input_schema: dict[str, Any] | None = None
+    fn,
+    tool_name: str,
+    input_schema: dict[str, Any] | None = None,
+    required_args: list[str] | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
 
     Extracted from ``create_copilot_mcp_server`` so it can be tested directly.
+
+    ``required_args`` is the tool's original list of required parameter names
+    (before ``_build_input_schema`` stripped ``required`` from the SDK-visible
+    schema). It's used to distinguish a truncated empty call from a legitimate
+    no-arg invocation on a tool whose params are all optional (e.g.
+    ``list_schedules``). When the list is empty/None the empty-args truncation
+    guard is skipped — the model is free to call the tool with no arguments.
 
     WARNING: ``stash_pending_tool_output`` must be called BEFORE
     ``_strip_llm_fields`` so the frontend SSE stream receives the full payload
@@ -683,13 +742,15 @@ def _make_truncating_wrapper(
     """
 
     async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        # Detect empty-args truncation: args is empty AND the schema declares
-        # at least one property (so a non-empty call was expected).
-        # NOTE: _build_input_schema intentionally omits "required" to avoid
-        # SDK-side validation rejecting truncated calls before reaching this
-        # handler.  We detect truncation via "properties" instead.
-        schema_has_params = bool(input_schema and input_schema.get("properties"))
-        if not args and schema_has_params:
+        # Detect empty-args truncation: args is empty AND the original tool
+        # declared at least one *required* property. Tools whose params are all
+        # optional (filters-only tools like list_schedules) legitimately accept
+        # no args, so we skip the guard for them.
+        # NOTE: _build_input_schema intentionally omits "required" from the
+        # SDK-visible schema to avoid SDK-side validation rejecting truncated
+        # calls before reaching this handler. We carry required_args through
+        # the wrapper instead.
+        if not args and required_args:
             logger.warning(
                 "[MCP] %s called with empty args (likely output "
                 "token truncation) — returning guidance",
@@ -743,7 +804,10 @@ def _make_truncating_wrapper(
         if not truncated.get("isError"):
             text = _text_from_mcp_result(truncated)
             if text:
-                stash_pending_tool_output(tool_name, text)
+                # Key by the model's ORIGINAL args (pre file-ref expansion) so
+                # it matches the ToolUseBlock.input the response adapter pops
+                # with — see ``_output_key`` (OPEN-3158).
+                stash_pending_tool_output(tool_name, text, original_args)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act
@@ -794,6 +858,7 @@ def create_copilot_mcp_server(
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
+        required = list(base_tool.parameters.get("required", []))
         # All tools annotated readOnlyHint=True to enable parallel dispatch.
         # The SDK CLI uses this hint to dispatch concurrent tool calls in
         # parallel rather than sequentially.  Side-effect safety is ensured
@@ -803,10 +868,17 @@ def create_copilot_mcp_server(
             base_tool.description,
             schema,
             annotations=_PARALLEL_ANNOTATION,
-        )(_make_truncating_wrapper(handler, tool_name, input_schema=schema))
+        )(
+            _make_truncating_wrapper(
+                handler, tool_name, input_schema=schema, required_args=required
+            )
+        )
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
+    # All E2B file tools have at least one required arg (the path), so empty
+    # args is always truncation — passing a sentinel non-empty required_args
+    # list keeps the truncation guard active for them.
     _MUTATING_E2B_TOOLS = {"write_file", "edit_file"}
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
@@ -822,7 +894,7 @@ def create_copilot_mcp_server(
                 desc,
                 schema,
                 annotations=ann,
-            )(_make_truncating_wrapper(handler, name))
+            )(_make_truncating_wrapper(handler, name, required_args=["path"]))
             sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
@@ -840,7 +912,10 @@ def create_copilot_mcp_server(
                 annotations=_MUTATING_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    write_handler, WRITE_TOOL_NAME, input_schema=WRITE_TOOL_SCHEMA
+                    write_handler,
+                    WRITE_TOOL_NAME,
+                    input_schema=WRITE_TOOL_SCHEMA,
+                    required_args=["file_path", "content"],
                 )
             )
             sdk_tools.append(write_tool)
@@ -854,7 +929,10 @@ def create_copilot_mcp_server(
                 annotations=_PARALLEL_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    read_file_handler, READ_TOOL_NAME, input_schema=READ_TOOL_SCHEMA
+                    read_file_handler,
+                    READ_TOOL_NAME,
+                    input_schema=READ_TOOL_SCHEMA,
+                    required_args=["file_path"],
                 )
             )
             sdk_tools.append(read_file_tool)
@@ -868,7 +946,10 @@ def create_copilot_mcp_server(
                 annotations=_MUTATING_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    edit_handler, EDIT_TOOL_NAME, input_schema=EDIT_TOOL_SCHEMA
+                    edit_handler,
+                    EDIT_TOOL_NAME,
+                    input_schema=EDIT_TOOL_SCHEMA,
+                    required_args=["file_path", "old_string", "new_string"],
                 )
             )
             sdk_tools.append(edit_tool)
@@ -880,7 +961,11 @@ def create_copilot_mcp_server(
             _READ_TOOL_DESCRIPTION,
             _READ_TOOL_SCHEMA,
             annotations=_PARALLEL_ANNOTATION,
-        )(_make_truncating_wrapper(_read_file_handler, _READ_TOOL_NAME))
+        )(
+            _make_truncating_wrapper(
+                _read_file_handler, _READ_TOOL_NAME, required_args=["file_path"]
+            )
+        )
         sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(
@@ -926,6 +1011,8 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   — our MCP read_file handles tool-results paths via
 #   is_allowed_local_path() and has been the only Read available in
 #   prod without issues.
+# ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
+#   {"scheduledFor": 0} and nothing is scheduled.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -934,6 +1021,7 @@ SDK_DISALLOWED_TOOLS = [
     "Write",
     "Edit",
     "Read",
+    "ScheduleWakeup",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
