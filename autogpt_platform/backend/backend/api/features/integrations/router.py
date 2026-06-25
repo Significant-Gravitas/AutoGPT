@@ -19,6 +19,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.triggers import node_input_mask_key
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -727,9 +728,8 @@ async def _execute_webhook_preset_trigger(
         return
     # Separate the trigger node's input mask from the regular graph inputs. The
     # trigger config is nested under a per-node key (see setup_triggered_preset).
-    node_input_mask_key = f"_node_input_mask_{trigger_node.id.split('-')[0]}"
     graph_inputs = preset.inputs.copy()
-    trigger_inputs = graph_inputs.pop(node_input_mask_key, None)
+    trigger_inputs = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
     if trigger_inputs is None:
         # We can't run this, so log a warning and skip
         logger.warning(

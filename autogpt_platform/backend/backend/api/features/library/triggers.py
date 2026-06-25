@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (here) and webhook execution
+    (``_execute_webhook_preset_trigger``) so all sites agree on the format; the
+    data migration mirrors it in SQL.
+    """
+    return f"_node_input_mask_{node_id.split('-')[0]}"
+
+
 async def setup_triggered_preset(
     *,
     user_id: str,
@@ -84,9 +95,8 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    trigger_node_id = trigger_node.id.split("-")[0]
     preset_inputs = dict(constant_inputs or {})
-    preset_inputs[f"_node_input_mask_{trigger_node_id}"] = (
+    preset_inputs[node_input_mask_key(trigger_node.id)] = (
         trigger_config_with_credentials
     )
 
@@ -143,8 +153,7 @@ async def update_triggered_preset(
         if trigger_node := graph.webhook_input_node:
             # Trigger config is nested under a per-node key alongside the regular
             # graph inputs (see setup_triggered_preset).
-            trigger_node_id = trigger_node.id.split("-")[0]
-            trigger_config = inputs.get(f"_node_input_mask_{trigger_node_id}")
+            trigger_config = inputs.get(node_input_mask_key(trigger_node.id))
             if trigger_config is None:
                 raise InvalidInputError(
                     f"Missing trigger configuration for node {trigger_node.id}"
