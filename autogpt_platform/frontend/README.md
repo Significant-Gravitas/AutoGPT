@@ -81,8 +81,10 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
 - `pnpm types` - Run TypeScript type checking
-- `pnpm test` - Run Playwright tests
-- `pnpm test-ui` - Run Playwright tests with UI
+- `pnpm test:unit` - Run the Vitest integration and unit suite with coverage
+- `pnpm test` - Run the Playwright E2E suite used in CI
+- `pnpm test-ui` - Run the same Playwright E2E suite with UI
+- `pnpm test:e2e:no-build` - Run the same Playwright E2E suite against a running app
 - `pnpm fetch:openapi` - Fetch OpenAPI spec from backend
 - `pnpm generate:api-client` - Generate API client from OpenAPI spec
 - `pnpm generate:api` - Fetch OpenAPI spec and generate API client

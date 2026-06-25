@@ -20,13 +20,13 @@ Follow these steps to create and test a new block:
    Every block should contain the following:
 
    ```python
-   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    from backend.utils.get_request import GetRequest
    import requests
 
@@ -237,7 +237,7 @@ from backend.data.model import (
     Credentials,
 )
 
-from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
@@ -496,8 +496,8 @@ To create a webhook-triggered block, follow these additional steps on top of the
    <details>
    <summary><code>BlockWebhookConfig</code> definition</summary>
 
-   ```python title="backend/data/block.py"
-   --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
+   ```python title="backend/blocks/_base.py"
+   --8<-- "autogpt_platform/backend/backend/blocks/_base.py:BlockWebhookConfig"
    ```
 
    </details>
@@ -562,7 +562,18 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager6"
 ```
+
+!!! info "Signature verification (`verify_signature`)"
+    If the upstream provider signs its deliveries (e.g. GitHub's
+    `X-Hub-Signature-256`, Airtable's `X-Airtable-Content-MAC`), override
+    `verify_signature` and use `hmac.compare_digest` for the comparison.
+    Raise `fastapi.HTTPException(403)` on missing/invalid signatures.
+
+    If the provider has no signing scheme (consumer wearables, simple
+    "POST to this URL" tools), leave the default in place. The webhook
+    URL's UUID is then the bearer secret — document that for users.
 
 And add a reference to your `WebhooksManager` class in `load_webhook_managers`:
 

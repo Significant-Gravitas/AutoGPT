@@ -1,14 +1,14 @@
 // This file has been updated for the Store's "Featured Agent Section". If you want to add Carousel, keep these components in mind: CarouselIndicator, CarouselPrevious, and CarouselNext.
 "use client";
 
-import * as React from "react";
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import * as React from "react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/__legacy__/ui/button";
+import { cn } from "@/lib/utils";
 
 type CarouselApi = UseEmblaCarouselType[1];
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>;
@@ -311,8 +311,8 @@ const CarouselIndicator = React.forwardRef<
           onClick={() => scrollTo(index)}
           className={cn(
             selectedIndex === index
-              ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-              : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600",
+              ? "h-2 w-[1.5rem] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
+              : "h-2 w-2 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600",
             "cursor-pointer",
           )}
         />
@@ -323,11 +323,11 @@ const CarouselIndicator = React.forwardRef<
 CarouselIndicator.displayName = "CarouselIndicator";
 
 export {
-  type CarouselApi,
   Carousel,
   CarouselContent,
-  CarouselItem,
   CarouselIndicator,
-  CarouselPrevious,
+  CarouselItem,
   CarouselNext,
+  CarouselPrevious,
+  type CarouselApi,
 };

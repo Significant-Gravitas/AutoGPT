@@ -1,8 +1,8 @@
 """
-Tests for auto_credentials handling in execute_node().
+Tests for auto_credentials handling.
 
-These test the _acquire_auto_credentials() helper function extracted from
-execute_node() (manager.py lines 273-308).
+These cover ``acquire_auto_credentials`` in ``backend/executor/auto_credentials.py``
+— shared by the graph executor and the CoPilot direct-block-execution path.
 """
 
 import pytest
@@ -68,12 +68,12 @@ async def test_auto_credentials_happy_path(
     mock_creds_manager,
 ):
     """When field_data has a valid _credentials_id, credentials should be acquired."""
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, mock_creds, mock_lock = mock_creds_manager
     input_data = {"spreadsheet": google_drive_file_data["valid"]}
 
-    extra_kwargs, locks = await _acquire_auto_credentials(
+    extra_kwargs, locks = await acquire_auto_credentials(
         input_model=mock_input_model,
         input_data=input_data,
         creds_manager=manager,
@@ -96,14 +96,14 @@ async def test_auto_credentials_field_none_static_raises(
     When field_data is None and the key IS in input_data (user didn't select a file),
     should raise ValueError instead of silently skipping.
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     # Key is present but value is None = user didn't select a file
     input_data = {"spreadsheet": None}
 
     with pytest.raises(ValueError, match="No file selected"):
-        await _acquire_auto_credentials(
+        await acquire_auto_credentials(
             input_model=mock_input_model,
             input_data=input_data,
             creds_manager=manager,
@@ -121,13 +121,13 @@ async def test_auto_credentials_field_absent_skips(
     When the field key is NOT in input_data at all (upstream connection),
     should skip without error.
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     # Key not present = connected from upstream block
     input_data = {}
 
-    extra_kwargs, locks = await _acquire_auto_credentials(
+    extra_kwargs, locks = await acquire_auto_credentials(
         input_model=mock_input_model,
         input_data=input_data,
         creds_manager=manager,
@@ -150,12 +150,12 @@ async def test_auto_credentials_chained_cred_id_none(
     When _credentials_id is explicitly None (chained data from upstream),
     should skip credential acquisition.
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     input_data = {"spreadsheet": google_drive_file_data["chained"]}
 
-    extra_kwargs, locks = await _acquire_auto_credentials(
+    extra_kwargs, locks = await acquire_auto_credentials(
         input_model=mock_input_model,
         input_data=input_data,
         creds_manager=manager,
@@ -177,13 +177,13 @@ async def test_auto_credentials_missing_cred_id_key_raises(
     When _credentials_id key is missing entirely from field_data dict,
     should raise ValueError.
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     input_data = {"spreadsheet": google_drive_file_data["missing_key"]}
 
     with pytest.raises(ValueError, match="Authentication missing"):
-        await _acquire_auto_credentials(
+        await acquire_auto_credentials(
             input_model=mock_input_model,
             input_data=input_data,
             creds_manager=manager,
@@ -202,7 +202,7 @@ async def test_auto_credentials_ownership_mismatch_error(
     [SECRT-1772] When acquire() raises ValueError (credential belongs to another user),
     the error message should mention 'not available' (not 'expired').
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     manager.acquire.side_effect = ValueError(
@@ -211,7 +211,7 @@ async def test_auto_credentials_ownership_mismatch_error(
     input_data = {"spreadsheet": google_drive_file_data["valid"]}
 
     with pytest.raises(ValueError, match="not available in your account"):
-        await _acquire_auto_credentials(
+        await acquire_auto_credentials(
             input_model=mock_input_model,
             input_data=input_data,
             creds_manager=manager,
@@ -230,7 +230,7 @@ async def test_auto_credentials_deleted_credential_error(
     [SECRT-1772] When acquire() raises ValueError (credential was deleted),
     the error message should mention 'not available' (not 'expired').
     """
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, _ = mock_creds_manager
     manager.acquire.side_effect = ValueError(
@@ -239,7 +239,7 @@ async def test_auto_credentials_deleted_credential_error(
     input_data = {"spreadsheet": google_drive_file_data["valid"]}
 
     with pytest.raises(ValueError, match="not available in your account"):
-        await _acquire_auto_credentials(
+        await acquire_auto_credentials(
             input_model=mock_input_model,
             input_data=input_data,
             creds_manager=manager,
@@ -255,12 +255,12 @@ async def test_auto_credentials_lock_appended(
     mock_creds_manager,
 ):
     """Lock from acquire() should be included in returned locks list."""
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, _, mock_lock = mock_creds_manager
     input_data = {"spreadsheet": google_drive_file_data["valid"]}
 
-    extra_kwargs, locks = await _acquire_auto_credentials(
+    extra_kwargs, locks = await acquire_auto_credentials(
         input_model=mock_input_model,
         input_data=input_data,
         creds_manager=manager,
@@ -277,7 +277,7 @@ async def test_auto_credentials_multiple_fields(
     mock_creds_manager,
 ):
     """When there are multiple auto_credentials fields, only valid ones should acquire."""
-    from backend.executor.manager import _acquire_auto_credentials
+    from backend.executor.auto_credentials import acquire_auto_credentials
 
     manager, mock_creds, mock_lock = mock_creds_manager
 
@@ -306,7 +306,7 @@ async def test_auto_credentials_multiple_fields(
         },
     }
 
-    extra_kwargs, locks = await _acquire_auto_credentials(
+    extra_kwargs, locks = await acquire_auto_credentials(
         input_model=input_model,
         input_data=input_data,
         creds_manager=manager,
@@ -317,4 +317,155 @@ async def test_auto_credentials_multiple_fields(
     manager.acquire.assert_called_once_with("user-1", "cred-id-123")
     assert "credentials" in extra_kwargs
     assert "credentials2" not in extra_kwargs
-    assert len(locks) == 1
+
+
+@pytest.mark.asyncio
+async def test_acquire_auto_credentials_releases_partial_locks_on_failure(
+    mocker: MockerFixture,
+):
+    """When acquiring a later auto-credential field raises, any locks
+    already taken for earlier fields must be released — otherwise they'd
+    sit until Redis TTL expires, blocking the next execution."""
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager = mocker.AsyncMock()
+    good_creds = mocker.MagicMock()
+    good_creds.id = "cred-id-good"
+    good_lock = mocker.AsyncMock()
+
+    async def _acquire(_user_id, cred_id):
+        if cred_id == "cred-id-good":
+            return (good_creds, good_lock)
+        raise ValueError(f"bad cred {cred_id}")
+
+    manager.acquire.side_effect = _acquire
+
+    input_model = mocker.MagicMock()
+    input_model.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        },
+        "credentials2": {
+            "field_name": "doc_file",
+            "config": {"provider": "google", "type": "oauth2"},
+        },
+    }
+
+    input_data = {
+        "spreadsheet": {
+            "_credentials_id": "cred-id-good",
+            "id": "file-1",
+            "name": "file1.xlsx",
+        },
+        "doc_file": {
+            "_credentials_id": "cred-id-broken",
+            "id": "file-2",
+            "name": "file2.doc",
+        },
+    }
+
+    with pytest.raises(ValueError):
+        await acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="user-1",
+        )
+
+    good_lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_acquire_auto_credentials_rejects_empty_string_credential_id(
+    mocker: MockerFixture,
+):
+    """Corrupted state: ``_credentials_id`` set to an empty string used to
+    slip through ``if cred_id:`` and run without injecting credentials.
+    Now it raises so the user re-authenticates rather than executing a
+    block that silently has no creds."""
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager = mocker.AsyncMock()
+
+    input_model = mocker.MagicMock()
+    input_model.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+
+    input_data = {
+        "spreadsheet": {
+            "_credentials_id": "",  # corrupted empty string
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    with pytest.raises(ValueError, match="empty or invalid"):
+        await acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="user-1",
+        )
+
+    # Never tried to acquire the (empty) credential.
+    manager.acquire.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        pytest.param("1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I", id="bare-string"),
+        pytest.param(42, id="int"),
+        pytest.param(True, id="bool"),
+        pytest.param(["a", "b"], id="list"),
+    ],
+)
+async def test_acquire_auto_credentials_rejects_non_dict_value_with_type_message(
+    mocker: MockerFixture,
+    bad_value,
+):
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58sEDl): the ``else`` branch
+    in ``_acquire_auto_credentials`` used to raise "No file selected"
+    for ANY truthy non-dict ``field_data`` (e.g. a bare Drive ID
+    string).  That message is misleading when the value *was*
+    supplied — it's just the wrong shape.  The graph validator catches
+    bare strings at save time, but API callers / legacy graphs can
+    still reach the runtime.
+
+    Pin the tighter contract: a non-dict value must raise an error
+    that names both the field *and* the type it received."""
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager = mocker.AsyncMock()
+    input_model = mocker.MagicMock()
+    input_model.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+
+    input_data = {"spreadsheet": bad_value}
+
+    with pytest.raises(ValueError) as exc_info:
+        await acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="user-1",
+        )
+
+    msg = str(exc_info.value)
+    # Must mention the field name.
+    assert "spreadsheet" in msg
+    # Must describe the actual type rather than the misleading
+    # "No file selected" — anchor on the type name so the fix
+    # can't silently regress to the old generic message.
+    assert type(bad_value).__name__ in msg
+    manager.acquire.assert_not_called()

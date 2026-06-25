@@ -21,7 +21,7 @@ The block authenticates through Ayrshare and handles X-specific features like au
 |-------|-------------|------|----------|
 | post | The post text (max 280 chars, up to 25,000 for Premium users). Use @handle to mention users. Use \n\n for thread breaks. | str | Yes |
 | media_urls | Optional list of media URLs. X supports up to 4 images or videos per tweet. Auto-preview links unless media is included. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

@@ -88,7 +88,6 @@ class AirtableListRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         data = await list_records(
             credentials,
             input_data.base_id,
@@ -175,7 +174,6 @@ class AirtableGetRecordBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         record = await get_record(
             credentials,
             input_data.base_id,
@@ -256,7 +254,6 @@ class AirtableCreateRecordsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         data = await create_record(
             credentials,
             input_data.base_id,

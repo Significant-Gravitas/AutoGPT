@@ -22,6 +22,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 class CodeContextResponse(BaseModel):
@@ -116,3 +117,6 @@ class ExaCodeContextBlock(Block):
         yield "cost_dollars", context.cost_dollars
         yield "search_time", context.search_time
         yield "output_tokens", context.output_tokens
+
+        # API returns costDollars as a bare numeric string like "0.005".
+        merge_exa_cost(self, data)

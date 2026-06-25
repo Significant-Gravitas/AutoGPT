@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from backend.data.block import Block
+from backend.blocks._base import Block
 from backend.util.request import Requests
 
 from ._api import Color, CustomerDetails, OrderItem, Profile
@@ -48,7 +48,7 @@ class Slant3DBlockBase(Block):
             raise ValueError(
                 f"""Invalid color profile combination {color_tag}.
 Valid colors for {profile.value} are:
-{','.join([filament['colorTag'].replace(profile.value.lower(), '') for filament in response['filaments'] if filament['profile'] == profile.value])}
+{",".join([filament["colorTag"].replace(profile.value.lower(), "") for filament in response["filaments"] if filament["profile"] == profile.value])}
 """
             )
         return color_tag

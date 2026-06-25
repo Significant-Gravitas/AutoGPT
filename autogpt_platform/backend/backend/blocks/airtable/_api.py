@@ -581,7 +581,6 @@ async def update_table(
     table_description: str | None = None,
     date_dependency: dict | None = None,
 ) -> dict:
-
     assert (
         table_name or table_description or date_dependency
     ), "At least one of table_name, table_description, or date_dependency must be provided"
@@ -612,7 +611,6 @@ async def create_field(
     description: str | None = None,
     options: dict[str, str] | None = None,
 ) -> dict[str, str | dict[str, str]]:
-
     assert (
         field_type in TABLE_FIELD_TYPES
     ), f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
@@ -640,7 +638,6 @@ async def update_field(
     name: str | None = None,
     description: str | None = None,
 ) -> dict[str, str]:
-
     assert name or description, "At least one of name or description must be provided"
     params: dict[str, str | dict[str, str]] = {}
     if name:
@@ -840,7 +837,6 @@ async def list_records(
     return_fields_by_field_id: bool | None = None,
     record_metadata: list[str] | None = None,
 ) -> dict[str, list[dict[str, dict[str, str]]]]:
-
     params: dict[str, str | dict[str, str] | list[dict[str, str]] | list[str]] = {}
     if time_zone:
         params["timeZone"] = time_zone
@@ -881,7 +877,6 @@ async def get_record(
     table_id_or_name: str,
     record_id: str,
 ) -> dict[str, dict[str, dict[str, str]]]:
-
     response = await Requests().get(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
         headers={"Authorization": credentials.auth_header()},
@@ -898,7 +893,6 @@ async def update_multiple_records(
     return_fields_by_field_id: bool | None = None,
     typecast: bool | None = None,
 ) -> dict[str, dict[str, dict[str, str]]]:
-
     params: dict[
         str, str | bool | dict[str, list[str]] | list[dict[str, dict[str, str]]]
     ] = {}
@@ -987,7 +981,6 @@ async def delete_multiple_records(
     table_id_or_name: str,
     records: list[str],
 ) -> dict[str, dict[str, dict[str, str]]]:
-
     query_string = "&".join([f"records[]={quote(record)}" for record in records])
     response = await Requests().delete(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}?{query_string}",
@@ -1002,7 +995,6 @@ async def delete_record(
     table_id_or_name: str,
     record_id: str,
 ) -> dict[str, dict[str, dict[str, str]]]:
-
     response = await Requests().delete(
         f"https://api.airtable.com/v0/{base_id}/{table_id_or_name}/{record_id}",
         headers={"Authorization": credentials.auth_header()},
@@ -1016,7 +1008,6 @@ async def create_webhook(
     webhook_specification: WebhookSpecification,
     notification_url: str | None = None,
 ) -> Any:
-
     params: dict[str, Any] = {
         "specification": {
             "options": {
@@ -1044,7 +1035,6 @@ async def delete_webhook(
     base_id: str,
     webhook_id: str,
 ) -> Any:
-
     response = await Requests().delete(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks/{webhook_id}",
         headers={"Authorization": credentials.auth_header()},
@@ -1059,7 +1049,6 @@ async def list_webhook_payloads(
     cursor: str | None = None,
     limit: int | None = None,
 ) -> ListWebhookPayloadsResponse:
-
     query_string = ""
     if cursor:
         query_string += f"cursor={cursor}"
@@ -1091,7 +1080,6 @@ async def list_webhooks(
     credentials: Credentials,
     base_id: str,
 ) -> Any:
-
     response = await Requests().get(
         f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
         headers={"Authorization": credentials.auth_header()},

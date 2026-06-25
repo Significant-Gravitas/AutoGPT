@@ -2,6 +2,7 @@ import logging
 from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
+import prisma
 import pytest
 
 import backend.api.features.library.model
@@ -301,7 +302,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     assert len(graph_exec.node_executions) == 8
     # The last 3 executions will be a+b=4+5=9
     for i, exec_data in enumerate(graph_exec.node_executions[-3:]):
-        logger.info(f"Checking execution {i+1} of last 3: {exec_data}")
+        logger.info(f"Checking execution {i + 1} of last 3: {exec_data}")
         assert exec_data.status == execution.ExecutionStatus.COMPLETED
         assert exec_data.output_data == {"result": [9]}
     logger.info("Completed test_static_input_link_on_graph")
@@ -497,9 +498,24 @@ async def test_store_listing_graph(server: SpinTestServer):
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
 
+    # Ensure the test user has a Profile (required for store submissions)
+    existing_profile = await prisma.models.Profile.prisma().find_first(
+        where={"userId": test_user.id}
+    )
+    if not existing_profile:
+        await prisma.models.Profile.prisma().create(
+            data=prisma.types.ProfileCreateInput(
+                userId=test_user.id,
+                name=test_user.name or "Test User",
+                username=f"test-user-{test_user.id[:8]}",
+                description="Test user profile",
+                links=[],
+            )
+        )
+
     store_submission_request = backend.api.features.store.model.StoreSubmissionRequest(
-        agent_id=test_graph.id,
-        agent_version=test_graph.version,
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
         slug=test_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
@@ -517,8 +533,8 @@ async def test_store_listing_graph(server: SpinTestServer):
         assert False, "Failed to create store listing"
 
     slv_id = (
-        store_listing.store_listing_version_id
-        if store_listing.store_listing_version_id is not None
+        store_listing.listing_version_id
+        if store_listing.listing_version_id is not None
         else None
     )
 

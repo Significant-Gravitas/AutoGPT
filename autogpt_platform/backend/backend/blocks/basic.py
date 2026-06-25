@@ -1,7 +1,7 @@
 import enum
 from typing import Any
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -59,10 +59,13 @@ class FileStoreBlock(Block):
         # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
         return_format = "for_external_api" if input_data.base_64 else "for_block_output"
 
-        yield "file_out", await store_media_file(
-            file=input_data.file_in,
-            execution_context=execution_context,
-            return_format=return_format,
+        yield (
+            "file_out",
+            await store_media_file(
+                file=input_data.file_in,
+                execution_context=execution_context,
+                return_format=return_format,
+            ),
         )
 
 
@@ -126,6 +129,7 @@ class PrintToConsoleBlock(Block):
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             is_sensitive_action=True,
+            disabled=True,
             test_output=[
                 ("output", "Hello, World!"),
                 ("status", "printed"),

@@ -1,21 +1,20 @@
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import (
-    BaseAyrshareInput,
-    PinterestCarouselOption,
-    create_ayrshare_client,
-    get_profile_key,
-)
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, PinterestCarouselOption, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToPinterestBlock(Block):
     """Block for posting to Pinterest with Pinterest-specific options."""
 
@@ -92,31 +91,38 @@ class PostToPinterestBlock(Block):
         self,
         input_data: "PostToPinterestBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to Pinterest with Pinterest-specific options."""
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate Pinterest constraints
         if len(input_data.post) > 500:
-            yield "error", f"Pinterest pin description exceeds 500 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"Pinterest pin description exceeds 500 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         if len(input_data.pin_title) > 100:
-            yield "error", f"Pinterest pin title exceeds 100 character limit ({len(input_data.pin_title)} characters)"
+            yield (
+                "error",
+                f"Pinterest pin title exceeds 100 character limit ({len(input_data.pin_title)} characters)",
+            )
             return
 
         if len(input_data.link) > 2048:
-            yield "error", f"Pinterest link URL exceeds 2048 character limit ({len(input_data.link)} characters)"
+            yield (
+                "error",
+                f"Pinterest link URL exceeds 2048 character limit ({len(input_data.link)} characters)",
+            )
             return
 
         if len(input_data.media_urls) == 0:
@@ -141,7 +147,10 @@ class PostToPinterestBlock(Block):
         # Validate alt text length
         for i, alt in enumerate(input_data.alt_text):
             if len(alt) > 500:
-                yield "error", f"Pinterest alt text {i+1} exceeds 500 character limit ({len(alt)} characters)"
+                yield (
+                    "error",
+                    f"Pinterest alt text {i + 1} exceeds 500 character limit ({len(alt)} characters)",
+                )
                 return
 
         # Convert datetime to ISO format if provided
@@ -206,7 +215,7 @@ class PostToPinterestBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             pinterest_options=pinterest_options if pinterest_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

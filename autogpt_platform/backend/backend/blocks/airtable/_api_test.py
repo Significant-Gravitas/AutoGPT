@@ -30,7 +30,6 @@ from ._api import (
 
 @pytest.mark.asyncio
 async def test_create_update_table():
-
     key = getenv("AIRTABLE_API_KEY")
     if not key:
         return pytest.skip("AIRTABLE_API_KEY is not set")
@@ -79,7 +78,6 @@ async def test_create_update_table():
 
 @pytest.mark.asyncio
 async def test_invalid_field_type():
-
     key = getenv("AIRTABLE_API_KEY")
     if not key:
         return pytest.skip("AIRTABLE_API_KEY is not set")

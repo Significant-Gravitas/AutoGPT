@@ -1,8 +1,8 @@
-import { Creator } from "@/app/api/__generated__/models/creator";
+import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 import { useRouter } from "next/navigation";
 
 interface useFeaturedCreatorsProps {
-  featuredCreators: Creator[];
+  featuredCreators: CreatorDetails[];
 }
 
 export const useFeaturedCreators = ({

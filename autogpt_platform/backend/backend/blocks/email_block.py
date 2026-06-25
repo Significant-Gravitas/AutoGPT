@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -21,6 +21,7 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.request import resolve_and_check_blocked
 
 TEST_CREDENTIALS = UserPasswordCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -96,7 +97,10 @@ class SendEmailBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Email sent successfully")],
             test_mock={"send_email": lambda *args, **kwargs: "Email sent successfully"},
+            is_sensitive_action=True,
         )
+
+    ALLOWED_SMTP_PORTS = {25, 465, 587, 2525}
 
     @staticmethod
     def send_email(
@@ -128,6 +132,20 @@ class SendEmailBlock(Block):
         self, input_data: Input, *, credentials: SMTPCredentials, **kwargs
     ) -> BlockOutput:
         try:
+            # --- SSRF Protection ---
+            smtp_port = input_data.config.smtp_port
+            if smtp_port not in self.ALLOWED_SMTP_PORTS:
+                yield (
+                    "error",
+                    (
+                        f"SMTP port {smtp_port} is not allowed. "
+                        f"Allowed ports: {sorted(self.ALLOWED_SMTP_PORTS)}"
+                    ),
+                )
+                return
+
+            await resolve_and_check_blocked(input_data.config.smtp_server)
+
             status = self.send_email(
                 config=input_data.config,
                 to_email=input_data.to_email,
@@ -137,49 +155,91 @@ class SendEmailBlock(Block):
             )
             yield "status", status
         except socket.gaierror:
-            yield "error", (
-                f"Cannot connect to SMTP server '{input_data.config.smtp_server}'. "
-                "Please verify the server address is correct."
+            yield (
+                "error",
+                (
+                    f"Cannot connect to SMTP server '{input_data.config.smtp_server}'. "
+                    "Please verify the server address is correct."
+                ),
             )
         except socket.timeout:
-            yield "error", (
-                f"Connection timeout to '{input_data.config.smtp_server}' "
-                f"on port {input_data.config.smtp_port}. "
-                "The server may be down or unreachable."
+            yield (
+                "error",
+                (
+                    f"Connection timeout to '{input_data.config.smtp_server}' "
+                    f"on port {input_data.config.smtp_port}. "
+                    "The server may be down or unreachable."
+                ),
             )
         except ConnectionRefusedError:
-            yield "error", (
-                f"Connection refused to '{input_data.config.smtp_server}' "
-                f"on port {input_data.config.smtp_port}. "
-                "Common SMTP ports are: 587 (TLS), 465 (SSL), 25 (plain). "
-                "Please verify the port is correct."
+            yield (
+                "error",
+                (
+                    f"Connection refused to '{input_data.config.smtp_server}' "
+                    f"on port {input_data.config.smtp_port}. "
+                    "Common SMTP ports are: 587 (TLS), 465 (SSL), 25 (plain). "
+                    "Please verify the port is correct."
+                ),
             )
         except smtplib.SMTPNotSupportedError:
-            yield "error", (
-                f"STARTTLS not supported by server '{input_data.config.smtp_server}'. "
-                "Try using port 465 for SSL or port 25 for unencrypted connection."
+            yield (
+                "error",
+                (
+                    f"STARTTLS not supported by server '{input_data.config.smtp_server}'. "
+                    "Try using port 465 for SSL or port 25 for unencrypted connection."
+                ),
             )
         except ssl.SSLError as e:
-            yield "error", (
-                f"SSL/TLS error when connecting to '{input_data.config.smtp_server}': {str(e)}. "
-                "The server may require a different security protocol."
+            yield (
+                "error",
+                (
+                    f"SSL/TLS error when connecting to '{input_data.config.smtp_server}': {str(e)}. "
+                    "The server may require a different security protocol."
+                ),
             )
         except smtplib.SMTPAuthenticationError:
-            yield "error", (
-                "Authentication failed. Please verify your username and password are correct."
+            yield (
+                "error",
+                (
+                    "Authentication failed. Please verify your username and password are correct."
+                ),
             )
         except smtplib.SMTPRecipientsRefused:
-            yield "error", (
-                f"Recipient email address '{input_data.to_email}' was rejected by the server. "
-                "Please verify the email address is valid."
+            yield (
+                "error",
+                (
+                    f"Recipient email address '{input_data.to_email}' was rejected by the server. "
+                    "Please verify the email address is valid."
+                ),
             )
         except smtplib.SMTPSenderRefused:
-            yield "error", (
-                "Sender email address defined in the credentials that where used"
-                "was rejected by the server. "
-                "Please verify your account is authorized to send emails."
+            yield (
+                "error",
+                (
+                    "Sender email address defined in the credentials that where used"
+                    "was rejected by the server. "
+                    "Please verify your account is authorized to send emails."
+                ),
+            )
+        except smtplib.SMTPConnectError:
+            yield (
+                "error",
+                (
+                    f"Cannot connect to SMTP server '{input_data.config.smtp_server}' "
+                    f"on port {input_data.config.smtp_port}."
+                ),
+            )
+        except smtplib.SMTPServerDisconnected:
+            yield (
+                "error",
+                (
+                    f"SMTP server '{input_data.config.smtp_server}' "
+                    "disconnected unexpectedly."
+                ),
             )
         except smtplib.SMTPDataError as e:
             yield "error", f"Email data rejected by server: {str(e)}"
+        except ValueError as e:
+            yield "error", str(e)
         except Exception as e:
             raise e

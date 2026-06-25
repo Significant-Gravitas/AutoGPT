@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient
+    from backend.data.db_manager import DatabaseManagerAsyncClient
 
 from pydantic import ValidationError
 
@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class AutoModManager:
-
     def __init__(self):
         self.config = self._load_config()
 

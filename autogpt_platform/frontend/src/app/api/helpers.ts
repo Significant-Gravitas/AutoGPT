@@ -1,8 +1,5 @@
 import type { InfiniteData } from "@tanstack/react-query";
-import {
-  getV1IsOnboardingEnabled,
-  getV1OnboardingState,
-} from "./__generated__/endpoints/onboarding/onboarding";
+import { getV1CheckIfOnboardingIsCompleted } from "./__generated__/endpoints/onboarding/onboarding";
 import { Pagination } from "./__generated__/models/pagination";
 
 export type OKData<TResponse extends { status: number; data?: any }> =
@@ -53,6 +50,8 @@ export function getPaginationNextPageNumber(
   if (!hasValidPaginationInfo(lastPage)) return undefined;
 
   const { pagination } = lastPage.data;
+  if (!pagination) return undefined;
+
   const hasMore =
     pagination.current_page * pagination.page_size < pagination.total_items;
   return hasMore ? pagination.current_page + 1 : undefined;
@@ -176,10 +175,8 @@ export async function resolveResponse<
 }
 
 export async function getOnboardingStatus() {
-  const status = await resolveResponse(getV1IsOnboardingEnabled());
-  const onboarding = await resolveResponse(getV1OnboardingState());
-  const isCompleted = onboarding.completedSteps.includes("CONGRATS");
+  const status = await resolveResponse(getV1CheckIfOnboardingIsCompleted());
   return {
-    shouldShowOnboarding: status.is_onboarding_enabled && !isCompleted,
+    shouldShowOnboarding: !status.is_completed,
   };
 }

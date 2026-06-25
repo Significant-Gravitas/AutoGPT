@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/__legacy__/ui/card";
 import { useState } from "react";
-import { StoreAgent } from "@/lib/autogpt-server-api";
+import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
 interface FeaturedStoreCardProps {
   agent: StoreAgent;

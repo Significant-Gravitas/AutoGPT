@@ -77,7 +77,7 @@ export function OverflowText(props: Props) {
         "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
       )}
     >
-      <Text variant={variant} className={className} {...restProps}>
+      <Text variant={variant} as="span" className={className} {...restProps}>
         {value}
       </Text>
     </span>

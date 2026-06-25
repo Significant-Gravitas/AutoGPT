@@ -39,6 +39,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 class SearchEntityType(str, Enum):
@@ -254,7 +255,6 @@ class ExaCreateWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         exa = Exa(credentials.api_key.get_secret_value())
 
         entity = None
@@ -394,6 +394,7 @@ class ExaCreateWebsetBlock(Block):
                     metadata=input_data.metadata,
                 )
             )
+            merge_exa_cost(self, webset)
 
             webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
@@ -404,6 +405,7 @@ class ExaCreateWebsetBlock(Block):
                     timeout=input_data.polling_timeout,
                     poll_interval=5,
                 )
+                merge_exa_cost(self, final_webset)
                 completion_time = time.time() - start_time
 
                 item_count = 0
@@ -478,7 +480,8 @@ class ExaCreateOrFindWebsetBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
-            webset = aexa.websets.get(id=input_data.external_id)
+            webset = await aexa.websets.get(id=input_data.external_id)
+            merge_exa_cost(self, webset)
             webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
             yield "webset", webset_result
@@ -494,13 +497,14 @@ class ExaCreateOrFindWebsetBlock(Block):
                         count=input_data.search_count,
                     )
 
-                webset = aexa.websets.create(
+                webset = await aexa.websets.create(
                     params=CreateWebsetParameters(
                         search=search_params,
                         external_id=input_data.external_id,
                         metadata=input_data.metadata,
                     )
                 )
+                merge_exa_cost(self, webset)
 
                 webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
@@ -554,7 +558,8 @@ class ExaUpdateWebsetBlock(Block):
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        sdk_webset = aexa.websets.update(id=input_data.webset_id, params=payload)
+        sdk_webset = await aexa.websets.update(id=input_data.webset_id, params=payload)
+        merge_exa_cost(self, sdk_webset)
 
         status_str = (
             sdk_webset.status.value
@@ -566,8 +571,9 @@ class ExaUpdateWebsetBlock(Block):
         yield "status", status_str
         yield "external_id", sdk_webset.external_id
         yield "metadata", sdk_webset.metadata or {}
-        yield "updated_at", (
-            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
+        yield (
+            "updated_at",
+            (sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""),
         )
 
 
@@ -617,10 +623,11 @@ class ExaListWebsetsBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = aexa.websets.list(
+        response = await aexa.websets.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
         )
+        merge_exa_cost(self, response)
 
         websets_data = [
             w.model_dump(by_alias=True, exclude_none=True) for w in response.data
@@ -678,7 +685,8 @@ class ExaGetWebsetBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_webset = aexa.websets.get(id=input_data.webset_id)
+        sdk_webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, sdk_webset)
 
         status_str = (
             sdk_webset.status.value
@@ -706,11 +714,13 @@ class ExaGetWebsetBlock(Block):
         yield "enrichments", enrichments_data
         yield "monitors", monitors_data
         yield "metadata", sdk_webset.metadata or {}
-        yield "created_at", (
-            sdk_webset.created_at.isoformat() if sdk_webset.created_at else ""
+        yield (
+            "created_at",
+            (sdk_webset.created_at.isoformat() if sdk_webset.created_at else ""),
         )
-        yield "updated_at", (
-            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
+        yield (
+            "updated_at",
+            (sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""),
         )
 
 
@@ -748,7 +758,8 @@ class ExaDeleteWebsetBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_webset = aexa.websets.delete(id=input_data.webset_id)
+        deleted_webset = await aexa.websets.delete(id=input_data.webset_id)
+        merge_exa_cost(self, deleted_webset)
 
         status_str = (
             deleted_webset.status.value
@@ -798,7 +809,8 @@ class ExaCancelWebsetBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        canceled_webset = aexa.websets.cancel(id=input_data.webset_id)
+        canceled_webset = await aexa.websets.cancel(id=input_data.webset_id)
+        merge_exa_cost(self, canceled_webset)
 
         status_str = (
             canceled_webset.status.value
@@ -968,7 +980,8 @@ class ExaPreviewWebsetBlock(Block):
                 entity["description"] = input_data.entity_description
             payload["entity"] = entity
 
-        sdk_preview = aexa.websets.preview(params=payload)
+        sdk_preview = await aexa.websets.preview(params=payload)
+        merge_exa_cost(self, sdk_preview)
 
         preview = PreviewWebsetModel.from_sdk(sdk_preview)
 
@@ -1051,7 +1064,8 @@ class ExaWebsetStatusBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, webset)
 
         status = (
             webset.status.value
@@ -1185,7 +1199,8 @@ class ExaWebsetSummaryBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, webset)
 
         # Extract basic info
         webset_id = webset.id
@@ -1211,9 +1226,10 @@ class ExaWebsetSummaryBlock(Block):
         total_items = 0
 
         if input_data.include_sample_items and input_data.sample_size > 0:
-            items_response = aexa.websets.items.list(
+            items_response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id, limit=input_data.sample_size
             )
+            merge_exa_cost(self, items_response)
             sample_items_data = [
                 item.model_dump(by_alias=True, exclude_none=True)
                 for item in items_response.data
@@ -1362,7 +1378,8 @@ class ExaWebsetReadyCheckBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get webset details
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, webset)
 
         status = (
             webset.status.value

@@ -3,15 +3,18 @@ from typing import Any
 
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
 class YouTubeVisibility(str, Enum):
@@ -20,6 +23,7 @@ class YouTubeVisibility(str, Enum):
     UNLISTED = "unlisted"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToYouTubeBlock(Block):
     """Block for posting to YouTube with YouTube-specific options."""
 
@@ -37,6 +41,14 @@ class PostToYouTubeBlock(Block):
             description="Required video URL. YouTube only supports 1 video per post.",
             default_factory=list,
             advanced=False,
+        )
+
+        # YouTube is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for YouTube)",
+            default=True,
+            advanced=True,
         )
 
         # YouTube-specific required options
@@ -137,19 +149,16 @@ class PostToYouTubeBlock(Block):
         self,
         input_data: "PostToYouTubeBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to YouTube with YouTube-specific validation and options."""
-
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate YouTube constraints
@@ -158,11 +167,17 @@ class PostToYouTubeBlock(Block):
             return
 
         if len(input_data.title) > 100:
-            yield "error", f"YouTube title exceeds 100 character limit ({len(input_data.title)} characters)"
+            yield (
+                "error",
+                f"YouTube title exceeds 100 character limit ({len(input_data.title)} characters)",
+            )
             return
 
         if len(input_data.post) > 5000:
-            yield "error", f"YouTube description exceeds 5,000 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"YouTube description exceeds 5,000 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         # Check for forbidden characters
@@ -186,7 +201,10 @@ class PostToYouTubeBlock(Block):
         # Validate visibility option
         valid_visibility = ["private", "public", "unlisted"]
         if input_data.visibility not in valid_visibility:
-            yield "error", f"YouTube visibility must be one of: {', '.join(valid_visibility)}"
+            yield (
+                "error",
+                f"YouTube visibility must be one of: {', '.join(valid_visibility)}",
+            )
             return
 
         # Validate thumbnail URL format
@@ -202,12 +220,18 @@ class PostToYouTubeBlock(Block):
         if input_data.tags:
             total_tag_length = sum(len(tag) for tag in input_data.tags)
             if total_tag_length > 500:
-                yield "error", f"YouTube tags total length exceeds 500 characters ({total_tag_length} characters)"
+                yield (
+                    "error",
+                    f"YouTube tags total length exceeds 500 characters ({total_tag_length} characters)",
+                )
                 return
 
             for tag in input_data.tags:
                 if len(tag) < 2:
-                    yield "error", f"YouTube tag '{tag}' is too short (minimum 2 characters)"
+                    yield (
+                        "error",
+                        f"YouTube tag '{tag}' is too short (minimum 2 characters)",
+                    )
                     return
 
         # Validate subtitle URL
@@ -225,12 +249,18 @@ class PostToYouTubeBlock(Block):
                 return
 
         if input_data.subtitle_name and len(input_data.subtitle_name) > 150:
-            yield "error", f"YouTube subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)"
+            yield (
+                "error",
+                f"YouTube subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)",
+            )
             return
 
         # Validate publish_at format if provided
         if input_data.publish_at and input_data.schedule_date:
-            yield "error", "Cannot use both 'publish_at' and 'schedule_date'. Use 'publish_at' for YouTube-controlled publishing."
+            yield (
+                "error",
+                "Cannot use both 'publish_at' and 'schedule_date'. Use 'publish_at' for YouTube-controlled publishing.",
+            )
             return
 
         # Convert datetime to ISO format if provided (only if not using publish_at)
@@ -302,7 +332,7 @@ class PostToYouTubeBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             youtube_options=youtube_options,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

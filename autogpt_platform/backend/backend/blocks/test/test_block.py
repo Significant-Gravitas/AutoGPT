@@ -2,7 +2,10 @@ from typing import Any, Type
 
 import pytest
 
-from backend.data.block import Block, BlockSchemaInput, get_blocks
+from backend.blocks import get_blocks
+from backend.blocks._base import Block, BlockSchemaInput
+from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
 from backend.util.test import execute_block_test
 
@@ -278,3 +281,113 @@ class TestAutoCredentialsFieldsValidation:
         assert "Duplicate auto_credentials kwarg_name 'credentials'" in str(
             exc_info.value
         )
+
+
+def test_agent_input_block_ignores_legacy_placeholder_values():
+    """Verify AgentInputBlock.Input.model_construct tolerates extra placeholder_values
+    for backward compatibility with existing agent JSON."""
+    legacy_data = {
+        "name": "url",
+        "value": "",
+        "description": "Enter a URL",
+        "placeholder_values": ["https://example.com"],
+    }
+    instance = AgentInputBlock.Input.model_construct(**legacy_data)
+    schema = instance.generate_schema()
+    assert (
+        "enum" not in schema
+    ), "AgentInputBlock should not produce enum from legacy placeholder_values"
+
+
+def test_dropdown_input_block_produces_enum():
+    """Verify AgentDropdownInputBlock.Input.generate_schema() produces enum
+    using the canonical 'options' field name."""
+    opts = ["Option A", "Option B"]
+    instance = AgentDropdownInputBlock.Input.model_construct(
+        name="choice", value=None, options=opts
+    )
+    schema = instance.generate_schema()
+    assert schema.get("enum") == opts
+
+
+def test_dropdown_input_block_legacy_placeholder_values_produces_enum():
+    """Verify backward compat: passing legacy 'placeholder_values' to
+    AgentDropdownInputBlock still produces enum via model_construct remap."""
+    opts = ["Option A", "Option B"]
+    instance = AgentDropdownInputBlock.Input.model_construct(
+        name="choice", value=None, placeholder_values=opts
+    )
+    schema = instance.generate_schema()
+    assert (
+        schema.get("enum") == opts
+    ), "Legacy placeholder_values should be remapped to options"
+
+
+def test_generate_schema_integration_legacy_placeholder_values():
+    """Test the full Graph._generate_schema path with legacy placeholder_values
+    on AgentInputBlock — verifies no enum leaks through the graph loading path."""
+    legacy_input_default = {
+        "name": "url",
+        "value": "",
+        "description": "Enter a URL",
+        "placeholder_values": ["https://example.com"],
+    }
+    result = BaseGraph._generate_schema(
+        (AgentInputBlock.Input, legacy_input_default),
+    )
+    url_props = result["properties"]["url"]
+    assert (
+        "enum" not in url_props
+    ), "Graph schema should not contain enum from AgentInputBlock placeholder_values"
+
+
+def test_generate_schema_integration_dropdown_produces_enum():
+    """Test the full Graph._generate_schema path with AgentDropdownInputBlock
+    — verifies enum IS produced for dropdown blocks using canonical field name."""
+    dropdown_input_default = {
+        "name": "color",
+        "value": None,
+        "options": ["Red", "Green", "Blue"],
+    }
+    result = BaseGraph._generate_schema(
+        (AgentDropdownInputBlock.Input, dropdown_input_default),
+    )
+    color_props = result["properties"]["color"]
+    assert color_props.get("enum") == [
+        "Red",
+        "Green",
+        "Blue",
+    ], "Graph schema should contain enum from AgentDropdownInputBlock"
+
+
+def test_generate_schema_integration_dropdown_legacy_placeholder_values():
+    """Test the full Graph._generate_schema path with AgentDropdownInputBlock
+    using legacy 'placeholder_values' — verifies backward compat produces enum."""
+    legacy_dropdown_input_default = {
+        "name": "color",
+        "value": None,
+        "placeholder_values": ["Red", "Green", "Blue"],
+    }
+    result = BaseGraph._generate_schema(
+        (AgentDropdownInputBlock.Input, legacy_dropdown_input_default),
+    )
+    color_props = result["properties"]["color"]
+    assert color_props.get("enum") == [
+        "Red",
+        "Green",
+        "Blue",
+    ], "Legacy placeholder_values should still produce enum via model_construct remap"
+
+
+def test_dropdown_input_block_init_legacy_placeholder_values():
+    """Verify backward compat: constructing AgentDropdownInputBlock.Input via
+    model_validate with legacy 'placeholder_values' correctly maps to 'options'."""
+    opts = ["Option A", "Option B"]
+    instance = AgentDropdownInputBlock.Input.model_validate(
+        {"name": "choice", "value": None, "placeholder_values": opts}
+    )
+    assert (
+        instance.options == opts
+    ), "Legacy placeholder_values should be remapped to options via model_validate"
+    schema = instance.generate_schema()
+    assert schema.get("enum") == opts

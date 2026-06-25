@@ -6,7 +6,7 @@ Usage: from backend.sdk import *
 
 This module provides:
 - All block base classes and types
-- All credential and authentication components  
+- All credential and authentication components
 - All cost tracking components
 - All webhook components
 - All utility functions
@@ -17,7 +17,7 @@ This module provides:
 from pydantic import BaseModel, Field, SecretStr
 
 # === CORE BLOCK SYSTEM ===
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockManualWebhookConfig,
@@ -65,7 +65,7 @@ except ImportError:
 
 # Cost System
 try:
-    from backend.data.block import BlockCost, BlockCostType
+    from backend.blocks._base import BlockCost, BlockCostType
 except ImportError:
     from backend.data.block_cost_config import BlockCost, BlockCostType
 

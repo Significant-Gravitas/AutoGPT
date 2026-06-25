@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pinecone import Pinecone, ServerlessSpec
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -14,6 +14,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -160,10 +161,13 @@ class PineconeQueryBlock(Block):
                 combined_text = "\n\n".join(texts)
 
             # Return both the raw matches and combined text
-            yield "results", {
-                "matches": results["matches"],
-                "combined_text": combined_text,
-            }
+            yield (
+                "results",
+                {
+                    "matches": results["matches"],
+                    "combined_text": combined_text,
+                },
+            )
             yield "combined_results", combined_text
 
         except Exception as e:
@@ -227,6 +231,13 @@ class PineconeInsertBlock(Block):
                     }
                 )
             idx.upsert(vectors=vectors, namespace=input_data.namespace)
+
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=float(len(vectors)),
+                    provider_cost_type="items",
+                )
+            )
 
             yield "upsert_response", "successfully upserted"
 

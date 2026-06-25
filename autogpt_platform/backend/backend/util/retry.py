@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import os
 import threading
@@ -12,6 +13,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential_jitter,
 )
+from tenacity.stop import stop_base
 
 from backend.util.settings import get_service_name
 
@@ -19,6 +21,28 @@ logger = logging.getLogger(__name__)
 
 # Alert threshold for excessive retries
 EXCESSIVE_RETRY_THRESHOLD = 50
+
+# Process-wide shutdown flag. The AppProcess/AppService signal handlers set this
+# (via stop_retry_loops) so in-flight retry loops abort promptly instead of
+# blocking shutdown for up to max_retry * max_wait seconds if e.g. a backing
+# service (Redis/RabbitMQ/RPC peer) is unreachable.
+_shutdown_event = threading.Event()
+
+# How often the async interruptible sleep re-checks the shutdown flag.
+_SHUTDOWN_POLL_INTERVAL = 0.5
+
+
+def stop_retry_loops() -> None:
+    """Tell every retry loop in this process to stop ASAP.
+
+    Safe to call from a signal handler: it only sets a ``threading.Event``.
+    """
+    _shutdown_event.set()
+
+
+def is_shutting_down() -> bool:
+    return _shutdown_event.is_set()
+
 
 # Rate limiting for alerts - track last alert time per function+error combination
 _alert_rate_limiter = {}
@@ -64,7 +88,7 @@ def send_rate_limited_discord_alert(
         return True
 
     except Exception as alert_error:
-        logger.error(f"Failed to send Discord alert: {alert_error}")
+        logger.warning(f"Failed to send Discord alert: {alert_error}")
         return False
 
 
@@ -141,21 +165,39 @@ def create_retry_decorator(
     Returns:
         Configured retry decorator
     """
-    if exclude_exceptions:
-        return retry(
-            stop=stop_after_attempt(max_attempts),
-            wait=wait_exponential_jitter(max=max_wait),
-            before_sleep=_create_retry_callback(context),
-            reraise=reraise,
-            retry=retry_if_not_exception_type(exclude_exceptions),
+    stop = stop_after_attempt(max_attempts) | _StopOnShutdown()
+    wait = wait_exponential_jitter(max=max_wait)
+    before_sleep = _create_retry_callback(context)
+    retry_on = (
+        retry_if_not_exception_type(exclude_exceptions) if exclude_exceptions else None
+    )
+
+    def decorator(func):
+        # Pick the interruptible sleep matching the wrapped function so a
+        # pending backoff doesn't keep the process alive after a shutdown signal.
+        sleep = (
+            _interruptible_async_sleep
+            if inspect.iscoroutinefunction(func)
+            else _interruptible_sleep
         )
-    else:
+        if retry_on is not None:
+            return retry(
+                sleep=sleep,
+                stop=stop,
+                wait=wait,
+                before_sleep=before_sleep,
+                reraise=reraise,
+                retry=retry_on,
+            )(func)
         return retry(
-            stop=stop_after_attempt(max_attempts),
-            wait=wait_exponential_jitter(max=max_wait),
-            before_sleep=_create_retry_callback(context),
+            sleep=sleep,
+            stop=stop,
+            wait=wait,
+            before_sleep=before_sleep,
             reraise=reraise,
-        )
+        )(func)
+
+    return decorator
 
 
 def _log_prefix(resource_name: str, conn_id: str):
@@ -182,7 +224,8 @@ def conn_retry(
         func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            logger.error(f"{prefix} {action_name} failed after retries: {exception}")
+            # Final failure is logged by sync_wrapper/async_wrapper — skip here to avoid duplicates
+            pass
         else:
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 if send_rate_limited_discord_alert(
@@ -206,15 +249,25 @@ def conn_retry(
             )
 
     def decorator(func):
-        is_coroutine = asyncio.iscoroutinefunction(func)
-        # Use static retry configuration
+        is_coroutine = inspect.iscoroutinefunction(func)
+        # Use static retry configuration. _StopOnShutdown + the interruptible
+        # sleep let an in-flight retry bail out promptly on SIGINT/SIGTERM
+        # instead of blocking shutdown for up to max_retry * max_wait seconds.
         retry_decorator = retry(
-            stop=stop_after_attempt(max_retry + 1),  # +1 for the initial attempt
+            stop=stop_after_attempt(max_retry + 1)  # +1 for the initial attempt
+            | _StopOnShutdown(),
             wait=wait_exponential_jitter(max=max_wait),
             before_sleep=on_retry,
             reraise=True,
+            sleep=_interruptible_async_sleep if is_coroutine else _interruptible_sleep,
         )
         wrapped_func = retry_decorator(func)
+
+        def _log_failure(prefix: str, error: Exception):
+            if is_shutting_down():
+                logger.info(f"{prefix} {action_name} aborted: shutting down")
+            else:
+                logger.warning(f"{prefix} {action_name} failed after retries: {error}")
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
@@ -225,7 +278,7 @@ def conn_retry(
                 logger.info(f"{prefix} {action_name} completed successfully.")
                 return result
             except Exception as e:
-                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                _log_failure(prefix, e)
                 raise
 
         @wraps(func)
@@ -237,12 +290,44 @@ def conn_retry(
                 logger.info(f"{prefix} {action_name} completed successfully.")
                 return result
             except Exception as e:
-                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                _log_failure(prefix, e)
                 raise
 
         return async_wrapper if is_coroutine else sync_wrapper
 
     return decorator
+
+
+class _StopOnShutdown(stop_base):
+    """Tenacity stop condition that fires once a process shutdown is requested."""
+
+    def __call__(self, retry_state) -> bool:
+        return _shutdown_event.is_set()
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    """``time.sleep`` replacement that wakes immediately on shutdown.
+
+    Worker threads don't receive SIGINT/SIGTERM (only the main thread does), so
+    a plain ``time.sleep`` here can't be interrupted; waiting on the shutdown
+    Event can.
+    """
+    _shutdown_event.wait(seconds)
+
+
+async def _interruptible_async_sleep(seconds: float) -> None:
+    """``asyncio.sleep`` replacement that returns early on shutdown.
+
+    Polls the shared shutdown flag so async retry loops on background event
+    loops (which nothing cancels on shutdown) don't sit through a full backoff.
+    """
+    loop = asyncio.get_running_loop()
+    end = loop.time() + seconds
+    while not _shutdown_event.is_set():
+        remaining = end - loop.time()
+        if remaining <= 0:
+            return
+        await asyncio.sleep(min(remaining, _SHUTDOWN_POLL_INTERVAL))
 
 
 # Preconfigured retry decorator for general functions
@@ -251,12 +336,12 @@ func_retry = create_retry_decorator(max_attempts=5)
 
 def continuous_retry(*, retry_delay: float = 1.0):
     def decorator(func):
-        is_coroutine = asyncio.iscoroutinefunction(func)
+        is_coroutine = inspect.iscoroutinefunction(func)
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             counter = 0
-            while True:
+            while not is_shutting_down():
                 try:
                     return func(*args, **kwargs)
                 except Exception as exc:
@@ -272,12 +357,13 @@ def continuous_retry(*, retry_delay: float = 1.0):
                         str(exc) or type(exc).__name__,
                         retry_delay,
                     )
-                    time.sleep(retry_delay)
+                    _interruptible_sleep(retry_delay)
+            logger.info("%s stopped retrying: shutting down", func.__name__)
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             counter = 0
-            while True:
+            while not is_shutting_down():
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
@@ -293,7 +379,8 @@ def continuous_retry(*, retry_delay: float = 1.0):
                         str(exc) or type(exc).__name__,
                         retry_delay,
                     )
-                    await asyncio.sleep(retry_delay)
+                    await _interruptible_async_sleep(retry_delay)
+            logger.info("%s stopped retrying: shutting down", func.__name__)
 
         return async_wrapper if is_coroutine else sync_wrapper
 

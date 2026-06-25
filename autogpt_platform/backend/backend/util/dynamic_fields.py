@@ -3,7 +3,7 @@ Utilities for handling dynamic field names and delimiters in the AutoGPT Platfor
 
 Dynamic fields allow graphs to connect complex data structures using special delimiters:
 - _#_ for dictionary keys (e.g., "values_#_name" → values["name"])
-- _$_ for list indices (e.g., "items_$_0" → items[0])  
+- _$_ for list indices (e.g., "items_$_0" → items[0])
 - _@_ for object attributes (e.g., "obj_@_attr" → obj.attr)
 
 This module provides utilities for:

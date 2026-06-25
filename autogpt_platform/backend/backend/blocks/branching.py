@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -191,7 +191,6 @@ class IfInputMatchesBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-
         # If input_data.value is not matching input_data.input, convert value to type of input
         if (
             input_data.input != input_data.value

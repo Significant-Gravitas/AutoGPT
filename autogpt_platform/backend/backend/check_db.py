@@ -172,7 +172,7 @@ async def add_test_data(db):
                     "storeListingId": listing.id,
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
-                    "name": f"Test Agent {i+1}",
+                    "name": f"Test Agent {i + 1}",
                     "subHeading": faker.catch_phrase(),
                     "description": faker.paragraph(nb_sentences=5),
                     "imageUrls": [faker.image_url()],
@@ -245,9 +245,7 @@ async def compare_counts(before, after):
     print("🔍 Agent run changes:")
     before_runs = before["agent_runs"].get("total_runs") or 0
     after_runs = after["agent_runs"].get("total_runs") or 0
-    print(
-        f"   Total runs: {before_runs} → {after_runs} " f"(+{after_runs - before_runs})"
-    )
+    print(f"   Total runs: {before_runs} → {after_runs} (+{after_runs - before_runs})")
 
     # Compare reviews
     print("\n🔍 Review changes:")

@@ -388,8 +388,9 @@ class TestWebhookManagerIntegration:
                 manager_class = managers.get("integrated_webhooks")
 
                 yield "status", "configured"
-                yield "manager_type", (
-                    manager_class.__name__ if manager_class else "none"
+                yield (
+                    "manager_type",
+                    (manager_class.__name__ if manager_class else "none"),
                 )
 
         # Test the block
