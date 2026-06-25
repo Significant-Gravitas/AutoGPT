@@ -208,15 +208,19 @@ class ImageGeneratorComponent(
             n=1,
             # TODO: improve typing of size config item(s)
             size=f"{size}x{size}",  # type: ignore
-            response_format="b64_json",
         )
-        # response_format="b64_json" guarantees b64_json is present
-        image_b64 = response.data[0].b64_json  # type: ignore[index]
-        assert image_b64 is not None
+        # Depending on the model, the image is returned either as base64 JSON
+        # or as a temporary URL. (response_format is not accepted by all
+        # models, so we don't request a specific one and handle both.)
+        image = response.data[0]  # type: ignore[index]
+        if image.b64_json:
+            image_data = b64decode(image.b64_json)
+        elif image.url:
+            image_data = requests.get(image.url, timeout=30).content
+        else:
+            raise RuntimeError("DALL-E response contained no image data")
 
         logger.info(f"Image Generated for prompt: {prompt}")
-
-        image_data = b64decode(image_b64)
 
         with open(output_file, mode="wb") as png:
             png.write(image_data)
