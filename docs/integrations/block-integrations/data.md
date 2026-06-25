@@ -118,6 +118,78 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 
 ---
 
+## JSON Decoder
+
+### What it is
+Decodes a JSON string into the value or data structure, it represents, e.g. an object, list, string, or number.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`.
+
+If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| json_str | The JSON string to decode. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| data | The value as decoded from the JSON string. | Data |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**API Response Processing**: Parse JSON responses from external APIs into structured data for further processing in your workflow.
+
+**Configuration Loading**: Decode JSON-formatted configuration strings into accessible dictionary settings for your agents.
+
+**Webhook Payload Parsing**: Extract nested fields from incoming JSON webhook payloads for dynamic decision-making.
+<!-- END MANUAL -->
+
+---
+
+## JSON Encoder
+
+### What it is
+Encodes any value or data structure into a JSON string.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block serializes standard Python structures (like `dict`, `list`, `str`, `int`, `float`, `bool`, and `None`) into a valid JSON string using the project's optimized `orjson`-based encoder. It safely handles nested structures, automatically converting Python equivalents to their JSON counterparts (e.g., `{"a": 1}` remains an object, and `None` is translated to `null`).
+
+Before outputting, the block validates JSON-serializability. If an unsupported type is provided—such as custom objects, `datetime`, or `set`s without custom serialization—it raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. For edge cases like large numeric precision or non-serializable types, it is recommended to pre-convert these values into strings or dictionaries before passing them to the encoder.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| data | The data structure/value (object, list, string, etc.) to encode into a JSON string. | Data | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| json_str | The JSON string representation of the input data. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**API Request Formatting**: Convert Python dictionaries into JSON strings for POST/PUT request bodies.
+
+**Data Export**: Serialize structured workflow data into JSON format for saving to files or persistent storage.
+
+**Log Structured Data**: Encode complex data structures into JSON strings for structured logging and debugging output.
+<!-- END MANUAL -->
+
+---
+
 ## Persist Information
 
 ### What it is
@@ -236,6 +308,57 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 **Load Preferences**: Fetch stored user preferences at workflow start to customize behavior.
 
 **State Restoration**: Retrieve workflow state saved from a previous run to maintain continuity.
+<!-- END MANUAL -->
+
+---
+
+## SQL Query
+
+### What it is
+Execute a SQL query. Read-only by default for safety -- disable to allow write operations. Supports PostgreSQL, MySQL, and MSSQL via SQLAlchemy.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block connects to a database using discrete host, port, and database fields and executes a SQL query via SQLAlchemy. It validates that the query is a single statement (using sqlparse to prevent SQL injection via multi-statement attacks), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
+
+By default, only SELECT queries are allowed (read-only mode). The database session is set to read-only and the transaction is always rolled back. Disable the `read_only` option to allow write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.).
+
+Supported database types: PostgreSQL, MySQL, and MSSQL.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| database_type | Database engine | "postgres" \| "mysql" \| "mssql" | No |
+| host | Database hostname or IP address. Treated as a secret to avoid leaking infrastructure details. Private/internal IPs are blocked (SSRF protection). | str (password) | Yes |
+| port | Database port (leave empty for default: PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
+| database | Name of the database to connect to | str | Yes |
+| query | SQL query to execute | str | Yes |
+| read_only | When enabled (default), only SELECT queries are allowed and the database session is set to read-only mode. Disable to allow write operations (INSERT, UPDATE, DELETE, etc.). | bool | No |
+| timeout | Query timeout in seconds (max 120) | int | No |
+| max_rows | Maximum number of rows to return (max 10000) | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the query failed | str |
+| results | Query results as a list of row dictionaries | List[Dict[str, Any]] |
+| columns | Column names from the query result | List[str] |
+| row_count | Number of rows returned | int |
+| truncated | True when the result set was capped by max_rows, indicating additional rows exist in the database | bool |
+| affected_rows | Number of rows affected by a write query (INSERT/UPDATE/DELETE) | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Analytics Dashboards**: Query your PostgreSQL or MySQL analytics database to pull daily active user counts, revenue metrics, or funnel data directly into your workflow.
+
+**Data Management**: Run INSERT, UPDATE, or DELETE queries to manage data in your databases as part of automated workflows.
+
+**Schema Management**: Create or modify database tables and indexes as part of provisioning or migration workflows.
+
+**Cross-Database Reporting**: Connect to multiple database types (PostgreSQL, MySQL) within a single workflow to aggregate data from different sources.
 <!-- END MANUAL -->
 
 ---

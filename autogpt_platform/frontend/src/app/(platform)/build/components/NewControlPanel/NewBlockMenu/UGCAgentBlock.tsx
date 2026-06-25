@@ -81,6 +81,14 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           >
             Version {version}
           </span>
+
+          <span
+            className={cn(
+              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
+            )}
+          >
+            Your Agent
+          </span>
         </div>
       </div>
       <div

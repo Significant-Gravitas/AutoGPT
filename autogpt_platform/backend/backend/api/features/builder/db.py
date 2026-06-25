@@ -1,28 +1,34 @@
+import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
-from typing import Sequence
+from typing import Any, Awaitable, Sequence, get_args, get_origin
 
 import prisma
+from prisma.models import mv_suggested_blocks
 
 import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-import backend.data.block
 from backend.blocks import load_all_blocks
+from backend.blocks._base import (
+    AnyBlockSchema,
+    BlockCategory,
+    BlockInfo,
+    BlockSchema,
+    BlockType,
+)
 from backend.blocks.llm import LlmModel
-from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
-from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
+from backend.util.text import split_camelcase
 
 from .model import (
     BlockCategoryResponse,
     BlockResponse,
-    BlockType,
+    BlockTypeFilter,
     CountResponse,
     FilterType,
     Provider,
@@ -36,6 +42,19 @@ llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
 MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
+
+# Boost blocks over marketplace agents in search results
+BLOCK_SCORE_BOOST = 50.0
+
+# Bonus when a block exposes an LlmModel field and the query names an LLM model
+LLM_MODEL_MATCH_BONUS = 20.0
+
+# Block IDs to exclude from search results
+EXCLUDED_BLOCK_IDS = frozenset(
+    {
+        "e189baac-8c20-45a1-94a7-55177ea42565",  # AgentExecutorBlock
+    }
+)
 
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
@@ -54,13 +73,27 @@ class _SearchCacheEntry:
     total_items: dict[FilterType, int]
 
 
+@dataclass(frozen=True)
+class _BlockIndexEntry:
+    block_info: BlockInfo
+    normalized_name: str  # split_camelcase(name).lower(); query-path sort_key
+    name_sort_key: str  # block_info.name.lower(); no-query-path sort_key
+    searchable_text: str
+    is_integration: bool
+    has_llm_model: bool
+
+
+# (scored items, per-filter result counts) returned by a single search branch.
+_SearchBranchResult = tuple[list[_ScoredItem], dict[FilterType, int]]
+
+
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
     categories: dict[BlockCategory, BlockCategoryResponse] = {}
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        # Skip disabled blocks
-        if block.disabled:
+        # Skip disabled and excluded blocks
+        if block.disabled or block.id in EXCLUDED_BLOCK_IDS:
             continue
         # Skip blocks that don't have categories (all should have at least one)
         if not block.categories:
@@ -88,7 +121,7 @@ def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse
 def get_blocks(
     *,
     category: str | None = None,
-    type: BlockType | None = None,
+    type: BlockTypeFilter | None = None,
     provider: ProviderName | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -110,6 +143,9 @@ def get_blocks(
         block: AnyBlockSchema = block_type()
         # Skip disabled blocks
         if block.disabled:
+            continue
+        # Skip excluded blocks
+        if block.id in EXCLUDED_BLOCK_IDS:
             continue
         # Skip blocks that don't match the category
         if category and category not in {c.name.lower() for c in block.categories}:
@@ -242,7 +278,6 @@ async def _build_cached_search_results(
     include_library_agents = "my_agents" in filters
     include_marketplace_agents = "marketplace_agents" in filters
 
-    scored_items: list[_ScoredItem] = []
     total_items: dict[FilterType, int] = {
         "blocks": 0,
         "integrations": 0,
@@ -250,44 +285,31 @@ async def _build_cached_search_results(
         "my_agents": 0,
     }
 
-    block_results, block_total, integration_total = _collect_block_results(
-        normalized_query=normalized_query,
-        include_blocks=include_blocks,
-        include_integrations=include_integrations,
-    )
-    scored_items.extend(block_results)
-    total_items["blocks"] = block_total
-    total_items["integrations"] = integration_total
-
+    # Run the independent sub-searches concurrently: block scoring is CPU-bound
+    # (offloaded to a thread so it doesn't block the event loop), while library
+    # and marketplace are independent DB queries.
+    branches: list[Awaitable[_SearchBranchResult]] = []
+    if include_blocks or include_integrations:
+        branches.append(
+            asyncio.to_thread(
+                _search_blocks,
+                search_query,
+                normalized_query,
+                include_blocks,
+                include_integrations,
+            )
+        )
     if include_library_agents:
-        library_response = await library_db.list_library_agents(
-            user_id=user_id,
-            search_term=search_query or None,
-            page=1,
-            page_size=MAX_LIBRARY_AGENT_RESULTS,
-        )
-        total_items["my_agents"] = library_response.pagination.total_items
-        scored_items.extend(
-            _build_library_items(
-                agents=library_response.agents,
-                normalized_query=normalized_query,
-            )
+        branches.append(_search_library(user_id, search_query, normalized_query))
+    if include_marketplace_agents:
+        branches.append(
+            _search_marketplace(list(by_creator), search_query, normalized_query)
         )
 
-    if include_marketplace_agents:
-        marketplace_response = await store_db.get_store_agents(
-            creators=list(by_creator) or None,
-            search_query=search_query or None,
-            page=1,
-            page_size=MAX_MARKETPLACE_AGENT_RESULTS,
-        )
-        total_items["marketplace_agents"] = marketplace_response.pagination.total_items
-        scored_items.extend(
-            _build_marketplace_items(
-                agents=marketplace_response.agents,
-                normalized_query=normalized_query,
-            )
-        )
+    scored_items: list[_ScoredItem] = []
+    for items, totals in await asyncio.gather(*branches):
+        scored_items.extend(items)
+        total_items.update(totals)
 
     sorted_items = sorted(
         scored_items,
@@ -300,53 +322,198 @@ async def _build_cached_search_results(
     )
 
 
-def _collect_block_results(
-    *,
+def _search_blocks(
+    search_query: str,
     normalized_query: str,
     include_blocks: bool,
     include_integrations: bool,
-) -> tuple[list[_ScoredItem], int, int]:
-    results: list[_ScoredItem] = []
-    block_count = 0
-    integration_count = 0
-
-    if not include_blocks and not include_integrations:
-        return results, block_count, integration_count
-
-    for block_type in load_all_blocks().values():
-        block: AnyBlockSchema = block_type()
-        if block.disabled:
-            continue
-
-        block_info = block.get_info()
-        credentials = list(block.input_schema.get_credentials_fields().values())
-        is_integration = len(credentials) > 0
-
-        if is_integration and not include_integrations:
-            continue
-        if not is_integration and not include_blocks:
-            continue
-
-        score = _score_block(block, block_info, normalized_query)
-        if not _should_include_item(score, normalized_query):
-            continue
-
-        filter_type: FilterType = "integrations" if is_integration else "blocks"
-        if is_integration:
-            integration_count += 1
-        else:
-            block_count += 1
-
-        results.append(
-            _ScoredItem(
-                item=block_info,
-                filter_type=filter_type,
-                score=score,
-                sort_key=_get_item_name(block_info),
-            )
+) -> _SearchBranchResult:
+    """
+    Block/integration sub-search: text search when a query is present,
+    otherwise the full block listing. Returns the scored items and the
+    per-filter ("blocks"/"integrations") result counts.
+    """
+    if normalized_query:
+        results, block_total, integration_total = _text_search_blocks(
+            query=search_query,
+            include_blocks=include_blocks,
+            include_integrations=include_integrations,
         )
+    else:
+        results, block_total, integration_total = _collect_block_results(
+            include_blocks=include_blocks,
+            include_integrations=include_integrations,
+        )
+    return results, {"blocks": block_total, "integrations": integration_total}
 
+
+async def _search_library(
+    user_id: str,
+    search_query: str,
+    normalized_query: str,
+) -> _SearchBranchResult:
+    library_response = await library_db.list_library_agents(
+        user_id=user_id,
+        search_term=search_query or None,
+        page=1,
+        page_size=MAX_LIBRARY_AGENT_RESULTS,
+        # Hide trigger agents — they're parent-coupled, not
+        # generally reusable as a sub-agent block.
+        is_hidden=False,
+    )
+    items = _build_library_items(
+        agents=library_response.agents,
+        normalized_query=normalized_query,
+    )
+    return items, {"my_agents": library_response.pagination.total_items}
+
+
+async def _search_marketplace(
+    by_creator: list[str],
+    search_query: str,
+    normalized_query: str,
+) -> _SearchBranchResult:
+    marketplace_response = await store_db.get_store_agents(
+        creators=by_creator or None,
+        search_query=search_query or None,
+        page=1,
+        page_size=MAX_MARKETPLACE_AGENT_RESULTS,
+    )
+    items = _build_marketplace_items(
+        agents=marketplace_response.agents,
+        normalized_query=normalized_query,
+    )
+    return items, {"marketplace_agents": marketplace_response.pagination.total_items}
+
+
+def _collect_block_results(
+    *,
+    include_blocks: bool,
+    include_integrations: bool,
+) -> tuple[list[_ScoredItem], int, int]:
+    """
+    Collect all blocks for listing (no search query).
+
+    All blocks get BLOCK_SCORE_BOOST to prioritize them over marketplace agents.
+    """
+    if not include_blocks and not include_integrations:
+        return [], 0, 0
+
+    results = [
+        _ScoredItem(
+            item=entry.block_info,
+            filter_type="integrations" if entry.is_integration else "blocks",
+            score=BLOCK_SCORE_BOOST,
+            sort_key=entry.name_sort_key,
+        )
+        for entry in _get_block_search_index()
+        if _entry_included(entry, include_blocks, include_integrations)
+    ]
+    block_count = sum(1 for r in results if r.filter_type == "blocks")
+    integration_count = sum(1 for r in results if r.filter_type == "integrations")
     return results, block_count, integration_count
+
+
+def _text_search_blocks(
+    *,
+    query: str,
+    include_blocks: bool,
+    include_integrations: bool,
+) -> tuple[list[_ScoredItem], int, int]:
+    """
+    Search blocks using in-memory text matching over the cached block index.
+
+    Scoring:
+        - Base: text relevance via _score_primary_fields, plus BLOCK_SCORE_BOOST
+          to prioritize blocks over marketplace agents in combined results
+        - +20 if the block has an LlmModel field and the query matches an LLM model name
+    """
+    if not include_blocks and not include_integrations:
+        return [], 0, 0
+
+    normalized_query = query.strip().lower()
+    results = [
+        scored
+        for entry in _get_block_search_index()
+        if _entry_included(entry, include_blocks, include_integrations)
+        if (scored := _score_block_entry(entry, normalized_query)) is not None
+    ]
+    block_count = sum(1 for r in results if r.filter_type == "blocks")
+    integration_count = sum(1 for r in results if r.filter_type == "integrations")
+    return results, block_count, integration_count
+
+
+def _score_block_entry(
+    entry: _BlockIndexEntry, normalized_query: str
+) -> _ScoredItem | None:
+    score = _score_primary_fields(
+        entry.normalized_name, entry.searchable_text, normalized_query
+    )
+    # Add LLM model match bonus
+    if entry.has_llm_model and _query_matches_llm_model(normalized_query):
+        score += LLM_MODEL_MATCH_BONUS
+
+    if score < MIN_SCORE_FOR_FILTERED_RESULTS:
+        return None
+
+    return _ScoredItem(
+        item=entry.block_info,
+        filter_type="integrations" if entry.is_integration else "blocks",
+        score=score + BLOCK_SCORE_BOOST,
+        sort_key=entry.normalized_name,
+    )
+
+
+@cached(ttl_seconds=3600)
+def _get_block_search_index() -> tuple[_BlockIndexEntry, ...]:
+    """
+    Build a lightweight, in-memory index of all searchable blocks once per hour.
+
+    Each block is instantiated a single time here; search requests then score
+    against the precomputed fields without re-instantiating blocks or rebuilding
+    BlockInfo per request.
+    """
+    blocks = (block_type() for block_type in load_all_blocks().values())
+    entries = [
+        _build_block_index_entry(block)
+        for block in blocks
+        if not block.disabled and block.id not in EXCLUDED_BLOCK_IDS
+    ]
+    return tuple(entries)
+
+
+def _build_block_index_entry(block: AnyBlockSchema) -> _BlockIndexEntry:
+    block_info = block.get_info()
+    return _BlockIndexEntry(
+        block_info=block_info,
+        normalized_name=split_camelcase(block_info.name).lower(),
+        name_sort_key=block_info.name.lower(),
+        searchable_text=_block_searchable_text(block),
+        is_integration=bool(block.input_schema.get_credentials_fields()),
+        has_llm_model=_schema_has_llm_model(block.input_schema),
+    )
+
+
+def _entry_included(
+    entry: _BlockIndexEntry, include_blocks: bool, include_integrations: bool
+) -> bool:
+    if entry.is_integration:
+        return include_integrations
+    return include_blocks
+
+
+def _block_searchable_text(block: AnyBlockSchema) -> str:
+    """
+    Build searchable text for a block: its description plus the descriptions of
+    its input fields, matching the text the embedding pipeline indexes.
+    """
+    parts = [block.description or ""]
+    parts += [
+        f"{field}: {info.description}"
+        for field, info in block.input_schema.model_fields.items()
+        if info.description
+    ]
+    return " ".join(parts).lower()
 
 
 def _build_library_items(
@@ -467,6 +634,8 @@ async def _get_static_counts():
         block: AnyBlockSchema = block_type()
         if block.disabled:
             continue
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
 
         all_blocks += 1
 
@@ -493,45 +662,25 @@ async def _get_static_counts():
     }
 
 
-def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
-    for field in schema_cls.model_fields.values():
-        if field.annotation == LlmModel:
-            # Check if query matches any value in llm_models
-            if any(query in name for name in llm_models):
-                return True
-    return False
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
-def _score_block(
-    block: AnyBlockSchema,
-    block_info: BlockInfo,
-    normalized_query: str,
-) -> float:
-    if not normalized_query:
-        return 0.0
-
-    name = block_info.name.lower()
-    description = block_info.description.lower()
-    score = _score_primary_fields(name, description, normalized_query)
-
-    category_text = " ".join(
-        category.get("category", "").lower() for category in block_info.categories
+def _schema_has_llm_model(schema_cls: type[BlockSchema]) -> bool:
+    return any(
+        _contains_type(field.annotation, LlmModel)
+        for field in schema_cls.model_fields.values()
     )
-    score += _score_additional_field(category_text, normalized_query, 12, 6)
 
-    credentials_info = block.input_schema.get_credentials_fields_info().values()
-    provider_names = [
-        provider.value.lower()
-        for info in credentials_info
-        for provider in info.provider
-    ]
-    provider_text = " ".join(provider_names)
-    score += _score_additional_field(provider_text, normalized_query, 15, 6)
 
-    if _matches_llm_model(block.input_schema, normalized_query):
-        score += 20
-
-    return score
+def _query_matches_llm_model(query: str) -> bool:
+    return any(query in name for name in llm_models)
 
 
 def _score_library_agent(
@@ -640,45 +789,32 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
     return providers
 
 
-@cached(ttl_seconds=3600)
+@cached(ttl_seconds=3600, shared_cache=True)
 async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
-    suggested_blocks = []
-    # Sum the number of executions for each block type
-    # Prisma cannot group by nested relations, so we do a raw query
-    # Calculate the cutoff timestamp
-    timestamp_threshold = datetime.now(timezone.utc) - timedelta(days=30)
+    """Return the most-executed blocks from the last 14 days.
 
-    results = await query_raw_with_schema(
-        """
-        SELECT
-            agent_node."agentBlockId" AS block_id,
-            COUNT(execution.id) AS execution_count
-        FROM {schema_prefix}"AgentNodeExecution" execution
-        JOIN {schema_prefix}"AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
-        WHERE execution."endedTime" >= $1::timestamp
-        GROUP BY agent_node."agentBlockId"
-        ORDER BY execution_count DESC;
-        """,
-        timestamp_threshold,
-    )
+    Queries the mv_suggested_blocks materialized view (refreshed hourly via pg_cron)
+    and returns the top `count` blocks sorted by execution count, excluding
+    Input/Output/Agent block types and blocks in EXCLUDED_BLOCK_IDS.
+    """
+    results = await mv_suggested_blocks.prisma().find_many()
 
     # Get the top blocks based on execution count
-    # But ignore Input and Output blocks
+    # But ignore Input, Output, Agent, and excluded blocks
     blocks: list[tuple[BlockInfo, int]] = []
+    execution_counts = {row.block_id: row.execution_count for row in results}
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
         if block.disabled or block.block_type in (
-            backend.data.block.BlockType.INPUT,
-            backend.data.block.BlockType.OUTPUT,
-            backend.data.block.BlockType.AGENT,
+            BlockType.INPUT,
+            BlockType.OUTPUT,
+            BlockType.AGENT,
         ):
             continue
-        # Find the execution count for this block
-        execution_count = next(
-            (row["execution_count"] for row in results if row["block_id"] == block.id),
-            0,
-        )
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
+        execution_count = execution_counts.get(block.id, 0)
         blocks.append((block.get_info(), execution_count))
     # Sort blocks by execution count
     blocks.sort(key=lambda x: x[1], reverse=True)

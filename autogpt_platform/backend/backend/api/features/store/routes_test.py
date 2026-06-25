@@ -8,6 +8,8 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.db import StoreAgentsSortOptions
+
 from . import model as store_model
 from . import routes as store_routes
 
@@ -26,9 +28,11 @@ def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+    store_routes.store_cache.clear_all_caches()
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
+    store_routes.store_cache.clear_all_caches()
 
 
 def test_get_agents_defaults(
@@ -196,7 +200,7 @@ def test_get_agents_sorted(
     mock_db_call.assert_called_once_with(
         featured=False,
         creators=None,
-        sorted_by="runs",
+        sorted_by=StoreAgentsSortOptions.RUNS,
         search_query=None,
         category=None,
         page=1,
@@ -380,9 +384,11 @@ def test_get_agent_details(
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
-        agentGraphVersions=["1", "2"],
-        agentGraphId="test-graph-id",
+        graph_versions=["1", "2"],
+        graph_id="test-graph-id",
         last_updated=FIXED_NOW,
+        active_version_id="test-version-id",
+        has_approved_version=True,
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agent_details")
     mock_db_call.return_value = mocked_value
@@ -435,15 +441,17 @@ def test_get_creators_pagination(
 ) -> None:
     mocked_value = store_model.CreatorsResponse(
         creators=[
-            store_model.Creator(
+            store_model.CreatorDetails(
                 name=f"Creator {i}",
                 username=f"creator{i}",
-                description=f"Creator {i} description",
                 avatar_url=f"avatar{i}.jpg",
-                num_agents=1,
-                agent_rating=4.5,
-                agent_runs=100,
+                description=f"Creator {i} description",
+                links=[f"user{i}.link.com"],
                 is_featured=False,
+                num_agents=1,
+                agent_runs=100,
+                agent_rating=4.5,
+                top_categories=["cat1", "cat2", "cat3"],
             )
             for i in range(5)
         ],
@@ -496,19 +504,19 @@ def test_get_creator_details(
     mocked_value = store_model.CreatorDetails(
         name="Test User",
         username="creator1",
+        avatar_url="avatar.jpg",
         description="Test creator description",
         links=["link1.com", "link2.com"],
-        avatar_url="avatar.jpg",
-        agent_rating=4.8,
+        is_featured=True,
+        num_agents=5,
         agent_runs=1000,
+        agent_rating=4.8,
         top_categories=["category1", "category2"],
     )
-    mock_db_call = mocker.patch(
-        "backend.api.features.store.db.get_store_creator_details"
-    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creator")
     mock_db_call.return_value = mocked_value
 
-    response = client.get("/creator/creator1")
+    response = client.get("/creators/creator1")
     assert response.status_code == 200
 
     data = store_model.CreatorDetails.model_validate(response.json())
@@ -528,19 +536,26 @@ def test_get_submissions_success(
         submissions=[
             store_model.StoreSubmission(
                 listing_id="test-listing-id",
-                name="Test Agent",
-                description="Test agent description",
-                image_urls=["test.jpg"],
-                date_submitted=FIXED_NOW,
-                status=prisma.enums.SubmissionStatus.APPROVED,
-                runs=50,
-                rating=4.2,
-                agent_id="test-agent-id",
-                agent_version=1,
-                sub_heading="Test agent subheading",
+                user_id="test-user-id",
                 slug="test-agent",
-                video_url="test.mp4",
+                listing_version_id="test-version-id",
+                listing_version=1,
+                graph_id="test-agent-id",
+                graph_version=1,
+                name="Test Agent",
+                sub_heading="Test agent subheading",
+                description="Test agent description",
+                instructions="Click the button!",
                 categories=["test-category"],
+                image_urls=["test.jpg"],
+                video_url="test.mp4",
+                agent_output_demo_url="demo_video.mp4",
+                submitted_at=FIXED_NOW,
+                changes_summary="Initial Submission",
+                status=prisma.enums.SubmissionStatus.APPROVED,
+                run_count=50,
+                review_count=5,
+                review_avg_rating=4.2,
             )
         ],
         pagination=store_model.Pagination(
@@ -548,6 +563,13 @@ def test_get_submissions_success(
             total_items=1,
             total_pages=1,
             page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=1,
+            approved=1,
+            pending=0,
+            total_runs=50,
+            average_rating=4.2,
         ),
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
@@ -560,9 +582,19 @@ def test_get_submissions_success(
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
+    assert data.stats.total == 1
+    assert data.stats.total_runs == 50
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
-    mock_db_call.assert_called_once_with(user_id=test_user_id, page=1, page_size=20)
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=None,
+        sort_key=None,
+        sort_dir="desc",
+    )
 
 
 def test_get_submissions_pagination(
@@ -578,6 +610,13 @@ def test_get_submissions_pagination(
             total_pages=2,
             page_size=5,
         ),
+        stats=store_model.SubmissionStats(
+            total=10,
+            approved=4,
+            pending=3,
+            total_runs=12_345,
+            average_rating=3.7,
+        ),
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
     mock_db_call.return_value = mocked_value
@@ -590,7 +629,179 @@ def test_get_submissions_pagination(
     assert data.pagination.page_size == 5
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_pagination")
-    mock_db_call.assert_called_once_with(user_id=test_user_id, page=2, page_size=5)
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=2,
+        page_size=5,
+        search_query=None,
+        statuses=None,
+        sort_key=None,
+        sort_dir="desc",
+    )
+
+
+def test_get_submissions_forwards_search_query(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.StoreSubmissionsResponse(
+        submissions=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=0, approved=0, pending=0, total_runs=0, average_rating=None
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/submissions?search_query=invoice%20agent")
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query="invoice agent",
+        statuses=None,
+        sort_key=None,
+        sort_dir="desc",
+    )
+
+
+def test_get_submissions_forwards_statuses(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.StoreSubmissionsResponse(
+        submissions=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=0, approved=0, pending=0, total_runs=0, average_rating=None
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/submissions?statuses=PENDING,APPROVED")
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=[
+            prisma.enums.SubmissionStatus.PENDING,
+            prisma.enums.SubmissionStatus.APPROVED,
+        ],
+        sort_key=None,
+        sort_dir="desc",
+    )
+
+
+def test_get_submissions_forwards_sort(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.StoreSubmissionsResponse(
+        submissions=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=0, approved=0, pending=0, total_runs=0, average_rating=None
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/submissions?sort_key=runs&sort_dir=asc")
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=None,
+        sort_key="runs",
+        sort_dir="asc",
+    )
+
+
+def test_get_submissions_rejects_invalid_sort(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?sort_key=name")
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
+
+
+def test_get_submissions_rejects_invalid_status(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?statuses=INVALID")
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
+
+
+def test_get_submissions_search_query_too_long(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?search_query=" + "x" * 101)
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
+
+
+def test_get_my_unpublished_agents_forwards_search_query(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.MyUnpublishedAgentsResponse(
+        agents=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=10,
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_my_agents")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get(
+        "/my-unpublished-agents?page=1&page_size=10&search_query=scraper"
+    )
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        test_user_id,
+        page=1,
+        page_size=10,
+        sort_by=store_model.MyAgentsSortBy.MOST_RECENT,
+        search_query="scraper",
+    )
+
+
+def test_get_my_unpublished_agents_search_query_too_long(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_my_agents")
+    response = client.get("/my-unpublished-agents?search_query=" + "x" * 101)
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
 
 
 def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):

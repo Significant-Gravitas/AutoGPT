@@ -80,11 +80,6 @@ Root (type: object)
     │   └── FieldTemplate → AnyOfField
     │       └── String → TextWidget OR Null → nothing
     │
-    ├── placeholder_values (array of strings)
-    │   └── FieldTemplate → ArrayFieldTemplate
-    │       └── ArrayFieldItemTemplate (per item)
-    │           └── TextWidget
-    │
     ├── advanced (boolean)
     │   └── FieldTemplate → CheckboxWidget
     │

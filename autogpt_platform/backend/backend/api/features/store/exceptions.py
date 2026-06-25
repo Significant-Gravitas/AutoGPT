@@ -57,12 +57,6 @@ class StoreError(ValueError):
     pass
 
 
-class AgentNotFoundError(NotFoundError):
-    """Raised when an agent is not found"""
-
-    pass
-
-
 class CreatorNotFoundError(NotFoundError):
     """Raised when a creator is not found"""
 

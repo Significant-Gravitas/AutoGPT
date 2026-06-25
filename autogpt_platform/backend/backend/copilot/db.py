@@ -1,0 +1,833 @@
+"""Database operations for chat sessions."""
+
+import asyncio
+import logging
+from datetime import UTC, datetime
+from typing import Any
+
+import sentry_sdk
+from prisma.errors import UniqueViolationError
+from prisma.models import ChatMessage as PrismaChatMessage
+from prisma.models import ChatSession as PrismaChatSession
+from prisma.types import (
+    ChatMessageCreateInput,
+    ChatMessageWhereInput,
+    ChatSessionCreateInput,
+    ChatSessionUpdateInput,
+    ChatSessionWhereInput,
+    FindManyChatMessageArgsFromChatSession,
+)
+from pydantic import BaseModel
+
+from backend.data import db
+from backend.util.json import SafeJson, sanitize_string
+
+from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import get_chat_session as get_chat_session_cached
+
+logger = logging.getLogger(__name__)
+
+_BOUNDARY_SCAN_LIMIT = 10
+
+
+class PaginatedMessages(BaseModel):
+    """Result of a paginated message query."""
+
+    messages: list[ChatMessage]
+    has_more: bool
+    oldest_sequence: int | None
+    session: ChatSessionInfo
+
+
+# Cap on messages eagerly loaded with a session. Set above the realistic p99
+# of any actual copilot conversation (typical: 10-100 msgs; power user: a few
+# hundred; cap engages only on pathological multi-thousand-message sessions).
+# Older history beyond the cap relies on the GCS transcript checkpoint via
+# ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
+# a transcript, the cap-hit warning below makes the case observable in logs.
+MAX_LOADED_CHAT_MESSAGES = 1000
+
+
+# NOTE: there is intentionally no eager-load ``get_chat_session`` here. Callers
+# that need the full session (LLM context, sub-session tools) call
+# :func:`get_chat_messages_paginated` directly with
+# ``limit=MAX_LOADED_CHAT_MESSAGES`` and assemble :class:`ChatSession` from the
+# returned ``session`` (full :class:`ChatSessionInfo` — credentials,
+# successful_agent_runs, usage, metadata) plus ``messages``.  Going through the
+# paginated path means tool-pair boundary expansion and the visibility
+# guarantee already apply, and the cap-hit signal lives in ``has_more``.
+
+
+async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
+    """Get chat session metadata (without messages) for ownership validation."""
+    session = await PrismaChatSession.prisma().find_unique(
+        where={"id": session_id},
+    )
+    return ChatSessionInfo.from_db(session) if session else None
+
+
+async def get_chat_messages_paginated(
+    session_id: str,
+    limit: int = 50,
+    before_sequence: int | None = None,
+    user_id: str | None = None,
+    *,
+    after_sequence: int | None = None,
+) -> PaginatedMessages | None:
+    """Get a window of messages for a session in ascending sequence order.
+
+    Verifies session existence (and ownership when ``user_id`` is provided)
+    in parallel with the message query.  Returns ``None`` when the session
+    is not found or does not belong to the user.
+
+    Three access patterns share this function:
+
+    - **Cursor pagination (UI scroll-back)**: pass ``before_sequence`` to fetch
+      ``limit`` messages older than the cursor.  Tool-pair boundary expansion
+      and visibility expansion fire so the rendered chat is never malformed.
+    - **Tail load (LLM-context eager-load)**: pass neither bound to fetch the
+      most-recent ``limit`` messages.  Same boundary/visibility fixes apply.
+    - **Range fetch (hole-fill)**: pass both ``after_sequence`` and
+      ``before_sequence`` to fetch the inclusive-exclusive range
+      ``[after_sequence, before_sequence)``.  Boundary/visibility expansion is
+      skipped — the caller asked for an exact range, not a "best-effort window".
+
+    ``has_more`` is ``True`` iff the underlying query found more rows than
+    ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
+    harmlessly populated.
+    """
+    session_where: ChatSessionWhereInput = {"id": session_id}
+    if user_id is not None:
+        session_where["userId"] = user_id
+
+    msg_filter: dict = {}
+    if before_sequence is not None:
+        msg_filter["lt"] = before_sequence
+    if after_sequence is not None:
+        msg_filter["gte"] = after_sequence
+
+    msg_include: FindManyChatMessageArgsFromChatSession = {
+        "order_by": {"sequence": "desc"},
+        "take": limit + 1,
+    }
+    if msg_filter:
+        msg_include["where"] = {"sequence": msg_filter}
+
+    session = await PrismaChatSession.prisma().find_first(
+        where=session_where,
+        include={"Messages": msg_include},
+    )
+    if session is None:
+        return None
+
+    session_info = ChatSessionInfo.from_db(session)
+    results = list(session.Messages) if session.Messages else []
+    has_more = len(results) > limit
+    results = results[:limit]
+    # Reverse DESC → ASC so callers see oldest-first.
+    results.reverse()
+
+    # Range fetches (after_sequence set) ask for an exact window — never expand
+    # outside it. Cursor / tail loads get the boundary + visibility fixes so
+    # the UI render and LLM-context build are well-formed.
+    is_range_fetch = after_sequence is not None
+    if not is_range_fetch:
+        if results and results[0].role == "tool":
+            results, has_more = await _expand_tool_boundary(
+                session_id, results, has_more, user_id
+            )
+        if results and not any(m.role in ("user", "assistant") for m in results):
+            results, has_more = await _expand_for_visibility(
+                session_id, results, has_more, user_id
+            )
+
+    messages = [ChatMessage.from_db(m) for m in results]
+    return PaginatedMessages(
+        messages=messages,
+        has_more=has_more,
+        oldest_sequence=messages[0].sequence if messages else None,
+        session=session_info,
+    )
+
+
+async def _expand_tool_boundary(
+    session_id: str,
+    results: list[Any],
+    has_more: bool,
+    user_id: str | None,
+) -> tuple[list[Any], bool]:
+    """Expand backward from the oldest message to include the owning assistant
+    message when the page starts mid-tool-group."""
+    boundary_where: ChatMessageWhereInput = {
+        "sessionId": session_id,
+        "sequence": {"lt": results[0].sequence},
+    }
+    if user_id is not None:
+        boundary_where["Session"] = {"is": {"userId": user_id}}
+    extra = await PrismaChatMessage.prisma().find_many(
+        where=boundary_where,
+        order={"sequence": "desc"},
+        take=_BOUNDARY_SCAN_LIMIT,
+    )
+    # Find the first non-tool message (should be the assistant)
+    boundary_msgs = []
+    found_owner = False
+    for msg in extra:
+        boundary_msgs.append(msg)
+        if msg.role != "tool":
+            found_owner = True
+            break
+    boundary_msgs.reverse()
+    if not found_owner:
+        logger.warning(
+            "Boundary expansion did not find owning assistant message "
+            "for session=%s before sequence=%s (%d msgs scanned)",
+            session_id,
+            results[0].sequence,
+            len(extra),
+        )
+    if boundary_msgs:
+        results = boundary_msgs + results
+        has_more = boundary_msgs[0].sequence > 0
+    return results, has_more
+
+
+_VISIBILITY_EXPAND_LIMIT = 200
+
+
+async def _expand_for_visibility(
+    session_id: str,
+    results: list[Any],
+    has_more: bool,
+    user_id: str | None,
+) -> tuple[list[Any], bool]:
+    """Expand backward until the page contains at least one user or assistant
+    message, so the chat is never blank."""
+    expand_where: ChatMessageWhereInput = {
+        "sessionId": session_id,
+        "sequence": {"lt": results[0].sequence},
+    }
+    if user_id is not None:
+        expand_where["Session"] = {"is": {"userId": user_id}}
+    extra = await PrismaChatMessage.prisma().find_many(
+        where=expand_where,
+        order={"sequence": "desc"},
+        take=_VISIBILITY_EXPAND_LIMIT,
+    )
+    if not extra:
+        return results, has_more
+
+    # Collect messages until we find a visible one (user/assistant)
+    prepend = []
+    found_visible = False
+    for msg in extra:
+        prepend.append(msg)
+        if msg.role in ("user", "assistant"):
+            found_visible = True
+            break
+
+    if not found_visible:
+        logger.warning(
+            "Visibility expansion did not find any user/assistant message "
+            "for session=%s before sequence=%s (%d msgs scanned)",
+            session_id,
+            results[0].sequence,
+            len(extra),
+        )
+
+    prepend.reverse()
+    if prepend:
+        results = prepend + results
+        has_more = prepend[0].sequence > 0
+    return results, has_more
+
+
+async def create_chat_session(
+    session_id: str,
+    user_id: str,
+    metadata: ChatSessionMetadata | None = None,
+) -> ChatSessionInfo:
+    """Create a new chat session in the database."""
+    data = ChatSessionCreateInput(
+        id=session_id,
+        userId=user_id,
+        credentials=SafeJson({}),
+        successfulAgentRuns=SafeJson({}),
+        successfulAgentSchedules=SafeJson({}),
+        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
+    )
+    prisma_session = await PrismaChatSession.prisma().create(data=data)
+    return ChatSessionInfo.from_db(prisma_session)
+
+
+async def update_chat_session(
+    session_id: str,
+    credentials: dict[str, Any] | None = None,
+    successful_agent_runs: dict[str, Any] | None = None,
+    successful_agent_schedules: dict[str, Any] | None = None,
+    total_prompt_tokens: int | None = None,
+    total_completion_tokens: int | None = None,
+    title: str | None = None,
+) -> ChatSessionInfo | None:
+    """Update a chat session's mutable fields.
+
+    Note: ``metadata`` (which includes ``dry_run``) is intentionally omitted —
+    it is set once at creation time and treated as immutable for the lifetime
+    of the session.
+    """
+    data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
+
+    if credentials is not None:
+        data["credentials"] = SafeJson(credentials)
+    if successful_agent_runs is not None:
+        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
+    if successful_agent_schedules is not None:
+        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
+    if total_prompt_tokens is not None:
+        data["totalPromptTokens"] = total_prompt_tokens
+    if total_completion_tokens is not None:
+        data["totalCompletionTokens"] = total_completion_tokens
+    if title is not None:
+        data["title"] = title
+
+    # Returns the bare session row (no eager Messages include): pulling the
+    # full message history per update was a top-egress query, and the only
+    # caller ignores the return value.
+    session = await PrismaChatSession.prisma().update(
+        where={"id": session_id},
+        data=data,
+    )
+    return ChatSessionInfo.from_db(session) if session else None
+
+
+async def update_chat_session_title(
+    session_id: str,
+    user_id: str,
+    title: str,
+    *,
+    only_if_empty: bool = False,
+) -> bool:
+    """Update the title of a chat session, scoped to the owning user.
+
+    Always filters by (session_id, user_id) so callers cannot mutate another
+    user's session even when they know the session_id.
+
+    Args:
+        only_if_empty: When True, uses an atomic ``UPDATE WHERE title IS NULL``
+            guard so auto-generated titles never overwrite a user-set title.
+
+    Returns True if a row was updated, False otherwise (session not found,
+    wrong user, or — when only_if_empty — title was already set).
+    """
+    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
+    if only_if_empty:
+        where["title"] = None
+    result = await PrismaChatSession.prisma().update_many(
+        where=where,
+        data={"title": title, "updatedAt": datetime.now(UTC)},
+    )
+    return result > 0
+
+
+async def add_chat_message(
+    session_id: str,
+    role: str,
+    sequence: int,
+    content: str | None = None,
+    name: str | None = None,
+    tool_call_id: str | None = None,
+    refusal: str | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    function_call: dict[str, Any] | None = None,
+    *,
+    message_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> ChatMessage:
+    """Add a message to a chat session.
+
+    Pass ``message_id`` to use an explicit PK (e.g. when the queue
+    layer needs to reference the row before promotion) — otherwise
+    Prisma generates one.  ``metadata`` is a generic per-row JSONB bag
+    used by the queue path to stash dispatcher payload on the user
+    row that triggered a queued turn.
+    """
+    # Build ChatMessageCreateInput with only non-None values
+    # (Prisma TypedDict rejects optional fields set to None)
+    data: ChatMessageCreateInput = {
+        "Session": {"connect": {"id": session_id}},
+        "role": role,
+        "sequence": sequence,
+    }
+
+    if message_id is not None:
+        data["id"] = message_id
+
+    # Add optional string fields — sanitize to strip PostgreSQL-incompatible
+    # control characters (null bytes etc.) that may appear in tool outputs.
+    if content is not None:
+        data["content"] = sanitize_string(content)
+    if name is not None:
+        data["name"] = name
+    if tool_call_id is not None:
+        data["toolCallId"] = tool_call_id
+    if refusal is not None:
+        data["refusal"] = sanitize_string(refusal)
+
+    # Add optional JSON fields only when they have values
+    if tool_calls is not None:
+        data["toolCalls"] = SafeJson(tool_calls)
+    if function_call is not None:
+        data["functionCall"] = SafeJson(function_call)
+    if metadata is not None:
+        data["metadata"] = SafeJson(metadata)
+
+    # Run message create and session timestamp update in parallel for lower latency
+    _, message = await asyncio.gather(
+        PrismaChatSession.prisma().update(
+            where={"id": session_id},
+            data={"updatedAt": datetime.now(UTC)},
+        ),
+        PrismaChatMessage.prisma().create(data=data),
+    )
+    return ChatMessage.from_db(message)
+
+
+_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
+
+
+def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
+    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
+    primary key — i.e. the caller supplied a duplicate ``id``.
+
+    Used by ``append_and_save_message`` to distinguish the dedup signal
+    from the unrelated ``(sessionId, sequence)`` collision that the
+    streaming-callback race retries silently."""
+    return isinstance(
+        exc, UniqueViolationError
+    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
+
+
+async def add_chat_messages_batch(
+    session_id: str,
+    messages: list[dict[str, Any]],
+    start_sequence: int,
+) -> int:
+    """Add multiple messages to a chat session in a batch.
+
+    Uses collision detection with retry: tries to create messages starting
+    at start_sequence. If a unique constraint violation occurs (e.g., the
+    streaming loop and long-running callback race), queries the latest
+    sequence and retries with the correct offset. This avoids unnecessary
+    upserts and DB queries in the common case (no collision).
+
+    Returns:
+        The actual ``start_sequence`` used for the (successful) insert.
+        Equals the input on the no-collision common path; differs after a
+        retry when ``get_next_sequence`` returned a higher offset.  Callers
+        must use this value to back-fill in-memory ``ChatMessage.sequence``
+        — using the original ``start_sequence`` after a retry would point
+        the in-memory rows at sequences a peer process already wrote.
+    """
+    if not messages:
+        # No messages to add - the caller's offset is unchanged.
+        return start_sequence
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            # Single timestamp for all messages and session update
+            now = datetime.now(UTC)
+
+            async with db.transaction() as tx:
+                # Build all message data
+                messages_data = []
+                for i, msg in enumerate(messages):
+                    # Build ChatMessageCreateInput with only non-None values
+                    # (Prisma TypedDict rejects optional fields set to None)
+                    # Note: create_many doesn't support nested creates, use sessionId directly
+                    data: ChatMessageCreateInput = {
+                        "sessionId": session_id,
+                        "role": msg["role"],
+                        "sequence": start_sequence + i,
+                        "createdAt": now,
+                    }
+
+                    # Optional caller-supplied PK (frontend per-click UUID
+                    # for user messages).  When omitted Prisma generates
+                    # via ``@default(uuid())``.
+                    if msg.get("id") is not None:
+                        data["id"] = msg["id"]
+
+                    # Add optional string fields — sanitize to strip
+                    # PostgreSQL-incompatible control characters.
+                    if msg.get("content") is not None:
+                        data["content"] = sanitize_string(msg["content"])
+                    if msg.get("name") is not None:
+                        data["name"] = msg["name"]
+                    if msg.get("tool_call_id") is not None:
+                        data["toolCallId"] = msg["tool_call_id"]
+                    if msg.get("refusal") is not None:
+                        data["refusal"] = sanitize_string(msg["refusal"])
+
+                    # Add optional JSON fields only when they have values
+                    if msg.get("tool_calls") is not None:
+                        data["toolCalls"] = SafeJson(msg["tool_calls"])
+                    if msg.get("function_call") is not None:
+                        data["functionCall"] = SafeJson(msg["function_call"])
+
+                    if msg.get("duration_ms") is not None:
+                        data["durationMs"] = msg["duration_ms"]
+
+                    messages_data.append(data)
+
+                # Run create_many and session update in parallel within transaction
+                # Both use the same timestamp for consistency
+                await asyncio.gather(
+                    PrismaChatMessage.prisma(tx).create_many(data=messages_data),
+                    PrismaChatSession.prisma(tx).update(
+                        where={"id": session_id},
+                        data={"updatedAt": now},
+                    ),
+                )
+
+            # Return the offset actually used so callers can back-fill
+            # in-memory sequences (matters after a retry).
+            return start_sequence
+
+        except UniqueViolationError as e:
+            # Two distinct unique constraints on ``ChatMessage`` can fire here:
+            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
+            #     duplicate PK — this is the idempotency signal, propagate
+            #     so the route layer can short-circuit.
+            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #     and a long-running callback raced on ``sequence`` — retry
+            #     with a freshly queried offset (existing behaviour).
+            if is_duplicate_chat_message_id_error(e):
+                raise
+            if attempt < max_retries - 1:
+                logger.info(
+                    f"Collision detected for session {session_id} at sequence "
+                    f"{start_sequence}, querying DB for latest sequence"
+                )
+                start_sequence = await get_next_sequence(session_id)
+                logger.info(
+                    f"Retrying batch insert with start_sequence={start_sequence}"
+                )
+                continue
+            else:
+                # Max retries exceeded - propagate error
+                raise
+
+    # Should never reach here due to raise in exception handler
+    raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
+
+
+async def get_user_chat_sessions(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    title_contains: str | None = None,
+) -> list[ChatSessionInfo]:
+    """Get chat sessions for a user, ordered by most recent.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
+    """
+    where: ChatSessionWhereInput = {"userId": user_id}
+    if title_contains:
+        where["title"] = {"contains": title_contains, "mode": "insensitive"}
+    prisma_sessions = await PrismaChatSession.prisma().find_many(
+        where=where,
+        order={"updatedAt": "desc"},
+        take=limit,
+        skip=offset,
+    )
+    return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
+
+
+async def get_user_session_count(user_id: str) -> int:
+    """Get the total number of chat sessions for a user."""
+    return await PrismaChatSession.prisma().count(where={"userId": user_id})
+
+
+async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+    """Delete a chat session and all its messages.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: If provided, validates that the session belongs to this user
+            before deletion. This prevents unauthorized deletion of other
+            users' sessions.
+
+    Returns:
+        True if deleted successfully, False otherwise.
+    """
+    try:
+        # If the session is currently shared, run the share-cascade
+        # FIRST so CHAT_LINK execution shares get revoked + their file
+        # allowlists cleared.  ``ChatLinkedShare.Session`` has
+        # ``onDelete: Cascade`` so a flat ``delete_many`` would erase
+        # the linkage rows but leave the per-execution share tokens
+        # live with no owner-visible path to revoke them — orphan
+        # public shares.  Lazy import to avoid the copilot→sharing→
+        # copilot import cycle.
+        if user_id is not None:
+            existing = await PrismaChatSession.prisma().find_first(
+                where={"id": session_id, "userId": user_id}
+            )
+            if existing and existing.isShared:
+                from backend.copilot.sharing.db import disable_chat_session_share
+
+                try:
+                    await disable_chat_session_share(
+                        session_id=session_id, user_id=user_id
+                    )
+                except Exception as cascade_exc:
+                    # Cascade failure must not block the deletion path —
+                    # log + Sentry so an operator can manually clean up
+                    # the per-execution shares.  Better to delete the
+                    # chat (the user's clear intent) and leave a known
+                    # orphan to chase than to refuse the delete.
+                    logger.error(
+                        "Share cascade failed during chat delete for "
+                        "session=%s; deletion will proceed",
+                        session_id,
+                        exc_info=True,
+                    )
+                    sentry_sdk.capture_exception(cascade_exc)
+
+        # Build typed where clause with optional user_id validation
+        where_clause: ChatSessionWhereInput = {"id": session_id}
+        if user_id is not None:
+            where_clause["userId"] = user_id
+
+        result = await PrismaChatSession.prisma().delete_many(where=where_clause)
+        if result == 0:
+            logger.warning(
+                f"No session deleted for {session_id} "
+                f"(user_id validation: {user_id is not None})"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete chat session {session_id}: {e}")
+        return False
+
+
+async def get_next_sequence(session_id: str) -> int:
+    """Get the next sequence number for a new message in this session.
+
+    Uses MAX(sequence) + 1 for robustness. Returns 0 if no messages exist.
+    More robust than COUNT(*) because it's immune to deleted messages.
+
+    Optimized to select only the sequence column using raw SQL.
+    The unique index on (sessionId, sequence) makes this query fast.
+    """
+    results = await db.query_raw_with_schema(
+        'SELECT "sequence" FROM {schema_prefix}"ChatMessage" WHERE "sessionId" = $1 ORDER BY "sequence" DESC LIMIT 1',
+        session_id,
+    )
+    return 0 if not results else results[0]["sequence"] + 1
+
+
+async def update_tool_message_content(
+    session_id: str,
+    tool_call_id: str,
+    new_content: str,
+) -> bool:
+    """Update the content of a tool message in chat history.
+
+    Used by background tasks to update pending operation messages with final results.
+
+    Args:
+        session_id: The chat session ID.
+        tool_call_id: The tool call ID to find the message.
+        new_content: The new content to set.
+
+    Returns:
+        True if a message was updated, False otherwise.
+    """
+    try:
+        result = await PrismaChatMessage.prisma().update_many(
+            where={
+                "sessionId": session_id,
+                "toolCallId": tool_call_id,
+            },
+            data={
+                "content": sanitize_string(new_content),
+            },
+        )
+        if result == 0:
+            logger.warning(
+                f"No message found to update for session {session_id}, "
+                f"tool_call_id {tool_call_id}"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to update tool message for session {session_id}, "
+            f"tool_call_id {tool_call_id}: {e}"
+        )
+        return False
+
+
+async def update_message_content_by_sequence(
+    session_id: str,
+    sequence: int,
+    new_content: str,
+) -> bool:
+    """Update the content of a specific message by its sequence number.
+
+    Used to persist content modifications (e.g. user-context prefix injection)
+    to a message that was already saved to the DB.
+
+    Authorization note: session_id is a high-entropy UUID generated at session
+    creation time.  Callers (inject_user_context) only receive a session_id
+    after the service layer has already validated that the requesting user owns
+    the session, so a userId join is not required here.
+
+    Args:
+        session_id: The chat session ID.
+        sequence: The 0-based sequence number of the message to update.
+        new_content: The new content to set.
+
+    Returns:
+        True if a message was updated, False otherwise.
+    """
+    try:
+        result = await PrismaChatMessage.prisma().update_many(
+            where={"sessionId": session_id, "sequence": sequence},
+            data={"content": sanitize_string(new_content)},
+        )
+        if result == 0:
+            logger.warning(
+                f"No message found to update for session {session_id}, sequence {sequence}"
+            )
+            return False
+        if result > 1:
+            # Defence-in-depth: (sessionId, sequence) is expected to identify
+            # at most one message. If we ever hit this branch it indicates a
+            # data integrity issue (non-unique sequence numbers within a
+            # session) that silently corrupted multiple rows.
+            logger.error(
+                f"update_message_content_by_sequence touched {result} rows "
+                f"for session {session_id}, sequence {sequence} — expected 1"
+            )
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to update message for session {session_id}, sequence {sequence}: {e}"
+        )
+        return False
+
+
+async def set_turn_duration(session_id: str, duration_ms: int) -> None:
+    """Set durationMs on the last assistant message in a session.
+
+    Updates the Redis cache in-place instead of invalidating it.
+    Invalidation would delete the key, creating a window where concurrent
+    ``get_chat_session`` calls re-populate the cache from DB — potentially
+    with stale data if the DB write from the previous turn hasn't propagated.
+    This race caused duplicate user messages on the next turn.
+    """
+    last_msg = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "assistant"},
+        order={"sequence": "desc"},
+    )
+    if last_msg:
+        await PrismaChatMessage.prisma().update(
+            where={"id": last_msg.id},
+            data={"durationMs": duration_ms},
+        )
+        # Update cache in-place rather than invalidating to avoid a
+        # race window where the empty cache gets re-populated with
+        # stale data by a concurrent get_chat_session call.
+        session = await get_chat_session_cached(session_id)
+        if session and session.messages:
+            for msg in reversed(session.messages):
+                if msg.role == "assistant":
+                    msg.duration_ms = duration_ms
+                    break
+            await cache_chat_session(session)
+
+
+# Session lifecycle primitives.  Callers pass the ``CHAT_STATUS_*``
+# constants from ``model``.  Counting and listing by ``chatStatus``
+# covers both the per-user soft running cap (status='running') and the
+# cross-session queue (status='queued').  Adding a new state is a
+# code-only change at call sites.
+
+
+async def count_chat_sessions_by_status(*, user_id: str, status: str) -> int:
+    """Count user's ChatSession rows whose ``chatStatus`` matches."""
+    return await PrismaChatSession.prisma().count(
+        where={"userId": user_id, "chatStatus": status},
+    )
+
+
+async def list_chat_sessions_by_status(
+    *, user_id: str, status: str
+) -> list[ChatSessionInfo]:
+    """User's ChatSession rows with the given status, oldest-first.
+
+    Returns application-model :class:`ChatSessionInfo` instances so the
+    function is RPC-safe — ``mark_session_completed`` invokes the
+    dispatcher from the CoPilotExecutor subprocess (no direct Prisma
+    connection), and ``DatabaseManagerAsyncClient``'s response
+    serializer rejects raw Prisma rows."""
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id, "chatStatus": status},
+        order={"updatedAt": "asc"},
+    )
+    return [ChatSessionInfo.from_db(r) for r in rows]
+
+
+async def get_latest_user_message_in_session(
+    session_id: str,
+) -> ChatMessage | None:
+    """Return the most recent ``role='user'`` ChatMessage in the given
+    session, or ``None`` if there are none.  Used by the queue dispatcher
+    to recover the submit-time payload from ``metadata`` when promoting
+    a queued session."""
+    row = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "user"},
+        order={"sequence": "desc"},
+    )
+    return ChatMessage.from_db(row) if row else None
+
+
+async def get_chat_session_status(session_id: str) -> str | None:
+    """Return ``ChatSession.chatStatus`` for ``session_id``, or ``None``
+    if the row doesn't exist.  Used by in-flight gates that need to
+    distinguish queued from running (the CAS-only ``update`` path can't
+    tell them apart on its own)."""
+    row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    return row.chatStatus if row else None
+
+
+async def update_chat_session_status(
+    *,
+    session_id: str,
+    status: str,
+    expect_status: str | None = None,
+    user_id: str | None = None,
+) -> bool:
+    """Update ``ChatSession.chatStatus`` to ``status``.
+
+    Pass ``expect_status`` to CAS-gate the update on the current
+    value — required for race-safe cancel/claim/restore (so two
+    concurrent transitions can't both win).  Pass ``user_id`` to
+    enforce ownership in the same statement (used by the user-initiated
+    cancel path).  Returns True iff the row was matched and updated.
+    """
+    where: ChatSessionWhereInput = {"id": session_id}
+    if expect_status is not None:
+        where["chatStatus"] = expect_status
+    if user_id is not None:
+        where["userId"] = user_id
+    updated = await PrismaChatSession.prisma().update_many(
+        where=where, data={"chatStatus": status}
+    )
+    return updated > 0

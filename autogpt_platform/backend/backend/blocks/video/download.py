@@ -9,7 +9,7 @@ import yt_dlp
 if typing.TYPE_CHECKING:
     from yt_dlp import _Params
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
