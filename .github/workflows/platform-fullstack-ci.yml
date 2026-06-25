@@ -9,7 +9,7 @@ on:
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
@@ -19,7 +19,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
 
 defaults:
   run:
@@ -162,7 +162,7 @@ jobs:
           echo "::error::The 'ci-ready' label is required to run E2E tests."
           echo "Add the 'ci-ready' label to this PR to trigger E2E tests on the big-boi runner."
           exit 1
-      - name: Label present or not a PR
+      - name: Authorize E2E tests
         if: >-
           github.event_name != 'pull_request'
           || contains(github.event.pull_request.labels.*.name, 'ci-ready')
