@@ -41,6 +41,16 @@ describe("getSkillUploadError", () => {
     ).toBeNull();
   });
 
+  test("does not count escaped quotes in a JSON-style double-quoted description", () => {
+    // `renderSkillMarkdown` emits `description: ${JSON.stringify(...)}`, so a
+    // re-uploaded skill whose description contains quotes carries `\"` escapes.
+    // The actual text is exactly at the limit; the escapes must not inflate it.
+    const desc = `${"x".repeat(MAX_SKILL_DESCRIPTION_CHARS - 3)}"q"`;
+    const line = `description: ${JSON.stringify(desc)}`;
+    expect(desc.length).toBe(MAX_SKILL_DESCRIPTION_CHARS);
+    expect(getSkillUploadError(md(`name: ok_skill\n${line}`))).toBeNull();
+  });
+
   test("does not false-reject a block-scalar description it cannot measure", () => {
     const block = `name: ok_skill\ndescription: |\n  ${"x".repeat(300)}`;
     // Block scalar is unmeasurable from one line — defer to the backend.

@@ -56,11 +56,20 @@ function readScalarField(frontmatter: string, key: string): string | undefined {
     return undefined;
   }
 
-  if (
-    (raw.startsWith('"') && raw.endsWith('"')) ||
-    (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
-    return raw.slice(1, -1);
+  // Double-quoted YAML escapes inner quotes as `\"` (this is what
+  // `renderSkillMarkdown`'s `JSON.stringify` emits on download). Decode with
+  // `JSON.parse` so the measured length matches the backend's parsed value
+  // instead of counting the backslash escapes.
+  if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw.slice(1, -1);
+    }
+  }
+  // Single-quoted YAML escapes a quote by doubling it (`''`).
+  if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+    return raw.slice(1, -1).replace(/''/g, "'");
   }
   return raw;
 }
