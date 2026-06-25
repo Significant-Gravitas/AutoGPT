@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
+    dalle_model: str = "dall-e-2"
+    """DALL-E model. dall-e-2 supports 256/512/1024 sizes and b64_json output."""
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = UserConfigurable(
         None, from_env="HUGGINGFACE_API_TOKEN", exclude=True
@@ -201,6 +203,7 @@ class ImageGeneratorComponent(
                 else None
             ),
         ).images.generate(
+            model=self.config.dalle_model,
             prompt=prompt,
             n=1,
             # TODO: improve typing of size config item(s)
