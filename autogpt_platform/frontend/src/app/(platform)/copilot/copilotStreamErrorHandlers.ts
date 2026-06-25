@@ -61,6 +61,11 @@ const TOAST_BY_BACKEND_CODE: Record<
     fallbackDescription:
       "The assistant couldn't complete this turn. Press Try Again to retry.",
   },
+  max_budget_exhausted: {
+    title: "Budget exceeded",
+    fallbackDescription:
+      "The turn ended because it exceeded the budget. Send a follow-up to continue, or try a smaller scope.",
+  },
 };
 
 /** Fallback toast shown for any `[code:X]` we don't have specific copy for. */

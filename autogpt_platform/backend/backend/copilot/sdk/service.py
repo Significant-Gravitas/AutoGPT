@@ -214,6 +214,15 @@ _HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 # wrap up gracefully instead of hitting an immediate hard stop.
 _MAX_BUDGET_USD_FLOOR = 0.5
 
+# Minimum viable per-query budget (USD).  A turn dispatched with less than
+# this is almost certainly doomed — the median task cost is ~$5.37 (p50)
+# and even a lightweight follow-up needs ~$1 of headroom.  When the
+# user's *actual* remaining daily/weekly budget is below this threshold
+# we short-circuit with a rate-limit error instead of dispatching a turn
+# that will be hard-killed mid-stream by the CLI's ``max_budget_usd``
+# enforcement, producing a confusing "budget exceeded" ErrorCard.
+_MIN_VIABLE_BUDGET_USD = 1.0
+
 
 async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     """Pick the per-query ``max_budget_usd`` for this user *now*.
@@ -1007,7 +1016,7 @@ def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
 # ``_append_error_marker`` directly already pass ``retryable=True``; this set
 # covers the codes that flow through the adapter -> ``_dispatch_response``.
 _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", "empty_completion"}
+    {"transient_api_error", "empty_completion", "max_budget_exhausted"}
 )
 
 
