@@ -1,22 +1,36 @@
-import { WidgetProps } from "@rjsf/utils";
-import { ReactNode } from "react";
+import type { WidgetProps } from "@rjsf/utils";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@/tests/integrations/test-utils";
 import { SelectWidget } from "../SelectWidget";
 
+interface SelectMockProps {
+  onValueChange?: (value: string) => void;
+  options?: unknown;
+  value?: string;
+}
+
+interface MultiSelectorMockProps {
+  children: ReactNode;
+  onValuesChange: (values: string[]) => void;
+  values: string[];
+}
+
 const selectSpy = vi.fn();
+const multiSelectorSpy = vi.fn();
 
 vi.mock("@/components/atoms/Select/Select", () => ({
-  Select: (props: Record<string, unknown>) => {
+  Select: (props: SelectMockProps) => {
     selectSpy(props);
     return <div data-testid="select-widget-select" />;
   },
 }));
 
 vi.mock("@/components/__legacy__/ui/multiselect", () => ({
-  MultiSelector: ({ children }: { children: ReactNode }) => (
-    <div data-testid="multi-selector">{children}</div>
-  ),
+  MultiSelector: (props: MultiSelectorMockProps) => {
+    multiSelectorSpy(props);
+    return <div data-testid="multi-selector">{props.children}</div>;
+  },
   MultiSelectorContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -45,6 +59,9 @@ vi.mock("@/components/__legacy__/ui/multiselect", () => ({
 afterEach(() => {
   cleanup();
   selectSpy.mockClear();
+  multiSelectorSpy.mockClear();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function createProps(overrides: Partial<WidgetProps> = {}): WidgetProps {
@@ -155,6 +172,90 @@ describe("SelectWidget", () => {
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
       options: [],
     });
+  });
+
+  it("warns in development when empty-string enum options are dropped", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(
+      <SelectWidget
+        {...createProps({
+          options: {
+            enumOptions: [
+              { value: "", label: "Empty" },
+              { value: "red", label: "Red" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[SelectWidget] Dropped enum option(s) with empty-string value. Radix Select.Item disallows empty values.",
+      {
+        schema: { type: "string" },
+        dropped: 1,
+      },
+    );
+  });
+
+  it("maps selected indexes back to enum option values for single-select changes", () => {
+    const onChange = vi.fn();
+
+    render(
+      <SelectWidget
+        {...createProps({
+          onChange,
+          options: {
+            enumOptions: [
+              { value: "red", label: "Red" },
+              { value: "green", label: "Green" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    const selectProps = selectSpy.mock.calls[0][0] as SelectMockProps;
+    selectProps.onValueChange?.("1");
+
+    expect(onChange).toHaveBeenCalledWith("green");
+  });
+
+  it("maps multi-select labels back to enum option values", () => {
+    const onChange = vi.fn();
+
+    render(
+      <SelectWidget
+        {...createProps({
+          schema: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["red", "green"],
+            },
+          },
+          value: ["red"],
+          onChange,
+          options: {
+            enumOptions: [
+              { value: "red", label: "Red" },
+              { value: "green", label: "Green" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(multiSelectorSpy).toHaveBeenCalledOnce();
+    const multiSelectorProps = multiSelectorSpy.mock
+      .calls[0][0] as MultiSelectorMockProps;
+    expect(multiSelectorProps.values).toEqual(["Red"]);
+
+    multiSelectorProps.onValuesChange(["Red", "Green", "Unknown"]);
+
+    expect(onChange).toHaveBeenCalledWith(["red", "green"]);
   });
 
   it("filters empty-string enum options for the multi-select path", () => {
