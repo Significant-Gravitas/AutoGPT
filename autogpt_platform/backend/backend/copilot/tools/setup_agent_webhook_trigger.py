@@ -315,9 +315,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         These are collected from the user conversationally — the LLM must ask
         for them and never guess — rather than via the credentials card.
         """
-        info = graph.trigger_setup_info
-        config_schema = info.config_schema if info else None
-        config_schema = config_schema if isinstance(config_schema, dict) else {}
+        config_schema = info.config_schema if (info := graph.trigger_setup_info) else {}
         missing_config = [
             name
             for name in config_schema.get("required", [])
