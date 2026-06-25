@@ -55,10 +55,10 @@ export function RunAgentModal({
     inputValues,
     setInputValues,
 
-    // Form: constant inputs (regular graph inputs on a triggered agent)
-    constantInputValues,
-    setConstantInputValues,
-    constantInputFields,
+    // Form: trigger config (the trigger node's config on a triggered agent)
+    triggerConfigValues,
+    setTriggerConfigValues,
+    triggerConfigFields,
 
     // Form: credentials
     inputCredentials,
@@ -155,8 +155,8 @@ export function RunAgentModal({
     }));
   }
 
-  function handleConstantInputChange(key: string, value: string) {
-    setConstantInputValues((prev) => ({
+  function handleTriggerConfigChange(key: string, value: string) {
+    setTriggerConfigValues((prev) => ({
       ...prev,
       [key]: value,
     }));
@@ -237,9 +237,9 @@ export function RunAgentModal({
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
-                      constantInputValues,
-                      setConstantInputValue: handleConstantInputChange,
-                      constantInputFields,
+                      triggerConfigValues,
+                      setTriggerConfigValue: handleTriggerConfigChange,
+                      triggerConfigFields,
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,

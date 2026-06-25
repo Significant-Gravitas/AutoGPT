@@ -51,9 +51,10 @@ export function useAgentRunModal(
     callbacks?.initialInputCredentials || {},
   );
   // For triggered agents the form is split in two: `inputValues` holds the
-  // trigger node's config (sent as `trigger_config`), and these hold the
-  // graph's regular inputs (sent as `constant_inputs`).
-  const [constantInputValues, setConstantInputValues] = useState<
+  // graph's regular inputs (sent as `constant_inputs` when setting up the
+  // trigger), and these hold the trigger node's config (sent as
+  // `trigger_config`).
+  const [triggerConfigValues, setTriggerConfigValues] = useState<
     Record<string, any>
   >({});
 
@@ -72,7 +73,7 @@ export function useAgentRunModal(
   useEffect(() => {
     setInputValues(callbacks?.initialInputValues || {});
     setInputCredentials(callbacks?.initialInputCredentials || {});
-    setConstantInputValues({});
+    setTriggerConfigValues({});
   }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
   const allProviders = useContext(CredentialsProvidersContext);
@@ -212,32 +213,28 @@ export function useAgentRunModal(
     },
   });
 
-  const isTriggeredAgent = Boolean(agent.trigger_setup_info);
-
-  // Primary input fields: the trigger node's config for triggered agents,
-  // otherwise the graph's regular inputs.
-  const agentInputSchema = useMemo(() => {
-    if (agent.trigger_setup_info?.config_schema) {
-      return agent.trigger_setup_info.config_schema;
-    }
-    return agent.input_schema || { properties: {}, required: [] };
-  }, [agent.input_schema, agent.trigger_setup_info]);
+  // Primary input fields: the agent's regular graph inputs — consistent for
+  // both triggered and non-triggered agents.
+  const agentInputSchema = useMemo(
+    () => agent.input_schema || { properties: {}, required: [] },
+    [agent.input_schema],
+  );
 
   const agentInputFields = useMemo(
     () => getVisibleInputFields(agentInputSchema),
     [agentInputSchema],
   );
 
-  // A triggered agent can also have regular input nodes. Those are collected
-  // separately and sent as `constant_inputs` alongside the trigger config.
-  const constantInputSchema = useMemo(
-    () => (isTriggeredAgent ? agent.input_schema : undefined),
-    [isTriggeredAgent, agent.input_schema],
+  // Triggered agents additionally have the trigger node's config, collected in
+  // its own conditional section and sent as `trigger_config`.
+  const triggerConfigSchema = useMemo(
+    () => agent.trigger_setup_info?.config_schema,
+    [agent.trigger_setup_info],
   );
 
-  const constantInputFields = useMemo(
-    () => getVisibleInputFields(constantInputSchema),
-    [constantInputSchema],
+  const triggerConfigFields = useMemo(
+    () => getVisibleInputFields(triggerConfigSchema),
+    [triggerConfigSchema],
   );
 
   const agentCredentialsInputFields = useMemo(() => {
@@ -264,10 +261,10 @@ export function useAgentRunModal(
 
     const missing = [
       ...missingFor(agentInputSchema, inputValues),
-      ...missingFor(constantInputSchema, constantInputValues),
+      ...missingFor(triggerConfigSchema, triggerConfigValues),
     ];
     return [missing.length === 0, missing];
-  }, [agentInputSchema, inputValues, constantInputSchema, constantInputValues]);
+  }, [agentInputSchema, inputValues, triggerConfigSchema, triggerConfigValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const requiredCredentials = new Set(
@@ -340,8 +337,8 @@ export function useAgentRunModal(
           description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
-          trigger_config: inputValues,
-          constant_inputs: constantInputValues,
+          trigger_config: triggerConfigValues,
+          constant_inputs: inputValues,
           agent_credentials: inputCredentials,
         },
       });
@@ -364,7 +361,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     defaultRunType,
     inputValues,
-    constantInputValues,
+    triggerConfigValues,
     inputCredentials,
     agent,
     presetName,
@@ -391,9 +388,9 @@ export function useAgentRunModal(
   const hasInputFields = useMemo(() => {
     return (
       Object.keys(agentInputFields).length > 0 ||
-      Object.keys(constantInputFields).length > 0
+      Object.keys(triggerConfigFields).length > 0
     );
-  }, [agentInputFields, constantInputFields]);
+  }, [agentInputFields, triggerConfigFields]);
 
   return {
     isOpen,
@@ -401,8 +398,8 @@ export function useAgentRunModal(
     defaultRunType: defaultRunType as RunVariant,
     inputValues,
     setInputValues,
-    constantInputValues,
-    setConstantInputValues,
+    triggerConfigValues,
+    setTriggerConfigValues,
     inputCredentials,
     setInputCredentials,
     presetName,
@@ -412,7 +409,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     missingInputs,
     agentInputFields,
-    constantInputFields,
+    triggerConfigFields,
     agentCredentialsInputFields,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
