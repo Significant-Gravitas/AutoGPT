@@ -26,8 +26,14 @@ WITH triggered_graphs AS (
         '9464a020-ed1d-49e1-990f-7f2ac924a2b7', -- Compass AI Trigger block
         'd0204ed8-8b81-408d-8b8d-ed087a546228', -- Exa Webset Webhook block
         '8fa8c167-2002-47ce-aba8-97572fc5d387', -- Generic Webhook Trigger block
+        '87f847b3-d81a-424e-8e89-acadb5c9d52b', -- GitHub Discussion Trigger block
+        'b2605464-e486-4bf4-aad3-d8a213c8a48a', -- GitHub Issues Trigger block
         '6c60ec01-8128-419e-988f-96a063ee2fea', -- GitHub Pull Request Trigger block
-        '8a74c2ad-0104-4640-962f-26c6b69e58cd'  -- Slant3D Order Webhook block
+        '2052dd1b-74e1-46ac-9c87-c7a0e057b60b', -- GitHub Release Trigger block
+        '551e0a35-100b-49b7-89b8-3031322239b6', -- GitHub Star Trigger block
+        '8a74c2ad-0104-4640-962f-26c6b69e58cd', -- Slant3D Order Webhook block
+        '82525328-9368-4966-8f0c-cd78e80181fd', -- Telegram Message Reaction Trigger block
+        '4435e4e0-df6e-4301-8f35-ad70b12fc9ec'  -- Telegram Message Trigger block
     )
 ),
 
