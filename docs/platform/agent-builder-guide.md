@@ -66,7 +66,7 @@ If a block requires a credential you haven't connected yet, a **credential bar**
 
 To save your agent:
 
-- Press **Ctrl+S**, or
+- Press **Ctrl+S** (or **Cmd+S** on Mac), or
 - Click the **Save button** in the builder
 
 When saving, you can provide a **title** and **description** for the agent. This is a local save to your personal library. For publishing to the public marketplace, see [Publishing to the Marketplace](marketplace.md#publishing-an-agent).

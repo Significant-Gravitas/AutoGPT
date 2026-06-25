@@ -106,6 +106,9 @@ interface CopilotUIState {
   isDrawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
 
+  isSearchOpen: boolean;
+  setSearchOpen: (open: boolean) => void;
+
   completedSessionIDs: Set<string>;
   addCompletedSession: (id: string) => void;
   clearCompletedSession: (id: string) => void;
@@ -170,6 +173,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   isDrawerOpen: false,
   setDrawerOpen: (open) => set({ isDrawerOpen: open }),
+
+  isSearchOpen: false,
+  setSearchOpen: (open) => set({ isSearchOpen: open }),
 
   completedSessionIDs: isClient
     ? parseSessionIDs(storage.get(Key.COPILOT_COMPLETED_SESSIONS))
@@ -387,6 +393,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_MODEL);
     set({
       completedSessionIDs: new Set<string>(),
+      isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       artifactPanel: {

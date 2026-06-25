@@ -396,6 +396,50 @@ async def list_user_links(user_id: str) -> list[PlatformUserLinkInfo]:
     ]
 
 
+# ── Backfill ──────────────────────────────────────────────────────────
+
+
+async def refresh_server_link_name(
+    platform: str, platform_server_id: str, server_name: str
+) -> None:
+    """Update the display name on a PlatformLink row, keyed by platform + server ID.
+
+    Called by chat-bot adapters when they learn (or re-learn) a server's
+    display name — e.g. Discord's on_ready / on_guild_join events. The bot
+    only knows the platform-side identifiers, not the AutoGPT PlatformLink
+    UUID, so we key off (platform, platform_server_id), which is unique.
+
+    No-ops if no matching link exists (the bot is in a server the user
+    never linked) or the row's name already matches. Best-effort: DB errors
+    are logged but not raised — refreshing a display name is never
+    critical-path.
+    """
+    if not server_name:
+        return
+    try:
+        # `serverName: {"not": ...}` excludes NULL rows in SQL (`NULL != 'x'`
+        # is NULL, not true), so we OR in the explicit NULL case to make
+        # sure first-time backfills land for legacy links.
+        await PlatformLink.prisma().update_many(
+            where={
+                "platform": platform,
+                "platformServerId": platform_server_id,
+                "OR": [
+                    {"serverName": None},
+                    {"serverName": {"not": server_name}},
+                ],
+            },
+            data={"serverName": server_name},
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to refresh server_name for %s server %s: %s",
+            platform,
+            platform_server_id,
+            exc,
+        )
+
+
 # ── Deletion ──────────────────────────────────────────────────────────
 
 
@@ -426,3 +470,20 @@ async def delete_user_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     await PlatformUserLink.prisma().delete(where={"id": link_id})
     logger.info("Unlinked %s DMs from AutoGPT user ...%s", link.platform, user_id[-8:])
     return DeleteLinkResponse(success=True)
+
+
+# ── Cleanup ──────────────────────────────────────────────────────────
+
+# Keep recently-expired rows for debugging.
+LINK_TOKEN_RETENTION_HOURS = 24
+
+
+async def cleanup_expired_platform_link_tokens() -> int:
+    """Delete PlatformLinkToken rows expired beyond the retention window."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LINK_TOKEN_RETENTION_HOURS)
+    deleted = await PlatformLinkToken.prisma().delete_many(
+        where={"expiresAt": {"lt": cutoff}}
+    )
+    if deleted > 0:
+        logger.info("Cleaned up %d expired platform link tokens", deleted)
+    return deleted

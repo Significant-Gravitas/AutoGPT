@@ -8,12 +8,16 @@ There are several ways to share agents and their outputs with others on the Auto
 
 ### Share Task Output via URL
 
-Every completed task has a unique URL that can be shared with others. To share a task result:
+Every completed task can be shared via a unique link. To share a task result:
 
 1. Go to your [Agent Library](agent-library.md) and open the agent
 2. Click on the completed task you want to share
-3. Copy the task URL from your browser's address bar
-4. Send the URL to anyone — they can view the task's inputs and outputs directly
+3. Use the **Share** action to enable sharing and copy the generated link
+4. Send the link to anyone — they can view the task's inputs and outputs directly
+
+{% hint style="warning" %}
+Shared task links are public: anyone with the link can view the task's inputs, outputs, and any files you explicitly attached when enabling sharing — no login required. Disable sharing on the task to revoke the link.
+{% endhint %}
 
 ### Publish to the Marketplace
 
