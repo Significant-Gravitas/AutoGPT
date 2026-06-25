@@ -19,14 +19,12 @@ export type SortDir = "asc" | "desc";
 
 export interface FilterState {
   statuses: SubmissionStatus[];
-  nameQuery: string;
   sortKey: SortKey | null;
   sortDir: SortDir;
 }
 
 export const INITIAL_FILTER_STATE: FilterState = {
   statuses: [],
-  nameQuery: "",
   sortKey: null,
   sortDir: "desc",
 };
@@ -47,11 +45,6 @@ export function applyFiltersAndSort(
   if (state.statuses.length > 0) {
     const set = new Set(state.statuses);
     result = result.filter((s) => set.has(s.status));
-  }
-
-  if (state.nameQuery.trim()) {
-    const q = state.nameQuery.trim().toLowerCase();
-    result = result.filter((s) => s.name.toLowerCase().includes(q));
   }
 
   if (state.sortKey) {
@@ -79,11 +72,7 @@ function sortValue(submission: StoreSubmission, key: SortKey): number {
 }
 
 export function isFiltered(state: FilterState): boolean {
-  return (
-    state.statuses.length > 0 ||
-    state.nameQuery.trim() !== "" ||
-    state.sortKey !== null
-  );
+  return state.statuses.length > 0 || state.sortKey !== null;
 }
 
 export interface StatusVisual {

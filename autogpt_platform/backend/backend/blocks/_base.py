@@ -18,6 +18,7 @@ from typing import (
 
 import jsonref
 import jsonschema
+from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
@@ -255,6 +256,46 @@ class BlockSchema(BaseModel):
     @classmethod
     def get_mismatch_error(cls, data: BlockInput) -> str | None:
         return cls.validate_data(data)
+
+    # JSON-schema keywords whose violations are NOT already prevented at the
+    # widget level (number bounds and length bounds are bypassable by typing
+    # or pasting). ``enum``/``const`` come from dropdowns and ``pattern``/
+    # ``multipleOf``/``type`` are enforced by custom render rules, so leaving
+    # them out avoids surfacing errors the user can't actually trigger.
+    _INLINE_FIELD_ERROR_KEYWORDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+        }
+    )
+
+    @classmethod
+    def get_field_errors(cls, data: BlockInput) -> dict[str, str]:
+        """
+        Validate ``data`` against this schema and return per-field errors for
+        violations that are not already blocked by the form widget — i.e.
+        bound checks the user can bypass by typing/pasting. Lets these surface
+        inline on the offending block field via the standard ``node_errors``
+        path, rather than as a single string raised at execute time.
+        """
+        schema = cls.jsonschema()
+        cleaned = {k: v for k, v in data.items() if v is not None}
+        validator_cls = _jsonschema_validator_for(schema)
+        errors: dict[str, str] = {}
+        for err in validator_cls(schema).iter_errors(cleaned):
+            if err.validator not in cls._INLINE_FIELD_ERROR_KEYWORDS:
+                continue
+            if not err.absolute_path:
+                continue
+            field = str(err.absolute_path[0])
+            errors.setdefault(field, err.message)
+        return errors
 
     @classmethod
     def get_field_schema(cls, field_name: str) -> dict[str, Any]:
@@ -683,9 +724,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             uiType=self.block_type.value,
         )
 
-    async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+    async def execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
         try:
-            async for output_name, output_data in self._execute(input_data, **kwargs):
+            async for output_name, output_data in self._execute(
+                input_data, execution_context=execution_context, **kwargs
+            ):
                 yield output_name, output_data
         except Exception as ex:
             if isinstance(ex, BlockError):
@@ -767,21 +816,19 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
         return False, reviewed_data
 
-    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Check for review requirement only if running within a graph execution context
-        # Direct block execution (e.g., from chat) skips the review process
-        has_graph_context = all(
-            key in kwargs
-            for key in (
-                "node_exec_id",
-                "graph_exec_id",
-                "graph_id",
-                "execution_context",
-            )
-        )
-        if has_graph_context:
+    async def _execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
+        # Review is only meaningful inside a graph execution. Direct block
+        # execution (e.g. from the /blocks/{id}/execute API) has no graph
+        # context and skips the review path.
+        if execution_context.graph_exec_id is not None:
             should_pause, input_data = await self.is_block_exec_need_review(
-                input_data, **kwargs
+                input_data, execution_context=execution_context, **kwargs
             )
             if should_pause:
                 return
@@ -791,7 +838,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # that would fail JSON schema required checks.  We still validate the
         # non-credential fields so blocks that execute for real during dry-run
         # (e.g. AgentExecutorBlock) get proper input validation.
-        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
+        is_dry_run = execution_context.dry_run
         if is_dry_run:
             # Credential fields may be absent (LLM-built agents often skip
             # wiring them) or nullified earlier in the pipeline. Validate
@@ -874,6 +921,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            execution_context=execution_context,
             **kwargs,
         ):
             if output_name == "error":
