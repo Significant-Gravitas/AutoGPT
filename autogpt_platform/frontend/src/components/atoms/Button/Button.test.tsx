@@ -72,4 +72,33 @@ describe("Button unmask prop", () => {
     expect(el.className).toContain("sentry-unmask");
     expect(el.className).toContain("my-class");
   });
+
+  it("applies sentry-unmask in the loading state", () => {
+    renderButton({ loading: true, children: "Saving" });
+    const el = screen.getByRole("button");
+    expect(el.className).toContain("sentry-unmask");
+  });
+
+  it("omits sentry-unmask in the loading state when unmask is false", () => {
+    renderButton({ loading: true, unmask: false, children: "Saving" });
+    const el = screen.getByRole("button");
+    expect(el.className).not.toContain("sentry-unmask");
+  });
+
+  it("applies sentry-unmask to NextLink buttons", () => {
+    renderButton({ as: "NextLink", href: "/save", children: "Go" });
+    const el = screen.getByRole("link", { name: "Go" });
+    expect(el.className).toContain("sentry-unmask");
+  });
+
+  it("omits sentry-unmask from NextLink buttons when unmask is false", () => {
+    renderButton({
+      as: "NextLink",
+      href: "/save",
+      unmask: false,
+      children: "Dynamic NextLink",
+    });
+    const el = screen.getByRole("link", { name: "Dynamic NextLink" });
+    expect(el.className).not.toContain("sentry-unmask");
+  });
 });
