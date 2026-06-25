@@ -2433,7 +2433,7 @@ def test_agent_executor_block_empty_schema_allows_any_link_pin_name():
         errors = GraphModel._validate_graph_get_errors(graph)
         assert isinstance(errors, dict)
         # Link errors should not contain our link
-        for key, val in errors.items():
+        for val in errors.values():
             assert "some_runtime_field" not in str(
                 val
             ), f"Dynamic field 'some_runtime_field' should be permitted: {val}"

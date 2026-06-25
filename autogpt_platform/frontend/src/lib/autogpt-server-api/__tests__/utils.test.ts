@@ -54,7 +54,7 @@ describe("validateGraphStructure", () => {
     } as unknown as Graph;
 
     const errors = validateGraphStructure(graph);
-    expect(errors).toContain("Graph has no nodes");
+    expect(errors).toContain("Graph 'nodes' must be an array");
   });
 
   it("detects missing block_id on a node", () => {

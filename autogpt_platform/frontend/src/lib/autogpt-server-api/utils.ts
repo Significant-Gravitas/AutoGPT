@@ -43,6 +43,7 @@ export function formatEdgeID(conn: Link | Connection): string {
  * - removeCredentials was too aggressive, stripping legitimate input data
  */
 export function sanitizeImportedGraph(_graph: Graph): void {
+  void _graph;
   // Intentionally no-op: importing should not mutate user-provided graph
   // payloads. Backend validation is the source of truth.
 }
