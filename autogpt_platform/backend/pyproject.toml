@@ -178,4 +178,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-# ci: trigger backend CI to refresh codecov coverage (carryforward)
