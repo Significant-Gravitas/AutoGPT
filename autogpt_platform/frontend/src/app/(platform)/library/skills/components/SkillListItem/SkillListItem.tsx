@@ -74,35 +74,32 @@ export function SkillListItem({ skill }: Props) {
 
       <div className="flex flex-shrink-0 items-center gap-2">
         <Button
-          variant="secondary"
-          size="small"
+          variant="icon"
+          size="icon"
           onClick={openView}
           data-testid="skill-view-button"
           aria-label="View skill"
         >
-          <EyeIcon className="mr-1 h-4 w-4" />
-          View
+          <EyeIcon className="h-4 w-4" />
         </Button>
         <Button
-          variant="secondary"
-          size="small"
+          variant="icon"
+          size="icon"
           onClick={handleDownload}
           loading={isDownloading}
           data-testid="skill-download-button"
           aria-label="Download skill"
         >
-          <DownloadSimpleIcon className="mr-1 h-4 w-4" />
-          Download
+          <DownloadSimpleIcon className="h-4 w-4" />
         </Button>
         <Button
-          variant="secondary"
-          size="small"
+          variant="icon"
+          size="icon"
           onClick={openDelete}
           data-testid="skill-delete-button"
           aria-label="Delete skill"
         >
-          <TrashIcon className="mr-1 h-4 w-4" />
-          Delete
+          <TrashIcon className="h-4 w-4" />
         </Button>
       </div>
 
