@@ -16,6 +16,12 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:
+  # On-demand run of the full backend test + coverage suite for any branch.
+  # Useful when a branch's changes don't match the paths filter above (so the
+  # automatic push/pull_request runs are skipped) but you still want to run the
+  # suite and produce a fresh coverage upload for that branch's HEAD commit.
+  #   gh workflow run platform-backend-ci.yml --ref <branch>
+  workflow_dispatch:
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

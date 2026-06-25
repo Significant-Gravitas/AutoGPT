@@ -274,6 +274,31 @@ Snapshot tests work in CI by:
 2. CI compares against committed snapshots
 3. Fails if snapshots don't match
 
+### Running backend CI on demand
+
+The backend CI workflow (`.github/workflows/platform-backend-ci.yml`) also supports a
+manual `workflow_dispatch` trigger, so you can run the full lint / type-check / test +
+coverage suite against any branch without pushing a new commit:
+
+```bash
+gh workflow run platform-backend-ci.yml --ref <branch>
+```
+
+This runs the same `test` job as the automatic triggers, including the coverage upload
+to Codecov for that branch's HEAD commit.
+
+When it's useful:
+- The automatic `push` / `pull_request` runs are **path-filtered** (they only fire when
+  the change touches `autogpt_platform/backend/**`, `autogpt_platform/autogpt_libs/**`,
+  the workflow file, or the lockfile script). A branch that changes only frontend/docs
+  never triggers backend CI — a manual run lets you exercise the backend suite anyway.
+- It produces a **fresh backend coverage upload** for a branch that didn't otherwise run
+  backend CI (for example, to refresh coverage on a long-lived branch).
+
+> Note: `workflow_dispatch` is only available once the trigger exists on the repository's
+> **default branch** (`master`); dispatching against another branch with `--ref` still
+> requires that.
+
 ## Troubleshooting
 
 ### Snapshot Mismatches
