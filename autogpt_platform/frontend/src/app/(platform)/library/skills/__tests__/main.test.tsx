@@ -273,6 +273,35 @@ describe("SkillsPage", () => {
     });
   });
 
+  test("Upload rejects an over-long description client-side with the exact length", async () => {
+    // No upload handler registered — if the code POSTed, it would not match
+    // and the test would surface a different failure. The client-side
+    // pre-flight should short-circuit before any request.
+    server.use(getListCopilotSkillsMockHandler([]));
+
+    render(<SkillsPage />);
+    await screen.findByTestId("skills-empty");
+
+    const input = screen.getByTestId("skill-upload-input");
+    const longDescription = "x".repeat(201);
+    const file = new File(
+      [`---\nname: too_long\ndescription: ${longDescription}\n---\n\nbody`],
+      "too_long.md",
+      { type: "text/markdown" },
+    );
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Can't upload this skill",
+          description: expect.stringContaining("201/200"),
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
   test("Upload shows a destructive toast when the skill limit is reached", async () => {
     server.use(
       getListCopilotSkillsMockHandler([]),

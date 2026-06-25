@@ -403,7 +403,8 @@ async def store_user_skill(
         raise ValueError("description is required")
     if len(description) > MAX_DESCRIPTION_CHARS:
         raise ValueError(
-            f"description must be ≤{MAX_DESCRIPTION_CHARS} chars "
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
             "(it appears in every turn's skills index)"
         )
     if not body:

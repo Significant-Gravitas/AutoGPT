@@ -5,6 +5,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
+import { getSkillUploadError } from "./helpers";
 
 export function useUploadSkillButton() {
   const { toast } = useToast();
@@ -26,6 +27,19 @@ export function useUploadSkillButton() {
 
     try {
       const content = await file.text();
+
+      // Pre-flight the common rejections client-side so the user gets an
+      // instant, specific message instead of waiting on a server round-trip.
+      const validationError = getSkillUploadError(content);
+      if (validationError) {
+        toast({
+          title: "Can't upload this skill",
+          description: validationError,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const result = await uploadSkill({ data: { content } });
       const name =
         result.status === 201 ? result.data.name : (file.name ?? "skill");
