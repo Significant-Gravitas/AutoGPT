@@ -45,6 +45,9 @@ describe("formatProviderName", () => {
     expect(formatProviderName("github")).toBe("GitHub");
     expect(formatProviderName("d_id")).toBe("D-ID");
     expect(formatProviderName("twitter")).toBe("X");
+    // "MCP" is an acronym — without an override the title-caser would
+    // emit the awkward "Mcp" we shipped before; keep the override.
+    expect(formatProviderName("mcp")).toBe("MCP");
   });
 
   test("title-cases unknown snake_case slugs", () => {
@@ -102,6 +105,39 @@ describe("groupCredentialsByProvider", () => {
       makeCred({ provider: "github", title: null }),
     ]);
     expect(groups[0].credentials[0].title).toBe("GitHub");
+  });
+
+  test("strips redundant '<ProviderName>: ' prefix from per-credential titles", () => {
+    // The row already lives under the provider group, so a title like
+    // ``"MCP: <hostname>"`` or ``"GitHub: octocat"`` duplicates the
+    // group label.  Strip generically using the formatted provider name.
+    const groups = groupCredentialsByProvider([
+      makeCred({
+        id: "1",
+        provider: "mcp",
+        title: "MCP: mcp.sentry.dev",
+      }),
+      makeCred({
+        id: "2",
+        provider: "github",
+        title: "GitHub: octocat",
+      }),
+      makeCred({
+        id: "3",
+        provider: "github",
+        title: "Personal",
+      }),
+    ]);
+    const mcp = groups.find((g) => g.id === "mcp");
+    const github = groups.find((g) => g.id === "github");
+    expect(mcp?.credentials[0].title).toBe("mcp.sentry.dev");
+    expect(github?.credentials.find((c) => c.id === "2")?.title).toBe(
+      "octocat",
+    );
+    // Title without the prefix is left alone.
+    expect(github?.credentials.find((c) => c.id === "3")?.title).toBe(
+      "Personal",
+    );
   });
 });
 

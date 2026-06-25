@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  CheckSquareIcon,
+  ArrowSquareOutIcon,
   DotsThreeVerticalIcon,
   EyeIcon,
   ImageBrokenIcon,
   PencilSimpleIcon,
-  SquareIcon,
   StarIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
@@ -35,30 +36,43 @@ interface EditPayload extends StoreSubmissionEditRequest {
 
 interface Props {
   submission: StoreSubmission;
-  selected: boolean;
-  onToggleSelected: () => void;
+  rowIndex?: number;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
 }
+
+const ROW_EASE = [0.16, 1, 0.3, 1] as const;
+const ROW_STAGGER = 0.025;
+const ROW_STAGGER_CAP = 6;
+const ROW_DURATION = 0.22;
 
 export function MobileSubmissionItem({
   submission,
-  selected,
-  onToggleSelected,
+  rowIndex = 0,
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const {
     canModify,
+    marketplaceUrl,
     handleView,
     handleEdit,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     isDeleting,
     handleConfirmDelete,
-  } = useSubmissionItem({ submission, onView, onEdit, onDelete });
+  } = useSubmissionItem({
+    submission,
+    onView,
+    onEdit,
+    onDelete,
+    creatorUsername,
+  });
 
   const visual = getStatusVisual(submission.status);
   const StatusIcon = visual.Icon;
@@ -67,36 +81,25 @@ export function MobileSubmissionItem({
     !!submission.review_avg_rating && submission.review_avg_rating > 0;
 
   return (
-    <article
+    <motion.article
       data-testid="submission-card"
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
-      data-selected={selected}
-      className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0 data-[selected=true]:bg-zinc-50"
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={
+        reduceMotion
+          ? undefined
+          : {
+              duration: ROW_DURATION,
+              ease: ROW_EASE,
+              delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
+            }
+      }
+      className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        {canModify ? (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            aria-label={`Select ${submission.name}`}
-            onClick={onToggleSelected}
-            className={`mt-1 shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
-              selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
-          >
-            {selected ? (
-              <CheckSquareIcon size={20} weight="fill" />
-            ) : (
-              <SquareIcon size={20} />
-            )}
-          </button>
-        ) : null}
-
-        <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-[8px] bg-zinc-100">
+        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -104,23 +107,51 @@ export function MobileSubmissionItem({
               fill
               sizes="64px"
               style={{ objectFit: "cover" }}
+              draggable={false}
+              className="pointer-events-none"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <ImageBrokenIcon size={18} className="text-zinc-400" />
+              <ImageBrokenIcon
+                size={18}
+                className="pointer-events-none text-zinc-400"
+              />
             </div>
           )}
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
-            <Text
-              variant="body-medium"
-              as="span"
-              className="truncate text-textBlack"
-            >
-              {submission.name}
-            </Text>
+            {marketplaceUrl ? (
+              <Link
+                href={marketplaceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                data-testid="submission-marketplace-link"
+              >
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="truncate text-textBlack"
+                >
+                  {submission.name}
+                </Text>
+                <ArrowSquareOutIcon
+                  size={14}
+                  className="shrink-0 text-zinc-500"
+                  aria-hidden
+                />
+              </Link>
+            ) : (
+              <Text
+                variant="body-medium"
+                as="span"
+                className="truncate text-textBlack"
+              >
+                {submission.name}
+              </Text>
+            )}
             <Text variant="small" as="span" className="shrink-0 text-zinc-600">
               v{submission.graph_version}
             </Text>
@@ -169,6 +200,20 @@ export function MobileSubmissionItem({
                 View submission
               </DropdownMenuItem>
             )}
+            {marketplaceUrl ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex cursor-pointer items-center gap-2"
+                  data-testid="submission-marketplace-menu-link"
+                >
+                  <ArrowSquareOutIcon size={14} />
+                  View on marketplace
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             {canModify ? (
               <>
                 <DropdownMenuSeparator />
@@ -247,6 +292,6 @@ export function MobileSubmissionItem({
           </Dialog.Footer>
         </Dialog.Content>
       </Dialog>
-    </article>
+    </motion.article>
   );
 }

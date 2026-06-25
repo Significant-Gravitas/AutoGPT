@@ -18,6 +18,7 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -148,6 +149,7 @@ async def resolve_use_sdk_for_mode(
     *,
     use_claude_code_subscription: bool,
     config_default: bool,
+    thinking_available: bool = True,
 ) -> bool:
     """Pick the SDK vs baseline path for a single turn.
 
@@ -155,7 +157,21 @@ async def resolve_use_sdk_for_mode(
     ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
     falls back to the Claude Code subscription override, then the
     ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
+
+    ``thinking_available`` is the kill-switch for deployments where the
+    SDK transport simply cannot run (today: ``CHAT_USE_LOCAL=true`` —
+    Ollama doesn't speak Anthropic's wire protocol).  When False the
+    baseline path is forced regardless of mode / flags / subscription;
+    an explicit ``mode='extended_thinking'`` request is logged at WARNING
+    so misconfigured deployments are visible without 500s.
     """
+    if not thinking_available:
+        if mode == "extended_thinking":
+            logger.warning(
+                "Downgrading mode=extended_thinking to fast: SDK is "
+                "unavailable under the current transport (CHAT_USE_LOCAL=true)"
+            )
+        return False
     if mode == "fast":
         return False
     if mode == "extended_thinking":
@@ -500,6 +516,7 @@ class CoPilotProcessor:
                     entry.user_id,
                     use_claude_code_subscription=config.use_claude_code_subscription,
                     config_default=config.use_claude_agent_sdk,
+                    thinking_available=config.thinking_available,
                 )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk
@@ -528,10 +545,15 @@ class CoPilotProcessor:
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
             )
+            # Surround the driver stream with a silence watchdog so the
+            # FE shows escalating ``StreamStatus`` messages during long
+            # silent gaps (deep thinking, slow tool execution, inter-tool
+            # gaps) instead of looping the generic "Thinking…" phrases.
+            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
-                stream=raw_stream,
+                stream=heartbeat_stream,
             )
             # Explicit aclose() on early exit: ``async for … break`` does
             # not close the generator, so GeneratorExit would never reach

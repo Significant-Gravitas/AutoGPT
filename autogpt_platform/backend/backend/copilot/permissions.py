@@ -81,7 +81,11 @@ ToolName = Literal[
     "create_feature_request",
     "create_folder",
     "customize_agent",
+    "decompose_goal",
     "delete_folder",
+    "delete_preset",
+    "delete_schedule",
+    "delete_skill",
     "delete_workspace_file",
     "edit_agent",
     "find_agent",
@@ -91,8 +95,14 @@ ToolName = Literal[
     "get_agent_building_guide",
     "get_doc_page",
     "get_mcp_guide",
+    "get_platform_info",
     "get_sub_session_result",
+    "list_agent_triggers",
+    "list_chat_platform_channels",
     "list_folders",
+    "list_presets",
+    "list_schedules",
+    "list_skills",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
@@ -100,14 +110,20 @@ ToolName = Literal[
     "memory_store",
     "move_agents_to_folder",
     "move_folder",
+    "post_to_chat_platform",
+    "read_skill",
     "read_workspace_file",
     "run_agent",
     "run_block",
     "run_mcp_tool",
     "run_sub_session",
+    "schedule_followup",
     "search_docs",
     "search_feature_requests",
+    "setup_agent_webhook_trigger",
+    "store_skill",
     "update_folder",
+    "update_preset",
     "validate_agent_graph",
     "view_agent_output",
     "web_fetch",
@@ -479,3 +495,35 @@ def apply_tool_permissions(
     extra_disallowed = list(set(base_disallowed) | removed)
 
     return filtered_allowed, extra_disallowed
+
+
+# ---------------------------------------------------------------------------
+# Presets
+# ---------------------------------------------------------------------------
+
+# Dream-pass sub-agent capability filter (spec: ``dream/p0-spec.md`` §P0.5).
+#
+# The dream orchestrator runs phases 1/2/3 via direct LLM calls today, but P0.5
+# (web fact-check) and P9 (daydreaming) hand work to a sub-agent that must be
+# strictly capability-bounded: read/write the user's Graphiti memory and
+# fact-check claims against the web — nothing else.  No shell, no general web
+# browsing, no file ops, no agent-graph mutation.
+#
+# Stored as a **whitelist** (``tools_exclude=False``) so the universe of
+# permitted tools is explicit and grows only when this preset is edited.
+#
+# ``web_fact_check`` is intentionally listed even though the tool does not yet
+# exist in ``TOOL_REGISTRY`` — it lands in P0.5.  Unknown short names are
+# silently dropped by :meth:`CopilotPermissions.effective_allowed_tools` (it
+# intersects with ``all_tools``), so the preset is forward-compatible without
+# needing to be updated when the tool ships.
+DREAM_PERMISSIONS: CopilotPermissions = CopilotPermissions(
+    tools=[
+        "memory_search",
+        "memory_store",
+        "memory_forget_search",
+        "memory_forget_confirm",
+        "web_fact_check",
+    ],
+    tools_exclude=False,
+)

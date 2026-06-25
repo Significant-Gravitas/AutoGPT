@@ -150,7 +150,7 @@ export function usePublishAgentModal({
             ...new Set(publishedSubmissionData.image_urls || []),
           ].filter(Boolean) as string[],
           category: publishedSubmissionData.categories?.[0] || "",
-          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          thumbnailSrc: agent.agent_image || "",
           slug: publishedSubmissionData.slug,
           recommendedScheduleCron: agent.recommended_schedule_cron || "",
           changesSummary: publishedSubmissionData.changes_summary || "",
@@ -160,7 +160,7 @@ export function usePublishAgentModal({
           agent_id: preSelectedAgentId,
           title: agent.agent_name,
           description: agent.description || "",
-          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          thumbnailSrc: agent.agent_image || "",
           slug: agent.agent_name.replace(/ /g, "-"),
           recommendedScheduleCron: agent.recommended_schedule_cron || "",
         };
@@ -269,6 +269,14 @@ export function usePublishAgentModal({
 
   function handleBack() {
     if (currentState.step === "info") {
+      // When the modal was opened pre-scoped to a specific agent (e.g. from
+      // the builder or library), there is no upstream picker to go back to —
+      // close the modal instead of surfacing a picker the caller intentionally
+      // skipped.
+      if (preSelectedAgentId) {
+        handleClose();
+        return;
+      }
       updateState({
         ...currentState,
         step: "select",
@@ -282,7 +290,7 @@ export function usePublishAgentModal({
   }
 
   function handleGoToDashboard() {
-    router.push("/profile/dashboard");
+    router.push("/settings/creator-dashboard");
     handleClose();
   }
 

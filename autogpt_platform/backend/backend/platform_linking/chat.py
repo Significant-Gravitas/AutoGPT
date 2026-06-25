@@ -10,11 +10,18 @@ from backend.copilot.model import (
     append_and_save_message,
     create_chat_session,
     get_chat_session,
+    get_user_sessions,
 )
 from backend.data.db_accessors import platform_linking_db
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .models import BotChatRequest, ChatTurnHandle
+from .models import (
+    BotChatRequest,
+    ChatSessionSummary,
+    ChatTurnHandle,
+    ListUserChatsResponse,
+    Platform,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +57,20 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     """
     owner_user_id = await resolve_chat_owner(request)
 
+    session = None
     session_id = request.session_id
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if not session:
-            raise NotFoundError("Session not found.")
-    else:
-        session = await create_chat_session(owner_user_id, dry_run=False)
-        session_id = session.session_id
+    if session is None:
+        # The bot caches session IDs across turns and a cached session can
+        # be deleted from the web app in between — fall back to a fresh one
+        # so the conversation self-heals instead of erroring every turn.
+        session = await create_chat_session(
+            owner_user_id,
+            dry_run=False,
+            source_platform=request.platform.value.lower(),
+        )
+    session_id = session.session_id
 
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
@@ -109,4 +122,46 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session_id=session_id,
         turn_id=turn_id,
         user_id=owner_user_id,
+    )
+
+
+LIST_USER_CHATS_MAX_LIMIT = 25
+
+
+async def list_user_chats(
+    platform: Platform,
+    platform_user_id: str,
+    limit: int = 25,
+    offset: int = 0,
+) -> ListUserChatsResponse:
+    """List a DM-linked user's own copilot chats, most recent first.
+
+    Ownership is resolved server-side from the user's own DM link — never a
+    server — so a caller can only ever see their own conversations.
+    """
+    owner_user_id = await platform_linking_db().find_user_link_owner(
+        platform.value, platform_user_id
+    )
+    if owner_user_id is None:
+        raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
+
+    # Clamp pagination — negative values would crash the DB driver, and an
+    # unbounded `limit` would fan out into a giant query. The cap also lines
+    # up with Discord's 25-option select-menu limit used by /resume.
+    safe_limit = max(0, min(limit, LIST_USER_CHATS_MAX_LIMIT))
+    safe_offset = max(0, offset)
+
+    sessions, total = await get_user_sessions(
+        owner_user_id, limit=safe_limit, offset=safe_offset
+    )
+    return ListUserChatsResponse(
+        sessions=[
+            ChatSessionSummary(
+                session_id=s.session_id,
+                title=s.title,
+                updated_at=s.updated_at,
+            )
+            for s in sessions
+        ],
+        total=total,
     )

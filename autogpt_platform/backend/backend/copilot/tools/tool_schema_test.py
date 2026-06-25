@@ -36,7 +36,58 @@ from backend.copilot.tools import TOOL_REGISTRY
 # for parity with the Claude Code SDK's built-in (PR #12879). The new
 # schema adds ~600 chars; description already trimmed to the minimum
 # viable copy.
-_CHAR_BUDGET = 34_000
+# Bumped 34000 -> 35000 on PR #12740 for the schedule management tools
+# (list_schedules, delete_schedule) needed by the trigger-agent flow.
+# Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
+# (returns trigger agents + webhook presets for a parent agent so
+# AutoPilot can inspect/manage them).
+# Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
+# of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
+# explicit "ends your turn" caveat, and an example wake-up message.
+# Bumped 36500 -> 37000 for the schedule_followup `session_id` override
+# parameter — lets the model target a different conversation owned by
+# the same user (parent autopilot → sub-session followups). The parameter
+# description spends ~170 chars on the ownership-rejection semantics so
+# the model doesn't try to wake up other users' sessions.
+# Bumped 37000 -> 38500 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop.  Descriptions are already trimmed to the minimum
+# viable copy; the bump absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+# Bumped 38500 -> 39000 for the schedule_followup ``session_id=null``
+# sentinel — its description spends ~170 chars explaining the "fire
+# into a fresh chat" semantics so the model picks the right value
+# (null vs omit vs target_session_id) for autopilot-style flows.
+# Bumped 39000 -> 39500 for the create-time library-similarity gate:
+# find_library_agent's new ``for_creation`` and ``goal_summary``
+# parameters and create_agent's ``library_check_ack`` bypass — the
+# extra ~270 chars on CI (env-flagged tool registrations push CI
+# higher than local) carry the LLM-decision-critical copy for
+# "search the library before building new" + "user-confirmed bypass".
+# Bumped 39500 -> 40500 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+_CHAR_BUDGET = 47_000
 
 
 @pytest.fixture(scope="module")
@@ -80,9 +131,18 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
+            # ``anyOf`` is the JSON-Schema-compliant way to model a
+            # nullable / union-typed parameter (e.g. ``session_id`` may
+            # be ``string`` or ``null`` for the fresh-chat sentinel).
+            # Accept either a top-level ``type`` OR an ``anyOf`` whose
+            # branches each carry their own ``type``.
+            has_type = "type" in prop_def or (
+                isinstance(prop_def.get("anyOf"), list)
+                and all(isinstance(b, dict) and "type" in b for b in prop_def["anyOf"])
+            )
             assert (
-                "type" in prop_def
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+                has_type
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"

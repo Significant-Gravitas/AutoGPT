@@ -568,6 +568,23 @@ async def webhook_ingress_generic(
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    # Run provider signature verification (no-op for providers whose protocol
+    # has no signing scheme). 403 on failure; not 404 — that would leak
+    # webhook existence.
+    try:
+        await webhook_manager.verify_signature(webhook, request)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -613,6 +630,12 @@ async def webhook_ping(
     user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
+    if webhook.user_id != user_id:
+        # Treat a webhook the caller doesn't own as if it doesn't exist, so this
+        # endpoint can't be used to enumerate webhook IDs or ping others' webhooks.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+        )
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
@@ -799,8 +822,39 @@ async def _merge_or_create_credential(
     When *credential_id* is set (explicit upgrade), merges scopes and updates
     the existing credential.  Otherwise, checks for an implicit merge (same
     provider + username) before falling back to creating a new credential.
+
+    Both paths enforce a scope-coverage guard: a "merge" only happens when
+    the freshly-minted token covers every scope the existing record already
+    advertises.  Without that guard a narrowed re-auth would overwrite the
+    stored ``access_token`` with a token whose grant is smaller than the
+    ``scopes`` list — the record would claim authorizations the token does
+    not grant, the credential matcher would happily route AutoPilot tools
+    to that "more capable" credential, and the tool would fail with opaque
+    401/403s on the missing scopes ("AutoPilot keeps picking the old
+    creds" symptom).  On a narrowing re-auth we keep the existing
+    credential intact and persist the new one alongside it instead.
     """
     if credential_id:
+        existing = await creds_manager.store.get_creds_by_id(user_id, credential_id)
+        # Gate the scope-coverage guard on the same defense-in-depth invariants
+        # that `_upgrade_existing_credential` enforces — provider drift, missing
+        # records, and non-OAuth2 targets must still raise via the upgrade path
+        # instead of being silently bypassed by the new-credential fallback.
+        if (
+            existing
+            and isinstance(existing, OAuth2Credentials)
+            and not existing.is_managed
+            and not is_system_credential(existing.id)
+            and provider_matches(existing.provider, credentials.provider)
+            and not set(credentials.scopes).issuperset(set(existing.scopes))
+        ):
+            # Narrowing re-auth: keep existing intact, persist new alongside.
+            # The frontend `executeOAuthFlow` has already pre-screened that
+            # the new credential covers the scopes the card asked for; the
+            # mismatch here is with the *existing* record's wider scope set,
+            # which the explicit-upgrade path tried to preserve via union.
+            await creds_manager.create(user_id, credentials)
+            return credentials
         return await _upgrade_existing_credential(user_id, credential_id, credentials)
 
     # Implicit merge: check for existing credential with same provider+username.

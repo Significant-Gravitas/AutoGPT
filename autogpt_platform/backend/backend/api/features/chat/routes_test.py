@@ -162,27 +162,17 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         new_callable=AsyncMock,
         return_value=False,
     )
-    mock_save = mocker.patch(
-        "backend.api.features.chat.routes.append_and_save_message",
-        return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
+    # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
+    # in one call. Patching it at the route boundary lets tests exercise
+    # validation/enrichment (file_ids, message length, rate limits, etc.)
+    # without touching Redis, RabbitMQ, or the chat DB. Returning a turn_id
+    # mimics a fresh dispatch (vs ``None`` which would mean a duplicate).
+    mock_schedule = mocker.patch(
+        "backend.api.features.chat.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+        return_value="turn-id-mock",
     )
-    mock_registry = mocker.MagicMock()
-    mock_registry.create_session = mocker.AsyncMock(return_value=None)
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry",
-        mock_registry,
-    )
-    mock_enqueue = mocker.patch(
-        "backend.api.features.chat.routes.enqueue_copilot_turn",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.track_user_message",
-        return_value=None,
-    )
-    return types.SimpleNamespace(
-        save=mock_save, enqueue=mock_enqueue, registry=mock_registry
-    )
+    return types.SimpleNamespace(enqueue=mock_schedule)
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -217,21 +207,23 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
 def test_stream_chat_skips_enqueue_for_duplicate_message(
     mocker: pytest_mock.MockerFixture,
 ):
-    """When append_and_save_message returns None (duplicate detected),
-    enqueue_copilot_turn and stream_registry.create_session must NOT be called
-    to avoid double-processing and to prevent overwriting the active stream's
-    turn_id in Redis (which would cause reconnecting clients to miss the response)."""
+    """When ``schedule_chat_turn`` returns ``None`` (duplicate-message detected
+    inside the slot context), the route must surface the empty UI message stream
+    without scheduling another turn — otherwise reconnecting clients would miss
+    the original turn's response."""
     mocks = _mock_stream_internals(mocker)
-    # Override save to return None — signalling a duplicate
-    mocks.save.return_value = None
+    # Patched ``schedule_chat_turn`` returns None on duplicate.
+    mocks.enqueue.return_value = None
 
     response = client.post(
         "/sessions/sess-1/stream",
         json={"message": "hello"},
     )
     assert response.status_code == 200
-    mocks.enqueue.assert_not_called()
-    mocks.registry.create_session.assert_not_called()
+    # The dup branch returns early; the helper was *called* once but it returned
+    # None, so no further dispatch happened (verified by the helper's own
+    # contract — see schedule_chat_turn tests).
+    mocks.enqueue.assert_called_once()
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -373,6 +365,71 @@ def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
     detail = response.json()["detail"]
     assert "2h" in detail
     assert "Resets in" in detail
+
+
+def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
+    mocker: pytest_mock.MockerFixture,
+):
+    """Redis brown-out must NOT bypass the per-user USD cap.
+
+    When ``check_rate_limit`` raises :class:`RateLimitUnavailable` the
+    endpoint must respond 503 with ``Retry-After``, not 429 (different UX:
+    transient outage, not "you hit your limit") and not 200 (which would
+    silently let the user blast the LLM during the outage)."""
+    from backend.copilot.rate_limit import RateLimitUnavailable
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
+    # Patch the limit-resolution helper so the test does not exercise the
+    # real LaunchDarkly / tier-lookup path — keeps the assertion focused on
+    # the RateLimitUnavailable → 503 mapping.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitUnavailable(),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "30"
+    assert "degraded" in response.json()["detail"].lower()
+
+
+def test_stream_chat_returns_503_when_stream_registry_unavailable(
+    mocker: pytest_mock.MockerFixture,
+):
+    """``is_turn_in_flight`` runs BEFORE ``check_rate_limit`` in the
+    pre-flight chain. A Redis brown-out at this step (e.g. ``hgetall`` on
+    the session-meta key fails with ``RedisClusterException``) must be
+    mapped to the same 503 + Retry-After response, NOT bubble as a raw
+    HTTP 500 with internal Redis error in the body. Cap-bypass cannot
+    happen (LLM is not invoked), but the UX must be polished."""
+    from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
+
+    _mock_stream_internals(mocker)
+    # Force the is_turn_in_flight branch to fail-closed by raising the
+    # typed unavailability exception (helper-level Redis-error mapping is
+    # exercised in pending_message_helpers_test).
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        side_effect=StreamRegistryUnavailable(),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "30"
+    assert "degraded" in response.json()["detail"].lower()
 
 
 # ─── Usage endpoint ───────────────────────────────────────────────────
@@ -750,6 +807,28 @@ def test_queue_pending_message_without_active_turn_returns_409(
     assert response.status_code == 409
 
 
+def test_queue_pending_message_returns_503_when_stream_registry_unavailable(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Redis brown-out on the pre-flight ``is_turn_in_flight`` check must
+    return 503 + Retry-After, not bubble as 500."""
+    from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
+
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        side_effect=StreamRegistryUnavailable(),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "30"
+
+
 def test_queue_pending_message_race_after_active_check_returns_409(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -1037,10 +1116,20 @@ def test_stream_chat_accepts_exactly_max_length_message(
 ):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
+    # Pass generous rate-limits so the rate-limit gate doesn't interfere
+    # with the message-length validation under test. Pre-PR convention
+    # used 0 for "unlimited"; we now treat 0 as "no spend allowed".
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 0, SubscriptionTier.BASIC),
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    # And mock the redis lookup so check_rate_limit sees zero usage.
+    mock_redis = mocker.AsyncMock()
+    mock_redis.get = mocker.AsyncMock(side_effect=["0", "0"])
+    mocker.patch(
+        "backend.copilot.rate_limit.get_redis_async",
+        return_value=mock_redis,
     )
 
     response = client.post(
@@ -1055,7 +1144,11 @@ def test_stream_chat_accepts_exactly_max_length_message(
 # ─── list_sessions ────────────────────────────────────────────────────
 
 
-def _make_session_info(session_id: str = "sess-1", title: str | None = "Test"):
+def _make_session_info(
+    session_id: str = "sess-1",
+    title: str | None = "Test",
+    source_platform: str | None = None,
+):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -1066,7 +1159,7 @@ def _make_session_info(session_id: str = "sess-1", title: str | None = "Test"):
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(),
+        metadata=ChatSessionMetadata(source_platform=source_platform),
     )
 
 
@@ -1098,6 +1191,32 @@ def test_list_sessions_returns_sessions(mocker: pytest_mock.MockerFixture) -> No
     assert len(data["sessions"]) == 1
     assert data["sessions"][0]["id"] == "sess-abc"
     assert data["sessions"][0]["is_processing"] is False
+
+
+def test_list_sessions_returns_source_platform(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _make_session_info("sess-discord", source_platform="discord")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["source_platform"] == "discord"
 
 
 def test_list_sessions_marks_running_as_processing(
@@ -1215,11 +1334,36 @@ def _mock_validate_session(
 
 
 def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> None:
-    """Cancel returns cancelled=True with reason when no stream is active."""
+    """Cancel returns ``reason="no_active_session"`` when no Redis
+    stream exists AND the orphan-reset age gate isn't satisfied (e.g.
+    DB ``chatStatus='idle'`` or a fresh admit racing this read).  The
+    separate test below covers the orphan-release branch."""
     _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    # No orphan release: metadata returns idle, so the age gate yields False.
+    from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+
+    now = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(
+            return_value=ChatSessionInfo(
+                session_id="sess-1",
+                user_id=TEST_USER_ID,
+                usage=[],
+                started_at=now,
+                updated_at=now,
+                metadata=ChatSessionMetadata(),
+                chat_status="idle",
+            )
+        ),
+    )
 
     response = client.post("/sessions/sess-1/cancel")
 
@@ -1229,6 +1373,119 @@ def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> Non
     assert data["reason"] == "no_active_session"
 
 
+def test_cancel_session_releases_orphan_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When the DB has been stuck at ``chatStatus='running'`` past the
+    age threshold and Redis has no live stream, cancel force-releases
+    the slot and returns ``reason='orphan_released'``."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(None, None))
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+
+    # Session has been running for ~1 hour — past the 30s threshold.
+    stale = datetime.now(UTC) - timedelta(hours=1)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(
+            return_value=ChatSessionInfo(
+                session_id="sess-1",
+                user_id=TEST_USER_ID,
+                usage=[],
+                started_at=stale,
+                updated_at=stale,
+                metadata=ChatSessionMetadata(),
+                chat_status="running",
+            )
+        ),
+    )
+    mock_release = AsyncMock()
+    mocker.patch(
+        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        new=mock_release,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["cancelled"] is True
+    assert data["reason"] == "orphan_released"
+    mock_release.assert_awaited_once()
+
+
+def test_cancel_session_skips_orphan_release_within_race_window(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A session whose DB ``chatStatus='running'`` flip happened
+    sub-second ago is almost certainly a fresh admit racing
+    ``dispatch_turn.create_session`` — NOT an orphan.  The age gate
+    must skip the release so we don't stomp the in-flight dispatch."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(None, None))
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+
+    fresh = datetime.now(UTC) - timedelta(seconds=1)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(
+            return_value=ChatSessionInfo(
+                session_id="sess-1",
+                user_id=TEST_USER_ID,
+                usage=[],
+                started_at=fresh,
+                updated_at=fresh,
+                metadata=ChatSessionMetadata(),
+                chat_status="running",
+            )
+        ),
+    )
+    mock_release = AsyncMock()
+    mocker.patch(
+        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        new=mock_release,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reason"] == "no_active_session"
+    mock_release.assert_not_awaited()
+
+
+def test_cancel_session_dequeues_when_queued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A queued session is cancelled by flipping chatStatus → idle (no
+    executor cancel event needed).  ``reason='dequeued'`` distinguishes
+    this branch from the running-stream cancel."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["cancelled"] is True
+    assert data["reason"] == "dequeued"
+
+
 def test_cancel_session_enqueues_cancel_and_confirms(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -1236,6 +1493,11 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     from backend.copilot.stream_registry import ActiveSession
 
     _mock_validate_session(mocker)
+    # Session isn't queued — fall through to the running-stream path.
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
     active_session = ActiveSession(
         session_id="sess-1",
         user_id=TEST_USER_ID,
@@ -1368,6 +1630,7 @@ def _mock_reset_internals(
     mock_credit_model = MagicMock()
     mock_credit_model.spend_credits = AsyncMock(return_value=remaining_balance)
     mock_credit_model.top_up_credits = AsyncMock(return_value=None)
+    mock_credit_model.grant_credits = AsyncMock(return_value=remaining_balance)
     mocker.patch(
         "backend.api.features.chat.routes.get_user_credit_model",
         new_callable=AsyncMock,
@@ -1586,8 +1849,10 @@ def test_reset_usage_refunds_on_redis_failure(
     response = client.post("/usage/reset")
 
     assert response.status_code == 503
-    # Credits should be refunded via top_up_credits
-    mock_credit.top_up_credits.assert_called_once()
+    # Credits should be refunded via grant_credits (GRANT, not TOP_UP), and
+    # the Stripe-charging top_up_credits path must not be hit.
+    mock_credit.grant_credits.assert_called_once()
+    mock_credit.top_up_credits.assert_not_called()
 
 
 # ─── resume_session_stream ───────────────────────────────────────────
@@ -1644,7 +1909,7 @@ def test_disconnect_stream_returns_204_and_awaits_registry(
 ) -> None:
     mock_session = MagicMock()
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=mock_session,
     )
@@ -1665,7 +1930,7 @@ def test_disconnect_stream_returns_404_when_session_missing(
     test_user_id: str,
 ) -> None:
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -1734,6 +1999,55 @@ def test_get_session_returns_backward_paginated(
     assert data["oldest_sequence"] == 0
     assert "forward_paginated" not in data
     assert "newest_sequence" not in data
+
+
+def test_get_session_releases_orphan_when_redis_empty_and_db_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A session whose DB says ``chatStatus='running'`` for longer than
+    the race-window threshold AND has no live Redis stream is an orphan
+    (executor crashed mid-turn).  Opening the chat must force-release
+    the slot so the sidebar's green dot stops showing."""
+    from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+
+    stale = datetime.now(UTC) - timedelta(hours=1)
+    page, _ = _make_paginated_messages(mocker)
+    page.session.chat_status = "running"
+    page.session.updated_at = stale
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(
+            return_value=ChatSessionInfo(
+                session_id="sess-1",
+                user_id=TEST_USER_ID,
+                usage=[],
+                started_at=stale,
+                updated_at=stale,
+                metadata=ChatSessionMetadata(),
+                chat_status="running",
+            )
+        ),
+    )
+    mock_release = AsyncMock()
+    mocker.patch(
+        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        new=mock_release,
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    # Local fixup also flips the response's chat_status so the frontend
+    # doesn't render the green dot on the very response that triggered
+    # the reset.
+    assert data["chat_status"] == "idle"
+    mock_release.assert_awaited_once()
 
 
 # ─── POST /sessions with builder_graph_id (get-or-create) ──────────────
@@ -1825,6 +2139,66 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
+
+
+def test_health_check_returns_503_when_metadata_read_returns_none(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Round-trips create-then-read; if the read path returns None despite
+    # a successful create, the health endpoint must surface the failure.
+    from backend.copilot.model import ChatSession
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert "unhealthy" in response.json()["detail"].lower()
+
+
+def test_health_check_returns_healthy_on_round_trip_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Happy path: create + read both succeed → 200 with healthy body.
+    from backend.copilot.model import ChatSession, ChatSessionInfo
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    fake_session = ChatSession.new("health-check-user", dry_run=False)
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        return_value=fake_session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=ChatSessionInfo(
+            **{**fake_session.model_dump(exclude={"messages"})}
+        ),
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:

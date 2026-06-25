@@ -13,10 +13,12 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
+from .decompose_goal import DecomposeGoalTool
 from .edit_agent import EditAgentTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
@@ -30,6 +32,7 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
+from .list_agent_triggers import ListAgentTriggersTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -38,11 +41,17 @@ from .manage_folders import (
     MoveFolderTool,
     UpdateFolderTool,
 )
+from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
+from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
+from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
+from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
+from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -65,6 +74,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
+    "decompose_goal": DecomposeGoalTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
@@ -82,6 +92,21 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_folder": DeleteFolderTool(),
     "move_agents_to_folder": MoveAgentsToFolderTool(),
     "run_agent": RunAgentTool(),
+    # Schedule management
+    "list_schedules": ListSchedulesTool(),
+    "delete_schedule": DeleteScheduleTool(),
+    "schedule_followup": ScheduleFollowupTool(),
+    # Proactive chat-platform output (post message / open thread on user's behalf)
+    "post_to_chat_platform": PostToChatPlatformTool(),
+    "list_chat_platform_channels": ListChatPlatformChannelsTool(),
+    # Trigger management (parent agent → its triggers)
+    "list_agent_triggers": ListAgentTriggersTool(),
+    # Webhook-trigger setup (create triggered preset + return ingress URL)
+    "setup_agent_webhook_trigger": SetupAgentWebhookTriggerTool(),
+    # Preset management (list / update / delete; works for triggers too)
+    "list_presets": ListPresetsTool(),
+    "update_preset": UpdatePresetTool(),
+    "delete_preset": DeletePresetTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
@@ -93,6 +118,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
+    # Skills (self-distilled procedure registry; see tools/skills.py).
+    # Defaults seed the agent-building / MCP guides so the registry is
+    # the single discovery surface for both built-in and user knowledge.
+    "store_skill": StoreSkillTool(),
+    "read_skill": ReadSkillTool(),
+    "delete_skill": DeleteSkillTool(),
+    "list_skills": ListSkillsTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
     "web_search": WebSearchTool(),
@@ -107,6 +139,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
+    # Platform info (subscription, billing)
+    "get_platform_info": PlatformInfoTool(),
     # Agent generation tools (local validation/fixing)
     "validate_agent_graph": ValidateAgentGraphTool(),
     "fix_agent_graph": FixAgentGraphTool(),

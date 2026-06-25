@@ -79,7 +79,7 @@ interface Props {
   elapsedSeconds: number;
   /**
    * Backend-emitted status message for the current silent gap (e.g.
-   * "Contacting the model…", "Analyzing result…", "Optimizing conversation
+   * "Reading your message…", "Analyzing result…", "Optimizing conversation
    * context…"). When provided, it replaces the rotating generic phrase so
    * the user sees what's actually happening instead of a placeholder.
    */
@@ -97,7 +97,7 @@ export function ThinkingIndicator({
   const transitionOpacity = statusMessage ? 1 : visible ? 1 : 0;
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-neutral-500">
+    <span className="inline-flex items-center gap-1.5 text-sm text-neutral-500">
       <ScaleLoader size={16} />
       <span
         className="transition-opacity duration-300"

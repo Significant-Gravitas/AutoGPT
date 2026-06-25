@@ -104,9 +104,60 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["offset"] == 0
     assert data["files"][0]["id"] == "f1"
     assert data["files"][0]["metadata"] == {"origin": "user-upload"}
+    assert data["files"][0]["origin"] == "uploaded"
     assert data["files"][1]["id"] == "f2"
+    assert data["files"][1]["origin"] == "generated"
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=True
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_uploaded_origin_filters_on_metadata(
+    mock_manager_cls, mock_get_workspace
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=uploaded")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals={"origin": "user-upload"},
+        metadata_not_equals=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_generated_origin_excludes_uploads(
+    mock_manager_cls, mock_get_workspace
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=generated")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals={"origin": "user-upload"},
     )
 
 
@@ -128,7 +179,12 @@ def test_list_files_scopes_to_session_when_provided(
     assert data["has_more"] is False
     mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", "sess-123")
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=False
+        limit=201,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
     )
 
 
@@ -151,15 +207,16 @@ def test_list_files_null_metadata_coerced_to_empty_dict(
 # -- upload_file metadata tests --
 
 
+@patch("backend.api.features.workspace.routes.get_workspace_storage_limit_bytes")
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.scan_content_safe")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_upload_passes_user_upload_origin_metadata(
-    mock_manager_cls, mock_scan, mock_total_size, mock_get_workspace
+    mock_manager_cls, mock_total_size, mock_get_workspace, mock_storage_limit
 ):
     mock_get_workspace.return_value = _make_workspace()
     mock_total_size.return_value = 100
+    mock_storage_limit.return_value = 250 * 1024 * 1024
     written = _make_file(id="new-file", name="doc.pdf")
     mock_instance = AsyncMock()
     mock_instance.write_file.return_value = written
@@ -178,10 +235,9 @@ def test_upload_passes_user_upload_origin_metadata(
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.scan_content_safe")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_upload_returns_409_on_file_conflict(
-    mock_manager_cls, mock_scan, mock_total_size, mock_get_workspace
+    mock_manager_cls, mock_total_size, mock_get_workspace
 ):
     mock_get_workspace.return_value = _make_workspace()
     mock_total_size.return_value = 100
@@ -234,8 +290,8 @@ def test_upload_happy_path(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -256,20 +312,24 @@ def test_upload_exceeds_max_file_size(mocker):
     """Files larger than max_file_size_mb should be rejected with 413."""
     cfg = mocker.patch("backend.api.features.workspace.routes.Config")
     cfg.return_value.max_file_size_mb = 0  # 0 MB → any content is too big
-    cfg.return_value.max_workspace_storage_mb = 500
 
     response = _upload(content=b"x" * 1024)
     assert response.status_code == 413
 
 
 def test_upload_storage_quota_exceeded(mocker):
+    """WorkspaceManager.write_file raises ValueError when quota exceeded → 413."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=ValueError("Storage limit exceeded: 500 MB used of 250 MB (200.0%)")
+    )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=500 * 1024 * 1024,
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
     )
 
     response = _upload()
@@ -278,33 +338,33 @@ def test_upload_storage_quota_exceeded(mocker):
 
 
 def test_upload_post_write_quota_race(mocker):
-    """Concurrent upload tipping over limit after write should soft-delete + 413."""
+    """Concurrent upload tipping over limit after write should delete + 413."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
+    # Post-write total exceeds the tier-based limit (250 MB for FREE).
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace_total_size",
-        side_effect=[0, 600 * 1024 * 1024],
+        return_value=600 * 1024 * 1024,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
-    mock_delete = mocker.patch(
-        "backend.api.features.workspace.routes.soft_delete_workspace_file",
-        return_value=None,
-    )
 
     response = _upload()
     assert response.status_code == 413
-    mock_delete.assert_called_once_with("file-aaa-bbb", "ws-001")
+    # Rollback must go through manager.delete_file so the storage blob is removed,
+    # not just soft_delete_workspace_file (which would orphan the blob).
+    mock_manager.delete_file.assert_awaited_once_with("file-aaa-bbb")
 
 
 def test_upload_any_extension(mocker):
@@ -318,8 +378,8 @@ def test_upload_any_extension(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -333,23 +393,17 @@ def test_upload_any_extension(mocker):
 
 
 def test_upload_blocked_by_virus_scan(mocker):
-    """Files flagged by ClamAV should be rejected and never written to storage."""
+    """Files flagged by ClamAV should be rejected via WorkspaceManager."""
     from backend.api.features.store.exceptions import VirusDetectedError
 
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
         side_effect=VirusDetectedError("Eicar-Test-Signature"),
     )
-    mock_manager = mocker.MagicMock()
-    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
@@ -357,7 +411,6 @@ def test_upload_blocked_by_virus_scan(mocker):
 
     response = _upload(filename="evil.exe", content=b"X5O!P%@AP...")
     assert response.status_code == 400
-    mock_manager.write_file.assert_not_called()
 
 
 def test_upload_file_without_extension(mocker):
@@ -371,8 +424,8 @@ def test_upload_file_without_extension(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -402,8 +455,8 @@ def test_upload_strips_path_components(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -488,14 +541,6 @@ def test_upload_write_file_too_large_returns_413(mocker):
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
-    )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(
         side_effect=ValueError("File too large: 900 bytes exceeds 1MB limit")
@@ -515,14 +560,6 @@ def test_upload_write_file_conflict_returns_409(mocker):
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(
@@ -563,7 +600,12 @@ def test_list_files_has_more_true_when_limit_exceeded(
     assert data["files"][0]["id"] == "f1"
     assert data["files"][1]["id"] == "f2"
     mock_instance.list_files.assert_called_once_with(
-        limit=3, offset=0, include_all_sessions=True
+        limit=3,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
     )
 
 
@@ -598,8 +640,178 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     assert response.status_code == 200
     assert response.json()["offset"] == 50
     mock_instance.list_files.assert_called_once_with(
-        limit=11, offset=50, include_all_sessions=True
+        limit=11,
+        offset=50,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
     )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_origin_ignored_when_session_id_set(
+    mock_manager_cls, mock_get_workspace
+):
+    """origin is dropped when session_id is provided (session implies origin)."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=generated&session_id=sess-123")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace):
+    """q forwards to name_contains after stripping."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=report")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="report",
+        metadata_equals=None,
+        metadata_not_equals=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
+    """Whitespace-only q is normalized to None instead of an empty filter."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=%20%20%20")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
+    """q and origin compose into one filter on the manager call."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=report&origin=generated")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="report",
+        metadata_equals=None,
+        metadata_not_equals={"origin": "user-upload"},
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_empty_session_id_treated_as_omitted(
+    mock_manager_cls, mock_get_workspace, test_user_id
+):
+    """Empty session_id must not silently list files across every session."""
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=")
+    assert response.status_code == 200
+    # Manager should be constructed with session_id=None, not ""
+    mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", None)
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+    )
+
+
+def test_list_files_rejects_invalid_origin():
+    """FastAPI Literal validation rejects unknown origin values."""
+    response = client.get("/files?origin=nonsense")
+    assert response.status_code == 422
+
+
+def test_upload_virus_scan_infrastructure_error_returns_500(mocker):
+    """VirusScanError (ClamAV outage) should return 500, not 409."""
+    from backend.api.features.store.exceptions import VirusScanError
+
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=VirusScanError("ClamAV connection refused"),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 500
+
+
+def test_get_storage_usage_returns_tier_based_limit(mocker):
+    """get_storage_usage should return the user's tier-based limit, not a static config."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=100 * 1024 * 1024,  # 100 MB used
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.count_workspace_files",
+        return_value=5,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=1024 * 1024 * 1024,  # 1 GB (PRO tier)
+    )
+
+    response = client.get("/storage/usage")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit_bytes"] == 1024 * 1024 * 1024
+    assert data["used_bytes"] == 100 * 1024 * 1024
+    assert data["file_count"] == 5
 
 
 # -- _sanitize_filename_for_header tests --

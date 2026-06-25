@@ -85,7 +85,7 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
-        self._active_tasks_lock = threading.Lock()
+        self._active_tasks_lock_obj: threading.Lock | None = None
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -93,6 +93,13 @@ class CoPilotExecutor(AppProcess):
         """Main service loop - consume from RabbitMQ."""
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
+
+        # Materialise the active-tasks lock NOW, before any worker threads
+        # exist, so subsequent multi-threaded reads of the lazy property
+        # never race on its check-then-init pattern.  ``__init__`` can't
+        # do this because ``_thread.lock`` is not picklable and the
+        # forkserver start method serialises the process object.
+        self._active_tasks_lock  # noqa: B018 — touch to materialise
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
@@ -501,6 +508,12 @@ class CoPilotExecutor(AppProcess):
             logger.error(f"{prefix} Error disconnecting client: {e}")
 
     # ============ Lazy-initialized Properties ============ #
+
+    @property
+    def _active_tasks_lock(self) -> threading.Lock:
+        if self._active_tasks_lock_obj is None:
+            self._active_tasks_lock_obj = threading.Lock()
+        return self._active_tasks_lock_obj
 
     @property
     def cancel_thread(self) -> threading.Thread:

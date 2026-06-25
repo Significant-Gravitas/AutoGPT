@@ -583,6 +583,71 @@ class TestValidateIoBlocks:
         assert v.validate_io_blocks(agent, [input_block, custom_output_block]) is True
         assert v.errors == []
 
+    def test_trigger_block_satisfies_input_requirement(self):
+        # A webhook trigger replaces the input block: a triggered agent is
+        # started by an external event and needs no user-facing input block.
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="webhook-trigger-id",
+            name="GithubTriggerBlock",
+            ui_type="Webhook",
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+            ui_type="Output",
+        )
+        trigger_node = _make_node(block_id="webhook-trigger-id")
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[trigger_node, output_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block, output_block]) is True
+        assert v.errors == []
+
+    def test_manual_webhook_trigger_satisfies_input_requirement(self):
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="manual-webhook-id",
+            name="ManualWebhookTriggerBlock",
+            ui_type="Webhook (manual)",
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+            ui_type="Output",
+        )
+        trigger_node = _make_node(block_id="manual-webhook-id")
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[trigger_node, output_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block, output_block]) is True
+        assert v.errors == []
+
+    def test_trigger_does_not_satisfy_output_requirement(self):
+        # The trigger only covers the input side; an output block is still
+        # required.
+        v = AgentValidator()
+        trigger_block = _make_block(
+            block_id="webhook-trigger-id",
+            name="GithubTriggerBlock",
+            ui_type="Webhook",
+        )
+        trigger_node = _make_node(block_id="webhook-trigger-id")
+        agent = _make_agent(nodes=[trigger_node])
+
+        assert v.validate_io_blocks(agent, [trigger_block]) is False
+        assert len(v.errors) == 1
+        assert "AgentOutputBlock" in v.errors[0]
+
+    def test_missing_input_error_mentions_trigger_alternative(self):
+        v = AgentValidator()
+        node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 1
+        assert "trigger block" in v.errors[0]
+
 
 # ============================================================================
 # validate (integration)

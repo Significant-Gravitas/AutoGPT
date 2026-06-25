@@ -1,7 +1,5 @@
 "use client";
 
-import { WarningCircleIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -25,8 +23,6 @@ export function DeleteConfirmDialog({
 }: Props) {
   const count = itemNames.length;
   const isBulk = count > 1;
-  const preview = itemNames.slice(0, 3).join(", ");
-  const more = count > 3 ? ` and ${count - 3} more` : "";
   const isForce = variant === "force";
   const title = isForce
     ? isBulk
@@ -52,24 +48,9 @@ export function DeleteConfirmDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <div className="flex items-start gap-3">
-            <WarningCircleIcon
-              size={20}
-              weight="fill"
-              className="mt-0.5 shrink-0 text-red-500"
-            />
-            <div className="flex flex-col gap-1">
-              <Text variant="body" className="text-zinc-800">
-                {message}
-              </Text>
-              {isBulk && preview ? (
-                <Text variant="small" className="text-zinc-500">
-                  {preview}
-                  {more}
-                </Text>
-              ) : null}
-            </div>
-          </div>
+          <Text variant="body" className="text-zinc-800">
+            {message}
+          </Text>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

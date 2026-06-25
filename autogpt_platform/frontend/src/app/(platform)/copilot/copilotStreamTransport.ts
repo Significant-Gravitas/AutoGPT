@@ -54,6 +54,20 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
+      // ``message_id`` becomes the persisted ``ChatMessage.id`` (PK) —
+      // Postgres' uniqueness constraint then makes the INSERT itself
+      // the atomic dedup primitive: a retransmit (SDK-internal retry,
+      // browser auto-retry, RMQ redelivery) lands on a duplicate PK
+      // and the backend short-circuits to subscribe-only.
+      //
+      // Generated here (rather than in ``useSendMessage``) for two
+      // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
+      // "replace-existing-message" semantics — passing a fresh UUID
+      // puts the SDK into edit-mode with no target and breaks
+      // optimistic render. (2) ``prepareSendMessagesRequest`` is
+      // called once per logical ``sendMessages`` call and the
+      // prepared body is reused across SDK-internal retries, so a
+      // single per-call UUID is exactly the stability we need.
       return {
         body: {
           message: (
@@ -64,6 +78,7 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
+          message_id: crypto.randomUUID(),
         },
         headers: await getCopilotAuthHeaders(),
       };
