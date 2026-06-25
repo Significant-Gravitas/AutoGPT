@@ -3,6 +3,7 @@ import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
@@ -137,7 +138,7 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  async getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number | null }> {
     try {
       const response = await this._get("/credits");
       return response ?? { credits: 0 };
@@ -145,7 +146,10 @@ export default class BackendAPI {
       if (!(error instanceof LogoutInterruptError)) {
         Sentry.captureException(error);
       }
-      return { credits: 0 };
+      // Return null (rather than 0) so callers can distinguish a real $0
+      // balance from a failed fetch — used by TopUpPromptProvider to avoid
+      // nudging users to top up on transient API errors.
+      return { credits: null };
     }
   }
 
@@ -888,6 +892,8 @@ export default class BackendAPI {
     if (impersonatedUserId) {
       headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
+
+    Object.assign(headers, getDatafastAttribution());
 
     const response = await fetch(url, {
       method,

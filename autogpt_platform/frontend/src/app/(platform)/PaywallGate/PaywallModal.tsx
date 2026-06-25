@@ -1,10 +1,12 @@
 "use client";
 
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
+import { SignOutIcon } from "@phosphor-icons/react";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";
 
@@ -14,6 +16,8 @@ export function PaywallModal() {
   const {
     isLoading,
     plans,
+    retryLoadPlans,
+    isRetryingPlans,
     country,
     isYearly,
     selectedCycle,
@@ -25,12 +29,29 @@ export function PaywallModal() {
     pendingTierLabel,
     confirmPendingTier,
     cancelPendingTier,
+    handleLogout,
   } = usePaywallModal();
 
   return (
     <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
       <Dialog.Content>
-        <div className="flex w-full flex-col items-center gap-4 px-2 py-2">
+        <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
+          {/* Sticky (not absolute) so the button pins to the top of the
+              dialog's scroll viewport instead of getting clipped or scrolled
+              away when the plan cards overflow on short screens. The negative
+              margin collapses the row's layout space so the title keeps its
+              position. */}
+          <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={handleLogout}
+              leftIcon={<SignOutIcon size={16} />}
+              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
+            >
+              Log out
+            </Button>
+          </div>
           <div className="flex flex-col items-center gap-1 text-center">
             <Text
               variant="h3"
@@ -89,10 +110,20 @@ export function PaywallModal() {
                 <Skeleton className="h-[26rem] rounded-2xl" />
               </div>
             ) : plans.length === 0 ? (
-              <p className="text-center text-sm text-zinc-500">
-                Subscriptions are temporarily unavailable. Please try again
-                shortly.
-              </p>
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-center text-sm text-zinc-500">
+                  Subscriptions are temporarily unavailable. Please try again
+                  shortly.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={retryLoadPlans}
+                  loading={isRetryingPlans}
+                >
+                  Retry
+                </Button>
+              </div>
             ) : (
               <div
                 className={cn(
@@ -111,6 +142,7 @@ export function PaywallModal() {
                     onSelect={() => handleSelectPlan(plan.key)}
                     loading={isPending && selectedTier === plan.key}
                     disabled={isPending && selectedTier !== plan.key}
+                    priceCaption="billing-period"
                   />
                 ))}
               </div>

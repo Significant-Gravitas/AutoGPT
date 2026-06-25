@@ -54,6 +54,9 @@ class ResponseType(str, Enum):
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
     CURSOR = "data-cursor"
+    # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
+    # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
+    DREAM_OPERATIONS = "data-dream-operations"
 
 
 class StreamBaseResponse(BaseModel):

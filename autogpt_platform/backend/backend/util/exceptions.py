@@ -176,3 +176,7 @@ class LinkFlowMismatchError(ValueError):
 
 class DuplicateChatMessageError(ValueError):
     """The same user message is already in flight for this chat session."""
+
+
+class WebhookRegistrationError(Exception):
+    """Registering a webhook with an external service failed."""

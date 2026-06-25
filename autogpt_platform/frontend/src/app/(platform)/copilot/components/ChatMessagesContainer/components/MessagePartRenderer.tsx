@@ -7,6 +7,7 @@ import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
+import { DecomposeGoalTool } from "../../../tools/DecomposeGoal/DecomposeGoal";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
 import {
   CreateFeatureRequestTool,
@@ -20,6 +21,7 @@ import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
+import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import {
   extractWorkspaceArtifacts,
@@ -68,17 +70,32 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
-function TextWithArtifactCards({ text }: { text: string }) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const artifacts = extractWorkspaceArtifacts(text);
-  const resolved = resolveWorkspaceUrls(text);
+function TextWithArtifactCards({
+  text,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
+}: {
+  text: string;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
+}) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
+  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
+  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
   return (
     <>
       {isArtifactsEnabled && artifacts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           {artifacts.map((artifact) => (
-            <ArtifactCard key={artifact.id} artifact={artifact} />
+            <ArtifactCard
+              key={artifact.id}
+              artifact={artifact}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       )}
@@ -94,6 +111,17 @@ interface Props {
   messageID: string;
   partIndex: number;
   onRetry?: () => void;
+  /** Override the URL emitted when rewriting workspace:// references
+   *  in markdown.  Owner side defaults to the workspace-file endpoint;
+   *  the public share viewer passes a token-aware builder so anonymous
+   *  readers can download via the public allowlist-gated route. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Force inline artifact-card rendering for workspace:// URIs in
+   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
+  forceArtifacts?: boolean;
+  /** Read-only mode — forwarded so embedded ``ArtifactCard``s
+   *  download on click instead of opening a panel. */
+  readOnly?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -101,6 +129,9 @@ export function MessagePartRenderer({
   messageID,
   partIndex,
   onRetry,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -157,7 +188,15 @@ export function MessagePartRenderer({
         );
       }
 
-      return <TextWithArtifactCards key={key} text={cleanText} />;
+      return (
+        <TextWithArtifactCards
+          key={key}
+          text={cleanText}
+          fileUrlBuilder={fileUrlBuilder}
+          forceArtifacts={forceArtifacts}
+          readOnly={readOnly}
+        />
+      );
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
@@ -179,6 +218,10 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-setup_agent_webhook_trigger":
+      return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
+    case "tool-decompose_goal":
+      return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":
@@ -196,6 +239,12 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case "tool-TodoWrite":
+      // Hidden inline — the chat shows a single persistent
+      // "Progress shown in the sidebar" pill at the bottom of the message
+      // list while any task is active. See `TaskListNotice` rendering in
+      // `ChatMessagesContainer`.
+      return null;
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool

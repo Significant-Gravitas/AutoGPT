@@ -43,7 +43,6 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import peek_pending_messages
-from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -68,6 +67,11 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_presets import (
+    PresetDeletedResponse,
+    PresetListResponse,
+    PresetUpdatedResponse,
+)
 from backend.copilot.tools.manage_schedules import (
     ScheduleDeletedResponse,
     ScheduleListResponse,
@@ -97,6 +101,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TaskDecompositionResponse,
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
@@ -324,6 +329,7 @@ class SessionSummaryResponse(BaseModel):
     title: str | None = None
     chat_status: str = "idle"
     is_processing: bool
+    source_platform: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -416,6 +422,7 @@ async def list_sessions(
                 title=session.title,
                 chat_status=session.chat_status,
                 is_processing=session.session_id in processing_set,
+                source_platform=session.metadata.source_platform,
             )
             for session in sessions
         ],
@@ -425,6 +432,7 @@ async def list_sessions(
 
 @router.post(
     "/sessions",
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
@@ -1651,8 +1659,12 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
+    | PresetListResponse
+    | PresetUpdatedResponse
+    | PresetDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

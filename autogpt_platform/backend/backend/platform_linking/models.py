@@ -154,6 +154,21 @@ class PlatformUserLinkInfo(BaseModel):
     linked_at: datetime
 
 
+class BotPlatformInfo(BaseModel):
+    """A bot platform enabled on this deployment plus the caller's links to it.
+
+    Platforms whose adapter isn't configured (missing token/credentials) are
+    omitted from the response entirely — the Bots settings page hides them.
+    """
+
+    platform: str
+    display_name: str
+    icon: str
+    add_bot_url: str | None = None
+    dm_link: PlatformUserLinkInfo | None = None
+    server_links: list[PlatformLinkInfo] = Field(default_factory=list)
+
+
 class ConfirmLinkResponse(BaseModel):
     success: bool
     link_type: LinkType = LinkType.SERVER
@@ -180,3 +195,53 @@ class ChatTurnHandle(BaseModel):
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+
+
+class ChatSessionSummary(BaseModel):
+    """Minimal chat-session fields safe to send to a bot client."""
+
+    session_id: str
+    title: str | None = None
+    updated_at: datetime
+
+
+class ListUserChatsResponse(BaseModel):
+    sessions: list[ChatSessionSummary]
+    total: int
+
+
+class WorkspaceArtifact(BaseModel):
+    """A user-owned workspace file resolved to bytes for bot attachment.
+
+    Returned by ``fetch_workspace_artifact`` when the file exists, belongs to
+    the session's owning user, and fits under the requested ``max_bytes``.
+    The bot uses ``content`` to attach the file inline; over-the-limit or
+    missing files come back as ``None`` and trigger the link-to-chat fallback.
+    """
+
+    file_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    content: bytes
+
+
+class BotEventInput(BaseModel):
+    """A single bot usage event. Never carries message content."""
+
+    platform: Platform
+    event_type: str
+    server_id: str | None = None
+    channel_type: str | None = None
+    command_name: str | None = None
+    error_kind: str | None = None
+    char_count: int | None = None
+    duration_ms: int | None = None
+
+
+class BotGuildInput(BaseModel):
+    """Presence of the bot in a single server."""
+
+    platform: Platform
+    server_id: str
+    name: str | None = None

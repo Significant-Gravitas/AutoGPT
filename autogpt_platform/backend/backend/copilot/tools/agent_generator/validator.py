@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any
 
+from backend.blocks._base import BlockType
 from backend.data.dynamic_fields import DICT_SPLIT
 
 from .helpers import (
@@ -19,6 +20,10 @@ from .helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# uiType values (from BlockType) of blocks that start an agent on an external
+# event. A trigger node makes an agent runnable without a user-facing input.
+TRIGGER_UI_TYPES = frozenset({BlockType.WEBHOOK.value, BlockType.WEBHOOK_MANUAL.value})
 
 
 class AgentValidator:
@@ -657,21 +662,24 @@ class AgentValidator:
 
     def _collect_io_block_ids(
         self, blocks: list[dict[str, Any]]
-    ) -> tuple[set[str], set[str]]:
+    ) -> tuple[set[str], set[str], set[str]]:
         """
-        Build sets of all input/output block IDs from the blocks registry.
+        Build sets of all input/output/trigger block IDs from the blocks
+        registry.
 
-        Input/output blocks are identified by ``uiType`` (populated from
-        ``Block.block_type`` at registration time). Specialized subclasses
-        like ``AgentGoogleDriveFileInputBlock`` count as input blocks even
-        though they have their own block IDs — this matches the runtime
-        behavior, where any subclass of ``AgentInputBlock`` exposes a
-        user-facing input. The literal base IDs are always included so the
-        function works even when called with a minimal blocks list (e.g.
-        unit tests).
+        Input/output/trigger blocks are identified by ``uiType`` (populated
+        from ``Block.block_type`` at registration time). Specialized
+        subclasses like ``AgentGoogleDriveFileInputBlock`` count as input
+        blocks even though they have their own block IDs — this matches the
+        runtime behavior, where any subclass of ``AgentInputBlock`` exposes a
+        user-facing input. The literal base input/output IDs are always
+        included so the function works even when called with a minimal blocks
+        list (e.g. unit tests). Trigger blocks have no single base ID, so the
+        blocks list must carry their ``uiType`` to detect them.
         """
         input_ids: set[str] = {AGENT_INPUT_BLOCK_ID}
         output_ids: set[str] = {AGENT_OUTPUT_BLOCK_ID}
+        trigger_ids: set[str] = set()
         for block in blocks:
             block_id = block.get("id")
             if not block_id:
@@ -681,41 +689,56 @@ class AgentValidator:
                 input_ids.add(block_id)
             elif ui_type == "Output":
                 output_ids.add(block_id)
-        return input_ids, output_ids
+            elif ui_type in TRIGGER_UI_TYPES:
+                trigger_ids.add(block_id)
+        return input_ids, output_ids, trigger_ids
 
     def validate_io_blocks(
         self, agent: AgentDict, blocks: list[dict[str, Any]] | None = None
     ) -> bool:
         """
-        Validate that the agent has at least one input block and one output
-        block. These blocks define the agent's interface.
+        Validate that the agent has a way to be started and one output block.
+        These define the agent's interface.
 
-        Any block whose ``uiType`` is ``"Input"`` satisfies the input
-        requirement — including specialized variants like
-        ``AgentGoogleDriveFileInputBlock``, ``AgentDropdownInputBlock``,
-        ``AgentTableInputBlock``, etc. The equivalent applies for outputs.
-        This prevents the validator from forcing agents to keep a throwaway
-        base ``AgentInputBlock`` alongside a real specialized input.
+        Input requirement — satisfied by EITHER at least one input block OR at
+        least one trigger block:
+        - Any block whose ``uiType`` is ``"Input"`` (including specialized
+          variants like ``AgentGoogleDriveFileInputBlock``,
+          ``AgentDropdownInputBlock``, ``AgentTableInputBlock``, etc.).
+        - Any trigger block whose ``uiType`` is ``"Webhook"`` /
+          ``"Webhook (manual)"``. A triggered agent is started by an external
+          event and needs no user-facing input block; forcing one alongside
+          the trigger produces an invalid graph.
 
-        Returns True if both are present, False otherwise.
+        Output requirement — satisfied by at least one output block (any block
+        whose ``uiType`` is ``"Output"``). This matches the runtime behavior,
+        where any subclass of ``AgentOutputBlock`` surfaces an output, so the
+        validator never forces a throwaway base block alongside a real one.
+
+        Returns True if both requirements are met, False otherwise.
         """
         valid = True
-        input_ids, output_ids = self._collect_io_block_ids(blocks or [])
+        input_ids, output_ids, trigger_ids = self._collect_io_block_ids(blocks or [])
         node_block_ids = {
             node.get("block_id")
             for node in agent.get("nodes", [])
             if node.get("block_id")
         }
 
-        if not node_block_ids & input_ids:
+        has_input = bool(node_block_ids & input_ids)
+        has_trigger = bool(node_block_ids & trigger_ids)
+        if not has_input and not has_trigger:
             self.add_error(
-                f"Agent is missing an input block. Every agent must have at "
-                f"least one input block to define user-facing inputs. Add a "
-                f"node using the base AgentInputBlock (block_id: "
-                f"'{AGENT_INPUT_BLOCK_ID}') or any specialized input block "
-                f"subclass (e.g. AgentGoogleDriveFileInputBlock, "
-                f"AgentDropdownInputBlock, AgentShortTextInputBlock). Set "
-                f"input_default with 'name' and optionally 'title'."
+                f"Agent is missing an input or trigger block. Every agent must "
+                f"have at least one input block to define user-facing inputs, "
+                f"or one trigger block to be started by an external event. For "
+                f"a regular agent, add a node using the base AgentInputBlock "
+                f"(block_id: '{AGENT_INPUT_BLOCK_ID}') or any specialized input "
+                f"block subclass (e.g. AgentGoogleDriveFileInputBlock, "
+                f"AgentDropdownInputBlock, AgentShortTextInputBlock) and set "
+                f"input_default with 'name' and optionally 'title'. For a "
+                f"triggered agent, add a webhook trigger block instead — do not "
+                f"add a separate input block."
             )
             valid = False
 
