@@ -1,16 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
+import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
 import {
   EASE_OUT,
@@ -19,10 +17,9 @@ import {
   type SortKey,
 } from "../../helpers";
 import { MobileSubmissionItem } from "../MobileSubmissionItem/MobileSubmissionItem";
+import { Pagination } from "../Pagination/Pagination";
 import { SortColumnFilter } from "../SubmissionsList/columns/SortColumnFilter";
 import { StatusColumnFilter } from "../SubmissionsList/columns/StatusColumnFilter";
-import { useSubmissionSelection } from "../SubmissionsList/useSubmissionSelection";
-import { MobileSelectionBar } from "./MobileSelectionBar";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string | undefined;
@@ -32,39 +29,41 @@ interface EditPayload extends StoreSubmissionEditRequest {
 interface Props {
   submissions: StoreSubmission[];
   totalCount: number;
+  pagination?: PaginationModel;
+  onPageChange?: (page: number) => void;
+  isFetching?: boolean;
   filterState: FilterState;
   onFilterChange: (next: FilterState) => void;
   onResetFilters: () => void;
+  searchInput: string;
+  onSearchChange: (next: string) => void;
+  debouncedSearch: string;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
   index?: number;
 }
 
 export function MobileSubmissionsList({
   submissions,
   totalCount,
+  pagination,
+  onPageChange,
+  isFetching,
   filterState,
   onFilterChange,
   onResetFilters,
+  searchInput,
+  onSearchChange,
+  debouncedSearch,
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
   index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
-
-  const selectableIds = useMemo(
-    () =>
-      submissions
-        .filter((s) => s.status === SubmissionStatus.PENDING)
-        .map((s) => s.listing_version_id),
-    [submissions],
-  );
-
-  const selection = useSubmissionSelection(selectableIds);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   function setStatuses(statuses: SubmissionStatus[]) {
     onFilterChange({ ...filterState, statuses });
@@ -72,30 +71,6 @@ export function MobileSubmissionsList({
 
   function setSort(sortKey: SortKey | null, sortDir: SortDir) {
     onFilterChange({ ...filterState, sortKey, sortDir });
-  }
-
-  async function handleBulkDelete() {
-    setIsBulkDeleting(true);
-    const ids = [...selection.selectedIds];
-    try {
-      const results = await Promise.allSettled(ids.map((id) => onDelete(id)));
-      const failed = results.filter((r) => r.status === "rejected").length;
-      const succeeded = ids.length - failed;
-      if (failed > 0) {
-        for (const r of results) {
-          if (r.status === "rejected") Sentry.captureException(r.reason);
-        }
-        toast({
-          title: `Deleted ${succeeded} of ${ids.length} submissions`,
-          description: `${failed} failed to delete. Please try again.`,
-          variant: "destructive",
-        });
-      }
-      selection.clear();
-      setBulkDeleteOpen(false);
-    } finally {
-      setIsBulkDeleting(false);
-    }
   }
 
   return (
@@ -111,12 +86,26 @@ export function MobileSubmissionsList({
       data-testid="mobile-submissions-list"
     >
       <div className="flex items-center justify-between gap-3 px-1">
-        <Text variant="body-medium" as="span" className="text-textBlack">
-          Submissions
-        </Text>
+        <div className="flex items-center gap-2">
+          <Text variant="body-medium" as="span" className="text-textBlack">
+            Submissions
+          </Text>
+        </div>
         <Text variant="small" className="text-zinc-500">
           {submissions.length} of {totalCount}
         </Text>
+      </div>
+
+      <div className="px-1">
+        <SearchInput
+          value={searchInput}
+          onChange={onSearchChange}
+          placeholder="Search by agent or listing name"
+          aria-label="Search submissions"
+          maxLength={100}
+          loading={isFetching}
+          size="small"
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 px-1">
@@ -146,112 +135,53 @@ export function MobileSubmissionsList({
             descLabel="Highest first"
           />
         </FilterChip>
-        <FilterChip label="Rating">
-          <SortColumnFilter
-            sortKey="rating"
-            activeKey={filterState.sortKey}
-            activeDir={filterState.sortDir}
-            onChange={setSort}
-            ascLabel="Lowest first"
-            descLabel="Highest first"
-          />
-        </FilterChip>
       </div>
-
-      <AnimatePresence initial={false}>
-        {selection.selectedCount > 0 && (
-          <motion.div
-            key="selection-bar"
-            initial={
-              reduceMotion
-                ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: -12 }
-            }
-            animate={
-              reduceMotion
-                ? { opacity: 1 }
-                : { opacity: 1, height: "auto", marginBottom: 0 }
-            }
-            exit={
-              reduceMotion
-                ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: -12 }
-            }
-            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="overflow-hidden"
-          >
-            <MobileSelectionBar
-              selectedCount={selection.selectedCount}
-              allSelected={selection.allSelected}
-              onSelectAll={selection.selectAll}
-              onDeselectAll={selection.clear}
-              onDeleteSelected={() => setBulkDeleteOpen(true)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         {submissions.length > 0 ? (
-          submissions.map((submission) => (
+          submissions.map((submission, rowIndex) => (
             <MobileSubmissionItem
               key={submission.listing_version_id}
               submission={submission}
-              selected={selection.isSelected(submission.listing_version_id)}
-              onToggleSelected={() =>
-                selection.toggle(submission.listing_version_id)
-              }
+              rowIndex={rowIndex}
               onView={onView}
               onEdit={onEdit}
               onDelete={onDelete}
+              creatorUsername={creatorUsername}
             />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
             <Text variant="body-medium" className="text-textBlack">
-              No submissions match these filters
+              {debouncedSearch
+                ? `No submissions match "${debouncedSearch}"`
+                : "No submissions match these filters"}
             </Text>
-            <Button variant="secondary" size="small" onClick={onResetFilters}>
-              Clear filters
-            </Button>
+            {debouncedSearch ? (
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={() => onSearchChange("")}
+              >
+                Clear search
+              </Button>
+            ) : (
+              <Button variant="secondary" size="small" onClick={onResetFilters}>
+                Clear filters
+              </Button>
+            )}
           </div>
         )}
+        {pagination && onPageChange ? (
+          <div className="border-t border-zinc-100">
+            <Pagination
+              pagination={pagination}
+              onPageChange={onPageChange}
+              disabled={isFetching}
+            />
+          </div>
+        ) : null}
       </div>
-
-      <Dialog
-        title="Delete selected submissions?"
-        styling={{ maxWidth: "420px" }}
-        controlled={{
-          isOpen: bulkDeleteOpen,
-          set: (open) => setBulkDeleteOpen(open),
-        }}
-      >
-        <Dialog.Content>
-          <Text variant="body" className="text-zinc-700">
-            This will remove {selection.selectedCount} submission
-            {selection.selectedCount === 1 ? "" : "s"} from the store. This
-            action cannot be undone.
-          </Text>
-          <Dialog.Footer>
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={() => setBulkDeleteOpen(false)}
-              disabled={isBulkDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="small"
-              onClick={handleBulkDelete}
-              loading={isBulkDeleting}
-            >
-              {isBulkDeleting ? "Deleting" : "Delete selected"}
-            </Button>
-          </Dialog.Footer>
-        </Dialog.Content>
-      </Dialog>
     </motion.section>
   );
 }

@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
@@ -15,7 +16,7 @@ from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_database_manager_async_client, get_scheduler_client
 from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -50,9 +51,40 @@ from .utils import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+
+async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
+    """Best-effort client-side wrapper around the chat-share auto-link hook.
+
+    The server-side function ``link_new_execution_to_chat_share`` has its
+    own try/except (db.py) so server-raised exceptions never bubble.  But
+    the call goes over the DatabaseManager RPC boundary, and transport-
+    layer failures (``ClientNotConnectedError``, RabbitMQ flap, retry
+    exhaustion) raise CLIENT-side — before the wrapped function runs.
+
+    Six callsites in this file dispatch the hook from inside ``run_agent``,
+    which must never crash because the wrapper SDK turns an orphan
+    ``tool_use`` into "The model returned an empty response."  So catch
+    everything here and log; the owner can recover by re-toggling share
+    (``_collect_execution_ids_from_messages`` backfills at re-enable time).
+    """
+    try:
+        await get_database_manager_async_client().link_new_execution_to_chat_share(
+            session_id=session_id, execution_id=execution_id
+        )
+    except Exception:
+        logger.warning(
+            "link_new_execution_to_chat_share RPC failed for session=%s "
+            "execution=%s; owner can re-share to recover",
+            session_id,
+            execution_id,
+            exc_info=True,
+        )
+
+
 # Constants for response messages
 MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
 MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
+SCHEDULED_STATUS = "SCHEDULED"
 MSG_ASK_USER_FOR_VALUES = (
     "Ask the user what values to use, or call again with use_defaults=true "
     "to run with default values."
@@ -67,6 +99,7 @@ class RunAgentInput(BaseModel):
 
     username_agent_slug: str = ""
     library_agent_id: str = ""
+    preset_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     use_defaults: bool = False
     schedule_name: str = ""
@@ -74,13 +107,18 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
+    save_as_preset: bool = False
+    preset_name: str = ""
+    preset_description: str = ""
 
     @field_validator(
         "username_agent_slug",
         "library_agent_id",
+        "preset_id",
         "schedule_name",
         "cron",
         "timezone",
+        "preset_name",
         mode="before",
     )
     @classmethod
@@ -112,7 +150,9 @@ class RunAgentTool(BaseTool):
             "and surfaces the inline credentials-setup card if anything is missing — "
             "do NOT redirect to the Builder for credential setup. "
             "Identify by username_agent_slug ('user/agent') or library_agent_id. "
-            "For scheduling, provide schedule_name + cron."
+            "For scheduling, provide schedule_name + cron. To run a saved preset, "
+            "pass preset_id (alone). Pass save_as_preset=true (+ preset_name) to save "
+            "these inputs as a reusable preset while running."
         )
 
     @property
@@ -127,6 +167,14 @@ class RunAgentTool(BaseTool):
                 "library_agent_id": {
                     "type": "string",
                     "description": "Library agent ID.",
+                },
+                "preset_id": {
+                    "type": "string",
+                    "description": (
+                        "Run a saved preset by ID (uses its stored inputs + "
+                        "credentials; 'inputs' override individual fields). Use "
+                        "alone — not with an agent identifier or save_as_preset."
+                    ),
                 },
                 "inputs": {
                     "type": "object",
@@ -192,6 +240,12 @@ class RunAgentTool(BaseTool):
         if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
+
+        # Running a saved preset is a distinct path (uses the preset's stored
+        # graph + inputs + credentials). Handle it before agent-identifier
+        # resolution below.
+        if params.preset_id:
+            return await self._handle_preset_run(user_id, session, params)
 
         # Validate at least one identifier is provided
         has_slug = params.username_agent_slug and "/" in params.username_agent_slug
@@ -290,6 +344,30 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
 
+            # Webhook-trigger agents can't be run or scheduled directly — they
+            # fire on incoming HTTP events. Hand off to the trigger-setup tool,
+            # surfacing the same AgentDetails (with trigger_info) that run_agent
+            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            if graph.has_external_trigger:
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
+                )
+                return AgentDetailsResponse(
+                    message=(
+                        f"Agent '{graph.name}' runs on a webhook trigger, so it "
+                        "can't be run or scheduled directly. Set it up with "
+                        "setup_agent_webhook_trigger using the trigger block's "
+                        "config (see trigger_info.config_schema). For provider "
+                        "webhooks (e.g. GitHub), ask the user which connected "
+                        "account to register the webhook under — never auto-pick."
+                    ),
+                    session_id=session_id,
+                    agent=self._build_agent_details(graph, credentials),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
             # Step 2: Check credentials and inputs
             graph_credentials, prereq_error = await self._check_prerequisites(
                 graph=graph,
@@ -302,7 +380,7 @@ class RunAgentTool(BaseTool):
 
             # Step 3: Execute or Schedule
             if is_schedule:
-                return await self._schedule_agent(
+                result = await self._schedule_agent(
                     user_id=user_id,
                     session=session,
                     graph=graph,
@@ -313,7 +391,7 @@ class RunAgentTool(BaseTool):
                     timezone=params.timezone,
                 )
             else:
-                return await self._run_agent(
+                result = await self._run_agent(
                     user_id=user_id,
                     session=session,
                     graph=graph,
@@ -322,6 +400,20 @@ class RunAgentTool(BaseTool):
                     wait_for_result=params.wait_for_result,
                     dry_run=params.dry_run,
                 )
+
+            # Step 4: persist the validated config as a reusable preset — only
+            # after the run/schedule actually started, so a failed operation
+            # (e.g. schedule validation, credential race) doesn't orphan a preset.
+            if isinstance(result, ExecutionStartedResponse):
+                saved_preset_id = await self._maybe_save_preset(
+                    user_id=user_id,
+                    graph=graph,
+                    graph_credentials=graph_credentials,
+                    params=params,
+                )
+                if saved_preset_id:
+                    result.saved_preset_id = saved_preset_id
+            return result
 
         except NotFoundError as e:
             return ErrorResponse(
@@ -380,9 +472,7 @@ class RunAgentTool(BaseTool):
         credentials: list[CredentialsMetaInput],
     ) -> AgentDetails:
         """Build AgentDetails from a graph."""
-        trigger_info = (
-            graph.trigger_setup_info.model_dump() if graph.trigger_setup_info else None
-        )
+        trigger_info = graph.trigger_setup_info
         return AgentDetails(
             id=graph.id,
             name=graph.name,
@@ -591,6 +681,133 @@ class RunAgentTool(BaseTool):
 
         return graph_credentials, None
 
+    async def _handle_preset_run(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        params: RunAgentInput,
+    ) -> ToolResponseBase:
+        """Run a saved preset by id (mirrors POST /presets/{id}/execute)."""
+        session_id = session.session_id
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required. Please sign in to use this tool.",
+                session_id=session_id,
+            )
+        if params.username_agent_slug or params.library_agent_id:
+            return ErrorResponse(
+                message=(
+                    "Use either preset_id or an agent identifier "
+                    "(username_agent_slug / library_agent_id), not both."
+                ),
+                session_id=session_id,
+            )
+        if params.save_as_preset:
+            return ErrorResponse(
+                message=(
+                    "save_as_preset can't be combined with preset_id — "
+                    "the preset already exists."
+                ),
+                session_id=session_id,
+            )
+        if params.schedule_name or params.cron:
+            return ErrorResponse(
+                message=(
+                    "preset_id runs the preset now; schedule it separately instead."
+                ),
+                session_id=session_id,
+            )
+
+        preset = await library_db().get_preset(
+            user_id=user_id, preset_id=params.preset_id
+        )
+        if not preset:
+            return ErrorResponse(
+                message=f"Preset '{params.preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
+        graph = await graph_db().get_graph(
+            preset.graph_id, preset.graph_version, user_id=user_id
+        )
+        if not graph:
+            return ErrorResponse(
+                message=(
+                    f"The agent for preset '{params.preset_id}' is not "
+                    "accessible (anymore)."
+                ),
+                session_id=session_id,
+            )
+
+        # Builder-bound sessions can only run their bound agent — enforce the
+        # same guard as the regular run path so a preset for a different graph
+        # can't execute in a builder-bound chat.
+        builder_graph_id = session.metadata.builder_graph_id
+        if builder_graph_id and graph.id != builder_graph_id:
+            return ErrorResponse(
+                message=(
+                    "This chat is bound to the builder's current agent. "
+                    "Running a preset for a different agent is not allowed here."
+                ),
+                error="builder_session_graph_mismatch",
+                session_id=session_id,
+            )
+
+        # A webhook-triggered preset fires on its external event; it has no
+        # runnable payload here, so executing it directly would fail downstream.
+        # Reject cleanly (matching run_agent's has_external_trigger guard).
+        if graph.has_external_trigger:
+            return ErrorResponse(
+                message=(
+                    f"Preset '{params.preset_id}' is a webhook trigger — it runs "
+                    "automatically when its event fires, so it can't be run on "
+                    "demand. Use update_preset to reconfigure or pause it "
+                    "(is_active=false), or delete_preset to remove it."
+                ),
+                error="preset_is_webhook_trigger",
+                session_id=session_id,
+            )
+
+        merged_inputs = {**preset.inputs, **params.inputs}
+        return await self._run_agent(
+            user_id=user_id,
+            session=session,
+            graph=graph,
+            graph_credentials=preset.credentials,
+            inputs=merged_inputs,
+            wait_for_result=params.wait_for_result,
+            dry_run=params.dry_run,
+            preset_id=preset.id,
+        )
+
+    async def _maybe_save_preset(
+        self,
+        *,
+        user_id: str,
+        graph: GraphModel,
+        graph_credentials: dict[str, CredentialsMetaInput],
+        params: RunAgentInput,
+    ) -> str | None:
+        """Persist the validated run config as a reusable preset when requested.
+
+        Returns the new preset id, or None when save_as_preset wasn't set.
+        """
+        if not params.save_as_preset:
+            return None
+        created = await library_db().create_preset(
+            user_id=user_id,
+            preset=LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=params.preset_name or graph.name,
+                description=params.preset_description,
+                inputs=params.inputs,
+                credentials=graph_credentials,
+                is_active=True,
+            ),
+        )
+        return created.id
+
     async def _run_agent(
         self,
         user_id: str,
@@ -600,6 +817,7 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         dry_run: bool,
         wait_for_result: int = 0,
+        preset_id: str | None = None,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
@@ -631,6 +849,7 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
                 dry_run=dry_run,
+                preset_id=preset_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(
@@ -713,6 +932,9 @@ class RunAgentTool(BaseTool):
                             execution.id,
                             exc_info=True,
                         )
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return AgentOutputResponse(
                     message=(
                         f"Agent '{library_agent.name}' completed successfully. "
@@ -734,25 +956,44 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share the failed run too — share-modal users may
+                # want public viewers to drill into the failure.  Without
+                # this hook, ``_collect_execution_ids_from_messages`` can't
+                # backfill failed runs either (ErrorResponse payload type
+                # isn't in the scanned set).
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution failed. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share terminated runs (cancelled / killed) for the
+                # same reason as the FAILED branch — backfill at re-share
+                # time won't pick them up.
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution was terminated. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
@@ -770,6 +1011,9 @@ class RunAgentTool(BaseTool):
                 )
             else:
                 status = completed.status.value if completed else "unknown"
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is still {status} after "
@@ -786,6 +1030,7 @@ class RunAgentTool(BaseTool):
                     status=status,
                 )
 
+        await _safe_link_to_chat_share(session_id=session_id, execution_id=execution.id)
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "
@@ -908,4 +1153,5 @@ class RunAgentTool(BaseTool):
             graph_name=library_agent.name,
             library_agent_id=library_agent.id,
             library_agent_link=library_agent_link,
+            status=SCHEDULED_STATUS,
         )

@@ -20,6 +20,7 @@ import {
   TrashIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -780,7 +781,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
@@ -788,7 +789,8 @@ export function GenericTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          animate={isStreaming}
+          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>
 

@@ -1,7 +1,7 @@
 import {
   ChartLineUpIcon,
+  ChatsCircleIcon,
   CreditCardIcon,
-  IdentificationBadgeIcon,
   KeyIcon,
   PlugsConnectedIcon,
   SlidersHorizontalIcon,
@@ -18,9 +18,9 @@ export interface SettingsNavItem {
 export const settingsNavItems: SettingsNavItem[] = [
   { label: "Profile", href: "/settings/profile", Icon: UserIcon },
   {
-    label: "Creator Dashboard",
-    href: "/settings/creator-dashboard",
-    Icon: ChartLineUpIcon,
+    label: "Account",
+    href: "/settings/account",
+    Icon: SlidersHorizontalIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {
@@ -28,15 +28,11 @@ export const settingsNavItems: SettingsNavItem[] = [
     href: "/settings/integrations",
     Icon: PlugsConnectedIcon,
   },
-  {
-    label: "Preferences",
-    href: "/settings/preferences",
-    Icon: SlidersHorizontalIcon,
-  },
+  { label: "Bots", href: "/settings/bots", Icon: ChatsCircleIcon },
   { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: KeyIcon },
   {
-    label: "OAuth Apps",
-    href: "/settings/oauth-apps",
-    Icon: IdentificationBadgeIcon,
+    label: "Creator Dashboard",
+    href: "/settings/creator-dashboard",
+    Icon: ChartLineUpIcon,
   },
 ];

@@ -56,6 +56,7 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionChatStatus,
   } = useChatSession({ dryRun: isDryRun });
 
   const {
@@ -147,7 +148,7 @@ export function useCopilotPage() {
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, appendChip } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -187,7 +188,7 @@ export function useCopilotPage() {
 
       try {
         await queueFollowUpMessage(sessionId, trimmed);
-        appendChip(trimmed);
+        queueMessage(trimmed);
       } catch (err) {
         if (
           err instanceof Error &&
@@ -252,5 +253,6 @@ export function useCopilotPage() {
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionChatStatus,
   };
 }

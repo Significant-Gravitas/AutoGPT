@@ -176,6 +176,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Update Cell](block-integrations/google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](block-integrations/google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
 | [Google Sheets Write](block-integrations/google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
+| [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
+| [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persist key-value information for the current user |
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
@@ -354,6 +356,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
+| [Send Slack Message](block-integrations/slack/blocks.md#send-slack-message) | Send a text message to any Slack channel, DM, or thread |
 | [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
 | [Send Telegram Document](block-integrations/telegram/blocks.md#send-telegram-document) | Send a document (any file type) to a Telegram chat |
 | [Send Telegram Message](block-integrations/telegram/blocks.md#send-telegram-message) | Send a text message to a Telegram chat |

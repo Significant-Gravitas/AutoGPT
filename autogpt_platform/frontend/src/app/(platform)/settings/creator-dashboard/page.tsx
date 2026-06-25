@@ -21,10 +21,16 @@ export default function SettingsCreatorDashboardPage() {
   const {
     submissions,
     visibleSubmissions,
+    pagination,
+    onPageChange,
+    isFetching,
     stats,
     filterState,
     setFilterState,
     resetFilters,
+    searchInput,
+    setSearchInput,
+    debouncedSearch,
     isLoading,
     error,
     refetch,
@@ -37,6 +43,7 @@ export default function SettingsCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   } = useCreatorDashboardPage();
 
   if (error) {
@@ -57,7 +64,8 @@ export default function SettingsCreatorDashboardPage() {
     return <DashboardSkeleton />;
   }
 
-  const isEmpty = submissions.length === 0;
+  const isEmpty =
+    submissions.length === 0 && !debouncedSearch && stats.total === 0;
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -75,26 +83,40 @@ export default function SettingsCreatorDashboardPage() {
           <div className="hidden md:block">
             <SubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              debouncedSearch={debouncedSearch}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
               index={2}
             />
           </div>
           <div className="md:hidden">
             <MobileSubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              debouncedSearch={debouncedSearch}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
             />
           </div>
         </>

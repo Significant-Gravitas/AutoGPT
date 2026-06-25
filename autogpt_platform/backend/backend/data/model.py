@@ -72,7 +72,7 @@ class User(BaseModel):
         None, description="Top up configuration"
     )
     subscription_tier: SubscriptionTier = Field(
-        default=SubscriptionTier.BASIC, description="User subscription tier"
+        default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
 
     # Notification preferences
@@ -148,7 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
-            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.BASIC,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
@@ -815,8 +815,21 @@ class UserTransaction(BaseModel):
     extra_data: str | None = None
 
 
+class CreditTransactionItem(BaseModel):
+    transaction_key: str = ""
+    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    user_id: str
+
+
 class TransactionHistory(BaseModel):
-    transactions: list[UserTransaction]
+    transactions: list[CreditTransactionItem]
     next_transaction_time: datetime | None
 
 

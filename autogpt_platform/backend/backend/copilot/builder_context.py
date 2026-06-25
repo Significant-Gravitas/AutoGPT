@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
@@ -31,10 +31,14 @@ BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
 
 
 def resolve_session_permissions(
-    session: ChatSession | None,
+    session: ChatSessionInfo | None,
 ) -> CopilotPermissions | None:
     """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
-    return ``None`` (unrestricted) otherwise."""
+    return ``None`` (unrestricted) otherwise.
+
+    Reads ``metadata.builder_graph_id`` only — works on either the bare
+    ``ChatSessionInfo`` (no messages) or the full ``ChatSession``.
+    """
     if session is None or not session.metadata.builder_graph_id:
         return None
     return CopilotPermissions(
@@ -66,6 +70,40 @@ _BUILDER_RUN_AGENT_GUIDANCE = (
     "keep `dry_run=True, wait_for_result=120`: blocking is required so "
     "you can inspect `execution.node_executions` and report the verdict "
     "in the same turn."
+)
+
+
+# Steers the model toward edit_agent on the bound graph. Empty builder
+# graphs (version=1, no nodes) tempt the model to reach for create_agent;
+# that tool is hidden in builder sessions and the model has no UI to ask
+# the user for permission — without explicit guidance it would otherwise
+# narrate a phantom Claude-Code-style approval prompt.
+def _format_blocked_tool_list(tools: tuple[str, ...]) -> str:
+    """Render BUILDER_BLOCKED_TOOLS as ``a`, ``b`, and ``c``
+    so the prose stays in sync with the tuple."""
+    quoted = [f"`{name}`" for name in tools]
+    if len(quoted) <= 1:
+        return quoted[0] if quoted else ""
+    if len(quoted) == 2:
+        return f"{quoted[0]} and {quoted[1]}"
+    return f"{', '.join(quoted[:-1])}, and {quoted[-1]}"
+
+
+_BUILDER_TOOL_GUIDANCE = (
+    "This builder panel is bound to the graph shown in <builder_context>. "
+    "Use `edit_agent` against that graph id for every modification, "
+    "including populating an empty graph (version=1, no nodes) — "
+    "`edit_agent` accepts the same node/link payload that `create_agent` "
+    "would, so there is no reason to reach for `create_agent` here. "
+    "Typical sequence for a new request: call `find_block` to discover "
+    "the block ids and input schemas you need, then call `edit_agent` "
+    "once with the full set of nodes and links. "
+    "Never ask the user to approve or allow a tool — there is no "
+    "permission prompt UI in the builder chat, so any 'click Allow' "
+    "narration will leave the user stuck. "
+    f"The tools {_format_blocked_tool_list(BUILDER_BLOCKED_TOOLS)} are "
+    "intentionally unavailable in builder sessions (the building guide "
+    "is already embedded in <building_guide> below)."
 )
 
 
@@ -160,6 +198,9 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
     # code fences, and example JSON.
     return (
         f"\n\n<{BUILDER_SESSION_TAG}>\n"
+        f"<tool_usage>\n"
+        f"{_BUILDER_TOOL_GUIDANCE}\n"
+        f"</tool_usage>\n"
         f"<run_agent_dispatch_mode>\n"
         f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
         f"</run_agent_dispatch_mode>\n"
