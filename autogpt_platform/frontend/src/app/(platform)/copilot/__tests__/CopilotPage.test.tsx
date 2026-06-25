@@ -27,6 +27,17 @@ vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
 vi.mock("../components/RateLimitResetDialog/RateLimitResetDialog", () => ({
   RateLimitResetDialog: () => null,
 }));
+vi.mock("../components/RateLimitResetDialog/RateLimitGate", () => ({
+  RateLimitGate: () => null,
+}));
+vi.mock("../components/FileDropZone/FileDropZone", () => ({
+  FileDropZone: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+vi.mock("../useIsMobile", () => ({
+  useIsMobile: () => false,
+}));
 vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
   ScaleLoader: () => <div data-testid="scale-loader" />,
 }));
@@ -48,7 +59,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     const data = {
       daily: null,
       weekly: null,
-      tier: "FREE",
+      tier: "BASIC",
       reset_cost: 0,
     };
     if (typeof opts?.query?.select === "function") {
@@ -67,6 +78,21 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
   },
   useGetFlag: () => false,
+}));
+
+// Auth check moved into CopilotPage directly — default to a logged-in
+// user so the page renders past its loading gate.
+const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => mockSupabase(),
+}));
+
+// sessionId is read via nuqs to key the chat-host subtree; stub it so
+// tests can control the key/session without hitting URL state.
+let mockSessionIdForQueryState: string | null = null;
+vi.mock("nuqs", () => ({
+  parseAsString: {},
+  useQueryState: () => [mockSessionIdForQueryState, vi.fn()],
 }));
 
 // Build the base mock return value for useCopilotPage
@@ -89,23 +115,9 @@ const basePageState = {
   hasMoreMessages: false,
   isLoadingMore: false,
   loadMore: vi.fn(),
-  isMobile: false,
-  isDrawerOpen: false,
-  sessions: [],
-  isLoadingSessions: false,
-  handleOpenDrawer: vi.fn(),
-  handleCloseDrawer: vi.fn(),
-  handleDrawerOpenChange: vi.fn(),
-  handleSelectSession: vi.fn(),
-  handleNewChat: vi.fn(),
-  sessionToDelete: null,
-  isDeleting: false,
-  handleConfirmDelete: vi.fn(),
-  handleCancelDelete: vi.fn(),
-  historicalDurations: {},
+  turnStats: new Map(),
   rateLimitMessage: null,
   dismissRateLimit: vi.fn(),
-  isDryRun: false,
   sessionDryRun: false,
 };
 
@@ -119,6 +131,12 @@ afterEach(() => {
   cleanup();
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
+  mockSupabase.mockReset();
+  mockSupabase.mockImplementation(() => ({
+    isUserLoading: false,
+    isLoggedIn: true,
+  }));
+  mockSessionIdForQueryState = null;
 });
 
 describe("CopilotPage test-mode banner", () => {
@@ -130,6 +148,7 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("does not show test-mode banner when session exists but sessionDryRun is false", () => {
+    mockSessionIdForQueryState = "session-abc";
     mockUseCopilotPage.mockReturnValue({
       ...basePageState,
       sessionId: "session-abc",
@@ -142,6 +161,7 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows test-mode banner when session exists and sessionDryRun is true", () => {
+    mockSessionIdForQueryState = "session-abc";
     mockUseCopilotPage.mockReturnValue({
       ...basePageState,
       sessionId: "session-abc",
@@ -166,11 +186,8 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows loading spinner when user is loading", () => {
-    mockUseCopilotPage.mockReturnValue({
-      ...basePageState,
-      isUserLoading: true,
-      isLoggedIn: false,
-    });
+    // Auth check moved to CopilotPage — mock useSupabase directly.
+    mockSupabase.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();

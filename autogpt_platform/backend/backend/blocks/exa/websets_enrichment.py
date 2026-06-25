@@ -25,6 +25,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability
@@ -205,6 +206,7 @@ class ExaCreateEnrichmentBlock(Block):
         sdk_enrichment = await aexa.websets.enrichments.create(
             webset_id=input_data.webset_id, params=payload
         )
+        merge_exa_cost(self, sdk_enrichment)
 
         enrichment_id = sdk_enrichment.id
         status = (
@@ -226,6 +228,7 @@ class ExaCreateEnrichmentBlock(Block):
                 current_enrich = await aexa.websets.enrichments.get(
                     webset_id=input_data.webset_id, id=enrichment_id
                 )
+                merge_exa_cost(self, current_enrich)
                 current_status = (
                     current_enrich.status.value
                     if hasattr(current_enrich.status, "value")
@@ -235,6 +238,7 @@ class ExaCreateEnrichmentBlock(Block):
                 if current_status in ["completed", "failed", "cancelled"]:
                     # Estimate items from webset searches
                     webset = await aexa.websets.get(id=input_data.webset_id)
+                    merge_exa_cost(self, webset)
                     if webset.searches:
                         for search in webset.searches:
                             if search.progress:
@@ -332,6 +336,7 @@ class ExaGetEnrichmentBlock(Block):
         sdk_enrichment = await aexa.websets.enrichments.get(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
+        merge_exa_cost(self, sdk_enrichment)
 
         enrichment = WebsetEnrichmentModel.from_sdk(sdk_enrichment)
 
@@ -425,6 +430,7 @@ class ExaUpdateEnrichmentBlock(Block):
         try:
             response = await Requests().patch(url, headers=headers, json=payload)
             data = response.json()
+            # PATCH /websets/{id}/enrichments/{id} doesn't return costDollars.
 
             yield "enrichment_id", data.get("id", "")
             yield "status", data.get("status", "")
@@ -477,6 +483,7 @@ class ExaDeleteEnrichmentBlock(Block):
         deleted_enrichment = await aexa.websets.enrichments.delete(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
+        merge_exa_cost(self, deleted_enrichment)
 
         yield "enrichment_id", deleted_enrichment.id
         yield "success", "true"
@@ -528,12 +535,14 @@ class ExaCancelEnrichmentBlock(Block):
         canceled_enrichment = await aexa.websets.enrichments.cancel(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
+        merge_exa_cost(self, canceled_enrichment)
 
         # Try to estimate how many items were enriched before cancellation
         items_enriched = 0
         items_response = await aexa.websets.items.list(
             webset_id=input_data.webset_id, limit=100
         )
+        merge_exa_cost(self, items_response)
 
         for sdk_item in items_response.data:
             # Check if this enrichment is present

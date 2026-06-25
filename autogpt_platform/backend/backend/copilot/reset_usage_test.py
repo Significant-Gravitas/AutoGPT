@@ -282,14 +282,16 @@ class TestResetCopilotUsage:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 503
             assert "not been charged" in exc_info.value.detail
-            mock_credit_model.top_up_credits.assert_awaited_once()
+            mock_credit_model.grant_credits.assert_awaited_once()
+            # Refund must NOT route through Stripe top-up.
+            mock_credit_model.top_up_credits.assert_not_called()
 
     async def test_redis_reset_failure_refund_also_fails(self):
         """When both reset and refund fail, error message reflects the truth."""
 
         mock_credit_model = AsyncMock()
         mock_credit_model.spend_credits.return_value = 1500
-        mock_credit_model.top_up_credits.side_effect = RuntimeError("db down")
+        mock_credit_model.grant_credits.side_effect = RuntimeError("db down")
 
         cfg = _make_config()
         with (

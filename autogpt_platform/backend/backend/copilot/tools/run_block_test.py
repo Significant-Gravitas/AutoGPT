@@ -479,6 +479,190 @@ class TestRunBlockInputValidation:
 
         assert isinstance(response, BlockDetailsResponse)
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_returns_block_details_without_executing(self):
+        """validate_only=True returns BlockDetailsResponse and never calls execute."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        # Block with zero required fields — would normally execute on {}.
+        mock_block = make_mock_block_with_schema(
+            block_id="noop-id",
+            name="Noop",
+            input_properties={"optional": {"type": "string"}},
+            required_fields=[],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="noop-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "all required inputs provided" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_reports_missing_required(self):
+        """validate_only surfaces missing required fields without executing."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="needs-prompt-id",
+            name="AI Gen",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="needs-prompt-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "'prompt'" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_bypasses_picker_setup_card(self):
+        """Regression guard for Sentry r3135709745: validate_only=True on a
+        block with missing picker-backed required fields must NOT return a
+        SetupRequirementsResponse (that would render the picker, violating
+        the no-side-effects contract). BlockDetailsResponse instead."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                    "auto_credentials": {"provider": "google"},
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+                validate_only=True,
+            )
+
+        from .models import SetupRequirementsResponse
+
+        assert not isinstance(response, SetupRequirementsResponse)
+        assert isinstance(response, BlockDetailsResponse)
+        assert "'spreadsheet'" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_picker_field_returns_setup_requirements(self):
+        """When a missing required field is picker-backed, skip the schema
+        preview and return SetupRequirementsResponse directly so the
+        frontend renders the picker inline."""
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                    "google_drive_picker_config": {
+                        "allowed_views": ["SPREADSHEETS"],
+                    },
+                    "auto_credentials": {"provider": "google"},
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+                dry_run=False,
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "'spreadsheet'" in response.message
+        inputs = response.setup_info.requirements["inputs"]
+        picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
+        assert picker_field is not None
+        assert picker_field["format"] == "google-drive-picker"
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
@@ -874,3 +1058,193 @@ class TestExecuteBlockTimeout:
             f"spend_credits must be called exactly once, got {len(spend_calls)} "
             "(double-charge — sentry r3105216985)"
         )
+
+
+class TestRunBlockCredentialsHidden:
+    """The schema returned to the LLM must hide credential fields.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out (Replicate "Seed Dance 2.0" copilot session, May 2026 release).
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_credentials_field_stripped_from_block_details(self):
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="replicate-block-id",
+            name="Replicate Model",
+            input_properties={
+                "credentials": {
+                    "type": "object",
+                    "credentials_provider": ["replicate"],
+                    "credentials_types": ["api_key"],
+                },
+                "model_name": {"type": "string"},
+                "model_inputs": {"type": "object"},
+            },
+            required_fields=["credentials", "model_name"],
+        )
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="replicate-block-id",
+                input_data={},
+                dry_run=False,
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        inputs = response.block.inputs
+        assert "credentials" not in inputs.get("properties", {}), (
+            "credentials picker shape leaked into LLM-facing schema — the LLM "
+            "will try to construct it and fail"
+        )
+        assert "credentials" not in inputs.get(
+            "required", []
+        ), "credentials must not be listed as required — backend resolves it"
+        assert "model_name" in inputs["properties"]
+        assert "model_name" in inputs["required"]
+
+    def test_strip_credentials_helper(self):
+        """Direct unit test for the schema-stripping helper."""
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {
+            "properties": {
+                "credentials": {"type": "object"},
+                "prompt": {"type": "string"},
+            },
+            "required": ["credentials", "prompt"],
+        }
+        cleaned = _strip_credentials_from_schema(schema, {"credentials"})
+        assert "credentials" not in cleaned["properties"]
+        assert cleaned["required"] == ["prompt"]
+        # Original must not be mutated.
+        assert "credentials" in schema["properties"]
+        assert schema["required"] == ["credentials", "prompt"]
+
+    def test_strip_credentials_helper_no_creds(self):
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {"properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}
+        # Empty credentials_fields → return unchanged.
+        assert _strip_credentials_from_schema(schema, set()) is schema
+
+    def test_strip_credentials_helper_drops_empty_required(self):
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {
+            "properties": {"credentials": {"type": "object"}},
+            "required": ["credentials"],
+        }
+        cleaned = _strip_credentials_from_schema(schema, {"credentials"})
+        assert "required" not in cleaned
+
+
+class TestExecuteBlockUserTimezoneAccessor:
+    """The user-timezone lookup must go through the connection-aware
+    ``user_db()`` accessor (sentry ClientNotConnectedError).
+
+    ``execute_block`` runs in the copilot process, where the local Prisma
+    engine is NOT connected (``db.is_connected()`` is False) and DB reads are
+    served by the DatabaseManager RPC client. PR #13247 added a user lookup via
+    the directly-imported ``backend.data.user`` module, which calls Prisma
+    directly and blew up with ``ClientNotConnectedError``. Routing through the
+    ``user_db()`` accessor picks the RPC client when disconnected.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timezone_lookup_uses_accessor_not_direct_prisma(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="tz-block-id",
+            name="Timezone Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        # Accessor returns the RPC client (disconnected-process behaviour);
+        # the direct ``user_db.get_user_by_id`` would raise ClientNotConnectedError.
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(
+            return_value=MagicMock(timezone="America/New_York")
+        )
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-tz")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.user_db",
+                return_value=rpc_client,
+            ) as mock_user_db,
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="tz-block-id",
+                input_data={},
+                user_id="u-tz",
+                session_id="s-tz",
+                node_exec_id="n-tz",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+        # Went through the accessor, not the directly-imported module.
+        mock_user_db.assert_called_once()
+        rpc_client.get_user_by_id.assert_awaited_once_with("u-tz")
+        # The looked-up timezone was plumbed into the block's ExecutionContext.
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
+
+
+class _StubCreditDB:
+    async def get_credits(self, _user_id: str) -> int:
+        return 10_000
+
+    async def spend_credits(self, **kwargs):
+        return None

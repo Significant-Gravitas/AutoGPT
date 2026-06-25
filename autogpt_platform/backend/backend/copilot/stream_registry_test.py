@@ -7,6 +7,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import STREAM_LOCK_PREFIX
 from backend.copilot.executor.utils import get_session_lock_key
 
 
@@ -249,6 +250,14 @@ class _FakeRedis:
     async def hgetall(self, _key: str):
         return dict(self._meta)
 
+    async def hdel(self, _key: str, *fields: str) -> int:
+        removed = 0
+        for f in fields:
+            if f in self._meta:
+                del self._meta[f]
+                removed += 1
+        return removed
+
 
 @pytest.mark.asyncio
 async def test_mark_session_completed_releases_cluster_lock_on_success():
@@ -275,6 +284,76 @@ async def test_mark_session_completed_releases_cluster_lock_on_success():
 
     assert result is True
     assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_fires_user_queue_dispatcher():
+    """When a turn completes for ``user_id=u1`` (read from the session's
+    Redis meta), the slot-free hook must invoke
+    ``dispatch_next_for_user('u1')`` so the user's next queued session
+    can be promoted.  Per-user scoping: we don't dispatch for other
+    users (no global broadcast)."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+    dispatch_mock = AsyncMock(return_value=True)
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=dispatch_mock,
+        ),
+    ):
+        await stream_registry.mark_session_completed("sess-1")
+
+    dispatch_mock.assert_awaited_once_with("u1")
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_swallows_dispatcher_errors():
+    """The dispatcher firing after slot-free must not be able to break
+    the completion path — any exception from ``dispatch_next_for_user``
+    is logged and swallowed so a queue hiccup never blocks the turn's
+    cleanup."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=AsyncMock(side_effect=RuntimeError("queue brown-out")),
+        ),
+    ):
+        # No exception should bubble.
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
 
 
 @pytest.mark.asyncio
@@ -298,6 +377,7 @@ async def test_mark_session_completed_skips_lock_release_when_already_completed(
 
     assert result is False
     assert get_session_lock_key("sess-1") not in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" not in fake_redis.deleted_keys
     assert not any(
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
@@ -335,3 +415,105 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
     ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_releases_stream_lock():
+    """Force-completing a session (cancel / error) must DELETE both the
+    cluster lock and the SDK stream lock. If the stream lock isn't released
+    here, the next user turn races ahead of the SDK turn's finally block and
+    fails with stream_already_active until the 120s TTL expires."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed(
+            "sess-1", error_message="cancelled"
+        )
+
+    assert result is True
+    assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
+
+
+# ---------------------------------------------------------------------------
+# Replays must contain protocol chunks only. Redis cursor data parts are not
+# emitted because AI SDK resume needs the complete stream envelope from 0-0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
+    """During replay, the subscriber queue contains chunks plus terminal finish."""
+    import orjson
+
+    from backend.copilot.response_model import (
+        StreamTextDelta,
+        StreamTextEnd,
+        StreamTextStart,
+    )
+
+    # Three chunks recorded in Redis for a completed turn. Completed status
+    # means the listener branch is skipped and only the replay path runs,
+    # which keeps the test hermetic.
+    stream_key_msgs = [
+        (
+            "9999-0",
+            {"data": orjson.dumps(StreamTextStart(id="blk-1").model_dump()).decode()},
+        ),
+        (
+            "9999-1",
+            {
+                "data": orjson.dumps(
+                    StreamTextDelta(id="blk-1", delta="hi").model_dump()
+                ).decode()
+            },
+        ),
+        (
+            "9999-2",
+            {"data": orjson.dumps(StreamTextEnd(id="blk-1").model_dump()).decode()},
+        ),
+    ]
+
+    fake_redis = AsyncMock()
+    fake_redis.hgetall = AsyncMock(
+        return_value={
+            "user_id": "u1",
+            "session_id": "sess-1",
+            "turn_id": "turn-1",
+            "status": "completed",  # finished → no listener task
+        }
+    )
+    fake_redis.xread = AsyncMock(return_value=[("stream-key", stream_key_msgs)])
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session(
+            session_id="sess-1", user_id="u1", last_message_id="0-0"
+        )
+
+    assert queue is not None
+
+    delivered = []
+    while not queue.empty():
+        delivered.append(queue.get_nowait())
+
+    assert len(delivered) == 4
+    assert isinstance(delivered[0], StreamTextStart)
+    assert isinstance(delivered[1], StreamTextDelta)
+    assert isinstance(delivered[2], StreamTextEnd)
+    assert isinstance(delivered[3], stream_registry.StreamFinish)

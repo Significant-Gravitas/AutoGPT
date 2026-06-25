@@ -6,27 +6,48 @@ import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userR
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { UsageBar } from "../../components/UsageBar";
 
-const TIERS = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"] as const;
+const TIERS = [
+  "NO_TIER",
+  "BASIC",
+  "PRO",
+  "MAX",
+  "BUSINESS",
+  "ENTERPRISE",
+] as const;
 type Tier = (typeof TIERS)[number];
 
-const TIER_MULTIPLIERS: Record<Tier, string> = {
-  FREE: "1x base limits",
-  PRO: "5x base limits",
-  BUSINESS: "20x base limits",
-  ENTERPRISE: "60x base limits",
-};
-
 const TIER_COLORS: Record<Tier, string> = {
-  FREE: "bg-gray-100 text-gray-700",
+  NO_TIER: "bg-red-100 text-red-700",
+  BASIC: "bg-gray-100 text-gray-700",
   PRO: "bg-blue-100 text-blue-700",
+  MAX: "bg-indigo-100 text-indigo-700",
   BUSINESS: "bg-purple-100 text-purple-700",
   ENTERPRISE: "bg-amber-100 text-amber-700",
 };
+
+// Derives the per-tier label from the live, LaunchDarkly-driven multiplier map.
+// NO_TIER is paywalled (0 / absent), and tiers missing from the map fall back
+// to a generic label rather than a fabricated number.
+function tierLabel(
+  tier: Tier,
+  tierMultipliers?: Record<string, number>,
+): string {
+  if (tier === "NO_TIER") return "no access (paywalled)";
+
+  const multiplier = tierMultipliers?.[tier];
+  if (multiplier === undefined || multiplier <= 0) return "tier limits";
+
+  // Round to at most 2 decimals (5 → "5", 42.664 → "42.66").
+  const rounded = Math.round(multiplier * 100) / 100;
+  return `${rounded}× base limits`;
+}
 
 interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
   onTierChange?: (newTier: string) => Promise<void>;
+  /** Full per-tier multiplier map (incl. admin-managed tiers) from the admin rate-limit endpoint. */
+  tierMultipliers?: Record<string, number>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;
 }
@@ -35,6 +56,7 @@ export function RateLimitDisplay({
   data,
   onReset,
   onTierChange,
+  tierMultipliers,
   className,
 }: Props) {
   const [isResetting, setIsResetting] = useState(false);
@@ -44,7 +66,7 @@ export function RateLimitDisplay({
 
   const currentTier = TIERS.includes(data.tier as Tier)
     ? (data.tier as Tier)
-    : "FREE";
+    : "NO_TIER";
 
   async function handleReset() {
     const msg = resetWeekly
@@ -74,7 +96,7 @@ export function RateLimitDisplay({
       await onTierChange(newTier);
       toast({
         title: "Tier updated",
-        description: `Changed to ${newTier} (${TIER_MULTIPLIERS[newTier as Tier]}).`,
+        description: `Changed to ${newTier} (${tierLabel(newTier as Tier, tierMultipliers)}).`,
       });
     } catch {
       toast({
@@ -123,7 +145,7 @@ export function RateLimitDisplay({
         >
           {TIERS.map((tier) => (
             <option key={tier} value={tier}>
-              {tier} — {TIER_MULTIPLIERS[tier]}
+              {tier} — {tierLabel(tier, tierMultipliers)}
             </option>
           ))}
         </select>

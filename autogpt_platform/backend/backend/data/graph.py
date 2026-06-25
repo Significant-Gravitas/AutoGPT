@@ -27,7 +27,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -36,9 +36,7 @@ from backend.util.models import Pagination
 from backend.util.request import parse_url
 
 from .block import BlockInput
-from .db import BaseDbModel
-from .db import prisma as db
-from .db import query_raw_with_schema, transaction
+from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
 from .dynamic_fields import is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
@@ -163,52 +161,31 @@ class NodeModel(Node):
 
     def stripped_for_export(self) -> "NodeModel":
         """
-        Returns a copy of the node model, stripped of any non-transferable properties
+        Returns a copy of the node model with non-transferable references removed:
+        - fields the block schema declares as a `CredentialsMetaInput`
+          (point at the original owner's credentials store; importers must
+          wire up their own)
+        - fields the block schema marks with `secret: true` via
+          `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - `webhook_id` (points at the original owner's webhook subscription)
         """
         stripped_node = self.model_copy(deep=True)
 
-        # Remove credentials and other (possible) secrets from node input
         if stripped_node.input_default:
-            stripped_node.input_default = NodeModel._filter_secrets_from_node_input(
-                stripped_node.input_default, self.block.input_schema.jsonschema()
-            )
+            for field_name in self.block.input_schema.get_credentials_fields():
+                stripped_node.input_default.pop(field_name, None)
 
-        # Remove default secret value from secret input nodes
-        if (
-            stripped_node.block.block_type == BlockType.INPUT
-            and stripped_node.input_default.get("secret", False) is True
-            and "value" in stripped_node.input_default
-        ):
-            del stripped_node.input_default["value"]
+            schema_props = self.block.input_schema.jsonschema().get("properties", {})
+            for field_name, field_schema in schema_props.items():
+                if (
+                    isinstance(field_schema, dict)
+                    and field_schema.get("secret", False) is True
+                ):
+                    stripped_node.input_default.pop(field_name, None)
 
-        # Remove webhook info
         stripped_node.webhook_id = None
 
         return stripped_node
-
-    @staticmethod
-    def _filter_secrets_from_node_input(
-        input_data: BlockInput, schema: dict[str, Any] | None
-    ) -> BlockInput:
-        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
-        field_schemas = schema.get("properties", {}) if schema else {}
-        result = {}
-        for key, value in input_data.items():
-            field_schema: dict | None = field_schemas.get(key)
-            if (field_schema and field_schema.get("secret", False)) or (
-                any(sensitive_key in key.lower() for sensitive_key in sensitive_keys)
-                # Prevent removing `secret` flag on input nodes
-                and type(value) is not bool
-            ):
-                # This is a secret value -> filter this key-value pair out
-                continue
-            elif isinstance(value, dict):
-                result[key] = NodeModel._filter_secrets_from_node_input(
-                    value, field_schema
-                )
-            else:
-                result[key] = value
-        return result
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -343,9 +320,9 @@ class BaseGraph(GraphBaseMeta):
                         **{
                             k: v
                             for k, v in p.generate_schema().items()
-                            if k not in ["description", "default"]
+                            if k not in ["description", "default", "secret"]
                         },
-                        "secret": p.secret,
+                        "secret": False,
                         # Default value has to be set for advanced fields.
                         "advanced": p.advanced and p.value is not None,
                         "title": p.title or p.name,
@@ -440,8 +417,7 @@ class GraphModel(Graph, GraphMeta):
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
-
+        graph_credentials_inputs = self.regular_credentials_inputs
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
             f"{graph_credentials_inputs}"
@@ -620,6 +596,28 @@ class GraphModel(Graph, GraphMeta):
             for key, (field_info, node_field_pairs) in combined.items()
         }
 
+    @property
+    def regular_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials that need explicit user mapping (CredentialsMetaInput fields)."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if not v[0].is_auto_credential
+        }
+
+    @property
+    def auto_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if v[0].is_auto_credential
+        }
+
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
@@ -669,6 +667,21 @@ class GraphModel(Graph, GraphMeta):
                 graph_id := node.input_default.get("graph_id")
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
+
+        # Clear auto-credentials references (e.g., _credentials_id in
+        # GoogleDriveFile fields) so the new user must re-authenticate
+        # with their own account. We null the entire field rather than
+        # just the _credentials_id key — a partial object (e.g. a bare
+        # {"id": "...", "name": "..."} left over after stripping) would
+        # be rejected by the auto-credentials validator added below,
+        # breaking fork_graph() for agents that previously had a
+        # picker-selected Drive file.
+        for node in graph.nodes:
+            if not node.input_default:
+                continue
+            for key, value in list(node.input_default.items()):
+                if isinstance(value, dict) and "_credentials_id" in value:
+                    node.input_default[key] = None
 
     def validate_graph(
         self,
@@ -818,6 +831,30 @@ class GraphModel(Graph, GraphMeta):
                     ):
                         node_errors[node.id][field_name] = "This field is required"
 
+                # Validate field-level JSON-schema bound constraints
+                # (minimum/maximum/exclusiveMinimum/exclusiveMaximum and
+                # minLength/maxLength/minItems/maxItems — i.e. the keywords
+                # ``get_field_errors`` surfaces, see ``_INLINE_FIELD_ERROR_KEYWORDS``)
+                # so violations surface inline on the offending field via the
+                # same ``node_errors`` path used by structural checks. Skip
+                # fields whose value comes from an upstream link — the runtime
+                # value is unknown here, and the saved ``input_default`` for a
+                # linked field may be a placeholder.
+                linked_field_names = {
+                    sanitize_pin_name(link.sink_name)
+                    for link in input_links.get(node.id, [])
+                }
+                field_data = {
+                    k: v
+                    for k, v in {**node.input_default, **node_input_mask}.items()
+                    if sanitize_pin_name(k) not in linked_field_names
+                }
+                for field_name, message in InputSchema.get_field_errors(
+                    field_data
+                ).items():
+                    if field_name not in node_errors[node.id]:
+                        node_errors[node.id][field_name] = message
+
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
 
@@ -835,6 +872,90 @@ class GraphModel(Graph, GraphMeta):
                         and str(node_input_mask[name]).strip() != ""
                     )
                 )
+
+            # Validate auto-credentials fields (e.g. GoogleDriveFileField).
+            # Blocks with auto-credentials fields expect an *object* whose
+            # embedded `_credentials_id` carries the user's credential at
+            # run time — that field is only populated by a provider-specific
+            # picker (e.g. the Google Drive picker for google-drive-picker
+            # format). Hardcoding a bare ID or a partial object into
+            # `input_default` produces an agent that either fails save-time
+            # schema validation (bare string rejected by pydantic) or passes
+            # it but crashes at execution time because
+            # `_acquire_auto_credentials` has no `_credentials_id` to resolve.
+            # Catch the anti-pattern for any auto-credentials field; tailor
+            # the remediation text to whichever format is declared so that
+            # future auto-credentials pickers don't inherit a stale hint.
+            for kwarg_name, info in InputSchema.get_auto_credentials_fields().items():
+                field_name = info["field_name"]
+                field_schema = InputSchema.get_field_schema(field_name)
+
+                # An upstream link will supply the value at run time — fine.
+                has_incoming = any(
+                    sanitize_pin_name(link.sink_name) == sanitize_pin_name(field_name)
+                    for link in input_links.get(node.id, [])
+                )
+                if has_incoming:
+                    continue
+
+                value = node.input_default.get(field_name)
+                if value is None or value == "":
+                    # Nothing set and nothing linked. Existing required-field
+                    # check above already handles the "required but missing"
+                    # case; we don't double-report here.
+                    continue
+
+                picker_format = field_schema.get("format")
+                if picker_format == "google-drive-picker":
+                    remediation = (
+                        f"Add an AgentGoogleDriveFileInputBlock node to the "
+                        f"graph and link its 'result' output to "
+                        f"{field_name!r} instead. That block renders a "
+                        f"Google Drive picker at run time so whoever runs "
+                        f"the agent supplies their own credentials via the "
+                        f"picked file."
+                    )
+                else:
+                    # Generic fallback for any future auto-credentials format
+                    # we haven't written specific guidance for yet.
+                    remediation = (
+                        f"This field expects a picker-populated object "
+                        f"containing a '_credentials_id'. Wire the matching "
+                        f"input block for this provider into {field_name!r} "
+                        f"so whoever runs the agent supplies their own "
+                        f"credentials at run time."
+                    )
+
+                if isinstance(value, str):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} was set to a bare string ID. This "
+                        f"field expects an object carrying the user's "
+                        f"credentials; a hardcoded ID can't authenticate. "
+                        f"{remediation}"
+                    )
+                    continue
+
+                if isinstance(value, dict) and not value.get("_credentials_id"):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} is hardcoded without credentials "
+                        f"(no '_credentials_id'). This field needs the "
+                        f"user's OAuth credential, which is only populated "
+                        f"by the picker. {remediation}"
+                    )
+                    continue
+
+                # Catch-all: any other type (int, bool, list, ...) falls
+                # through both isinstance checks today and reaches
+                # `_acquire_auto_credentials` at execute time, where
+                # ``.get("_credentials_id")`` on a non-dict raises
+                # AttributeError. Surface a clean error here instead.
+                if not isinstance(value, (str, dict)):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} is set to a {type(value).__name__} "
+                        f"value ({value!r}). This field expects an object "
+                        f"carrying the user's credentials. {remediation}"
+                    )
+                    continue
 
             # Validate dependencies between fields
             for field_name in input_fields.keys():
@@ -1710,48 +1831,126 @@ async def fix_llm_provider_credentials():
         )
 
 
-async def migrate_llm_models(migrate_to: LlmModel):
+def _legacy_value_aliases(legacy_value: str, replacement: LlmModel) -> set[str]:
+    """Stored-value forms that should map to ``replacement`` for one legacy slug.
+
+    ``LlmModel._missing_`` accepts provider-prefixed inputs at write time, so
+    historical rows may carry either the bare slug or ``<provider>/<slug>``
+    even when the canonical enum value is unprefixed. Vendor-prefixed legacy
+    values (e.g. ``google/...``) need no alias.
     """
-    Update all LLM models in all AI blocks that don't exist in the enum.
+    if "/" in legacy_value:
+        return {legacy_value}
+    return {legacy_value, f"{replacement.metadata.provider}/{legacy_value}"}
+
+
+async def migrate_llm_models(fallback: LlmModel):
+    """
+    Rewrite legacy LLM model values to in-enum equivalents.
+
+    Runs in two passes per LlmModel field:
+      1. Family-aware: for each (legacy_value, replacement) in
+         LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
+         replacement so e.g. Claude Opus lands on a newer Opus, not the global
+         GPT default.
+      2. Catch-all: any value still out-of-enum gets ``fallback``.
+
+    Both passes run against two tables:
+      * ``AgentNode.constantInput`` — saved graph definitions (scoped by
+        ``agentBlockId`` because we know the LlmModel field name per block).
+      * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
+        preset input overrides; scoped only by the field-value match since
+        preset rows don't carry the block id.
+
     Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
-    # Scan all blocks and search for LlmModel fields
-    llm_model_fields: dict[str, str] = {}  # {block_id: field_name}
+    llm_model_fields = _find_llm_model_fields()
+    if not llm_model_fields:
+        return
 
-    # Search for all LlmModel fields
-    for block_type in get_blocks().values():
-        block = block_type()
-        from pydantic.fields import FieldInfo
-
-        fields: dict[str, FieldInfo] = block.input_schema.model_fields
-
-        # Collect top-level LlmModel fields
-        for field_name, field in fields.items():
-            if field.annotation == LlmModel:
-                llm_model_fields[block.id] = field_name
-
-    # Convert enum values to a list of strings for the SQL query
     enum_values = [v.value for v in LlmModel]
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
-    # Update each block
-    for id, path in llm_model_fields.items():
-        query = f"""
-            UPDATE platform."AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-            WHERE "agentBlockId" = $3
-            AND "constantInput" ? ($4)::text
-            AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-            """
+    node_targeted_query = """
+        UPDATE {schema_prefix}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text = $5
+        """
+    node_fallback_query = f"""
+        UPDATE {{schema_prefix}}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
+        """
+    preset_targeted_query = """
+        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
+        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
+        WHERE "agentPresetId" IS NOT NULL
+        AND "data"::jsonb ? ($3)::text
+        AND "data"::jsonb->>($3)::text = $4
+        """
+    preset_fallback_query = f"""
+        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput"
+        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
+        WHERE "agentPresetId" IS NOT NULL
+        AND "data"::jsonb ? ($3)::text
+        AND "data"::jsonb->>($3)::text NOT IN {escaped_enum_values}
+        """
 
-        await db.execute_raw(
-            query,  # type: ignore - is supposed to be LiteralString
+    # AgentNode pass — per (block_id, field_name).
+    for block_id, path in llm_model_fields.items():
+        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+            for stored_value in _legacy_value_aliases(legacy_value, replacement):
+                await execute_raw_with_schema(
+                    node_targeted_query,
+                    [path],
+                    replacement.value,
+                    block_id,
+                    path,
+                    stored_value,
+                )
+        await execute_raw_with_schema(
+            node_fallback_query,
             [path],
-            migrate_to.value,
-            id,
+            fallback.value,
+            block_id,
             path,
         )
+
+    # AgentPreset pass — per unique field name. Preset rows don't carry
+    # ``agentBlockId``, but the field-value match is tight enough on its own
+    # because no non-LLM block stores one of our retired slugs.
+    for path in set(llm_model_fields.values()):
+        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+            for stored_value in _legacy_value_aliases(legacy_value, replacement):
+                await execute_raw_with_schema(
+                    preset_targeted_query,
+                    [path],
+                    replacement.value,
+                    path,
+                    stored_value,
+                )
+        await execute_raw_with_schema(
+            preset_fallback_query,
+            [path],
+            fallback.value,
+            path,
+        )
+
+
+def _find_llm_model_fields() -> dict[str, str]:
+    """Return ``{block_id: field_name}`` for every top-level LlmModel field."""
+    llm_model_fields: dict[str, str] = {}
+    for block_type in get_blocks().values():
+        block = block_type()
+        for field_name, field in block.input_schema.model_fields.items():
+            if field.annotation == LlmModel:
+                llm_model_fields[block.id] = field_name
+    return llm_model_fields
 
 
 # Simple placeholder class for deleted/missing blocks

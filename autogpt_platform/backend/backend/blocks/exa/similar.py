@@ -3,7 +3,6 @@ from typing import Optional
 
 from exa_py import AsyncExa
 
-from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -20,6 +19,7 @@ from .helpers import (
     ContentSettings,
     CostDollars,
     ExaSearchResults,
+    merge_exa_cost,
     process_contents_settings,
 )
 
@@ -168,6 +168,4 @@ class ExaFindSimilarBlock(Block):
 
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars
-            self.merge_stats(
-                NodeExecutionStats(provider_cost=response.cost_dollars.total)
-            )
+        merge_exa_cost(self, response)

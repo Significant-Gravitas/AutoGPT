@@ -20,6 +20,7 @@ import {
   TrashIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -305,15 +306,66 @@ function getWebAccordionData(
     string,
     unknown
   >;
-  const url =
-    getStringField(inp as Record<string, unknown>, "url", "query") ??
-    "Web content";
+  const query = getStringField(inp, "query");
+  const url = getStringField(inp, "url") ?? query ?? "Web content";
 
-  // Try direct string fields first, then MCP content blocks, then raw JSON
+  const results = Array.isArray(output.results)
+    ? (output.results as Array<Record<string, unknown>>)
+    : null;
+
+  if (results) {
+    const deep = inp.deep === true;
+    const noun = deep ? "research source" : "search result";
+    const answer = getStringField(output, "answer");
+    return {
+      title: `${results.length} ${noun}${results.length === 1 ? "" : "s"}`,
+      description: query ? truncate(query, 80) : undefined,
+      content: (
+        <div className="space-y-3">
+          {answer && (
+            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+              {answer}
+            </div>
+          )}
+          {results.map((r, i) => {
+            const title = getStringField(r, "title") ?? "(untitled)";
+            const href = getStringField(r, "url") ?? "";
+            const snippet = getStringField(r, "snippet");
+            const pageAge = getStringField(r, "page_age");
+            return (
+              <div key={i} className="text-sm">
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  <span className="font-medium">{title}</span>
+                )}
+                {href && (
+                  <div className="text-xs text-slate-500">
+                    {truncate(href, 100)}
+                  </div>
+                )}
+                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {pageAge && (
+                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ),
+    };
+  }
+
   let content = getStringField(output, "content", "text", "_raw");
   if (!content) content = extractMcpText(output);
   if (!content) {
-    // Fallback: render the raw JSON so the accordion isn't empty
     try {
       const raw = JSON.stringify(output, null, 2);
       if (raw !== "{}") content = raw;
@@ -327,11 +379,7 @@ function getWebAccordionData(
   const message = getStringField(output, "message");
 
   return {
-    title: statusCode
-      ? `Response (${statusCode})`
-      : url
-        ? "Web fetch"
-        : "Search results",
+    title: statusCode ? `Response (${statusCode})` : "Web fetch",
     description: truncate(url, 80),
     content: content ? (
       <ContentCodeBlock>{content}</ContentCodeBlock>
@@ -733,7 +781,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
@@ -741,7 +789,8 @@ export function GenericTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          animate={isStreaming}
+          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>
 

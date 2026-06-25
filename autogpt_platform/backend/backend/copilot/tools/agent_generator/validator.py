@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any
 
+from backend.blocks._base import BlockType
 from backend.data.dynamic_fields import DICT_SPLIT
 
 from .helpers import (
@@ -19,6 +20,10 @@ from .helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# uiType values (from BlockType) of blocks that start an agent on an external
+# event. A trigger node makes an agent runnable without a user-facing input.
+TRIGGER_UI_TYPES = frozenset({BlockType.WEBHOOK.value, BlockType.WEBHOOK_MANUAL.value})
 
 
 class AgentValidator:
@@ -655,34 +660,96 @@ class AgentValidator:
 
         return valid
 
-    def validate_io_blocks(self, agent: AgentDict) -> bool:
+    def _collect_io_block_ids(
+        self, blocks: list[dict[str, Any]]
+    ) -> tuple[set[str], set[str], set[str]]:
         """
-        Validate that the agent has at least one AgentInputBlock and one
-        AgentOutputBlock. These blocks define the agent's interface.
+        Build sets of all input/output/trigger block IDs from the blocks
+        registry.
 
-        Returns True if both are present, False otherwise.
+        Input/output/trigger blocks are identified by ``uiType`` (populated
+        from ``Block.block_type`` at registration time). Specialized
+        subclasses like ``AgentGoogleDriveFileInputBlock`` count as input
+        blocks even though they have their own block IDs — this matches the
+        runtime behavior, where any subclass of ``AgentInputBlock`` exposes a
+        user-facing input. The literal base input/output IDs are always
+        included so the function works even when called with a minimal blocks
+        list (e.g. unit tests). Trigger blocks have no single base ID, so the
+        blocks list must carry their ``uiType`` to detect them.
+        """
+        input_ids: set[str] = {AGENT_INPUT_BLOCK_ID}
+        output_ids: set[str] = {AGENT_OUTPUT_BLOCK_ID}
+        trigger_ids: set[str] = set()
+        for block in blocks:
+            block_id = block.get("id")
+            if not block_id:
+                continue
+            ui_type = block.get("uiType")
+            if ui_type == "Input":
+                input_ids.add(block_id)
+            elif ui_type == "Output":
+                output_ids.add(block_id)
+            elif ui_type in TRIGGER_UI_TYPES:
+                trigger_ids.add(block_id)
+        return input_ids, output_ids, trigger_ids
+
+    def validate_io_blocks(
+        self, agent: AgentDict, blocks: list[dict[str, Any]] | None = None
+    ) -> bool:
+        """
+        Validate that the agent has a way to be started and one output block.
+        These define the agent's interface.
+
+        Input requirement — satisfied by EITHER at least one input block OR at
+        least one trigger block:
+        - Any block whose ``uiType`` is ``"Input"`` (including specialized
+          variants like ``AgentGoogleDriveFileInputBlock``,
+          ``AgentDropdownInputBlock``, ``AgentTableInputBlock``, etc.).
+        - Any trigger block whose ``uiType`` is ``"Webhook"`` /
+          ``"Webhook (manual)"``. A triggered agent is started by an external
+          event and needs no user-facing input block; forcing one alongside
+          the trigger produces an invalid graph.
+
+        Output requirement — satisfied by at least one output block (any block
+        whose ``uiType`` is ``"Output"``). This matches the runtime behavior,
+        where any subclass of ``AgentOutputBlock`` surfaces an output, so the
+        validator never forces a throwaway base block alongside a real one.
+
+        Returns True if both requirements are met, False otherwise.
         """
         valid = True
-        block_ids = {node.get("block_id") for node in agent.get("nodes", [])}
+        input_ids, output_ids, trigger_ids = self._collect_io_block_ids(blocks or [])
+        node_block_ids = {
+            node.get("block_id")
+            for node in agent.get("nodes", [])
+            if node.get("block_id")
+        }
 
-        if AGENT_INPUT_BLOCK_ID not in block_ids:
+        has_input = bool(node_block_ids & input_ids)
+        has_trigger = bool(node_block_ids & trigger_ids)
+        if not has_input and not has_trigger:
             self.add_error(
-                f"Agent is missing an AgentInputBlock (block_id: "
-                f"'{AGENT_INPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentInputBlock to define user-facing inputs. "
-                f"Add a node with block_id '{AGENT_INPUT_BLOCK_ID}' and "
-                f"set input_default with 'name' and optionally 'title'."
+                f"Agent is missing an input or trigger block. Every agent must "
+                f"have at least one input block to define user-facing inputs, "
+                f"or one trigger block to be started by an external event. For "
+                f"a regular agent, add a node using the base AgentInputBlock "
+                f"(block_id: '{AGENT_INPUT_BLOCK_ID}') or any specialized input "
+                f"block subclass (e.g. AgentGoogleDriveFileInputBlock, "
+                f"AgentDropdownInputBlock, AgentShortTextInputBlock) and set "
+                f"input_default with 'name' and optionally 'title'. For a "
+                f"triggered agent, add a webhook trigger block instead — do not "
+                f"add a separate input block."
             )
             valid = False
 
-        if AGENT_OUTPUT_BLOCK_ID not in block_ids:
+        if not node_block_ids & output_ids:
             self.add_error(
-                f"Agent is missing an AgentOutputBlock (block_id: "
-                f"'{AGENT_OUTPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentOutputBlock to define user-facing outputs. "
-                f"Add a node with block_id '{AGENT_OUTPUT_BLOCK_ID}' and "
-                f"set input_default with 'name', then link 'value' from "
-                f"another block's output."
+                f"Agent is missing an output block. Every agent must have "
+                f"at least one output block to define user-facing outputs. "
+                f"Add a node using the base AgentOutputBlock (block_id: "
+                f"'{AGENT_OUTPUT_BLOCK_ID}') or any specialized output "
+                f"block subclass. Set input_default with 'name', then link "
+                f"'value' from another block's output."
             )
             valid = False
 
@@ -1114,7 +1181,7 @@ class AgentValidator:
             ),
             (
                 "IO blocks",
-                self.validate_io_blocks(agent),
+                self.validate_io_blocks(agent, blocks),
             ),
             # Always validate AgentExecutorBlock schemas to prevent
             # frontend crashes

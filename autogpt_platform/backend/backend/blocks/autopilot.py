@@ -7,6 +7,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from pydantic import field_validator
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 
 from backend.blocks._base import (
@@ -16,7 +17,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.copilot.active_turns import (
+    MAX_TURN_LIFETIME_SECONDS,
+    running_turn_limit_message,
+)
 from backend.copilot.permissions import (
+    DISABLED_LEGACY_TOOL_NAMES,
     CopilotPermissions,
     ToolName,
     all_known_tool_names,
@@ -40,11 +46,10 @@ _AUTOPILOT_TOOL_CALL_ID = "autopilot_block"
 _AUTOPILOT_TOOL_NAME = "autopilot_block"
 
 # Ceiling on how long AutoPilotBlock.execute_copilot will wait for the
-# enqueued turn's terminal event. Graph blocks run synchronously from
-# the caller's perspective so we wait effectively as long as needed; 6h
-# matches the previous abandoned-task cap and is much longer than any
-# legitimate AutoPilot turn.
-_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = 6 * 60 * 60  # 6 hours
+# enqueued turn's terminal event. Sourced from the shared turn-lifetime
+# constant so the block-level wait, the per-user slot stale-cutoff, and
+# any future per-turn timer all advance together.
+_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = MAX_TURN_LIFETIME_SECONDS
 
 
 class SubAgentRecursionError(BlockExecutionError):
@@ -90,6 +95,13 @@ class AutoPilotBlock(Block):
     run blocks, and more. This block enables sub-agent patterns (autopilot calling
     autopilot) and scheduled autopilot execution via the agent executor.
     """
+
+    # Coordination block: an autopilot run is a multi-step agentic loop that
+    # can dispatch sub-agents (recursively) and orchestrate platform tools.
+    # Applying the leaf-block wall-clock cap would false-positive on
+    # legitimately long autopilot runs; rely on per-LLM-call timeouts and
+    # downstream sub-graph caps for bounding.
+    execution_timeout_seconds: int | None = None
 
     class Input(BlockSchemaInput):
         """Input schema for the AutoPilot block."""
@@ -197,6 +209,13 @@ class AutoPilotBlock(Block):
         # timeout_seconds removed: the SDK manages its own heartbeat-based
         # timeouts internally; wrapping with asyncio.timeout corrupts the
         # SDK's internal stream (see service.py CRITICAL comment).
+
+        @field_validator("tools", mode="before")
+        @classmethod
+        def strip_disabled_legacy_tools(cls, tools: Any) -> Any:
+            if not isinstance(tools, list):
+                return tools
+            return [tool for tool in tools if tool not in DISABLED_LEGACY_TOOL_NAMES]
 
     class Output(BlockSchemaOutput):
         """Output schema for the AutoPilot block."""
@@ -344,6 +363,12 @@ class AutoPilotBlock(Block):
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
             )
+            if outcome == "rejected_concurrent_turn_cap":
+                # No session record / transcript was created — the slot
+                # cap rejected before ``create_session`` ran. Surface a
+                # message that points at the actionable cause rather
+                # than the empty transcript.
+                raise RuntimeError(running_turn_limit_message())
             if outcome == "failed":
                 raise RuntimeError(
                     "AutoPilot turn failed — see the session's transcript"

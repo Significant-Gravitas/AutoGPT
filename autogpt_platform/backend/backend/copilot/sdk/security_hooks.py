@@ -10,6 +10,8 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
+from claude_agent_sdk.types import HookEvent, HookMatcher
+
 from backend.copilot.context import (
     get_execution_context,
     is_allowed_local_path,
@@ -184,7 +186,7 @@ def create_security_hooks(
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
+) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
     Includes security validation and observability hooks:
@@ -325,7 +327,11 @@ def create_security_hooks(
                         len(str(tool_response)),
                         resp_preview,
                     )
-                    stash_pending_tool_output(tool_name, tool_response)
+                    # Key by the call's input so the response adapter pops the
+                    # output for the RIGHT tool_call_id when the model fired
+                    # several same-name calls in parallel (OPEN-3158).
+                    tool_input = input_data.get("tool_input")
+                    stash_pending_tool_output(tool_name, tool_response, tool_input)
                 else:
                     logger.warning(
                         "[SDK] PostToolUse for builtin %s but tool_response is None",
@@ -448,7 +454,7 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        hooks: dict[str, Any] = {
+        return {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -458,8 +464,6 @@ def create_security_hooks(
             "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
-
-        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

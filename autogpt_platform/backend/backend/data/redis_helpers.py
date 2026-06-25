@@ -20,10 +20,10 @@ application code, add a helper here first — callers should not touch
 this module can cover.
 """
 
+from enum import IntEnum
 from typing import Any, cast
 
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
+from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
 # Lua scripts — registered centrally so there is exactly ONE authoritative
@@ -47,9 +47,114 @@ end
 return 0
 """
 
+# Push to a capped list only when a hash field currently matches the expected
+# value. Returns the new list length, or -1 when the guard fails.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   ARGV[1]  hash field
+#   ARGV[2]  expected current value
+#   ARGV[3]  list value
+#   ARGV[4]  max list length
+#   ARGV[5]  list TTL seconds
+_GATED_CAPPED_RPUSH_LUA = """
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if current ~= ARGV[2] then
+    return -1
+end
+redis.call('RPUSH', KEYS[2], ARGV[3])
+redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+return redis.call('LLEN', KEYS[2])
+"""
+
+# Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
+# to transition a finished provider batch from ``pending → dispatched``
+# in one indivisible step. Without this, the dispatch path is racy:
+#
+#   await _dispatch(entry, rows)       # side effects fire here
+#   await remove_pending(batch_id)     # ← any crash / slow write here
+#                                      #    leaves the batch in pending,
+#                                      #    next walk re-dispatches.
+#
+# The atomic claim SETs a per-batch tombstone STRING key BEFORE the
+# walker calls _dispatch, so a re-entry will be refused even when the
+# pending hash hasn't been HDEL'd yet. One tombstone key per batch_id
+# (``SET ... NX EX ttl``) means each tombstone self-expires its own
+# TTL after its own dispatch. The previous design — one shared SET
+# whose TTL was re-applied on every claim — never aged members out:
+# as long as one batch dispatched within the window, the whole set
+# lived forever and grew unbounded.
+#
+# Cluster safety: this script touches two keys (pending hash +
+# tombstone), so both MUST share a Redis Cluster hash tag (e.g. both
+# prefixed with ``{llm:batch}:``) to land on the same slot — required
+# for multi-key Lua under cluster mode. The pending hash is a
+# single-slot structure anyway, so colocating the small, self-expiring
+# tombstones on its slot costs nothing and buys full claim+HDEL
+# atomicity (no claimed-but-still-pending window for walkers to skip).
+#
+# Returns 1 when this caller won the claim (proceed with dispatch),
+# 0 when another walker already dispatched (skip silently).
+#
+#   KEYS[1]  pending hash key
+#   KEYS[2]  per-batch tombstone key
+#   ARGV[1]  batch_id (field on the pending hash)
+#   ARGV[2]  TTL seconds applied to the tombstone key
+_CLAIM_BATCH_DISPATCH_LUA = """
+if redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
+    redis.call('HDEL', KEYS[1], ARGV[1])
+    return 1
+end
+return 0
+"""
+
+
+# Atomically: sweep stale slots, refresh an existing slot's claim or add
+# a new slot iff the pool is under capacity, then set the pool key's TTL.
+# Returns 1 when a NEW slot was admitted, 2 when an EXISTING slot's claim
+# was refreshed (no change to slot count), 0 when reservation was refused
+# (pool full and slot wasn't already held).
+#
+# The new-vs-refreshed distinction lets callers tell apart a "fresh
+# admission" (caller now owns the slot's release) from a "re-entrant
+# touch" (someone else owns the release, caller is just bumping the
+# heartbeat). Without it, a refresh path would `release_turn_slot` on
+# context-manager exit and prematurely free a slot held by another
+# concurrent caller for the same session_id.
+#
+# Used for distributed per-actor concurrency caps. A "pool" is a Redis
+# sorted set whose members are active slot ids and whose scores are the
+# slot's reservation timestamp. Stale slots (owner crashed without
+# release) are reclaimed by the sweep so a one-time leak cannot
+# permanently consume capacity.
+#
+#   KEYS[1]  pool key (sorted set)
+#   ARGV[1]  slot id (member)
+#   ARGV[2]  reservation score (typically now)
+#   ARGV[3]  stale-cutoff score (slots with score <= this are dropped)
+#   ARGV[4]  capacity (max concurrent slots before reservation is refused)
+#   ARGV[5]  TTL seconds applied to the pool key on every successful reserve
+_TRY_ACQUIRE_CONCURRENCY_SLOT_LUA = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[3])
+local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if existing then
+    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+    redis.call('EXPIRE', KEYS[1], ARGV[5])
+    return 2
+end
+local count = redis.call('ZCARD', KEYS[1])
+if count >= tonumber(ARGV[4]) then
+    return 0
+end
+redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+return 1
+"""
+
 
 async def incr_with_ttl(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -85,7 +190,7 @@ async def incr_with_ttl(
 
 
 def incr_with_ttl_sync(
-    redis: Redis,
+    redis: RedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -103,7 +208,7 @@ def incr_with_ttl_sync(
 
 
 async def capped_rpush(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     value: str,
     *,
@@ -129,8 +234,164 @@ async def capped_rpush(
     return int(results[-1])
 
 
+async def capped_rpush_if_hash_field(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    hash_field: str,
+    expected: str,
+    list_key: str,
+    value: str,
+    max_len: int,
+    ttl_seconds: int,
+) -> int | None:
+    """Atomically RPUSH to a bounded list iff a hash field matches.
+
+    Returns the new list length when the push happens, or ``None`` when the
+    hash field does not currently match ``expected``.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _GATED_CAPPED_RPUSH_LUA,
+            2,
+            hash_key,
+            list_key,
+            hash_field,
+            expected,
+            value,
+            str(max_len),
+            str(ttl_seconds),
+        ),
+    )
+    length = int(result)
+    return None if length < 0 else length
+
+
+async def claim_batch_dispatch_atomic(
+    redis: AsyncRedisClient,
+    *,
+    pending_key: str,
+    dispatched_key_prefix: str,
+    batch_id: str,
+    ttl_seconds: int,
+) -> bool:
+    """Atomically claim the right to dispatch results for ``batch_id``.
+
+    Used by the BatchExecutor walk loop. The race we're closing:
+
+        await _dispatch(entry, rows)        # side effects fire here
+        await remove_pending(batch_id)      # gap → re-dispatch on
+                                            #     crash / contention
+
+    The tombstone is one STRING key per batch —
+    ``f"{dispatched_key_prefix}:{batch_id}"`` — set with ``NX EX`` so
+    each tombstone expires individually ``ttl_seconds`` after its own
+    dispatch (a shared set with one refreshed TTL would never age
+    members out and grow unbounded). The Lua script SETs the tombstone
+    and, only when it won, HDELs the pending entry, all in one
+    indivisible step. Returns ``True`` when this caller won the claim
+    (proceed with dispatch), ``False`` when another walker already
+    dispatched (skip silently).
+
+    ``pending_key`` and ``dispatched_key_prefix`` MUST share a Redis
+    Cluster hash tag (e.g. both prefixed with ``"{llm:batch}:"``) so
+    the pending hash and every tombstone land on the same slot —
+    required for multi-key Lua under cluster mode. Same-slot keys keep
+    the claim + HDEL fully atomic, so a crash can never leave a
+    claimed-but-still-pending entry.
+
+    ``ttl_seconds`` should comfortably exceed the longest possible
+    in-flight batch lifetime so stale tombstones cannot let a very
+    late re-poll cause a re-dispatch. 7 days is fine today (Anthropic
+    batch SLA is 24h, max batch lifetime cap is 24h); raise it if the
+    provider window widens.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _CLAIM_BATCH_DISPATCH_LUA,
+            2,
+            pending_key,
+            f"{dispatched_key_prefix}:{batch_id}",
+            batch_id,
+            str(ttl_seconds),
+        ),
+    )
+    return bool(int(result))
+
+
+class SlotAdmission(IntEnum):
+    """Result of :func:`try_acquire_concurrency_slot`.
+
+    Distinguishes a fresh admission from a re-entrant refresh so callers
+    that automatically release on exit (e.g. context managers) only do
+    so for slots they actually admitted, not slots they just touched.
+    """
+
+    REJECTED = 0  # pool was full and slot wasn't already held
+    ADMITTED = 1  # slot newly added to the pool
+    REFRESHED = 2  # slot was already in the pool; score bumped only
+
+
+async def try_acquire_concurrency_slot(
+    redis: AsyncRedisClient,
+    *,
+    pool_key: str,
+    slot_id: str,
+    score: float,
+    capacity: int,
+    stale_before_score: float,
+    ttl_seconds: int,
+) -> SlotAdmission:
+    """Atomically reserve one of *capacity* slots in a Redis-backed pool.
+
+    Use this whenever you need a distributed concurrency cap — "this
+    actor may have at most N of X in flight at the same time". The pool
+    is a sorted set whose members are active slot ids and whose scores
+    are reservation timestamps; on every call we:
+
+    1. Sweep slots with ``score <= stale_before_score`` — slots whose
+       holder crashed without releasing don't permanently consume capacity.
+    2. If ``slot_id`` is already in the pool, refresh its score
+       (re-reservation is idempotent — same holder, same logical slot)
+       and return :attr:`SlotAdmission.REFRESHED`.
+    3. Otherwise, reserve only if the post-sweep slot count is below
+       ``capacity`` and return :attr:`SlotAdmission.ADMITTED`.
+    4. On a successful reserve, set ``ttl_seconds`` on the pool key as a
+       belt-and-braces TTL for the case where the sweep ever stops.
+
+    Returns the :class:`SlotAdmission` outcome — ``ADMITTED`` (newly
+    added), ``REFRESHED`` (already held, score bumped), or ``REJECTED``
+    (pool full).
+
+    Why a Lua script: the reservation is conditional on the post-sweep
+    count, and ``MULTI/EXEC`` cannot branch on intermediate replies.
+    Without atomicity, two concurrent callers both read ``count =
+    capacity - 1`` and both add, ending up over capacity.
+
+    Redis Cluster: only ``KEYS[1]`` is touched, so callers are free to
+    hash-tag *pool_key* (e.g. ``foo:{user_id}``) to colocate the pool
+    on one shard without CROSSSLOT issues.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _TRY_ACQUIRE_CONCURRENCY_SLOT_LUA,
+            1,
+            pool_key,
+            slot_id,
+            str(score),
+            str(stale_before_score),
+            str(capacity),
+            str(ttl_seconds),
+        ),
+    )
+    return SlotAdmission(int(result))
+
+
 async def hash_compare_and_set(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     field: str,
     *,

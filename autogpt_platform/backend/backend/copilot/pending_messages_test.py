@@ -16,7 +16,7 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
-    _clear_pending_messages_unsafe,
+    clear_pending_messages_unsafe,
     drain_and_format_for_injection,
     drain_pending_for_persist,
     drain_pending_messages,
@@ -59,6 +59,16 @@ class _FakeRedis:
     async def publish(self, channel: str, payload: str) -> int:
         self.published.append((channel, payload))
         return 1
+
+    async def execute_command(self, *args: Any) -> Any:
+        # Minimal handler for the sharded SPUBLISH call made by
+        # push_pending_message. Routing semantics are irrelevant here —
+        # we just record the publish for assertion.
+        if args and args[0] == "SPUBLISH":
+            _, channel, payload = args
+            self.published.append((channel, payload))
+            return 1
+        raise NotImplementedError(f"fake execute_command does not handle {args[0]!r}")
 
     async def lpop(self, key: str, count: int) -> list[str | bytes] | None:
         lst = self.lists.get(key)
@@ -208,15 +218,15 @@ async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
 async def test_clear_removes_buffer(fake_redis: _FakeRedis) -> None:
     await push_pending_message("sess4", PendingMessage(content="x"))
     await push_pending_message("sess4", PendingMessage(content="y"))
-    await _clear_pending_messages_unsafe("sess4")
+    await clear_pending_messages_unsafe("sess4")
     assert await peek_pending_count("sess4") == 0
 
 
 @pytest.mark.asyncio
 async def test_clear_is_idempotent(fake_redis: _FakeRedis) -> None:
     # Clearing an already-empty buffer should not raise
-    await _clear_pending_messages_unsafe("sess_empty")
-    await _clear_pending_messages_unsafe("sess_empty")
+    await clear_pending_messages_unsafe("sess_empty")
+    await clear_pending_messages_unsafe("sess_empty")
 
 
 # ── Publish hook ────────────────────────────────────────────────────
@@ -326,7 +336,7 @@ async def test_drain_skips_malformed_entries(
     fake_redis: _FakeRedis,
 ) -> None:
     # Seed the fake with a mix of valid and malformed payloads
-    fake_redis.lists["copilot:pending:bad"] = [
+    fake_redis.lists[pm_module._buffer_key("bad")] = [
         json.dumps({"content": "valid"}),
         "{not valid json",
         json.dumps({"content": "also valid", "file_ids": ["a"]}),
@@ -347,7 +357,7 @@ async def test_drain_decodes_bytes_payloads(
     branch in ``drain_pending_messages`` so a regression there doesn't
     slip past CI.
     """
-    fake_redis.lists["copilot:pending:bytes_sess"] = [
+    fake_redis.lists[pm_module._buffer_key("bytes_sess")] = [
         json.dumps({"content": "from bytes"}).encode("utf-8"),
     ]
     drained = await drain_pending_messages("bytes_sess")
@@ -362,14 +372,14 @@ async def test_peek_decodes_bytes_payloads(
     """``peek_pending_messages`` uses the same ``_decode_redis_item`` helper
     as the drain path.  Seed with bytes to guard against regression.
     """
-    fake_redis.lists["copilot:pending:peek_bytes_sess"] = [
+    fake_redis.lists[pm_module._buffer_key("peek_bytes_sess")] = [
         json.dumps({"content": "peeked from bytes"}).encode("utf-8"),
     ]
     peeked = await peek_pending_messages("peek_bytes_sess")
     assert len(peeked) == 1
     assert peeked[0].content == "peeked from bytes"
     # peek must NOT consume the item
-    assert fake_redis.lists["copilot:pending:peek_bytes_sess"] != []
+    assert fake_redis.lists[pm_module._buffer_key("peek_bytes_sess")] != []
 
 
 # ── Concurrency ─────────────────────────────────────────────────────
@@ -445,7 +455,7 @@ async def test_peek_pending_messages_decodes_bytes_payloads(
     fake_redis: _FakeRedis,
 ) -> None:
     """peek_pending_messages decodes bytes entries the same way drain does."""
-    fake_redis.lists["copilot:pending:peek_bytes"] = [
+    fake_redis.lists[pm_module._buffer_key("peek_bytes")] = [
         json.dumps({"content": "from bytes"}).encode("utf-8"),
     ]
     peeked = await peek_pending_messages("peek_bytes")
@@ -458,7 +468,7 @@ async def test_peek_pending_messages_skips_malformed_entries(
     fake_redis: _FakeRedis,
 ) -> None:
     """Malformed entries are skipped and valid ones are returned."""
-    fake_redis.lists["copilot:pending:peek_bad"] = [
+    fake_redis.lists[pm_module._buffer_key("peek_bad")] = [
         json.dumps({"content": "valid peek"}),
         "{bad json",
         json.dumps({"content": "also valid peek"}),
@@ -486,7 +496,7 @@ async def test_stash_for_persist_enqueues_and_drain_pops_in_order(
 
     # Stored under the distinct persist key, NOT the primary buffer.
     assert "copilot:pending-persist:sess-persist" in fake_redis.lists
-    assert "copilot:pending:sess-persist" not in fake_redis.lists
+    assert pm_module._buffer_key("sess-persist") not in fake_redis.lists
 
     drained = await drain_pending_for_persist("sess-persist")
     assert len(drained) == 2
@@ -612,3 +622,59 @@ async def test_drain_and_format_for_injection_swallows_redis_error(
 @pytest.mark.asyncio
 async def test_drain_and_format_for_injection_missing_session_id() -> None:
     assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
+
+
+# ── Cluster-slot colocation regression ───────────────────────────────
+# The gated-rpush Lua script in `capped_rpush_if_hash_field` touches both
+# the session-meta hash (`stream_registry._get_session_meta_key`) and the
+# pending buffer list (`_buffer_key`) atomically. Redis Cluster requires
+# every key referenced by a multi-key Lua script to hash to the same slot,
+# so both keys must share a hash tag (the `{...}` substring Redis uses for
+# slot calculation). Without this, the EVAL returns `CROSSSLOT keys in
+# request` once cluster mode is active.
+
+
+def _redis_keyslot(key: str) -> int:
+    """Compute the Redis Cluster slot for ``key`` using CRC16-XMODEM mod 16384.
+
+    Mirrors the algorithm in redis-py's ``RedisCluster.keyslot`` and the
+    Redis spec — extracts the first ``{...}`` substring as the hash tag,
+    falls back to the whole key when no tag is present.
+    """
+    start = key.find("{")
+    if start != -1:
+        end = key.find("}", start + 1)
+        if end > start + 1:
+            key = key[start + 1 : end]
+    crc = 0
+    poly = 0x1021
+    for byte in key.encode():
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ poly) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc % 16384
+
+
+def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
+    """Regression: pending-buffer key + session-meta key must hash to the
+    same Redis Cluster slot, otherwise the gated-rpush Lua script returns
+    CROSSSLOT once cluster mode is enabled."""
+    # Late import so the test doesn't pull stream_registry's heavy module
+    # graph (it transitively wires the AppService client) at file load.
+    from backend.copilot.stream_registry import _get_session_meta_key
+
+    for session_id in [
+        "sess-abcdef-123",
+        "0eb0aae8-6926-4b50-97af-72840841dc70",
+        "x",
+    ]:
+        buf = pm_module._buffer_key(session_id)
+        meta = _get_session_meta_key(session_id)
+        assert "{" in buf and "}" in buf, f"_buffer_key missing hash tag: {buf!r}"
+        assert (
+            "{" in meta and "}" in meta
+        ), f"_get_session_meta_key missing hash tag: {meta!r}"
+        assert _redis_keyslot(buf) == _redis_keyslot(meta), (
+            f"CROSSSLOT regression: {buf!r} (slot {_redis_keyslot(buf)}) "
+            f"!= {meta!r} (slot {_redis_keyslot(meta)})"
+        )

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import threading
 import time
 from collections import defaultdict
@@ -10,6 +11,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -19,7 +21,9 @@ from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
+from backend.data.block_preflight_estimates import get_preflight_estimate
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
@@ -31,7 +35,12 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    CredentialsMetaInput,
+    GraphInput,
+    NodeExecutionStats,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -116,22 +125,35 @@ def block_usage_cost(
     input_data: BlockInput,
     data_size: float = 0,
     run_time: float = 0,
+    stats: NodeExecutionStats | None = None,
+    use_preflight_estimate: bool = True,
 ) -> tuple[int, BlockInput]:
-    """
-    Calculate the cost of using a block based on the input data and the block type.
+    """Calculate the credit charge for a block invocation.
 
-    Args:
-        block: Block object
-        input_data: Input data for the block
-        data_size: Size of the input data in bytes
-        run_time: Execution time of the block in seconds
+    Two calling contexts:
+      - Pre-flight (no stats): charge the fixed floor / historical-average
+        estimate. SECOND/ITEMS/COST_USD types fall back to 0 only when no
+        estimate is registered for the block in `block_preflight_estimates.json`.
+      - Post-flight (stats populated): dynamic types consume the captured
+        stats to compute the actual charge.
 
-    Returns:
-        Tuple of cost amount and cost filter
+    For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
+    "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
+    cost_divisor=10`` under SECOND means "1 credit per 10 seconds".
+
+    ``use_preflight_estimate`` (default True) enables the historical-average
+    pre-flight charge for SECOND/ITEMS/COST_USD types. Callers that have NO
+    post-flight reconciliation step (e.g. the direct block-execute API
+    endpoints, which bypass the executor manager) MUST pass False — otherwise
+    the estimate becomes the final charge and users are over- or undercharged
+    relative to their actual run cost. The executor pre-flight path keeps the
+    default since reconciliation always follows there.
     """
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return 0, {}
+
+    is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
         if not _is_cost_filter_match(block_cost.cost_filter, input_data):
@@ -140,19 +162,125 @@ def block_usage_cost(
         if block_cost.cost_type == BlockCostType.RUN:
             return block_cost.cost_amount, block_cost.cost_filter
 
-        if block_cost.cost_type == BlockCostType.SECOND:
-            return (
-                int(run_time * block_cost.cost_amount),
-                block_cost.cost_filter,
-            )
-
         if block_cost.cost_type == BlockCostType.BYTE:
             return (
                 int(data_size * block_cost.cost_amount),
                 block_cost.cost_filter,
             )
 
+        if block_cost.cost_type == BlockCostType.SECOND:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            # Ceil so partial divisor-units still bill — avoids 0-credit leaks
+            # on sub-divisor runs (e.g. 1s on a `1cr / 3s` block).
+            seconds = _coerce_seconds(run_time, stats)
+            credits = (
+                math.ceil(seconds / block_cost.cost_divisor) * block_cost.cost_amount
+                if seconds > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.ITEMS:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            # Ceil so partial buckets still bill — avoids 0-credit leaks on
+            # single-item returns under a >1 divisor (e.g. Apollo 1cr/2-items).
+            items = _coerce_items(stats)
+            credits = (
+                math.ceil(items / block_cost.cost_divisor) * block_cost.cost_amount
+                if items > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.COST_USD:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            usd = _coerce_usd(stats)
+            return (
+                max(0, math.ceil(usd * block_cost.cost_amount)),
+                block_cost.cost_filter,
+            )
+
+        if block_cost.cost_type == BlockCostType.TOKENS:
+            return (
+                compute_token_credits(input_data, stats),
+                block_cost.cost_filter,
+            )
+
     return 0, {}
+
+
+async def charge_for_direct_block_execution(
+    user_id: str,
+    block: Block,
+    input_data: BlockInput,
+    *,
+    source: Literal["internal", "external"],
+) -> None:
+    """Pre-flight charge for a direct block-execute API call.
+
+    Shared by both ``POST /api/blocks/{id}/execute`` (internal UI) and
+    ``POST /api/v1/blocks/{id}/execute`` (external API key) so the two
+    routes stay in lock-step on cost calculation, transaction metadata,
+    and 402 mapping. ``source`` is recorded in the credit-history
+    ``reason`` so transactions remain attributable to the originating
+    surface.
+
+    Dynamic-cost blocks (TOKENS / COST_USD / SECOND / ITEMS) are NOT charged
+    on this code path — they return 0 from ``block_usage_cost`` because we
+    pass ``use_preflight_estimate=False``. The estimate path is only safe
+    when post-flight reconciliation follows (executor/manager.py); the
+    direct block-execute API endpoints bypass the manager and have no
+    reconciliation step, so charging the estimate would lock in an
+    incorrect amount with no chance to settle the delta.
+    """
+    cost, cost_filter = block_usage_cost(
+        block, input_data, use_preflight_estimate=False
+    )
+    if cost <= 0:
+        return
+    credit_model = await get_user_credit_model(user_id)
+    await credit_model.spend_credits(
+        user_id=user_id,
+        cost=cost,
+        metadata=UsageTransactionMetadata(
+            block_id=block.id,
+            block=block.name,
+            input=cost_filter,
+            reason=f"Direct {source} block execution of {block.name}",
+        ),
+    )
+
+
+def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
+    if run_time > 0:
+        return run_time
+    if stats and stats.walltime > 0:
+        return stats.walltime
+    return 0.0
+
+
+def _coerce_items(stats: NodeExecutionStats | None) -> int:
+    if not stats or stats.provider_cost is None:
+        return 0
+    # provider_cost is a raw item count only when explicitly typed 'items';
+    # a None type likely means USD (resolve_tracking defaults), so reject it
+    # here to avoid misreading a fractional dollar amount as an item count.
+    if stats.provider_cost_type != "items":
+        return 0
+    return max(0, int(stats.provider_cost))
+
+
+def _coerce_usd(stats: NodeExecutionStats | None) -> float:
+    if not stats or stats.provider_cost is None:
+        return 0.0
+    # provider_cost is billable only when tagged as cost_usd — otherwise it
+    # encodes a non-dollar quantity (e.g. items) that would wildly over-bill.
+    if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
+        return 0.0
+    return max(0.0, float(stats.provider_cost))
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
@@ -331,11 +459,29 @@ async def _validate_node_input_credentials(
 
         # Find any fields of type CredentialsMetaInput
         credentials_fields = block.input_schema.get_credentials_fields()
-        if not credentials_fields:
+        auto_credentials_fields = block.input_schema.get_auto_credentials_fields()
+        if not credentials_fields and not auto_credentials_fields:
             continue
 
         # Track if any credential field is missing for this node
         has_missing_credentials = False
+
+        # Local helper: mark the node as skippable when a per-field branch
+        # decides the field is optional-and-missing. We add to
+        # `nodes_to_skip` here rather than relying on the post-loop
+        # guard — that guard only fires when the NODE-level
+        # ``is_creds_optional`` is True. For auto-credential fields the
+        # optionality is usually field-level (``field_name not in
+        # required_fields`` because the schema default is None), so
+        # deferring would let the node silently pass validation and then
+        # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
+        # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
+        # field) to avoid redefining the closure each inner-loop
+        # iteration — see Cursor thread PRRT_kwDOJKSTjM58sEDe.
+        def _mark_optional_skip() -> None:
+            nonlocal has_missing_credentials
+            has_missing_credentials = True
+            nodes_to_skip.add(node.id)
 
         # A credential field is optional if the node metadata says so, or if
         # the block schema declares a default for the field.
@@ -415,17 +561,127 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
                 continue
 
-        # If node has optional credentials and any are missing, allow running without.
-        # The executor will pass credentials=None to the block's run().
+        # Validate auto-credentials (GoogleDriveFileField-based)
+        # These have _credentials_id embedded in the file field data
+        if auto_credentials_fields:
+            for _kwarg_name, info in auto_credentials_fields.items():
+                field_name = info["field_name"]
+                field_is_optional = (
+                    is_creds_optional or field_name not in required_fields
+                )
+                # Check input_default and nodes_input_masks for the field value
+                field_value = node.input_default.get(field_name)
+                if nodes_input_masks and node.id in nodes_input_masks:
+                    field_value = nodes_input_masks[node.id].get(
+                        field_name, field_value
+                    )
+
+                if field_value is None:
+                    # Sentry HIGH: an explicitly-None value (e.g. cleared by
+                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # credentials were there and are now gone. Treat as
+                    # missing so optional fields hit `nodes_to_skip` and
+                    # required fields surface a clean re-auth message —
+                    # don't silently fall through to `_acquire_auto_credentials`
+                    # which would then crash with ValueError at runtime.
+                    # NOTE: this branch only fires when the key is
+                    # explicitly `None`. If the field is absent from
+                    # `input_default` altogether (chained from upstream
+                    # via `input_links`), `.get()` also returns None — but
+                    # that path is handled at execute time by
+                    # `_acquire_auto_credentials` skipping fields not in
+                    # `input_data`. To keep this validator from over-reaching
+                    # in that case, callers set the field explicitly to
+                    # `None` only for the cleared-fork scenario.
+                    field_is_explicitly_none = field_name in node.input_default or (
+                        nodes_input_masks
+                        and node.id in nodes_input_masks
+                        and field_name in nodes_input_masks[node.id]
+                    )
+                    if not field_is_explicitly_none:
+                        continue
+                    if field_is_optional:
+                        _mark_optional_skip()
+                        continue
+                    has_missing_credentials = True
+                    credential_errors[node.id][field_name] = (
+                        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} no file selected "
+                        "for this field. Please select a file via the "
+                        "picker to authenticate."
+                    )
+                    continue
+
+                if field_value and isinstance(field_value, dict):
+                    if "_credentials_id" not in field_value:
+                        # Key removed (e.g., on fork) — needs re-auth. Use the
+                        # CRED_ERR_NOT_AVAILABLE_PREFIX marker so the copilot
+                        # credential-race fallback recognises this as a
+                        # credentials gate failure.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} authentication "
+                            "missing for the selected file. Please re-select "
+                            "the file to authenticate with your own account."
+                        )
+                        continue
+                    cred_id = field_value.get("_credentials_id")
+                    if cred_id is None:
+                        # Explicitly None means the value is being chained in
+                        # at execution time from an upstream block — skip.
+                        continue
+                    if not isinstance(cred_id, str) or not cred_id.strip():
+                        # Non-string or empty string is a corrupted state —
+                        # treat it like a missing credential so the user
+                        # re-authenticates rather than silently running with
+                        # no creds.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} credential id "
+                            "on the selected file is empty or invalid. "
+                            "Please re-select the file."
+                        )
+                        continue
+                    try:
+                        creds_store = get_integration_credentials_store()
+                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                    except Exception as e:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        continue
+                    if not creds:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+
+        # If node has optional credentials and any are missing, skip the
+        # node so the executor doesn't try to execute it with None creds.
+        # The per-field loops above deliberately didn't record an error for
+        # the optional case — the "will be marked for skip after loop"
+        # contract lives here.
         if (
             has_missing_credentials
             and is_creds_optional
             and node.id not in credential_errors
         ):
             logger.info(
-                f"Node #{node.id}: optional credentials not configured, "
-                "running without"
+                f"Node #{node.id}: optional credentials not configured, skipping"
             )
+            nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
 
@@ -446,8 +702,9 @@ def make_node_credentials_input_map(
     """
     result: dict[str, dict[str, JsonValue]] = {}
 
-    # Get aggregated credentials fields for the graph
-    graph_cred_inputs = graph.aggregate_credentials_inputs()
+    # Only map regular credentials (not auto_credentials, which are resolved
+    # at execution time from _credentials_id in file field data)
+    graph_cred_inputs = graph.regular_credentials_inputs
 
     for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
@@ -486,9 +743,10 @@ async def validate_graph_with_credentials(
     )
 
     # Get credential input/availability/validation errors and nodes to skip
-    node_credential_input_errors, nodes_to_skip = (
-        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
-    )
+    (
+        node_credential_input_errors,
+        nodes_to_skip,
+    ) = await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     # Merge credential errors with structural errors
     for node_id, field_errors in node_credential_input_errors.items():
@@ -670,14 +928,15 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input, nodes_to_skip = (
-        await _construct_starting_node_execution_input(
-            graph=graph,
-            user_id=user_id,
-            graph_inputs=graph_inputs,
-            nodes_input_masks=nodes_input_masks,
-            dry_run=dry_run,
-        )
+    (
+        starting_nodes_input,
+        nodes_to_skip,
+    ) = await _construct_starting_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=graph_inputs,
+        nodes_input_masks=nodes_input_masks,
+        dry_run=dry_run,
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
@@ -705,7 +964,9 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue"
+# ``_v2`` suffix marks the classic→quorum rollover; old-image consumers
+# drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
+GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
@@ -714,7 +975,7 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
+GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants
 # Agent executions can run for up to 1 day, so we need a graceful shutdown period
@@ -735,14 +996,16 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # x-consumer-timeout (1 week)
+            # Quorum (not classic mirrored) for leader election + stronger
+            # replication across RabbitMQ 4.x cluster nodes.
+            "x-queue-type": "quorum",
+            # x-consumer-timeout (24h)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions
             # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
     cancel_queue = Queue(
@@ -751,6 +1014,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
         routing_key="",  # not used for FANOUT
         durable=True,
         auto_delete=False,
+        arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
         vhost="/",
@@ -915,6 +1179,8 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    *,
+    bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -934,12 +1200,31 @@ async def add_graph_execution(
         nodes_input_masks: Node inputs to use in the execution.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
+        bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
+            recovery paths (requeueing stuck executions on behalf of a user
+            who may be on NO_TIER) — never for user-initiated runs.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.
+        UserPaywalledError: If the user is on NO_TIER and ``ENABLE_PLATFORM_PAYMENT``
+            is on for them, **unless** ``bypass_paywall=True``. Raised here
+            so every entry point — HTTP routes, scheduled cron, webhook
+            triggers, external API, internal copilot tools — gets the same
+            gate without each having to remember a route-level dependency.
+        Exception: Tier-lookup errors propagate as-is. The HTTP routes that
+            call into ``add_graph_execution`` already wrap with
+            ``enforce_payment_paywall`` upstream (which maps lookup failure
+            to 503), so by the time we get here those callers have a fresh
+            check. Background callers (scheduled jobs, webhook handlers,
+            copilot tool runs) catch the exception in their own retry
+            framework — failing now is preferable to silently giving a
+            paywalled user a free run during an outage.
     """
+    if not bypass_paywall and await is_user_paywalled(user_id):
+        raise UserPaywalledError("A subscription is required to run agents.")
+
     if prisma.is_connected():
         edb = execution_db
         udb = user_db
@@ -979,17 +1264,20 @@ async def add_graph_execution(
             dry_run = True
 
         # Create new execution
-        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
-            await validate_and_construct_node_execution_input(
-                graph_id=graph_id,
-                user_id=user_id,
-                graph_inputs=inputs or {},
-                graph_version=graph_version,
-                graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_masks=nodes_input_masks,
-                is_sub_graph=parent_exec_id is not None,
-                dry_run=dry_run,
-            )
+        (
+            graph,
+            starting_nodes_input,
+            compiled_nodes_input_masks,
+            nodes_to_skip,
+        ) = await validate_and_construct_node_execution_input(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_inputs=inputs or {},
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            is_sub_graph=parent_exec_id is not None,
+            dry_run=dry_run,
         )
 
         graph_exec = await edb.create_graph_execution(

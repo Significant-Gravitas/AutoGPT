@@ -6,17 +6,45 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
 if TYPE_CHECKING:
-    from redis import Redis
-    from redis.asyncio import Redis as AsyncRedis
+    from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 logger = logging.getLogger(__name__)
 
-# Lua CAS release: only delete the key if the stored value still matches our
-# owner_id. Returns 1 on delete, 0 on no-op. This makes release() safe against
-# the race where an external caller (e.g. mark_session_completed's force-release)
-# deletes our key and a new owner acquires it before our release() fires — without
-# the CAS guard, release() would wipe the successor's valid lock.
+# Transient redis errors retried internally by the client; if they still
+# surface here, retries are exhausted — log at warning to keep Sentry quiet
+# during rotation windows.
+_TRANSIENT_LOCK_ERRORS: tuple[type[BaseException], ...] = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    ClusterDownError,
+)
+
+# redis-py's reconnect path dereferences `.host` / `.port` on a plain
+# ConnectionError, surfacing as AttributeError with one of these signatures.
+# Only suppress AttributeError when the message matches — a typo on a
+# ClusterLock attribute must still bubble up at ERROR.
+_REDIS_RECONNECT_ATTRS = ("'host'", "'port'", "'connection_pool'")
+
+
+def _is_transient_redis_error(exc: BaseException) -> bool:
+    """True iff ``exc`` is a transient redis-cluster error worth retrying
+    or downgrading to WARNING. Generic ``AttributeError`` is only accepted
+    when its message matches the redis-py reconnect signature."""
+    if isinstance(exc, _TRANSIENT_LOCK_ERRORS):
+        return True
+    if isinstance(exc, AttributeError):
+        msg = str(exc)
+        return any(attr in msg for attr in _REDIS_RECONNECT_ATTRS)
+    return False
+
+
+# CAS release: DEL only when the stored owner still matches — guards against
+# wiping a successor's lock after an external force-release.
 _RELEASE_LUA = (
     "if redis.call('get', KEYS[1]) == ARGV[1] then "
     "return redis.call('del', KEYS[1]) "
@@ -27,7 +55,9 @@ _RELEASE_LUA = (
 class ClusterLock:
     """Simple Redis-based distributed lock for preventing duplicate execution."""
 
-    def __init__(self, redis: "Redis", key: str, owner_id: str, timeout: int = 300):
+    def __init__(
+        self, redis: "RedisClient", key: str, owner_id: str, timeout: int = 300
+    ):
         self.redis = redis
         self.key = key
         self.owner_id = owner_id
@@ -64,7 +94,13 @@ class ClusterLock:
             return None
 
         except Exception as e:
-            logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"ClusterLock.try_acquire transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
             return None
 
     def refresh(self) -> bool:
@@ -121,7 +157,13 @@ class ClusterLock:
             return False
 
         except Exception as e:
-            logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"ClusterLock.refresh transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
             with self._refresh_lock:
                 self._last_refresh = 0
             return False
@@ -150,7 +192,7 @@ class AsyncClusterLock:
     """Async Redis-based distributed lock for preventing duplicate execution."""
 
     def __init__(
-        self, redis: "AsyncRedis", key: str, owner_id: str, timeout: int = 300
+        self, redis: "AsyncRedisClient", key: str, owner_id: str, timeout: int = 300
     ):
         self.redis = redis
         self.key = key
@@ -190,7 +232,15 @@ class AsyncClusterLock:
             return None
 
         except Exception as e:
-            logger.error(f"AsyncClusterLock.try_acquire failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"AsyncClusterLock.try_acquire transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(
+                    f"AsyncClusterLock.try_acquire failed for key {self.key}: {e}"
+                )
             return None
 
     async def refresh(self) -> bool:
@@ -247,7 +297,13 @@ class AsyncClusterLock:
             return False
 
         except Exception as e:
-            logger.error(f"AsyncClusterLock.refresh failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"AsyncClusterLock.refresh transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"AsyncClusterLock.refresh failed for key {self.key}: {e}")
             async with self._refresh_lock:
                 self._last_refresh = 0
             return False

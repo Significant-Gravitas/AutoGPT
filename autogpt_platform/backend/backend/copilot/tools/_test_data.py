@@ -42,14 +42,19 @@ async def _ensure_db_connected() -> None:
         await db_module.connect()
 
 
-def make_session(user_id: str, *, guide_read: bool = True):
+def make_session(user_id: str, *, guide_read: bool = True, library_check: bool = True):
     """Build a fake ChatSession for tool tests.
 
     ``guide_read=True`` (default) pre-populates the session with a
     ``get_agent_building_guide`` tool-call history entry so the agent-
-    generation gate (see ``helpers.require_guide_read``) lets through any
-    subsequent ``create_agent`` / ``edit_agent`` / ``validate_agent_graph``
-    / ``fix_agent_graph`` call.
+    generation gate lets through any subsequent ``create_agent`` /
+    ``edit_agent`` / ``validate_agent_graph`` / ``fix_agent_graph`` call.
+
+    ``library_check=True`` (default) announces an in-flight
+    ``find_library_agent(for_creation=true)`` call so the create-time
+    library-similarity gate lets through ``create_agent``. The gate is
+    turn-scoped (in-flight only), so seeding via the in-flight buffer —
+    not the durable messages list — is the correct shape.
     """
     messages: list[ChatMessage] = []
     if guide_read:
@@ -60,7 +65,7 @@ def make_session(user_id: str, *, guide_read: bool = True):
                 tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
             )
         )
-    return ChatSession(
+    session = ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
         messages=messages,
@@ -70,6 +75,12 @@ def make_session(user_id: str, *, guide_read: bool = True):
         successful_agent_runs={},
         successful_agent_schedules={},
     )
+    if library_check:
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "test"},
+        )
+    return session
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

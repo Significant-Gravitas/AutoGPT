@@ -1,7 +1,6 @@
-"""Tests for agent generation guide — verifies clarification section."""
+"""Tests for prompting helpers."""
 
 import importlib
-from pathlib import Path
 
 from backend.copilot import prompting
 
@@ -33,26 +32,50 @@ class TestGetSdkSupplementStaticPlaceholder:
         assert "<session-id>" not in result
 
 
-class TestAgentGenerationGuideContainsClarifySection:
-    """The agent generation guide must include the clarification section."""
+class TestCredentialsSurfacingGuardrails:
+    """The system prompt must instruct the model to (a) surface sign-in cards
+    eagerly via tool calls and (b) never claim a card has appeared unless one
+    was just emitted in the same turn. Both behaviours prevent the user from
+    being stranded waiting for a card that was never produced.
+    """
 
-    def test_guide_includes_clarify_section(self):
-        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
-        content = guide_path.read_text(encoding="utf-8")
-        assert "Before or During Building" in content
+    def test_local_prompt_contains_eager_surfacing_rule(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "Surface the sign-in card EAGERLY" in result
 
-    def test_guide_mentions_find_block_for_clarification(self):
-        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
-        content = guide_path.read_text(encoding="utf-8")
-        clarify_section = content.split("Before or During Building")[1].split(
-            "### Workflow"
-        )[0]
-        assert "find_block" in clarify_section
+    def test_e2b_prompt_contains_eager_surfacing_rule(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "Surface the sign-in card EAGERLY" in result
 
-    def test_guide_mentions_ask_question_tool(self):
-        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
-        content = guide_path.read_text(encoding="utf-8")
-        clarify_section = content.split("Before or During Building")[1].split(
-            "### Workflow"
-        )[0]
-        assert "ask_question" in clarify_section
+    def test_prompt_contains_anti_hallucination_guardrail(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "NEVER claim a card has appeared" in result
+        assert "call the tool first" in result
+
+
+class TestToolDiscoveryPriorityAntiPattern:
+    """The Tool Discovery Priority section must forbid claiming a capability
+    gap without calling ``find_block`` first — this is the regression the
+    LinkedIn-skip incident on dev (May 2026) exposed.
+    """
+
+    def test_supplement_contains_find_block_mandatory_language(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        # The header must signal that find_block is mandatory before any
+        # "no integration" reply.
+        assert "find_block` is MANDATORY" in result
+
+    def test_supplement_lists_the_forbidden_phrases(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        # The anti-pattern section must explicitly enumerate the
+        # phrases the model emitted in the regression so the model
+        # can pattern-match on its own draft and reject it.
+        assert "We don't have a native X integration yet." in result
+        assert "There's no block for X." in result
+
+    def test_supplement_includes_correct_flow_template(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        # The 3-step correct-flow block must be present so the model
+        # has a concrete template to follow, not just a prohibition.
+        assert "Correct flow" in result
+        assert 'find_block(query="<service> <action>")' in result

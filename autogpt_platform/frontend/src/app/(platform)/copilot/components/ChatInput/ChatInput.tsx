@@ -8,11 +8,17 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Tray } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
+import { BlockCaret } from "./components/BlockCaret";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { ModelToggleButton } from "./components/ModelToggleButton";
@@ -209,7 +215,9 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
+            className="caret-transparent placeholder:indent-3"
           />
+          <BlockCaret textareaId={inputId} />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <RecordingIndicator
@@ -271,6 +279,7 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
+                variant="default"
                 disabled={isEnqueueing}
                 onClick={async () => {
                   if (isEnqueueing) return;
@@ -285,13 +294,18 @@ export function ChatInput({
                     }
                   }
                 }}
-                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
+                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
               >
-                <Tray className="size-4" weight="bold" />
+                <ArrowUpIcon className="size-4" weight="bold" />
               </PromptInputButton>
             )}
             {isStreaming ? (
-              <PromptInputSubmit status="streaming" onStop={onStop} />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PromptInputSubmit status="streaming" onStop={onStop} />
+                </TooltipTrigger>
+                <TooltipContent side="top">Stop</TooltipContent>
+              </Tooltip>
             ) : (
               <PromptInputSubmit disabled={!canSend} />
             )}

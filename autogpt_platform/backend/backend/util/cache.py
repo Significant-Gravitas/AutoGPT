@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
-from redis import ConnectionPool, Redis
+from redis.cluster import ClusterNode, RedisCluster
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -45,32 +45,26 @@ _HMAC_SIG_LEN = 32
 
 
 @cache
-def _get_cache_pool() -> ConnectionPool:
-    """Get or create a connection pool for cache operations (lazy, thread-safe)."""
-    return ConnectionPool(
-        host=settings.config.redis_host,
-        port=settings.config.redis_port,
+@conn_retry("Redis", "Acquiring cache connection")
+def _get_redis() -> RedisCluster:
+    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
+    # Local import breaks the redis_client <-> cache module cycle.
+    from backend.data.redis_client import _address_remap
+
+    c = RedisCluster(
+        startup_nodes=[
+            ClusterNode(settings.config.redis_host, settings.config.redis_port)
+        ],
         password=settings.config.redis_password or None,
         decode_responses=False,  # Binary mode for pickle
         max_connections=50,
         socket_keepalive=True,
         socket_connect_timeout=5,
         retry_on_timeout=True,
+        address_remap=_address_remap,
     )
-
-
-@cache
-@conn_retry("Redis", "Acquiring cache connection")
-def _get_redis() -> Redis:
-    """
-    Get the lazily-initialized Redis client for shared cache operations.
-    Uses @cache for thread-safe singleton behavior - connection is only
-    established when first accessed, allowing services that only use
-    in-memory caching to work without Redis configuration.
-    """
-    r = Redis(connection_pool=_get_cache_pool())
-    r.ping()  # Verify connection
-    return r
+    c.ping()
+    return c
 
 
 class _MissingType:
@@ -402,12 +396,19 @@ def cached(
         def cache_clear(pattern: str | None = None) -> None:
             """Clear cache entries. If pattern provided, clear matching entries."""
             if shared_cache:
-                if pattern:
-                    # Clear entries matching pattern
-                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:{pattern}"))
-                else:
-                    # Clear all cache keys
-                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
+                # SCAN must fan out across every primary on a cluster — without
+                # target_nodes the scan only walks the shard the client is
+                # bound to, leaving stale keys on the other shards.
+                match_pattern = (
+                    f"cache:{func_name}:{pattern}"
+                    if pattern
+                    else f"cache:{func_name}:*"
+                )
+                keys = list(
+                    _get_redis().scan_iter(
+                        match_pattern, target_nodes=RedisCluster.PRIMARIES
+                    )
+                )
 
                 if keys:
                     pipeline = _get_redis().pipeline()
@@ -425,7 +426,12 @@ def cached(
 
         def cache_info() -> dict[str, int | None]:
             if shared_cache:
-                cache_keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
+                cache_keys = list(
+                    _get_redis().scan_iter(
+                        f"cache:{func_name}:*",
+                        target_nodes=RedisCluster.PRIMARIES,
+                    )
+                )
                 return {
                     "size": len(cache_keys),
                     "maxsize": None,  # Redis manages its own size

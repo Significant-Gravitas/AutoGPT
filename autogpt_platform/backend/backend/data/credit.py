@@ -3,9 +3,10 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, cast
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+import posthog
 import stripe
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import (
@@ -17,7 +18,11 @@ from prisma.enums import (
 )
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionWhereInput,
+    UserUpdateInput,
+)
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
@@ -26,18 +31,21 @@ from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
+    CreditTransactionItem,
     RefundRequest,
     TopUpType,
     TransactionHistory,
-    UserTransaction,
 )
+from backend.data.model import User as AppUser
+from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
-from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
+from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
@@ -47,12 +55,17 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if settings.secrets.posthog_api_key:
+    posthog.api_key = settings.secrets.posthog_api_key
+    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
 # Constants for test compatibility
 POSTGRES_INT_MAX = 2147483647
 POSTGRES_INT_MIN = -2147483648
+
+BillingCycle = Literal["monthly", "yearly"]
 
 
 class UsageTransactionMetadata(BaseModel):
@@ -64,6 +77,72 @@ class UsageTransactionMetadata(BaseModel):
     block: str | None = None
     input: dict[str, Any] | None = None
     reason: str | None = None
+
+
+class InvoiceListItem(BaseModel):
+    """A single invoice surfaced from Stripe for the billing UI.
+
+    Mirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``
+    opens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.
+
+    ``total_cents`` is the invoice total (what the user owes / will be charged); use it
+    for the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled
+    so far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to
+    show outstanding balances separately.
+    """
+
+    id: str
+    number: str | None = None
+    created_at: datetime
+    total_cents: int
+    amount_paid_cents: int
+    currency: str = "usd"
+    status: str
+    description: str | None = None
+    hosted_invoice_url: str | None = None
+    invoice_pdf_url: str | None = None
+
+
+# Stripe rejects metadata values longer than 500 chars with an
+# invalid_request_error. DataFast IDs are short, but the values arrive from a
+# client-controlled header, so we validate them to keep attribution strictly
+# best-effort: a malformed ID must never break Checkout.
+_STRIPE_METADATA_VALUE_MAX_LEN = 500
+
+
+def _sanitize_datafast_id(value: str | None) -> str | None:
+    """Validate a client-supplied DataFast ID for use as Stripe metadata.
+
+    Returns the trimmed value, or None when it is blank, contains control
+    characters, or exceeds Stripe's metadata limit. An invalid ID is dropped
+    rather than truncated — a partial ID is useless for attribution and would
+    only pollute the Checkout metadata.
+    """
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized or len(normalized) > _STRIPE_METADATA_VALUE_MAX_LEN:
+        return None
+    if any(ord(ch) < 0x20 for ch in normalized):
+        return None
+    return normalized
+
+
+def _datafast_metadata(
+    visitor_id: str | None, session_id: str | None
+) -> dict[str, str]:
+    """Build Stripe metadata for DataFast revenue attribution.
+
+    Only includes IDs that are actually present (and valid) so we never send the
+    literal string "None" or a value Stripe would reject. Returns an empty dict
+    when neither is set, which Stripe accepts as "no metadata".
+    """
+    metadata: dict[str, str] = {}
+    if visitor := _sanitize_datafast_id(visitor_id):
+        metadata["datafast_visitor_id"] = visitor
+    if session := _sanitize_datafast_id(session_id):
+        metadata["datafast_session_id"] = session
+    return metadata
 
 
 class UserCreditBase(ABC):
@@ -118,6 +197,7 @@ class UserCreditBase(ABC):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         """
         Spend the credits for the user based on the cost.
@@ -126,6 +206,12 @@ class UserCreditBase(ABC):
             user_id (str): The user ID.
             cost (int): The cost to spend.
             metadata (UsageTransactionMetadata): The metadata of the transaction.
+            fail_insufficient_credits (bool): When True (default) raise
+                InsufficientBalanceError if the wallet can't cover the spend.
+                When False the spend is recorded unconditionally and the
+                balance may go negative — used by post-flight reconciliation
+                so a delta charge that exceeds the wallet is captured as
+                debt instead of silently leaking.
 
         Returns:
             int: The remaining balance.
@@ -140,6 +226,37 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+        """
+        pass
+
+    @abstractmethod
+    async def grant_credits(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        transaction_key: str | None = None,
+    ) -> int:
+        """
+        Grant non-purchased credits to the user (no Stripe charge).
+
+        Use this for any credit movement that is NOT a user-initiated Stripe
+        checkout: in-app refunds for failed services, beta-tester top-ups,
+        manual corrections, subscription credit grants, etc. Writes a
+        ``GRANT`` row so the dashboard does not misreport free credits as
+        ``TOP_UP`` (which is reserved for real Stripe checkouts).
+
+        Args:
+            user_id (str): The user ID.
+            amount (int): The amount of credits to grant (positive).
+            reason (str): Human-readable reason recorded in transaction metadata.
+            transaction_key (str | None): Optional deterministic key for
+                idempotent retries.  If supplied and a row already exists with
+                this key for the user, the existing balance is returned
+                without inserting a new row.
+
+        Returns:
+            int: The new balance after the grant.
         """
         pass
 
@@ -162,13 +279,21 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_intent(self, user_id: str, amount: int) -> str:
+    async def top_up_intent(
+        self,
+        user_id: str,
+        amount: int,
+        datafast_visitor_id: str | None = None,
+        datafast_session_id: str | None = None,
+    ) -> str:
         """
         Create a payment intent to top up the credits for the user.
 
         Args:
             user_id (str): The user ID.
             amount (int): The amount of credits to top up.
+            datafast_visitor_id (str | None): DataFast visitor ID for attribution.
+            datafast_session_id (str | None): DataFast session ID for attribution.
 
         Returns:
             str: The redirect url to the payment page.
@@ -232,9 +357,21 @@ class UserCreditBase(ABC):
     async def create_billing_portal_session(user_id: str) -> str:
         session = stripe.billing_portal.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            return_url=base_url + "/profile/credits",
+            return_url=base_url + "/settings/billing",
         )
         return session.url
+
+    async def list_invoices(
+        self, user_id: str, limit: int = 24
+    ) -> list["InvoiceListItem"]:
+        """List recent Stripe invoices for the given user.
+
+        Defaults to the most-recent ``limit`` invoices. Concrete subclasses
+        override this with the actual Stripe call; ``DisabledUserCredit``
+        returns an empty list so the UI degrades gracefully when credits
+        are disabled.
+        """
+        return []
 
     @staticmethod
     def time_now() -> datetime:
@@ -604,6 +741,7 @@ class UserCredit(UserCreditBase):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         if cost == 0:
             return 0
@@ -613,6 +751,7 @@ class UserCredit(UserCreditBase):
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
             metadata=SafeJson(metadata.model_dump()),
+            fail_insufficient_credits=fail_insufficient_credits,
         )
 
         # Auto top-up if balance is below threshold.
@@ -644,6 +783,29 @@ class UserCredit(UserCreditBase):
         await self._top_up_credits(
             user_id=user_id, amount=amount, top_up_type=top_up_type
         )
+
+    async def grant_credits(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        transaction_key: str | None = None,
+    ) -> int:
+        if amount < 0:
+            raise ValueError(f"Grant amount must not be negative: {amount}")
+        try:
+            balance, _ = await self._add_transaction(
+                user_id=user_id,
+                amount=amount,
+                transaction_type=CreditTransactionType.GRANT,
+                transaction_key=transaction_key,
+                metadata=SafeJson({"reason": reason}),
+            )
+        except UniqueViolationError:
+            # Idempotent: another request with the same transaction_key already
+            # granted this — return the current balance without double-crediting.
+            balance, _ = await self._get_credits(user_id)
+        return balance
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
         try:
@@ -798,10 +960,11 @@ class UserCredit(UserCreditBase):
         logger.warning(
             f"Adding extra info for dispute from {user_id} for ${amount / 100}"
         )
-        # Retrieve recent transaction history to support our evidence.
-        # This provides a concise timeline that shows service usage and proper credit application.
-        transaction_history = await self.get_transaction_history(
-            user_id, transaction_count_limit=None
+        # Retrieve recent transaction rows directly from prisma to preserve
+        # per-row runningBalance in the dispute evidence narrative.
+        dispute_transactions = await CreditTransaction.prisma().find_many(
+            where={"userId": user_id, "isActive": True},
+            order={"createdAt": "desc"},
         )
         user = await get_user_by_id(user_id)
 
@@ -814,17 +977,19 @@ class UserCredit(UserCreditBase):
             "were applied to the user’s account. Our records confirm that the funds were utilized for the intended services. "
             "Below is a summary of recent transaction activity:\n"
         )
-        for tx in transaction_history.transactions:
-            if tx.transaction_key == transaction.transactionKey:
+        for t in dispute_transactions:
+            if t.transactionKey == transaction.transactionKey:
                 additional_comment = (
                     " [This top-up transaction is the subject of the dispute]."
                 )
             else:
                 additional_comment = ""
 
+            tx_time = t.createdAt.replace(tzinfo=timezone.utc)
+            running_balance = t.runningBalance or 0
             evidence_text += (
-                f"- {tx.description}: Amount ${tx.amount / 100:.2f} on {tx.transaction_time.isoformat()}, "
-                f"resulting balance ${tx.running_balance / 100:.2f} {additional_comment}\n"
+                f"- {t.type} Transaction: Amount ${t.amount / 100:.2f} on {tx_time.isoformat()}, "
+                f"resulting balance ${running_balance / 100:.2f}{additional_comment}\n"
             )
         evidence_text += (
             "\nThis evidence demonstrates that the transaction was authorized and that the charged amount was used to render the service as agreed."
@@ -936,18 +1101,68 @@ class UserCredit(UserCreditBase):
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
             )
 
-        await self._enable_transaction(
+        activation = await self._enable_transaction(
             transaction_key=transaction_key,
             new_transaction_key=new_transaction_key,
             user_id=user_id,
             metadata=successful_transaction,
         )
+        # ``_enable_transaction`` returns None when the transaction is missing
+        # or already active — skip the conversion event in that no-op case so
+        # webhook/retry replays don't double-emit.
+        if activation is not None and amount > 0:
+            _track_billing_event(
+                "credit_topup_success",
+                user_id,
+                {
+                    "amount_credits": amount,
+                    "top_up_type": top_up_type.value,
+                },
+            )
 
-    async def top_up_intent(self, user_id: str, amount: int) -> str:
+    async def top_up_intent(
+        self,
+        user_id: str,
+        amount: int,
+        datafast_visitor_id: str | None = None,
+        datafast_session_id: str | None = None,
+    ) -> str:
         if amount < 500 or amount % 100 != 0:
             raise ValueError(
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
+
+        # Resolve the Stripe Product ID from LD; when unset (default), keep the
+        # legacy inline product_data path (Stripe creates an ephemeral product
+        # per Checkout). When set, reference the canonical Product so all
+        # top-ups group under one entity in Stripe Dashboard reporting; the
+        # amount stays dynamic via unit_amount.
+        topup_product_id = await get_feature_flag_value(
+            Flag.STRIPE_PRODUCT_ID_TOPUP.value, user_id, default=None
+        )
+        line_items: list[stripe.checkout.Session.CreateParamsLineItem] = (
+            [
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product": topup_product_id,
+                        "unit_amount": amount,
+                    },
+                    "quantity": 1,
+                }
+            ]
+            if isinstance(topup_product_id, str) and topup_product_id
+            else [
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {"name": "AutoGPT Platform Credits"},
+                        "unit_amount": amount,
+                    },
+                    "quantity": 1,
+                }
+            ]
+        )
 
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
@@ -955,25 +1170,18 @@ class UserCredit(UserCreditBase):
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "usd",
-                        "product_data": {
-                            "name": "AutoGPT Platform Credits",
-                        },
-                        "unit_amount": amount,
-                    },
-                    "quantity": 1,
-                }
-            ],
+            line_items=line_items,
             mode="payment",
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=base_url + "/profile/credits?topup=success",
-            cancel_url=base_url + "/profile/credits?topup=cancel",
+            success_url=base_url + "/settings/billing?topup=success",
+            cancel_url=base_url + "/settings/billing?topup=cancel",
             allow_promotion_codes=True,
+            automatic_tax={"enabled": True},
+            billing_address_collection="auto",
+            customer_update={"address": "auto"},
+            metadata=_datafast_metadata(datafast_visitor_id, datafast_session_id),
         )
 
         await self._add_transaction(
@@ -1034,12 +1242,21 @@ class UserCredit(UserCreditBase):
             else:
                 new_transaction_key = None
 
-            await self._enable_transaction(
+            activation = await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
+            if activation is not None:
+                _track_billing_event(
+                    "credit_topup_success",
+                    credit_transaction.userId,
+                    {
+                        "amount_credits": credit_transaction.amount,
+                        "top_up_type": "CHECKOUT",
+                    },
+                )
 
     async def get_credits(self, user_id: str) -> int:
         balance, _ = await self._get_credits(user_id)
@@ -1069,9 +1286,8 @@ class UserCredit(UserCreditBase):
             take=transaction_count_limit,
         )
 
-        # doesn't fill current_balance, reason, user_email, admin_email, or extra_data
-        grouped_transactions: dict[str, UserTransaction] = defaultdict(
-            lambda: UserTransaction(user_id=user_id)
+        grouped_transactions: dict[str, CreditTransactionItem] = defaultdict(
+            lambda: CreditTransactionItem(user_id=user_id)
         )
         tx_time = None
         for t in transactions:
@@ -1101,7 +1317,6 @@ class UserCredit(UserCreditBase):
 
             if tx_time > gt.transaction_time:
                 gt.transaction_time = tx_time
-                gt.running_balance = t.runningBalance or 0
 
         return TransactionHistory(
             transactions=list(grouped_transactions.values()),
@@ -1132,36 +1347,47 @@ class UserCredit(UserCreditBase):
             )
         ]
 
+    async def list_invoices(
+        self, user_id: str, limit: int = 24
+    ) -> list[InvoiceListItem]:
+        # Skip the Stripe call entirely for users that have never been
+        # provisioned a customer — listing invoices must NOT have the side
+        # effect of creating a Stripe Customer record (would orphan billable
+        # customers for every beta user that opens the billing page).
+        user = await get_user_by_id(user_id)
+        if not user.stripe_customer_id:
+            return []
 
-class BetaUserCredit(UserCredit):
-    """
-    This is a temporary class to handle the test user utilizing monthly credit refill.
-    TODO: Remove this class & its feature toggle.
-    """
-
-    def __init__(self, num_user_credits_refill: int):
-        self.num_user_credits_refill = num_user_credits_refill
-
-    async def get_credits(self, user_id: str) -> int:
-        cur_time = self.time_now().date()
-        balance, snapshot_time = await self._get_credits(user_id)
-        if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
-            return balance
-
-        target = self.num_user_credits_refill
+        # Bound limit to Stripe's per-page maximum (100) and at least 1
+        limit = max(1, min(limit, 100))
 
         try:
-            balance, _ = await self._add_transaction(
-                user_id=user_id,
-                amount=max(target - balance, 0),
-                transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
-                metadata=SafeJson({"reason": "Monthly credit refill"}),
+            invoices = await run_in_threadpool(
+                stripe.Invoice.list,
+                customer=user.stripe_customer_id,
+                limit=limit,
             )
-            return balance
-        except UniqueViolationError:
-            # Already refilled this month
-            return (await self._get_credits(user_id))[0]
+        except stripe.StripeError:
+            logger.exception("Stripe invoice list failed for user %s", user_id)
+            return []
+
+        return [
+            InvoiceListItem(
+                id=invoice.id or "",
+                number=invoice.number,
+                created_at=datetime.fromtimestamp(
+                    invoice.created or 0, tz=timezone.utc
+                ),
+                total_cents=invoice.total or 0,
+                amount_paid_cents=invoice.amount_paid or 0,
+                currency=(invoice.currency or "usd").lower(),
+                status=invoice.status or "open",
+                description=invoice.description,
+                hosted_invoice_url=invoice.hosted_invoice_url,
+                invoice_pdf_url=invoice.invoice_pdf,
+            )
+            for invoice in invoices.data
+        ]
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -1179,6 +1405,9 @@ class DisabledUserCredit(UserCreditBase):
 
     async def top_up_credits(self, *args, **kwargs):
         pass
+
+    async def grant_credits(self, *args, **kwargs) -> int:
+        return 100
 
     async def onboarding_reward(self, *args, **kwargs) -> bool:
         return True
@@ -1200,30 +1429,16 @@ class DisabledUserCredit(UserCreditBase):
 
 
 async def get_user_credit_model(user_id: str) -> UserCreditBase:
-    """
-    Get the credit model for a user, considering LaunchDarkly flags.
+    """Return the credit model for a user.
 
-    Args:
-        user_id (str): The user ID to check flags for.
-
-    Returns:
-        UserCreditBase: The appropriate credit model for the user
+    The ``user_id`` parameter is currently unused but retained for ABI
+    stability — many callers already pass it, and the function may need to
+    branch on user identity again in the future.
     """
+    _ = user_id
     if not settings.config.enable_credit:
         return DisabledUserCredit()
-
-    # Check LaunchDarkly flag for payment pilot users
-    # Default to False (beta monthly credit behavior) to maintain current behavior
-    is_payment_enabled = await is_feature_enabled(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
-
-    if is_payment_enabled:
-        # Payment enabled users get UserCredit (no monthly refills, enable payments)
-        return UserCredit()
-    else:
-        # Default behavior: users get beta monthly credits
-        return BetaUserCredit(settings.config.num_user_credits_refill)
+    return UserCredit()
 
 
 def get_block_costs() -> dict[str, list["BlockCost"]]:
@@ -1268,12 +1483,15 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
-    """Set the user's subscription tier (used by webhook and admin flows)."""
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"subscriptionTier": tier},
-    )
+async def set_subscription_tier(
+    user_id: str,
+    tier: SubscriptionTier,
+) -> None:
+    """Set the user's subscription tier."""
+    data: UserUpdateInput = {
+        "subscriptionTier": tier,
+    }
+    await User.prisma().update(where={"id": user_id}, data=data)
     get_user_by_id.cache_delete(user_id)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
     # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
@@ -1302,7 +1520,7 @@ async def _cancel_customer_subscriptions(
     When ``at_period_end=True``, schedules cancellation at the end of the current
     billing period instead of cancelling immediately — the user keeps their tier
     until the period ends, then ``customer.subscription.deleted`` fires and the
-    webhook downgrades them to FREE.
+    webhook downgrades them to BASIC.
 
     Wraps every synchronous Stripe SDK call with run_in_threadpool so the async event
     loop is never blocked. Raises stripe.StripeError on list/cancel failure so callers
@@ -1364,7 +1582,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
 
     The subscription stays active until the end of the billing period so the user
     keeps their tier for the time they already paid for. The ``customer.subscription.deleted``
-    webhook fires at period end and downgrades the DB tier to FREE.
+    webhook fires at period end and downgrades the DB tier to BASIC.
 
     Returns True if at least one subscription was found and scheduled for cancellation,
     False if the customer had no active/trialing subscriptions (e.g., admin-granted tier
@@ -1389,6 +1607,12 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         )
         if cancelled_count > 0:
             get_pending_subscription_change.cache_delete(user_id)
+            current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+            _track_billing_event(
+                "subscription_cancellation_scheduled",
+                user_id,
+                {"subscription_tier": current_tier.value},
+            )
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1403,7 +1627,7 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 
     Fetches the user's active Stripe subscription to determine how many seconds
     remain in the current billing period, then calculates the unused portion of
-    the monthly cost. Returns 0 for FREE/ENTERPRISE users or when no active sub
+    the monthly cost. Returns 0 for BASIC/ENTERPRISE users or when no active sub
     is found.
     """
     if monthly_cost_cents <= 0:
@@ -1442,8 +1666,10 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 # (move right) from downgrades (move left); ENTERPRISE is admin-managed and
 # never reached via self-service flows.
 _TIER_ORDER: tuple[SubscriptionTier, ...] = (
-    SubscriptionTier.FREE,
+    SubscriptionTier.NO_TIER,
+    SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
+    SubscriptionTier.MAX,
     SubscriptionTier.BUSINESS,
     SubscriptionTier.ENTERPRISE,
 )
@@ -1476,6 +1702,80 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
         if subs.data:
             return subs.data[0]
     return None
+
+
+async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
+    """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
+
+    Resolves cycle by matching the active subscription's price ID against the
+    LaunchDarkly-configured monthly/yearly price IDs for the user's current
+    tier, falling back to scanning every priceable tier (handles the brief
+    window during a tier change where DB tier and Stripe price disagree).
+    Returns None when there's no Stripe customer, no active sub, or the price
+    ID doesn't match any configured cycle (e.g. legacy unconfigured price).
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except stripe.StripeError:
+        logger.warning(
+            "get_user_billing_cycle: Stripe lookup failed for user %s", user_id
+        )
+        return None
+    if sub is None:
+        return None
+    items = sub["items"].data
+    if not items:
+        return None
+    price = items[0].price
+    current_price_id = price if isinstance(price, str) else price.id
+    if not current_price_id:
+        return None
+
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
+    )
+    price_to_cycle: dict[str, BillingCycle] = {}
+    for pid in monthly_prices:
+        if pid:
+            price_to_cycle[pid] = "monthly"
+    for pid in yearly_prices:
+        if pid:
+            price_to_cycle[pid] = "yearly"
+    return price_to_cycle.get(current_price_id)
+
+
+async def get_active_subscription_period_end(user_id: str) -> int | None:
+    """Return the Unix timestamp of the active sub's current_period_end, or None.
+
+    Used to surface "next invoice on {date}" in upgrade dialog UX. Returns None
+    for users without a Stripe customer or active sub. Stripe failures swallow
+    to None — UX falls back to generic copy if the lookup misfires.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except stripe.StripeError:
+        logger.warning(
+            "get_active_subscription_period_end: Stripe lookup failed for user %s",
+            user_id,
+        )
+        return None
+    if sub is None:
+        return None
+    period_end = sub.current_period_end
+    return int(period_end) if period_end else None
 
 
 # Substrings Stripe uses in InvalidRequestError messages when the schedule is
@@ -1551,7 +1851,7 @@ async def _schedule_downgrade_at_period_end(
     ``SubscriptionSchedule.create`` if either (a) a schedule is already
     attached to the subscription or (b) ``cancel_at_period_end=True`` is set.
     Both conditions mean the user is overwriting a pending change they made
-    earlier (e.g. BUSINESS→FREE cancel, now switching to BUSINESS→PRO
+    earlier (e.g. BUSINESS→BASIC cancel, now switching to BUSINESS→PRO
     downgrade). We clear the conflicting state first so the new schedule can
     be created. These defensive reads serialize through Stripe's own atomic
     operations — by the time modify/release returns, the subscription is in a
@@ -1639,7 +1939,9 @@ async def _schedule_downgrade_at_period_end(
 
 
 async def modify_stripe_subscription_for_tier(
-    user_id: str, tier: SubscriptionTier
+    user_id: str,
+    tier: SubscriptionTier,
+    billing_cycle: BillingCycle = "monthly",
 ) -> bool:
     """Change a Stripe subscription to a new paid tier.
 
@@ -1662,14 +1964,14 @@ async def modify_stripe_subscription_for_tier(
     Raises stripe.StripeError on API failures so callers can propagate a 502.
     Raises ValueError when no Stripe price ID is configured for the tier.
     """
-    price_id = await get_subscription_price_id(tier)
+    price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"No Stripe price ID configured for tier {tier}")
 
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
-    current_tier = user.subscription_tier or SubscriptionTier.FREE
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
@@ -1689,6 +1991,22 @@ async def modify_stripe_subscription_for_tier(
             await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
             return True
 
+        # Same-tier yearly→monthly is a cycle *downgrade*: the user is moving
+        # from a longer commitment to a shorter one. Route it through the
+        # period-end schedule so the dialog promise ("no charge today, switch
+        # at end of yearly period") actually holds. Same-tier monthly→yearly
+        # stays on the immediate proration path below — the user is committing
+        # to more time, immediate billing is the correct semantic.
+        if current_tier == tier:
+            current_price = items[0].price
+            current_price_id = (
+                current_price if isinstance(current_price, str) else current_price.id
+            )
+            current_cycle = await _resolve_cycle_for_price_id(current_price_id)
+            if current_cycle == "yearly" and billing_cycle == "monthly":
+                await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+                return True
+
         # Upgrade path. If a schedule is attached from a previous pending
         # downgrade, release it first — an upgrade expresses the user's
         # intent to be on this tier immediately, which overrides any pending
@@ -1701,13 +2019,25 @@ async def modify_stripe_subscription_for_tier(
                 existing_schedule_id, "modify_stripe_subscription_for_tier"
             )
 
-        # If a paid→FREE cancel is pending (cancel_at_period_end=True), clear it
+        # If a paid→BASIC cancel is pending (cancel_at_period_end=True), clear it
         # as part of the upgrade — the user is explicitly choosing to stay on a
         # paid tier. Without this, the sub would be upgraded AND still cancelled
         # at period end, leaving a confusing dual state.
+        # always_invoice + error_if_incomplete bill the prorated upgrade now and
+        # roll the modify back if the auto-charge fails (instead of deferring).
+        # Refresh metadata so the live sub reflects the new tier+cycle — the
+        # backend derives tier from price_id, but Stripe-side dashboards and
+        # downstream tooling read sub.metadata directly and otherwise see the
+        # stale tier/cycle from the original checkout.
         modify_kwargs: dict = {
             "items": [{"id": items[0].id, "price": price_id}],
-            "proration_behavior": "create_prorations",
+            "proration_behavior": "always_invoice",
+            "payment_behavior": "error_if_incomplete",
+            "metadata": {
+                "user_id": user_id,
+                "tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
         }
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
@@ -1727,8 +2057,10 @@ async def modify_stripe_subscription_for_tier(
         # Only catch actual DB/connection failures — letting KeyError,
         # AttributeError etc. propagate so programming errors surface in Sentry
         # instead of being silently masked as benign DB-write-swallow events.
+        db_flip_succeeded = False
         try:
             await set_subscription_tier(user_id, tier)
+            db_flip_succeeded = True
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
@@ -1744,6 +2076,19 @@ async def modify_stripe_subscription_for_tier(
             user_id,
             tier,
         )
+        # Only emit on real tier upgrade AND when the DB flip succeeded — the
+        # ``customer.subscription.updated`` webhook is the fallback emit when
+        # the DB flip fails, so gating here avoids double-firing on success.
+        if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
+            _track_billing_event(
+                "subscription_upgraded",
+                user_id,
+                {
+                    "previous_subscription_tier": current_tier.value,
+                    "subscription_tier": tier.value,
+                    "billing_cycle": billing_cycle,
+                },
+            )
         return True
     finally:
         get_pending_subscription_change.cache_delete(user_id)
@@ -1757,7 +2102,7 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     - **Subscription Schedule** (paid→paid downgrade): ``stripe.SubscriptionSchedule.release``
       detaches the schedule and lets the subscription continue on its current
       phase's price.
-    - **cancel_at_period_end=True** (paid→FREE cancel): clearing that flag via
+    - **cancel_at_period_end=True** (paid→BASIC cancel): clearing that flag via
       ``stripe.Subscription.modify`` keeps the subscription active indefinitely.
 
     Returns True if a pending change was found and reverted, False otherwise.
@@ -1822,11 +2167,11 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
 @cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
 async def get_pending_subscription_change(
     user_id: str,
-) -> tuple[SubscriptionTier, datetime] | None:
-    """Return ``(pending_tier, effective_at)`` when a change is queued, else ``None``.
+) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
+    """Return ``(pending_tier, effective_at, pending_cycle)`` when a change is queued, else ``None``.
 
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
-    and ``cancel_at_period_end=True`` (paid→FREE cancel).
+    and ``cancel_at_period_end=True`` (paid→BASIC cancel).
 
     Cached for 30 seconds per user_id. *Why the cache exists:* this function
     runs on every dashboard/home fetch and would otherwise fire
@@ -1854,23 +2199,36 @@ async def get_pending_subscription_change(
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         # Short-circuit for users with no Stripe customer (admin-granted tiers,
-        # FREE-only users): skip the Stripe API calls entirely.
+        # BASIC-only users): skip the Stripe API calls entirely.
         return None
 
-    pro_price, biz_price = await asyncio.gather(
-        get_subscription_price_id(SubscriptionTier.PRO),
-        get_subscription_price_id(SubscriptionTier.BUSINESS),
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    # Gather monthly + yearly price IDs so a schedule whose next phase points
+    # at a yearly price still resolves to the correct tier.
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
     )
     price_to_tier: dict[str, SubscriptionTier] = {}
-    if pro_price:
-        price_to_tier[pro_price] = SubscriptionTier.PRO
-    if biz_price:
-        price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+    price_to_cycle: dict[str, BillingCycle] = {}
+    for t, pid in zip(priceable, monthly_prices):
+        if pid:
+            price_to_tier[pid] = t
+            price_to_cycle[pid] = "monthly"
+    for t, pid in zip(priceable, yearly_prices):
+        if pid:
+            price_to_tier[pid] = t
+            price_to_cycle[pid] = "yearly"
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass the"
-            " None cache so the next request retries fresh"
+            " BASIC/PRO/MAX/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
             "Stripe price lookup failed; pending-change state cannot be determined"
@@ -1884,19 +2242,25 @@ async def get_pending_subscription_change(
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.FREE, effective_at
+        return SubscriptionTier.NO_TIER, effective_at, None
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
     schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
-    return _next_phase_tier_and_start(schedule, price_to_tier)
+    return _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
 
 
 def _next_phase_tier_and_start(
     schedule: stripe.SubscriptionSchedule,
     price_to_tier: dict[str, SubscriptionTier],
-) -> tuple[SubscriptionTier, datetime] | None:
-    """Return (tier, start_datetime) of the phase that follows the active one.
+    price_to_cycle: dict[str, BillingCycle],
+) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
+    """Return ``(tier, start_datetime, billing_cycle)`` of the phase following the active one.
+
+    ``billing_cycle`` is the cycle of the next-phase price (``"monthly"``/``"yearly"``)
+    when resolvable, ``None`` for unconfigured/legacy prices. Same-tier yearly→monthly
+    schedules need this so the UI can distinguish a cycle-only change (where
+    ``pending_tier == current_tier``) from a real tier downgrade.
 
     Using the phase's own ``start_date`` (not the subscription's current_period_end)
     is correct even for schedules created outside this flow — a dashboard-authored
@@ -1913,8 +2277,10 @@ def _next_phase_tier_and_start(
         price = items[0].price
         price_id = price if isinstance(price, str) else price.id
         if price_id in price_to_tier:
-            return price_to_tier[price_id], datetime.fromtimestamp(
-                phase.start_date, tz=timezone.utc
+            return (
+                price_to_tier[price_id],
+                datetime.fromtimestamp(phase.start_date, tz=timezone.utc),
+                price_to_cycle.get(price_id),
             )
         logger.warning(
             "next_phase_tier_and_start: unknown price %s on schedule %s",
@@ -1933,28 +2299,227 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
-@cached(ttl_seconds=60, maxsize=8, cache_none=False)
-async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
-    """Return Stripe Price ID for a tier from LaunchDarkly, cached for 60 seconds.
+async def _resolve_cycle_for_price_id(price_id: str | None) -> BillingCycle | None:
+    """Map a Stripe price ID back to its billing cycle via the LD price flag.
 
-    Price IDs are LaunchDarkly flag values that change only at deploy time.
-    Caching for 60 seconds avoids hitting the LD SDK on every webhook delivery
-    and every GET /credits/subscription page load (called 2x per request).
+    Used by ``modify_stripe_subscription_for_tier`` to detect a same-tier
+    cycle change (yearly→monthly downgrade vs monthly→yearly upgrade) before
+    deciding between the immediate-proration path and the period-end schedule.
+    Returns None when the price ID isn't configured for any tier+cycle (legacy
+    or unconfigured price), which keeps the caller on the upgrade path.
+    """
+    if not price_id:
+        return None
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
+    )
+    if price_id in monthly_prices:
+        return "monthly"
+    if price_id in yearly_prices:
+        return "yearly"
+    return None
+
+
+def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
+    """Compose the LaunchDarkly key for a tier+cycle.
+
+    Monthly keeps the legacy ``<TIER>`` key (so a flag value flipped from
+    monthly-only to also-yearly never breaks an older deploy that still reads
+    only the monthly key). Yearly lives under ``<TIER>_YEARLY``.
+    """
+    if billing_cycle == "yearly":
+        return f"{tier.value}_YEARLY"
+    return tier.value
+
+
+@cached(ttl_seconds=60, maxsize=16, cache_none=False)
+async def get_subscription_price_id(
+    tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
+) -> str | None:
+    """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
+
+    Reads the ``copilot-tier-stripe-prices`` JSON flag and looks up:
+
+    - Monthly: ``raw["<TIER>"]`` (e.g. ``raw["PRO"]``) — the existing key
+      pre-yearly. Older deploys see this exact key, so adding yearly keys
+      alongside it never breaks an in-flight rollout.
+    - Yearly: ``raw["<TIER>_YEARLY"]`` (e.g. ``raw["PRO_YEARLY"]``). Yearly
+      requests for a tier without a configured yearly key fail closed
+      (return ``None``) instead of silently falling back to the monthly
+      price.
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
-    A tier with no configured flag (FREE, ENTERPRISE) returns ``None`` from an
-    O(1) dict lookup before hitting LD, so the extra LD call is never made.
     """
-    flag_map = {
-        SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
-        SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
-    }
-    flag = flag_map.get(tier)
-    if flag is None:
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_STRIPE_PRICES.value, user_id="system", default=None
+    )
+    if raw is None:
         return None
-    price_id = await get_feature_flag_value(flag.value, user_id="system", default="")
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-stripe-prices (expected JSON object): %r",
+            raw,
+        )
+        return None
+    price_id = raw.get(_ld_price_key(tier, billing_cycle))
     return price_id if isinstance(price_id, str) and price_id else None
+
+
+_PRICEABLE_TIERS: tuple[SubscriptionTier, ...] = (
+    SubscriptionTier.BASIC,
+    SubscriptionTier.PRO,
+    SubscriptionTier.MAX,
+    SubscriptionTier.BUSINESS,
+)
+
+
+async def build_price_to_tier_map() -> dict[str, SubscriptionTier]:
+    """Map every configured monthly+yearly Stripe price ID to its tier.
+
+    Lets a yearly plan resolve back to the same tier as its monthly twin.
+    Shared by the webhook sync and the periodic reconciliation sweep so both
+    interpret Stripe prices identically.
+    """
+    prices = await asyncio.gather(
+        *[get_subscription_price_id(t, "monthly") for t in _PRICEABLE_TIERS],
+        *[get_subscription_price_id(t, "yearly") for t in _PRICEABLE_TIERS],
+    )
+    price_to_tier: dict[str, SubscriptionTier] = {}
+    for t, pid in zip(_PRICEABLE_TIERS + _PRICEABLE_TIERS, prices):
+        if pid:
+            price_to_tier[pid] = t
+    return price_to_tier
+
+
+async def _expire_open_subscription_sessions(customer_id: str) -> None:
+    """Expire open subscription checkout sessions for the customer.
+
+    An abandoned subscription session leaves an incomplete subscription + open invoice
+    in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
+    invoice, so the user is not shown phantom charges on their billing page.
+    """
+    try:
+        starting_after: str | None = None
+        while True:
+            list_kwargs: dict = {
+                "customer": customer_id,
+                "status": "open",
+                "limit": 100,
+            }
+            if starting_after:
+                list_kwargs["starting_after"] = starting_after
+            sessions = await stripe.checkout.Session.list_async(**list_kwargs)
+            for s in sessions.data:
+                if s.mode == "subscription":
+                    try:
+                        await stripe.checkout.Session.expire_async(s.id)
+                    except stripe.StripeError:
+                        logger.warning(
+                            "create_subscription_checkout: could not expire session %s",
+                            s.id,
+                        )
+            if not sessions.has_more or not sessions.data:
+                break
+            starting_after = sessions.data[-1].id
+    except Exception:
+        logger.warning(
+            "create_subscription_checkout: could not list open sessions for %s",
+            customer_id,
+        )
+
+
+def _is_stripe_reconcilable(user: AppUser) -> bool:
+    """True when Stripe is the authoritative source for this user's tier.
+
+    A user is reconcilable (auto-downgradable) iff they have a Stripe customer
+    and are not on ENTERPRISE. Manual/admin grants are modeled as a paid tier
+    with no Stripe customer, or as ENTERPRISE — both are managed out-of-band and
+    must never be auto-revoked by Stripe reconciliation.
+    """
+    return (
+        user.stripe_customer_id is not None
+        and user.subscription_tier != SubscriptionTier.ENTERPRISE
+    )
+
+
+async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
+    """Make Stripe the source of truth for a single reconcilable user's tier.
+
+    Bidirectional: sets the tier to the user's current active/trialing Stripe
+    subscription, and DOWNGRADES to NO_TIER when no active sub exists. Never
+    touches non-reconcilable rows (no Stripe customer, or ENTERPRISE). Returns
+    True when the tier was changed.
+
+    Routes through ``sync_subscription_from_stripe`` so the active-sub path
+    shares the webhook's idempotency + "other active subs" downgrade guard.
+    Does NOT create a Stripe customer — only checks existing ones.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id or not _is_stripe_reconcilable(user):
+        return False
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except Exception:
+        logger.warning(
+            "reconcile_stripe_tier_for_user: Stripe lookup failed for user %s",
+            user_id[:8],
+        )
+        return False
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if sub is not None:
+        await sync_subscription_from_stripe(dict(sub))
+        new_tier = (
+            await get_user_by_id(user_id)
+        ).subscription_tier or SubscriptionTier.NO_TIER
+        if new_tier == current_tier:
+            return False
+        # Recorded (info + PostHog) only; ops alerting is aggregated by the
+        # sweep's Discord system alert, not pinged per-user here.
+        log_tier_reconciliation_discrepancy(
+            user_id=user_id,
+            stripe_customer_id=user.stripe_customer_id,
+            previous_tier=current_tier,
+            new_tier=new_tier,
+            via="lazy-reconcile",
+        )
+        return True
+    # No active/trialing sub — downgrade a reconcilable row to NO_TIER.
+    if current_tier == SubscriptionTier.NO_TIER:
+        return False
+    await set_subscription_tier(user_id, SubscriptionTier.NO_TIER)
+    log_tier_reconciliation_discrepancy(
+        user_id=user_id,
+        stripe_customer_id=user.stripe_customer_id,
+        previous_tier=current_tier,
+        new_tier=SubscriptionTier.NO_TIER,
+        via="lazy-reconcile",
+    )
+    return True
+
+
+async def sync_tier_from_checkout_session(data_object: dict) -> None:
+    """Sync subscription tier from a checkout.session.completed event payload.
+
+    Retrieves the Stripe subscription and calls sync_subscription_from_stripe so
+    the tier is set immediately without waiting for customer.subscription.created.
+    No-op when mode != "subscription" or subscription ID is absent.
+    Raises stripe.StripeError if the subscription cannot be retrieved.
+    """
+    if data_object.get("mode") != "subscription":
+        return
+    sub_id = data_object.get("subscription")
+    if not sub_id:
+        return
+    sub = await stripe.Subscription.retrieve_async(sub_id)
+    await sync_subscription_from_stripe(dict(sub))
 
 
 async def create_subscription_checkout(
@@ -1962,12 +2527,17 @@ async def create_subscription_checkout(
     tier: SubscriptionTier,
     success_url: str,
     cancel_url: str,
+    billing_cycle: BillingCycle = "monthly",
+    datafast_visitor_id: str | None = None,
+    datafast_session_id: str | None = None,
 ) -> str:
     """Create a Stripe Checkout Session for a subscription. Returns the redirect URL."""
-    price_id = await get_subscription_price_id(tier)
+    price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
+    await _expire_open_subscription_sessions(customer_id)
+    datafast = _datafast_metadata(datafast_visitor_id, datafast_session_id)
     session = await run_in_threadpool(
         stripe.checkout.Session.create,
         customer=customer_id,
@@ -1975,7 +2545,19 @@ async def create_subscription_checkout(
         line_items=[{"price": price_id, "quantity": 1}],
         success_url=success_url,
         cancel_url=cancel_url,
-        subscription_data={"metadata": {"user_id": user_id, "tier": tier.value}},
+        subscription_data={
+            "metadata": {
+                "user_id": user_id,
+                "tier": tier.value,
+                "billing_cycle": billing_cycle,
+                **datafast,
+            }
+        },
+        allow_promotion_codes=True,
+        automatic_tax={"enabled": True},
+        billing_address_collection="auto",
+        customer_update={"address": "auto"},
+        metadata=datafast,
     )
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
@@ -2061,7 +2643,9 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     # ENTERPRISE user to a different tier — if a user on ENTERPRISE somehow has
     # a self-service Stripe sub, it's a data-consistency issue for an operator,
     # not something the webhook should automatically "fix".
-    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    # Prisma returns the enum column as a plain str at runtime, so coerce to the
+    # enum before any `.value` access (e.g. the upgrade analytics event below).
+    current_tier = SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER)
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "sync_subscription_from_stripe: refusing to overwrite ENTERPRISE tier"
@@ -2078,17 +2662,13 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        pro_price, biz_price = await asyncio.gather(
-            get_subscription_price_id(SubscriptionTier.PRO),
-            get_subscription_price_id(SubscriptionTier.BUSINESS),
-        )
-        if price_id and pro_price and price_id == pro_price:
-            tier = SubscriptionTier.PRO
-        elif price_id and biz_price and price_id == biz_price:
-            tier = SubscriptionTier.BUSINESS
+        price_to_tier = await build_price_to_tier_map()
+        matched = price_to_tier.get(price_id) if price_id else None
+        if matched is not None:
+            tier = matched
         else:
             # Unknown or unconfigured price ID — preserve the user's current tier
-            # rather than defaulting to FREE. This prevents accidental downgrades
+            # rather than defaulting to BASIC. This prevents accidental downgrades
             # during a price migration or when LD flags are not yet configured.
             logger.warning(
                 "sync_subscription_from_stripe: unknown price %s for customer %s,"
@@ -2099,7 +2679,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             return
     else:
         # A subscription was cancelled or ended. DO NOT unconditionally downgrade
-        # to FREE — Stripe does not guarantee webhook delivery order, so a
+        # to BASIC — Stripe does not guarantee webhook delivery order, so a
         # `customer.subscription.deleted` for the OLD sub can arrive after we've
         # already processed `customer.subscription.created` for a new paid sub.
         # Ask Stripe whether any OTHER active/trialing subs exist for this
@@ -2154,7 +2734,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
                 current_tier.value,
             )
             return
-        tier = SubscriptionTier.FREE
+        tier = SubscriptionTier.NO_TIER
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
     # types map to the same final tier. Skip the DB write + cache invalidation
     # when the tier is already correct to avoid redundant writes on replay.
@@ -2175,13 +2755,26 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # set_subscription_tier writes BUSINESS to the DB.  If Stripe delivers
         # the PRO `customer.subscription.deleted` event concurrently and it
         # processes after the PRO cancel but before set_subscription_tier
-        # commits, the user could momentarily appear as FREE in the DB.
+        # commits, the user could momentarily appear as BASIC in the DB.
         # This window is very short in practice (two sequential awaits),
         # but is a known limitation of the current webhook-driven approach.
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    if is_tier_upgrade(current_tier, tier):
+        billing_cycle = (
+            metadata.get("billing_cycle") if isinstance(metadata, dict) else None
+        )
+        _track_billing_event(
+            "subscription_upgraded",
+            user.id,
+            {
+                "previous_subscription_tier": current_tier.value,
+                "subscription_tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
+        )
     # Tier changed — bust any cached pending-change view so the next
     # dashboard fetch reflects the new state immediately.
     get_pending_subscription_change.cache_delete(user.id)
@@ -2228,6 +2821,152 @@ async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
     await sync_subscription_from_stripe(dict(sub))
 
 
+def _invoice_subscription_id(invoice: dict) -> str:
+    """Resolve the subscription ID from a Stripe Invoice payload.
+
+    Stripe API ≥2025-04-01 deprecated the top-level ``invoice.subscription``
+    field; subscription invoices now carry it at
+    ``invoice.parent.subscription_details.subscription``. Read the new path
+    first and fall back to the legacy field so older API versions still work.
+    Returns "" when neither is set (one-off invoices, etc.).
+    """
+    parent = invoice.get("parent") or {}
+    if isinstance(parent, dict):
+        details = parent.get("subscription_details") or {}
+        if isinstance(details, dict):
+            new_sub = details.get("subscription")
+            if isinstance(new_sub, str) and new_sub:
+                return new_sub
+    legacy = invoice.get("subscription")
+    return legacy if isinstance(legacy, str) and legacy else ""
+
+
+TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+
+
+def log_tier_reconciliation_discrepancy(
+    *,
+    user_id: str,
+    stripe_customer_id: str | None,
+    previous_tier: SubscriptionTier,
+    new_tier: SubscriptionTier,
+    via: str,
+) -> str:
+    """Record a Stripe<->DB tier discrepancy that reconciliation corrected.
+
+    Emits an INFO log + a PostHog event so the rate of discrepancies is trended.
+    Ops alerting is handled in aggregate by the sweep's Discord system alert
+    (:func:`_alert_sweep_discrepancies`) — one ping with the affected user-id
+    list + counts, rather than a per-user Sentry event. Returns the direction.
+    """
+    direction = "upgrade" if is_tier_upgrade(previous_tier, new_tier) else "downgrade"
+    logger.info(
+        "Stripe tier reconciliation %s for user %s (%s -> %s, via %s)",
+        direction,
+        user_id[:8],
+        previous_tier.value,
+        new_tier.value,
+        via,
+    )
+    _track_billing_event(
+        TIER_RECONCILIATION_DISCREPANCY_EVENT,
+        user_id,
+        {
+            "direction": direction,
+            "previous_subscription_tier": previous_tier.value,
+            "subscription_tier": new_tier.value,
+            "via": via,
+            "stripe_customer_id": stripe_customer_id,
+        },
+    )
+    return direction
+
+
+async def alert_tier_reconciliation_discrepancy(message: str) -> None:
+    """Best-effort ops alert to the platform Discord channel. Never raises so a
+    Discord outage can't break reconciliation — but a delivery failure is logged
+    at ERROR (→ Sentry) so a broken bot token surfaces loudly instead of leaving
+    ops blind. Discord is the primary alert surface; this is the fallback."""
+    try:
+        await discord_send_alert(message, DiscordChannel.PLATFORM)
+    except Exception:
+        # Discord delivery failed (bad token / channel / gateway timeout) — log
+        # the FULL alert content at ERROR so Sentry carries the same payload the
+        # Discord message would have, and ops isn't left blind.
+        logger.error(
+            "Discord reconciliation alert delivery FAILED — ops NOT notified via "
+            "Discord; full alert content follows:\n%s",
+            message,
+            exc_info=True,
+        )
+
+
+def _track_billing_event(
+    event: str, distinct_id: str, properties: dict[str, Any]
+) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        posthog.capture(
+            event=event,
+            distinct_id=distinct_id,
+            properties=properties,
+        )
+    except Exception:
+        logger.warning(
+            "failed to track billing event %s for user %s",
+            event,
+            distinct_id,
+            exc_info=True,
+        )
+
+
+async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        metadata = _invoice_subscription_metadata(invoice)
+        tier = (
+            metadata.get("tier")
+            or SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER).value
+        )
+        billing_cycle = metadata.get("billing_cycle") or (
+            await get_user_billing_cycle(user.id) or "monthly"
+        )
+
+        posthog.capture(
+            event="subscription_payment_success",
+            distinct_id=user.id,
+            properties={
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "handle_subscription_payment_success: failed to track payment event"
+            " for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
+def _invoice_subscription_metadata(invoice: dict) -> dict:
+    subscription_details = invoice.get("subscription_details")
+    if not isinstance(subscription_details, dict):
+        parent = invoice.get("parent") or {}
+        if isinstance(parent, dict):
+            subscription_details = parent.get("subscription_details")
+
+    if not isinstance(subscription_details, dict):
+        return {}
+
+    metadata = subscription_details.get("metadata") or {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
 async def handle_subscription_payment_failure(invoice: dict) -> None:
     """Handle a failed Stripe subscription payment.
 
@@ -2235,7 +2974,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
       Stripe stops retrying it. The sub stays intact and the user keeps their tier.
-    - Balance insufficient → cancel Stripe sub immediately, downgrade to FREE.
+    - Balance insufficient → cancel Stripe sub immediately, downgrade to BASIC.
       Cancelling here avoids further Stripe retries on an invoice we cannot cover.
     """
     customer_id = invoice.get("customer")
@@ -2253,7 +2992,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
 
-    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
@@ -2264,7 +3003,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         return
 
     amount_due: int = invoice.get("amount_due", 0)
-    sub_id: str = invoice.get("subscription", "")
+    sub_id = _invoice_subscription_id(invoice)
     invoice_id: str = invoice.get("id", "")
 
     if amount_due <= 0:
@@ -2294,12 +3033,19 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 }
             ),
         )
-        # Balance covered the invoice. Pay the Stripe invoice so Stripe's dunning
-        # system stops retrying it — without this call Stripe would retry automatically
-        # and re-trigger this webhook, causing double-deductions each retry cycle.
+        # Balance covered the invoice. Pay the Stripe invoice with
+        # ``paid_out_of_band=True`` so Stripe marks the invoice paid without
+        # retrying the card charge — the card already failed and the user is
+        # paying via their AutoGPT balance, so a card retry here would
+        # double-bill the user (card charge + balance debit). Stripe still
+        # fires ``invoice.payment_succeeded`` on the transition; the success
+        # handler reads ``paid_out_of_band`` and skips its grant path so the
+        # balance debit isn't reversed if the credit-grant flag is on.
         if invoice_id:
             try:
-                await run_in_threadpool(stripe.Invoice.pay, invoice_id)
+                await run_in_threadpool(
+                    stripe.Invoice.pay, invoice_id, paid_out_of_band=True
+                )
             except stripe.StripeError:
                 logger.warning(
                     "handle_subscription_payment_failure: balance deducted for user"
@@ -2318,12 +3064,12 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     except InsufficientBalanceError:
         # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
         # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
-        # user is permanently stuck on FREE while Stripe continues billing them.
+        # user is permanently stuck on BASIC while Stripe continues billing them.
         # Cancelling Stripe first is safe: if the DB write then fails, the webhook
         # customer.subscription.deleted will fire and correct the tier eventually.
         logger.info(
             "handle_subscription_payment_failure: insufficient balance for user %s;"
-            " cancelling Stripe sub %s then downgrading to FREE",
+            " cancelling Stripe sub %s then downgrading to BASIC",
             user.id,
             sub_id,
         )
@@ -2339,7 +3085,120 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 customer_id,
             )
             return
-        await set_subscription_tier(user.id, SubscriptionTier.FREE)
+        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
+
+
+async def handle_subscription_payment_success(invoice: dict) -> None:
+    """Optionally grant AutoGPT credits equal to the paid Stripe invoice amount.
+
+    Gated behind ``settings.config.enable_subscription_credit_grant`` which
+    is OFF by default — Pro Monthly subscribers should not receive a matching
+    automation-credit grant on every invoice, and prorated upgrade invoices
+    were producing surprise grants (each fresh invoice id slipped past the
+    per-invoice idempotency key). The handler stays wired into the webhook
+    so the config can be flipped on per environment if/when product wants
+    "$ paid == $ in AutoGPT balance"; turning it on without first revisiting
+    proration/renewal accounting will reintroduce the same surprise grants.
+
+    When enabled, grants ``invoice.amount_paid`` cents keyed by ``invoice_id``
+    so Stripe webhook retries for the *same* invoice don't double-grant.
+    Distinct invoices (e.g. prorated upgrade + monthly cycle) are *not*
+    deduplicated against each other — that's an intentional behaviour of the
+    paid-invoice grant, not a bug, and is why the flag should stay off until
+    the accounting model around proration is settled.
+
+    Skipped (even when the flag is on):
+    - Non-subscription invoices (no ``subscription`` field).
+    - Zero-amount invoices (e.g. card-validation checks, $0 trials).
+    - ENTERPRISE users (admin-managed; they don't pay via self-service).
+    - Invoices already covered from balance via ``paid_out_of_band``.
+    """
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        logger.warning(
+            "handle_subscription_payment_success: missing customer in invoice; skipping"
+        )
+        return
+    sub_id = _invoice_subscription_id(invoice)
+    if not sub_id:
+        # Non-subscription invoices (one-off invoices, etc.) — no credit grant.
+        return
+    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    if not user:
+        logger.warning(
+            "handle_subscription_payment_success: no user for customer %s",
+            customer_id,
+        )
+        return
+    if (
+        user.subscriptionTier or SubscriptionTier.NO_TIER
+    ) == SubscriptionTier.ENTERPRISE:
+        logger.warning(
+            "handle_subscription_payment_success: skipping ENTERPRISE user %s"
+            " (customer %s) — tier is admin-managed",
+            user.id,
+            customer_id,
+        )
+        return
+
+    amount_paid: int = invoice.get("amount_paid", 0)
+    invoice_id: str = invoice.get("id", "")
+    if amount_paid <= 0 or not invoice_id:
+        return
+
+    # Skip when ``handle_subscription_payment_failure`` already covered this
+    # invoice from the user's balance and marked it paid out of band — the
+    # balance was debited there, granting matching credits here would reverse
+    # the debit and give the user a free billing period.
+    if invoice.get("paid_out_of_band"):
+        logger.info(
+            "handle_subscription_payment_success: skipping invoice %s for user %s"
+            " (paid_out_of_band — covered by balance in failure handler)",
+            invoice_id,
+            user.id,
+        )
+        return
+
+    await _track_subscription_payment_success(user, invoice)
+
+    if not settings.config.enable_subscription_credit_grant:
+        logger.debug(
+            "handle_subscription_payment_success: credit grant disabled by config"
+            " for user %s (invoice %s, sub %s); skipping",
+            user.id,
+            invoice_id,
+            sub_id,
+        )
+        return
+
+    try:
+        await UserCredit()._add_transaction(
+            user_id=user.id,
+            amount=amount_paid,
+            transaction_type=CreditTransactionType.GRANT,
+            transaction_key=f"INVOICE-{invoice_id}",
+            metadata=SafeJson(
+                {
+                    "stripe_customer_id": customer_id,
+                    "stripe_subscription_id": sub_id,
+                    "stripe_invoice_id": invoice_id,
+                    "billing_reason": invoice.get("billing_reason", ""),
+                    "reason": "subscription_invoice_paid",
+                }
+            ),
+        )
+        logger.info(
+            "handle_subscription_payment_success: granted %d credits to user %s"
+            " for invoice %s (sub %s)",
+            amount_paid,
+            user.id,
+            invoice_id,
+            sub_id,
+        )
+    except UniqueViolationError:
+        # Idempotency key collision — Stripe retried this invoice's webhook and
+        # we already granted the credits. Safe to ignore.
+        return
 
 
 async def admin_get_user_history(
@@ -2347,12 +3206,16 @@ async def admin_get_user_history(
     page_size: int = 20,
     search: str | None = None,
     transaction_filter: CreditTransactionType | None = None,
+    include_inactive: bool = False,
 ) -> UserHistoryResponse:
 
     if page < 1 or page_size < 1:
         raise ValueError("Invalid pagination input")
 
     where_clause: CreditTransactionWhereInput = {}
+    # Off by default so phantom rows from abandoned Stripe checkouts aren't surfaced.
+    if not include_inactive:
+        where_clause["isActive"] = True
     if transaction_filter:
         where_clause["type"] = transaction_filter
     if search:
@@ -2386,7 +3249,12 @@ async def admin_get_user_history(
                 if admin_id
                 else ""
             )
-            reason = metadata.get("reason", "No reason provided")
+            # Older _top_up_credits rows wrap reason as {"reason": {"reason": "..."}};
+            # unwrap so the dashboard column shows the plain string.
+            raw_reason = metadata.get("reason", "No reason provided")
+            if isinstance(raw_reason, dict):
+                raw_reason = raw_reason.get("reason", "No reason provided")
+            reason = str(raw_reason)
 
         user_credit_model = await get_user_credit_model(tx.userId)
         balance, _ = await user_credit_model._get_credits(tx.userId)
@@ -2419,3 +3287,105 @@ async def admin_get_user_history(
             page_size=page_size,
         ),
     )
+
+
+# Limits for credit-transaction CSV export. Window cap matches a typical
+# finance-month query; row cap protects the API from accidental wide pulls
+# (one big tenant can easily exceed 100k rows in 90 days).
+CREDIT_EXPORT_MAX_DAYS = 90
+CREDIT_EXPORT_MAX_ROWS = 100_000
+
+
+async def admin_export_user_history(
+    start: datetime,
+    end: datetime,
+    transaction_type: CreditTransactionType | None = None,
+    user_id: str | None = None,
+    include_inactive: bool = False,
+) -> list[UserTransaction]:
+    """Return all CreditTransactions in the [start, end] window for export.
+
+    Caps the window at CREDIT_EXPORT_MAX_DAYS and the row count at
+    CREDIT_EXPORT_MAX_ROWS — callers should validate the window before calling
+    so the user sees a 4xx instead of a silently truncated CSV.
+
+    By default filters out `isActive=False` rows (e.g. abandoned Stripe
+    checkouts whose `runningBalance` snapshot never advanced the user's real
+    balance).  Pass `include_inactive=True` to surface them when debugging
+    why a checkout never completed.
+    """
+    # Normalize naive datetimes to UTC so direct API callers that send
+    # `2026-01-01T00:00:00` (no tz) don't trip a TypeError when subtracted
+    # against an aware `2026-01-31T00:00:00Z` partner.
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if end < start:
+        raise ValueError("end must be >= start")
+    # Compare timedeltas directly so 90d + any sub-day remainder still trips
+    # the cap (.days truncates fractional days and was letting ~91d through).
+    if (end - start) > timedelta(days=CREDIT_EXPORT_MAX_DAYS):
+        raise ValueError(
+            f"Export window must be <= {CREDIT_EXPORT_MAX_DAYS} days "
+            f"(got {(end - start).total_seconds() / 86400:.2f} days)"
+        )
+
+    where: CreditTransactionWhereInput = {
+        "createdAt": {"gte": start, "lte": end},
+    }
+    if transaction_type:
+        where["type"] = transaction_type
+    if user_id:
+        where["userId"] = user_id
+    if not include_inactive:
+        where["isActive"] = True
+
+    # Fetch one over the cap and reject — avoids the TOCTOU race a separate
+    # count() + take=cap pair would have if rows land between the two queries.
+    transactions = await CreditTransaction.prisma().find_many(
+        where=where,
+        include={"User": True},
+        order={"createdAt": "desc"},
+        take=CREDIT_EXPORT_MAX_ROWS + 1,
+    )
+    if len(transactions) > CREDIT_EXPORT_MAX_ROWS:
+        raise ValueError(
+            f"Export would return more than {CREDIT_EXPORT_MAX_ROWS} rows; "
+            "narrow the window or add filters."
+        )
+
+    admin_id_to_email: dict[str, str] = {}
+
+    async def _resolve_admin_email(admin_id: str) -> str:
+        if admin_id in admin_id_to_email:
+            return admin_id_to_email[admin_id]
+        email = await get_user_email_by_id(admin_id) or ""
+        admin_id_to_email[admin_id] = email
+        return email
+
+    history: list[UserTransaction] = []
+    for tx in transactions:
+        metadata: dict = cast(dict, tx.metadata) or {}
+        admin_id = metadata.get("admin_id") or ""
+        admin_email = await _resolve_admin_email(admin_id) if admin_id else ""
+        # _top_up_credits writes reason as {"reason": "..."}; unwrap so the CSV
+        # column carries a plain string regardless of source.
+        raw_reason = metadata.get("reason", "") if metadata else ""
+        if isinstance(raw_reason, dict):
+            raw_reason = raw_reason.get("reason", "")
+        reason = str(raw_reason) if raw_reason is not None else ""
+        history.append(
+            UserTransaction(
+                transaction_key=tx.transactionKey,
+                transaction_time=tx.createdAt,
+                transaction_type=tx.type,
+                amount=tx.amount,
+                running_balance=tx.runningBalance or 0,
+                user_id=tx.userId,
+                user_email=tx.User.email if tx.User else None,
+                reason=reason,
+                admin_email=admin_email,
+            )
+        )
+    return history
