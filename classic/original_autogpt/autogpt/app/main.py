@@ -35,7 +35,11 @@ from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.utils import print_attribute
-from forge.models.action import ActionInterruptedByHuman, ActionProposal
+from forge.models.action import (
+    ActionInterruptedByHuman,
+    ActionProposal,
+    ActionSuccessResult,
+)
 from forge.models.utils import ModelWithSummary
 from forge.permissions import ApprovalScope, CommandPermissionManager
 from forge.utils.const import FINISH_COMMAND
@@ -758,9 +762,12 @@ async def run_interaction_loop(
             # AgentFinished is caught before execute() can register
             # a result, leaving result=None — which the loop
             # interprets as "episode in progress, reuse proposal".
-            from forge.models.action import ActionSuccessResult
-
-            agent.event_history.register_result(ActionSuccessResult(outputs=e.message))
+            # Guard against a missing/closed episode so register_result
+            # never raises if AgentFinished propagates from elsewhere.
+            if (ep := agent.event_history.current_episode) and not ep.result:
+                agent.event_history.register_result(
+                    ActionSuccessResult(outputs=e.message)
+                )
 
             # Start new task in same workspace, keeping prior context
             agent.state.task = next_task
