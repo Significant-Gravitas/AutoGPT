@@ -21,9 +21,16 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
     {"addedTime": "desc"},
 ]
 
+# Defensive cap on per-execution Input/Output fanout. Set well above the
+# realistic p99 (~tens of rows per node execution) so the cap only kicks in
+# on pathological cases — `NodeExecutionResult.from_db` rebuilds input/output
+# dicts from these rows, so silently truncating real data would corrupt the
+# result. Matches `MAX_NODE_EXECUTIONS_FETCH` for symmetry.
+MAX_NODE_INPUT_OUTPUT_FETCH = 1000
+
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
-    "Input": {"order_by": {"time": "asc"}},
-    "Output": {"order_by": {"time": "asc"}},
+    "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
+    "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Node": True,
     "GraphExecution": True,
 }
@@ -79,6 +86,12 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 }
 
 
+LIBRARY_FOLDER_INCLUDE: prisma.types.LibraryFolderInclude = {
+    "LibraryAgents": {"where": {"isDeleted": False}},
+    "Children": {"where": {"isDeleted": False}},
+}
+
+
 def library_agent_include(
     user_id: str,
     include_nodes: bool = True,
@@ -105,6 +118,7 @@ def library_agent_include(
     """
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
+        "Folder": True,  # Always needed for folder info
     }
 
     # Build AgentGraph include based on requested options

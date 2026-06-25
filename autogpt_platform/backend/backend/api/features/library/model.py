@@ -6,9 +6,13 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-from backend.data.block import BlockInput
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
-from backend.data.model import CredentialsMetaInput, is_credentials_field_name
+from backend.data.model import (
+    CredentialsMetaInput,
+    GraphInput,
+    is_credentials_field_name,
+)
+from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
@@ -16,10 +20,99 @@ if TYPE_CHECKING:
 
 
 class LibraryAgentStatus(str, Enum):
-    COMPLETED = "COMPLETED"  # All runs completed
-    HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
-    WAITING = "WAITING"  # Agent is queued or waiting to start
-    ERROR = "ERROR"  # Agent is in an error state
+    COMPLETED = "COMPLETED"
+    HEALTHY = "HEALTHY"
+    WAITING = "WAITING"
+    ERROR = "ERROR"
+
+
+# === Folder Models ===
+
+
+class LibraryFolder(pydantic.BaseModel):
+    """Represents a folder for organizing library agents."""
+
+    id: str
+    user_id: str
+    name: str
+    icon: str | None = None
+    color: str | None = None
+    parent_id: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    agent_count: int = 0  # Direct agents in folder
+    subfolder_count: int = 0  # Direct child folders
+
+    @staticmethod
+    def from_db(
+        folder: prisma.models.LibraryFolder,
+        agent_count: int = 0,
+        subfolder_count: int = 0,
+    ) -> "LibraryFolder":
+        """Factory method that constructs a LibraryFolder from a Prisma model."""
+        return LibraryFolder(
+            id=folder.id,
+            user_id=folder.userId,
+            name=folder.name,
+            icon=folder.icon,
+            color=folder.color,
+            parent_id=folder.parentId,
+            created_at=folder.createdAt,
+            updated_at=folder.updatedAt,
+            agent_count=agent_count,
+            subfolder_count=subfolder_count,
+        )
+
+
+class LibraryFolderTree(LibraryFolder):
+    """Folder with nested children for tree view."""
+
+    children: list["LibraryFolderTree"] = []
+
+
+class FolderCreateRequest(pydantic.BaseModel):
+    """Request model for creating a folder."""
+
+    name: str = pydantic.Field(..., min_length=1, max_length=100)
+    icon: str | None = None
+    color: str | None = pydantic.Field(
+        None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color code (#RRGGBB)"
+    )
+    parent_id: str | None = None
+
+
+class FolderUpdateRequest(pydantic.BaseModel):
+    """Request model for updating a folder."""
+
+    name: str | None = pydantic.Field(None, min_length=1, max_length=100)
+    icon: str | None = None
+    color: str | None = None
+
+
+class FolderMoveRequest(pydantic.BaseModel):
+    """Request model for moving a folder to a new parent."""
+
+    target_parent_id: str | None = None  # None = move to root
+
+
+class BulkMoveAgentsRequest(pydantic.BaseModel):
+    """Request model for moving multiple agents to a folder."""
+
+    agent_ids: list[str]
+    folder_id: str | None = None  # None = move to root
+
+
+class FolderListResponse(pydantic.BaseModel):
+    """Response schema for a list of folders."""
+
+    folders: list[LibraryFolder]
+    pagination: Pagination
+
+
+class FolderTreeResponse(pydantic.BaseModel):
+    """Response schema for folder tree structure."""
+
+    tree: list[LibraryFolderTree]
 
 
 class MarketplaceListingCreator(pydantic.BaseModel):
@@ -39,6 +132,30 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class RecentExecution(pydantic.BaseModel):
+    """Summary of a recent execution for quality assessment.
+
+    Used by the LLM to understand the agent's recent performance with specific examples
+    rather than just aggregate statistics.
+    """
+
+    status: str
+    correctness_score: float | None = None
+    activity_summary: str | None = None
+
+
+def _parse_settings(settings: dict | str | None) -> GraphSettings:
+    """Parse settings from database, handling both dict and string formats."""
+    if settings is None:
+        return GraphSettings()
+    try:
+        if isinstance(settings, str):
+            settings = json_loads(settings)
+        return GraphSettings.model_validate(settings)
+    except Exception:
+        return GraphSettings()
+
+
 class LibraryAgent(pydantic.BaseModel):
     """
     Represents an agent in the library, including metadata for display and
@@ -48,7 +165,6 @@ class LibraryAgent(pydantic.BaseModel):
     id: str
     graph_id: str
     graph_version: int
-    owner_user_id: str  # ID of user who owns/created this agent graph
 
     image_url: str | None
 
@@ -64,7 +180,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
     instructions: str | None = None
 
-    input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     credentials_input_schema: dict[str, Any] | None = pydantic.Field(
         description="Input schema for credentials required by the agent",
@@ -81,25 +197,34 @@ class LibraryAgent(pydantic.BaseModel):
     )
     trigger_setup_info: Optional[GraphTriggerInfo] = None
 
-    # Indicates whether there's a new output (based on recent runs)
     new_output: bool
-
-    # Whether the user can access the underlying graph
-    can_access_graph: bool
-
-    # Indicates if this agent is the latest version
+    execution_count: int = 0
+    success_rate: float | None = None
+    avg_correctness_score: float | None = None
+    recent_executions: list[RecentExecution] = pydantic.Field(
+        default_factory=list,
+        description="List of recent executions with status, score, and summary",
+    )
+    can_access_graph: bool = pydantic.Field(
+        description="Indicates whether the same user owns the corresponding graph"
+    )
     is_latest_version: bool
-
-    # Whether the agent is marked as favorite by the user
     is_favorite: bool
+    folder_id: str | None = None
+    folder_name: str | None = None  # Denormalized for display
 
-    # Recommended schedule cron (from marketplace agents)
+    is_hidden: bool = False
+
     recommended_schedule_cron: str | None = None
-
-    # User-specific settings for this library agent
+    is_scheduled: bool = pydantic.Field(
+        default=False,
+        description="Whether this agent has active execution schedules",
+    )
+    next_scheduled_run: str | None = pydantic.Field(
+        default=None,
+        description="ISO 8601 timestamp of the next scheduled run, if any",
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
-
-    # Marketplace listing information if the agent has been published
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -108,6 +233,8 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         profile: Optional[prisma.models.Profile] = None,
+        execution_count_override: Optional[int] = None,
+        schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -123,7 +250,6 @@ class LibraryAgent(pydantic.BaseModel):
         agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
 
-        # Compute updated_at as the latest between library agent and graph
         updated_at = (
             max(agent_updated_at, lib_agent_updated_at)
             if agent_updated_at
@@ -136,7 +262,6 @@ class LibraryAgent(pydantic.BaseModel):
             creator_name = agent.Creator.name or "Unknown"
             creator_image_url = agent.Creator.avatarUrl or ""
 
-        # Logic to calculate status and new_output
         week_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             days=7
         )
@@ -145,13 +270,59 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        # Check if user can access the graph
-        can_access_graph = agent.AgentGraph.userId == agent.userId
+        execution_count = (
+            execution_count_override
+            if execution_count_override is not None
+            else len(executions)
+        )
+        success_rate: float | None = None
+        avg_correctness_score: float | None = None
+        if executions and execution_count > 0:
+            success_count = sum(
+                1
+                for e in executions
+                if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
+            )
+            success_rate = (success_count / execution_count) * 100
 
-        # Hard-coded to True until a method to check is implemented
+            correctness_scores = []
+            for e in executions:
+                if e.stats and isinstance(e.stats, dict):
+                    score = e.stats.get("correctness_score")
+                    if score is not None and isinstance(score, (int, float)):
+                        correctness_scores.append(float(score))
+            if correctness_scores:
+                avg_correctness_score = sum(correctness_scores) / len(
+                    correctness_scores
+                )
+
+        recent_executions: list[RecentExecution] = []
+        for e in executions:
+            exec_score: float | None = None
+            exec_summary: str | None = None
+            if e.stats and isinstance(e.stats, dict):
+                score = e.stats.get("correctness_score")
+                if score is not None and isinstance(score, (int, float)):
+                    exec_score = float(score)
+                summary = e.stats.get("activity_status")
+                if summary is not None and isinstance(summary, str):
+                    exec_summary = summary
+            exec_status = (
+                e.executionStatus.value
+                if hasattr(e.executionStatus, "value")
+                else str(e.executionStatus)
+            )
+            recent_executions.append(
+                RecentExecution(
+                    status=exec_status,
+                    correctness_score=exec_score,
+                    activity_summary=exec_summary,
+                )
+            )
+
+        can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        # Build marketplace_listing if available
         marketplace_listing_data = None
         if store_listing and store_listing.ActiveVersion and profile:
             creator_data = MarketplaceListingCreator(
@@ -170,7 +341,6 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             graph_id=agent.agentGraphId,
             graph_version=agent.agentGraphVersion,
-            owner_user_id=agent.userId,
             image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,
@@ -190,11 +360,22 @@ class LibraryAgent(pydantic.BaseModel):
             has_sensitive_action=graph.has_sensitive_action,
             trigger_setup_info=graph.trigger_setup_info,
             new_output=new_output,
+            execution_count=execution_count,
+            success_rate=success_rate,
+            avg_correctness_score=avg_correctness_score,
+            recent_executions=recent_executions,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
+            folder_id=agent.folderId,
+            folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
-            settings=GraphSettings.model_validate(agent.settings),
+            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
+            next_scheduled_run=(
+                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            ),
+            settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
         )
 
@@ -220,18 +401,15 @@ def _calculate_agent_status(
     if not executions:
         return AgentStatusResult(status=LibraryAgentStatus.COMPLETED, new_output=False)
 
-    # Track how many times each execution status appears
     status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
     new_output = False
 
     for execution in executions:
-        # Check if there's a completed run more recent than `recent_threshold`
         if execution.createdAt >= recent_threshold:
             if execution.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED:
                 new_output = True
         status_counts[execution.executionStatus] += 1
 
-    # Determine the final status based on counts
     if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
         return AgentStatusResult(status=LibraryAgentStatus.ERROR, new_output=new_output)
     elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
@@ -263,7 +441,7 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     graph_id: str
     graph_version: int
 
-    inputs: BlockInput
+    inputs: GraphInput
     credentials: dict[str, CredentialsMetaInput]
 
     name: str
@@ -292,7 +470,7 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     Request model used when updating a preset for a library agent.
     """
 
-    inputs: Optional[BlockInput] = None
+    inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
     name: Optional[str] = None
@@ -335,7 +513,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
                 "Webhook must be included in AgentPreset query when webhookId is set"
             )
 
-        input_data: BlockInput = {}
+        input_data: GraphInput = {}
         input_credentials: dict[str, CredentialsMetaInput] = {}
 
         for preset_input in preset.InputPresets:
@@ -404,6 +582,14 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
     )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
+    )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"
+    )
+    folder_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Folder ID to move agent to (None to move to root)",
     )

@@ -42,7 +42,6 @@ async def test_get_library_agents_success(
                 id="test-agent-1",
                 graph_id="test-agent-1",
                 graph_version=1,
-                owner_user_id=test_user_id,
                 name="Test Agent 1",
                 description="Test Description 1",
                 image_url=None,
@@ -67,7 +66,6 @@ async def test_get_library_agents_success(
                 id="test-agent-2",
                 graph_id="test-agent-2",
                 graph_version=1,
-                owner_user_id=test_user_id,
                 name="Test Agent 2",
                 description="Test Description 2",
                 image_url=None,
@@ -115,21 +113,9 @@ async def test_get_library_agents_success(
         sort_by=library_model.LibraryAgentSort.UPDATED_AT,
         page=1,
         page_size=15,
-    )
-
-
-def test_get_library_agents_error(mocker: pytest_mock.MockFixture, test_user_id: str):
-    mock_db_call = mocker.patch("backend.api.features.library.db.list_library_agents")
-    mock_db_call.side_effect = Exception("Test error")
-
-    response = client.get("/agents?search_term=test")
-    assert response.status_code == 500
-    mock_db_call.assert_called_once_with(
-        user_id=test_user_id,
-        search_term="test",
-        sort_by=library_model.LibraryAgentSort.UPDATED_AT,
-        page=1,
-        page_size=15,
+        folder_id=None,
+        include_root_only=False,
+        is_hidden=None,
     )
 
 
@@ -144,7 +130,6 @@ async def test_get_favorite_library_agents_success(
                 id="test-agent-1",
                 graph_id="test-agent-1",
                 graph_version=1,
-                owner_user_id=test_user_id,
                 name="Favorite Agent 1",
                 description="Test Favorite Description 1",
                 image_url=None,
@@ -190,23 +175,6 @@ async def test_get_favorite_library_agents_success(
     )
 
 
-def test_get_favorite_library_agents_error(
-    mocker: pytest_mock.MockFixture, test_user_id: str
-):
-    mock_db_call = mocker.patch(
-        "backend.api.features.library.db.list_favorite_library_agents"
-    )
-    mock_db_call.side_effect = Exception("Test error")
-
-    response = client.get("/agents/favorites")
-    assert response.status_code == 500
-    mock_db_call.assert_called_once_with(
-        user_id=test_user_id,
-        page=1,
-        page_size=15,
-    )
-
-
 def test_add_agent_to_library_success(
     mocker: pytest_mock.MockFixture, test_user_id: str
 ):
@@ -214,7 +182,6 @@ def test_add_agent_to_library_success(
         id="test-library-agent-id",
         graph_id="test-agent-1",
         graph_version=1,
-        owner_user_id=test_user_id,
         name="Test Agent 1",
         description="Test Description 1",
         image_url=None,
@@ -260,17 +227,48 @@ def test_add_agent_to_library_success(
     mock_complete_onboarding.assert_awaited_once()
 
 
-def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture, test_user_id: str):
-    mock_db_call = mocker.patch(
-        "backend.api.features.library.db.add_store_agent_to_library"
+@pytest.mark.asyncio
+async def test_list_trigger_agents_route(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """GET /agents/{id}/triggers delegates to db.list_trigger_agents
+    and returns the serialized LibraryAgent list."""
+    trigger_agent = library_model.LibraryAgent(
+        id="trigger-1",
+        graph_id="trigger-graph",
+        graph_version=1,
+        name="Email Watcher",
+        description="Watches the inbox",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        is_hidden=True,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
     )
-    mock_db_call.side_effect = Exception("Test error")
+    mock_db_call = mocker.patch("backend.api.features.library.db.list_trigger_agents")
+    mock_db_call.return_value = [trigger_agent]
 
-    response = client.post(
-        "/agents", json={"store_listing_version_id": "test-version-id"}
-    )
-    assert response.status_code == 500
-    assert "detail" in response.json()  # Verify error response structure
+    response = client.get("/agents/parent-id/triggers")
+    assert response.status_code == 200
+
+    data = [library_model.LibraryAgent.model_validate(a) for a in response.json()]
+    assert len(data) == 1
+    assert data[0].id == "trigger-1"
+    assert data[0].is_hidden is True
+
     mock_db_call.assert_called_once_with(
-        store_listing_version_id="test-version-id", user_id=test_user_id
+        user_id=test_user_id,
+        library_agent_id="parent-id",
     )

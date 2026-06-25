@@ -65,7 +65,7 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 | condition | A plaintext English description of the condition to evaluate | str | Yes |
 | yes_value | (Optional) Value to output if the condition is true. If not provided, input_value will be used. | Yes Value | No |
 | no_value | (Optional) Value to output if the condition is false. If not provided, input_value will be used. | No Value | No |
-| model | The language model to use for evaluating the condition. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for evaluating the condition. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 
 ### Outputs
 
@@ -103,7 +103,7 @@ The block sends the entire conversation history to the chosen LLM, including sys
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | No |
 | messages | List of messages in the conversation. | List[Any] | Yes |
-| model | The language model to use for the conversation. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for the conversation. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | ollama_host | Ollama host for local  models | str | No |
 
@@ -125,7 +125,7 @@ Creating an interactive chatbot that can maintain context over multiple exchange
 ## AI Image Customizer
 
 ### What it is
-Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5. Provide a prompt and optional reference images to create or modify images.
+Generate and edit custom images using Google's Nano-Banana models from Gemini. Provide a prompt and optional reference images to create or modify images.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -139,7 +139,7 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A text description of the image you want to generate | str | Yes |
-| model | The AI model to use for image generation and editing | "google/nano-banana" \| "google/nano-banana-pro" | No |
+| model | The AI model to use for image generation and editing | "google/nano-banana" \| "google/nano-banana-pro" \| "google/nano-banana-2" | No |
 | images | Optional list of input images to reference or modify | List[str (file)] | No |
 | aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "2:3" \| "3:2" \| "3:4" \| "4:3" \| "4:5" \| "5:4" \| "9:16" \| "16:9" \| "21:9" | No |
 | output_format | Format of the output image | "jpg" \| "png" | No |
@@ -165,13 +165,13 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 ## AI Image Editor
 
 ### What it is
-Edit images using BlackForest Labs' Flux Kontext models. Provide a prompt and optional reference image to generate a modified image.
+Edit images using Flux Kontext or Google Nano Banana models. Provide a prompt and optional reference image to generate a modified image.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses BlackForest Labs' Flux Kontext models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
+This block uses BlackForest Labs' Flux Kontext or Google's Nano Banana models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
 
-Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs.
+Choose between Flux Kontext Pro, Max, or Nano Banana models for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs (Flux Kontext only).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -181,8 +181,8 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 | prompt | Text instruction describing the desired edit | str | Yes |
 | input_image | Reference image URI (jpeg, png, gif, webp) | str (file) | No |
 | aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "16:9" \| "9:16" \| "4:3" \| "3:4" \| "3:2" \| "2:3" \| "4:5" \| "5:4" \| "21:9" \| "9:21" \| "2:1" \| "1:2" | No |
-| seed | Random seed. Set for reproducible generation | int | No |
-| model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" | No |
+| seed | Random seed. Set for reproducible generation (Flux Kontext only; ignored by Nano Banana models) | int | No |
+| model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" \| "Nano Banana Pro" \| "Nano Banana 2" | No |
 
 ### Outputs
 
@@ -219,7 +219,7 @@ The unified interface allows switching between models without changing your work
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
-| model | The AI model to use for image generation | "Flux 1.1 Pro" \| "Flux 1.1 Pro Ultra" \| "Recraft v3" \| "Stable Diffusion 3.5 Medium" \| "Nano Banana Pro" | No |
+| model | The AI model to use for image generation | "Flux 1.1 Pro" \| "Flux 1.1 Pro Ultra" \| "Recraft v3" \| "Stable Diffusion 3.5 Medium" \| "Nano Banana Pro" \| "Nano Banana 2" | No |
 | size | Format of the generated image: - Square: Perfect for profile pictures, icons - Landscape: Traditional photo format - Portrait: Vertical photos, portraits - Wide: Cinematic format, desktop wallpapers - Tall: Mobile wallpapers, social media stories | "square" \| "landscape" \| "portrait" \| "wide" \| "tall" | No |
 | style | Visual style for the generated image | "any" \| "realistic_image" \| "realistic_image/b_and_w" \| "realistic_image/hdr" \| "realistic_image/natural_light" \| "realistic_image/studio_portrait" \| "realistic_image/enterprise" \| "realistic_image/hard_flash" \| "realistic_image/motion_blur" \| "digital_illustration" \| "digital_illustration/pixel_art" \| "digital_illustration/hand_drawn" \| "digital_illustration/grain" \| "digital_illustration/infantile_sketch" \| "digital_illustration/2d_art_poster" \| "digital_illustration/2d_art_poster_2" \| "digital_illustration/handmade_3d" \| "digital_illustration/hand_drawn_outline" \| "digital_illustration/engraving_color" | No |
 
@@ -257,7 +257,7 @@ The block formulates a prompt based on the given focus or source data, sends it 
 |-------|-------------|------|----------|
 | focus | The focus of the list to generate. | str | No |
 | source_data | The data to generate the list from. | str | No |
-| model | The language model to use for generating the list. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for generating the list. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | max_retries | Maximum number of retries for generating a valid list. | int | No |
 | force_json_output | Whether to force the LLM to produce a JSON-only response. This can increase the block's reliability, but may also reduce the quality of the response because it prohibits the LLM from reasoning before providing its JSON response. | bool | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
@@ -424,7 +424,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 | prompt | The prompt to send to the language model. | str | Yes |
 | expected_format | Expected format of the response. If provided, the response will be validated against this format. The keys should be the expected fields in the response, and the values should be the description of the field. | Dict[str, str] | Yes |
 | list_result | Whether the response should be a list of objects in the expected format. | bool | No |
-| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | force_json_output | Whether to force the LLM to produce a JSON-only response. This can increase the block's reliability, but may also reduce the quality of the response because it prohibits the LLM from reasoning before providing its JSON response. | bool | No |
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, Any]] | No |
@@ -464,7 +464,7 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces. | str | Yes |
-| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
 | prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
@@ -501,7 +501,7 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to summarize. | str | Yes |
-| model | The language model to use for summarizing the text. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| model | The language model to use for summarizing the text. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | focus | The topic to focus on in the summary | str | No |
 | style | The style of the summary to generate. | "concise" \| "detailed" \| "bullet points" \| "numbered list" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
@@ -519,6 +519,62 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 ### Possible use case
 <!-- MANUAL: use_case -->
 Summarizing lengthy research papers or articles to quickly grasp the main points and key findings.
+<!-- END MANUAL -->
+
+---
+
+## Claude Code
+
+### What it is
+Execute tasks using Claude Code in an E2B sandbox. Claude Code can create files, install tools, run commands, and perform complex coding tasks autonomously.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+When activated, the block:
+1. Creates or connects to an E2B sandbox (a secure, isolated Linux environment)
+2. Installs the latest version of Claude Code in the sandbox
+3. Optionally runs setup commands to prepare the environment
+4. Executes your prompt using Claude Code, which can create/edit files, install dependencies, run terminal commands, and build applications
+5. Extracts all text files created/modified during execution
+6. Returns the response and files, optionally keeping the sandbox alive for follow-up tasks
+
+The block supports conversation continuation through three mechanisms:
+- **Same sandbox continuation** (via `session_id` + `sandbox_id`): Resume on the same live sandbox
+- **Fresh sandbox continuation** (via `conversation_history`): Restore context on a new sandbox if the previous one timed out
+- **Dispose control** (`dispose_sandbox` flag): Keep sandbox alive for multi-turn conversations
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks. | str | No |
+| timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. Note: This only applies when creating a new sandbox. When reconnecting to an existing sandbox via sandbox_id, the original timeout is retained. | int | No |
+| setup_commands | Optional shell commands to run before executing Claude Code. Useful for installing dependencies or setting up the environment. | List[str] | No |
+| working_directory | Working directory for Claude Code to operate in. | str | No |
+| session_id | Session ID to resume a previous conversation. Leave empty for a new conversation. Use the session_id from a previous run to continue that conversation. | str | No |
+| sandbox_id | Sandbox ID to reconnect to an existing sandbox. Required when resuming a session (along with session_id). Use the sandbox_id from a previous run where dispose_sandbox was False. | str | No |
+| conversation_history | Previous conversation history to continue from. Use this to restore context on a fresh sandbox if the previous one timed out. Pass the conversation_history output from a previous run. | str | No |
+| dispose_sandbox | Whether to dispose of the sandbox immediately after execution. Set to False if you want to continue the conversation later (you'll need both sandbox_id and session_id from the output). | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if execution failed | str |
+| response | The output/response from Claude Code execution | str |
+| files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. workspace_ref contains a workspace:// URI if the file was stored to workspace. | List[SandboxFileOutput] |
+| conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
+| session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
+| sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**API Documentation to Full Application**: A product team wants to quickly prototype applications based on API documentation. They fetch API docs with Firecrawl, pass them to Claude Code with a prompt like "Create a web app that demonstrates all the key features of this API", and Claude Code builds a complete application with HTML/CSS/JS frontend, proper error handling, and example API calls. The Files output can then be pushed to GitHub.
+
+**Multi-turn Development**: A developer uses Claude Code to scaffold a new project iteratively - Turn 1: "Create a Python FastAPI project with user authentication" (dispose_sandbox=false), Turn 2: Uses the returned session_id + sandbox_id to ask "Add rate limiting middleware", Turn 3: Continues with "Add comprehensive tests". Each turn builds on the previous work in the same sandbox environment.
+
+**Automated Code Review and Fixes**: An agent receives code from a PR, sends it to Claude Code with "Review this code for bugs and security issues, then fix any problems you find", and Claude Code analyzes the code, makes fixes, and returns the corrected files ready to commit.
 <!-- END MANUAL -->
 
 ---
@@ -650,6 +706,50 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 
 ---
 
+## Orchestrator
+
+### What it is
+Uses AI to intelligently decide what tool to use.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The prompt to send to the language model. | str | Yes |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-opus-4-7" \| "claude-sonnet-4-6" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-4.20" \| "x-ai/grok-4.20-multi-agent" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2.5" \| "moonshotai/kimi-k2.6" \| "moonshotai/kimi-k2-thinking" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "z-ai/glm-4.6" \| "z-ai/glm-4.6v" \| "z-ai/glm-4.7" \| "z-ai/glm-4.7-flash" \| "z-ai/glm-5" \| "z-ai/glm-5-turbo" \| "z-ai/glm-5v-turbo" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| multiple_tool_calls | Whether to allow multiple tool calls in a single response. | bool | No |
+| sys_prompt | The system prompt to provide additional context to the model. | str | No |
+| conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, Any]] | No |
+| last_tool_output | The output of the last tool that was called. | Last Tool Output | No |
+| retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
+| prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
+| max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
+| ollama_host | Ollama host for local  models | str | No |
+| agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
+| execution_mode | How tool calls are executed. 'built_in' uses the default tool-call loop (all providers). 'extended_thinking' delegates to an external Agent SDK for richer reasoning (currently Anthropic / OpenRouter only, requires API credentials, ignores 'Agent Mode Max Iterations'). | "built_in" \| "extended_thinking" | No |
+| conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| tools | The tools that are available to use. | Tools |
+| finished | The finished message to display to the user. | str |
+| conversations | The conversation history to provide context for the prompt. | List[Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Perplexity
 
 ### What it is
@@ -686,55 +786,6 @@ Choose from different sonar model variants including deep-research for comprehen
 **Current Events**: Query real-time information that LLMs with static training data can't provide.
 
 **Competitive Intelligence**: Research companies, products, or markets with cited sources.
-<!-- END MANUAL -->
-
----
-
-## Smart Decision Maker
-
-### What it is
-Uses AI to intelligently decide what tool to use.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. Connect tool outputs to feed back results, creating autonomous reasoning loops.
-
-Configure agent_mode_max_iterations to control loop behavior: 0 for single decisions, -1 for infinite looping, or a positive number for max iterations. The block outputs tool calls or a finished message.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| prompt | The prompt to send to the language model. | str | Yes |
-| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "gpt-3.5-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-3-pro-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
-| multiple_tool_calls | Whether to allow multiple tool calls in a single response. | bool | No |
-| sys_prompt | The system prompt to provide additional context to the model. | str | No |
-| conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, Any]] | No |
-| last_tool_output | The output of the last tool that was called. | Last Tool Output | No |
-| retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
-| prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
-| max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
-| ollama_host | Ollama host for local  models | str | No |
-| agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
-| conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| tools | The tools that are available to use. | Tools |
-| finished | The finished message to display to the user. | str |
-| conversations | The conversation history to provide context for the prompt. | List[Any] |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Autonomous Agents**: Build agents that can independently decide which tools to use for tasks.
-
-**Dynamic Workflows**: Create workflows that adapt their execution path based on AI decisions.
-
-**Multi-Tool Orchestration**: Let AI coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---

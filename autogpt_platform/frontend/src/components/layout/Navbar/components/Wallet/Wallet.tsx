@@ -15,11 +15,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
-import * as party from "party-js";
+import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
+import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
@@ -54,21 +54,14 @@ export function Wallet() {
         details: "Kickstart your journey with quick wins.",
         tasks: [
           {
-            id: "GET_RESULTS",
-            name: "Complete onboarding and see your first agent's results",
+            id: "VISIT_COPILOT",
+            name: "Complete onboarding",
             amount: 3,
             details: "",
           },
           {
-            id: "MARKETPLACE_VISIT",
-            name: "Go to Marketplace",
-            amount: 1,
-            details: "Click Marketplace in the top navigation",
-            video: "/onboarding/marketplace-visit.mp4",
-          },
-          {
             id: "MARKETPLACE_ADD_AGENT",
-            name: "Find and add an agent",
+            name: "Get an agent from the marketplace",
             amount: 1,
             details:
               "Search for an agent in the Marketplace and add it to your Library",
@@ -79,15 +72,7 @@ export function Wallet() {
             name: "Open the Library page and run an agent",
             amount: 1,
             details: "Go to the Library, open an agent you want, and run it",
-            video: "/onboarding/marketplace-run.mp4",
-          },
-          {
-            id: "BUILDER_SAVE_AGENT",
-            name: "Place your first blocks and save your agent",
-            amount: 1,
-            details:
-              "Open block library on the left and add a block to the canvas then save your agent",
-            video: "/onboarding/builder-save.mp4",
+            video: "/onboarding/agent-run.mp4",
           },
         ],
       },
@@ -96,26 +81,11 @@ export function Wallet() {
         details: "Build your rhythm and make agents part of your routine.",
         tasks: [
           {
-            id: "RE_RUN_AGENT",
-            name: "Re-run an agent",
-            amount: 1,
-            details: "Re-run an agent from the Library",
-          },
-          {
             id: "SCHEDULE_AGENT",
             name: "Schedule your first agent",
             amount: 1,
             details: "Schedule an agent to run on a recurring basis",
-          },
-          {
-            id: "RUN_AGENTS",
-            name: "Run 10 agents",
-            amount: 3,
-            details: "Run agents from Library or Builder 10 times",
-            progress: {
-              current: state?.agentRuns || 0,
-              target: 10,
-            },
+            video: "/onboarding/agent-schedule.mp4",
           },
           {
             id: "RUN_3_DAYS",
@@ -144,9 +114,9 @@ export function Wallet() {
           {
             id: "RUN_14_DAYS",
             name: "Run agents 14 days in a row",
-            amount: 3,
+            amount: 1,
             details:
-              "Run any agents from the Library or Builder for 10 days in a row",
+              "Run any agents from the Library or Builder for 14 days in a row",
             progress: {
               current: state?.consecutiveRunDays || 0,
               target: 14,
@@ -155,7 +125,7 @@ export function Wallet() {
           {
             id: "RUN_AGENTS_100",
             name: "Complete 100 agent runs",
-            amount: 3,
+            amount: 1,
             details: "Let your agents run and complete 100 tasks in total",
             progress: {
               current: state?.agentRuns || 0,
@@ -175,7 +145,6 @@ export function Wallet() {
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
-  const [lastSeenCredits, setLastSeenCredits] = useState<number | null>(null);
 
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
@@ -200,38 +169,6 @@ export function Wallet() {
     setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
 
-  // Load last seen credits from localStorage once on mount
-  useEffect(() => {
-    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
-    if (stored !== undefined && stored !== null) {
-      const parsed = parseFloat(stored);
-      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
-      else setLastSeenCredits(0);
-    } else {
-      setLastSeenCredits(0);
-    }
-  }, []);
-
-  // Auto-open once if never shown, otherwise open only when credits increase beyond last seen
-  useEffect(() => {
-    if (typeof credits !== "number") return;
-    // Open once for first-time users
-    if (state && state.walletShown === false) {
-      requestAnimationFrame(() => setWalletOpen(true));
-      // Mark as shown so it won't reopen on every reload
-      updateState({ walletShown: true });
-      return;
-    }
-    // Open if user gained more credits than last acknowledged
-    if (
-      lastSeenCredits !== null &&
-      credits > lastSeenCredits &&
-      walletOpen === false
-    ) {
-      requestAnimationFrame(() => setWalletOpen(true));
-    }
-  }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
-
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
       updateState({ walletShown: true });
@@ -240,28 +177,23 @@ export function Wallet() {
     fetchCredits();
   }, [state?.walletShown, updateState, fetchCredits]);
 
-  const fadeOut = useMemo(
-    () =>
-      new party.ModuleBuilder()
-        .drive("opacity")
-        .by((t) => 1 - t)
-        .through("lifetime")
-        .build(),
-    [],
-  );
-
   // React to onboarding notifications emitted by the provider
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
       if (
         notification.type !== "onboarding" ||
-        notification.event !== "step_completed" ||
-        !walletRef.current
+        notification.event !== "step_completed"
       ) {
         return;
       }
 
-      // Only trigger confetti for tasks that are in groups
+      // Always refresh credits when any onboarding step completes
+      fetchCredits();
+
+      // Only trigger confetti for tasks that are in displayed groups
+      if (!walletRef.current) {
+        return;
+      }
       const taskIds = groups
         .flatMap((group) => group.tasks)
         .map((task) => task.id);
@@ -274,17 +206,26 @@ export function Wallet() {
         return;
       }
 
-      fetchCredits();
-      party.confetti(walletRef.current, {
-        count: 30,
-        spread: 120,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 2),
-        speed: party.variation.range(200, 300),
-        modules: [fadeOut],
-      });
+      const origin = {
+        x: (rect.left + rect.width / 2) / window.innerWidth,
+        y: (rect.top + rect.height / 2) / window.innerHeight,
+      };
+      const shared: ConfettiOptions = {
+        particleCount: 50,
+        spread: 70,
+        shapes: ["square"],
+        scalar: 1.2,
+        startVelocity: 20,
+        gravity: 0.6,
+        decay: 0.92,
+        ticks: 100,
+        colors: AGPT_CONFETTI_COLORS,
+        origin,
+      };
+      confetti({ ...shared, angle: 45 });
+      confetti({ ...shared, angle: 135 });
     },
-    [fetchCredits, fadeOut],
+    [fetchCredits, groups],
   );
 
   // WebSocket setup for onboarding notifications
@@ -320,19 +261,7 @@ export function Wallet() {
   if (credits === null || !state) return null;
 
   return (
-    <Popover
-      open={walletOpen}
-      onOpenChange={(open) => {
-        setWalletOpen(open);
-        if (!open) {
-          // Persist the latest acknowledged credits so we only auto-open on future gains
-          if (typeof credits === "number") {
-            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
-            setLastSeenCredits(credits);
-          }
-        }
-      }}
-    >
+    <Popover open={walletOpen} onOpenChange={(open) => setWalletOpen(open)}>
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button
@@ -340,9 +269,9 @@ export function Wallet() {
             className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
-            <WalletIcon size={20} className="inline-block md:hidden" />
+            <WalletIcon size={20} className="inline-block xl:hidden" />
             <div>
-              <span className="mr-1 hidden md:inline-block">Earn credits </span>
+              <span className="mr-1 hidden xl:inline-block">Earn credits </span>
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
@@ -368,14 +297,20 @@ export function Wallet() {
         side="bottom"
         align="end"
         collisionPadding={16}
-        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-[28.5rem] px-4 py-4")}
       >
         {/* Header */}
-        <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
-          <span className="font-poppins font-medium text-zinc-900">
-            Your credits
-          </span>
-          <div className="flex items-center text-sm text-violet-700">
+        <div className="mx-1 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="font-poppins text-base font-semibold text-zinc-900">
+              Automation Credits
+            </span>
+            <span className="font-sans text-xs text-zinc-500">
+              Platform-only credits for automations. This is separate from your
+              subscription and is not usable for plan fees.
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center text-sm text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>

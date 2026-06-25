@@ -153,6 +153,9 @@ export const useRunInputDialog = ({
       Object.entries(credentialValues).filter(([_, cred]) => cred && cred.id),
     );
 
+    useNodeStore.getState().clearAllNodeExecutionResults();
+    useNodeStore.getState().cleanNodesStatuses();
+
     await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,

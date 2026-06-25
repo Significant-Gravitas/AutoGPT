@@ -12,6 +12,7 @@ Tests cover:
 5. Complete OAuth flow end-to-end
 """
 
+import asyncio
 import base64
 import hashlib
 import secrets
@@ -20,6 +21,7 @@ from typing import AsyncGenerator
 
 import httpx
 import pytest
+import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
@@ -38,13 +40,13 @@ keysmith = APIKeySmith()
 # ============================================================================
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def test_user_id() -> str:
     """Test user ID for OAuth tests."""
     return str(uuid.uuid4())
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_user(server, test_user_id: str):
     """Create a test user in the database."""
     await PrismaUser.prisma().create(
@@ -57,17 +59,30 @@ async def test_user(server, test_user_id: str):
 
     yield test_user_id
 
-    # Cleanup - delete in correct order due to foreign key constraints
-    await PrismaOAuthAccessToken.prisma().delete_many(where={"userId": test_user_id})
-    await PrismaOAuthRefreshToken.prisma().delete_many(where={"userId": test_user_id})
-    await PrismaOAuthAuthorizationCode.prisma().delete_many(
-        where={"userId": test_user_id}
-    )
-    await PrismaOAuthApplication.prisma().delete_many(where={"ownerId": test_user_id})
-    await PrismaUser.prisma().delete(where={"id": test_user_id})
+    # Cleanup - delete in correct order due to foreign key constraints.
+    # Wrap in try/except because the event loop or Prisma engine may already
+    # be closed during session teardown on Python 3.12+.
+    try:
+        await asyncio.gather(
+            PrismaOAuthAccessToken.prisma().delete_many(where={"userId": test_user_id}),
+            PrismaOAuthRefreshToken.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
+            PrismaOAuthAuthorizationCode.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
+        )
+        await asyncio.gather(
+            PrismaOAuthApplication.prisma().delete_many(
+                where={"ownerId": test_user_id}
+            ),
+            PrismaUser.prisma().delete(where={"id": test_user_id}),
+        )
+    except RuntimeError:
+        pass
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_oauth_app(test_user: str):
     """Create a test OAuth application in the database."""
     app_id = str(uuid.uuid4())
@@ -122,7 +137,7 @@ def pkce_credentials() -> tuple[str, str]:
     return generate_pkce()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     Create an async HTTP client that talks directly to the FastAPI app.
@@ -287,7 +302,7 @@ async def test_authorize_invalid_client_returns_error(
     assert query_params["error"][0] == "invalid_client"
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def inactive_oauth_app(test_user: str):
     """Create an inactive test OAuth application in the database."""
     app_id = str(uuid.uuid4())
@@ -1004,7 +1019,7 @@ async def test_token_refresh_revoked(
     assert "revoked" in response.json()["detail"].lower()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def other_oauth_app(test_user: str):
     """Create a second OAuth application for cross-app tests."""
     app_id = str(uuid.uuid4())

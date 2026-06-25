@@ -3,14 +3,14 @@ from urllib.parse import quote
 
 from pydantic import SecretStr
 
-from backend.blocks.helpers.http import GetRequest
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.helpers.http import GetRequest
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,

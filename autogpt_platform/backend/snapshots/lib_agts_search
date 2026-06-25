@@ -4,7 +4,6 @@
       "id": "test-agent-1",
       "graph_id": "test-agent-1",
       "graph_version": 1,
-      "owner_user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
       "image_url": null,
       "creator_name": "Test Creator",
       "creator_image_url": "",
@@ -31,13 +30,23 @@
       "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": true,
       "is_latest_version": true,
       "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     },
@@ -45,7 +54,6 @@
       "id": "test-agent-2",
       "graph_id": "test-agent-2",
       "graph_version": 1,
-      "owner_user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
       "image_url": null,
       "creator_name": "Test Creator",
       "creator_image_url": "",
@@ -72,13 +80,23 @@
       "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": false,
       "is_latest_version": true,
       "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     }

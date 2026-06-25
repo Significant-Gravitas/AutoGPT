@@ -10,6 +10,23 @@ export enum Key {
   LIBRARY_AGENTS_CACHE = "library-agents-cache",
   CHAT_SESSION_ID = "chat_session_id",
   COOKIE_CONSENT = "autogpt_cookie_consent",
+  AI_AGENT_SAFETY_POPUP_SHOWN = "ai-agent-safety-popup-shown",
+  COPILOT_SOUND_ENABLED = "copilot-sound-enabled",
+  COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",
+  COPILOT_NOTIFICATION_BANNER_DISMISSED = "copilot-notification-banner-dismissed",
+  COPILOT_NOTIFICATION_DIALOG_DISMISSED = "copilot-notification-dialog-dismissed",
+  COPILOT_ARTIFACT_PANEL_WIDTH = "copilot-artifact-panel-width",
+  COPILOT_CONTEXT_PANEL_WIDTH = "copilot-context-panel-width",
+  COPILOT_CONTEXT_PANEL_OPEN = "copilot-context-panel-open",
+  COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
+  COPILOT_MODE = "copilot-mode",
+  COPILOT_MODEL = "copilot-model",
+  COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
+  PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
+  COPILOT_DRY_RUN = "copilot-dry-run",
+  TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
+  LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
+  BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
 }
 
 function get(key: Key) {

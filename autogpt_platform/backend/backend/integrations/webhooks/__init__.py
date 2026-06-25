@@ -15,6 +15,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
     from .compass import CompassWebhookManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
+    from .telegram import TelegramWebhooksManager
 
     webhook_managers.update(
         {
@@ -23,6 +24,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
                 CompassWebhookManager,
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,
+                TelegramWebhooksManager,
             ]
         }
     )

@@ -14,6 +14,10 @@ import {
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
+import {
+  AIAgentSafetyPopup,
+  useAIAgentSafetyPopup,
+} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -74,6 +78,7 @@ export function RunAgentModal({
 
     // Actions
     handleRun,
+    handleSimulate,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
@@ -83,7 +88,17 @@ export function RunAgentModal({
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
+  const [isSafetyPopupOpen, setIsSafetyPopupOpen] = useState(false);
+  const [pendingRunAction, setPendingRunAction] = useState<(() => void) | null>(
+    null,
+  );
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
+    agent.id,
+    agent.has_sensitive_action,
+    agent.has_human_in_the_loop,
+  );
 
   const hasAnySetupFields =
     Object.keys(agentInputFields || {}).length > 0 ||
@@ -165,6 +180,24 @@ export function RunAgentModal({
     onScheduleCreated?.(schedule);
   }
 
+  function handleRunWithSafetyCheck() {
+    if (shouldShowPopup) {
+      setPendingRunAction(() => handleRun);
+      setIsSafetyPopupOpen(true);
+    } else {
+      handleRun();
+    }
+  }
+
+  function handleSafetyPopupAcknowledge() {
+    setIsSafetyPopupOpen(false);
+    dismissPopup();
+    if (pendingRunAction) {
+      pendingRunAction();
+      setPendingRunAction(null);
+    }
+  }
+
   return (
     <>
       <Dialog
@@ -211,47 +244,50 @@ export function RunAgentModal({
               }`}
             >
               <div className="flex items-center justify-end gap-3">
-                {isTriggerRunType ? null : !allRequiredInputsAreSet ? (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button
-                            variant="secondary"
-                            onClick={handleOpenScheduleModal}
-                            disabled={
-                              isExecuting ||
-                              isSettingUpTrigger ||
-                              !allRequiredInputsAreSet
-                            }
-                          >
-                            Schedule Task
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          Please set up all required inputs and credentials
-                          before scheduling
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    onClick={handleOpenScheduleModal}
-                    disabled={isExecuting || isSettingUpTrigger}
-                  >
-                    Schedule Task
-                  </Button>
-                )}
                 <RunActions
                   defaultRunType={defaultRunType}
-                  onRun={handleRun}
+                  onRun={handleRunWithSafetyCheck}
+                  onSimulate={handleSimulate}
                   isExecuting={isExecuting}
                   isSettingUpTrigger={isSettingUpTrigger}
                   isRunReady={allRequiredInputsAreSet}
+                  scheduleButton={
+                    isTriggerRunType ? undefined : !allRequiredInputsAreSet ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="secondary"
+                                onClick={handleOpenScheduleModal}
+                                disabled={
+                                  isExecuting ||
+                                  isSettingUpTrigger ||
+                                  !allRequiredInputsAreSet
+                                }
+                              >
+                                Schedule Task
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              Please set up all required inputs and credentials
+                              before scheduling
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        onClick={handleOpenScheduleModal}
+                        disabled={isExecuting || isSettingUpTrigger}
+                      >
+                        Schedule Task
+                      </Button>
+                    )
+                  }
                 />
               </div>
               <ScheduleAgentModal
@@ -266,6 +302,12 @@ export function RunAgentModal({
           </div>
         </Dialog.Content>
       </Dialog>
+
+      <AIAgentSafetyPopup
+        agentId={agent.id}
+        isOpen={isSafetyPopupOpen}
+        onAcknowledge={handleSafetyPopupAcknowledge}
+      />
     </>
   );
 }

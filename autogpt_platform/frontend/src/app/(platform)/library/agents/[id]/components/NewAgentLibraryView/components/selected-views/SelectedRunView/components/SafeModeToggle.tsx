@@ -69,7 +69,6 @@ export function SafeModeToggle({ graph, className }: Props) {
   const {
     currentHITLSafeMode,
     showHITLToggle,
-    isHITLStateUndetermined,
     handleHITLToggle,
     currentSensitiveActionSafeMode,
     showSensitiveActionToggle,
@@ -78,20 +77,13 @@ export function SafeModeToggle({ graph, className }: Props) {
     shouldShowToggle,
   } = useAgentSafeMode(graph);
 
-  if (!shouldShowToggle || isHITLStateUndetermined) {
-    return null;
-  }
-
-  const showHITL = showHITLToggle && !isHITLStateUndetermined;
-  const showSensitive = showSensitiveActionToggle;
-
-  if (!showHITL && !showSensitive) {
+  if (!shouldShowToggle) {
     return null;
   }
 
   return (
     <div className={cn("flex gap-1", className)}>
-      {showHITL && (
+      {showHITLToggle && (
         <SafeModeIconButton
           isEnabled={currentHITLSafeMode}
           label="Human-in-the-loop"
@@ -101,7 +93,7 @@ export function SafeModeToggle({ graph, className }: Props) {
           isPending={isPending}
         />
       )}
-      {showSensitive && (
+      {showSensitiveActionToggle && (
         <SafeModeIconButton
           isEnabled={currentSensitiveActionSafeMode}
           label="Sensitive actions"

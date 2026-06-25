@@ -24,7 +24,10 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Type
+
+if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
 
 # Add backend to path for imports
 backend_dir = Path(__file__).parent.parent
@@ -111,13 +114,19 @@ CATEGORY_FILE_MAP = {
 
 def class_name_to_display_name(class_name: str) -> str:
     """Convert BlockClassName to 'Block Class Name'."""
+    from backend.util.text import _CAMELCASE_EXCEPTIONS
+
     # Remove 'Block' suffix (only at the end, not all occurrences)
     name = class_name.removesuffix("Block")
     # Insert space before capitals
     name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
     # Handle consecutive capitals (e.g., 'HTTPRequest' -> 'HTTP Request')
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", name)
-    return name.strip()
+    name = name.strip()
+    # Restore brand names that shouldn't be split
+    for split_form, brand in _CAMELCASE_EXCEPTIONS.items():
+        name = name.replace(split_form, brand)
+    return name
 
 
 def type_to_readable(type_schema: dict[str, Any] | Any) -> str:
@@ -242,9 +251,9 @@ def file_path_to_title(file_path: str) -> str:
     return apply_fixes(name.replace("_", " ").title())
 
 
-def extract_block_doc(block_cls: type) -> BlockDoc:
+def extract_block_doc(block_cls: Type["AnyBlockSchema"]) -> BlockDoc:
     """Extract documentation data from a block class."""
-    block = block_cls.create()
+    block = block_cls()
 
     # Get source file
     try:
@@ -520,7 +529,7 @@ def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") 
     lines.append("")
 
     # Group blocks by category
-    by_category = defaultdict(list)
+    by_category = defaultdict[str, list[BlockDoc]](list)
     for block in blocks:
         primary_cat = block.categories[0] if block.categories else "BASIC"
         by_category[primary_cat].append(block)

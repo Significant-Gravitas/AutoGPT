@@ -1,3 +1,10 @@
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.apollo._api import ApolloClient
 from backend.blocks.apollo._auth import (
     TEST_CREDENTIALS,
@@ -10,14 +17,7 @@ from backend.blocks.apollo.models import (
     PrimaryPhone,
     SearchOrganizationsRequest,
 )
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class SearchOrganizationsBlock(Block):
@@ -218,6 +218,11 @@ To find IDs, identify the values for organization_id when you call this endpoint
     ) -> BlockOutput:
         query = SearchOrganizationsRequest(**input_data.model_dump())
         organizations = await self.search_organizations(query, credentials)
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(organizations)), provider_cost_type="items"
+            )
+        )
         for organization in organizations:
             yield "organization", organization
         yield "organizations", organizations

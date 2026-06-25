@@ -155,6 +155,47 @@ For cross-repository PRs, format the head branch as "username:branch". The branc
 
 ---
 
+## Github Merge Pull Request
+
+### What it is
+This block merges a pull request using merge, squash, or rebase.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block merges a pull request using the GitHub Merge API. It supports three merge methods: regular merge commit, squash merge (combines all commits into one), and rebase merge (replays commits on top of the base branch).
+
+You can optionally provide a custom commit title and message for merge and squash methods. The block returns the merge commit SHA and confirmation of success.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| pr_url | URL of the GitHub pull request | str | Yes |
+| merge_method | Merge method to use: merge, squash, or rebase | "merge" \| "squash" \| "rebase" | No |
+| commit_title | Title for the merge commit (optional, used for merge and squash) | str | No |
+| commit_message | Message for the merge commit (optional, used for merge and squash) | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the merge failed | str |
+| sha | SHA of the merge commit | str |
+| merged | Whether the PR was merged | bool |
+| message | Merge status message | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**CI/CD Pipeline**: Automatically merge PRs after all checks pass and required approvals are received.
+
+**Release Automation**: Merge release branches into main using squash for clean commit history.
+
+**Dependency Updates**: Auto-merge bot-created PRs for minor dependency updates after tests pass.
+<!-- END MANUAL -->
+
+---
+
 ## Github Read Pull Request
 
 ### What it is

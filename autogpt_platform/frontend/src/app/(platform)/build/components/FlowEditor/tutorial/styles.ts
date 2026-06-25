@@ -7,6 +7,7 @@
  *
  * Typography (body, small, action, info, tip, warning) uses Tailwind utilities directly in steps.ts
  */
+import "shepherd.js/dist/css/shepherd.css";
 import "./tutorial.css";
 
 export const injectTutorialStyles = () => {

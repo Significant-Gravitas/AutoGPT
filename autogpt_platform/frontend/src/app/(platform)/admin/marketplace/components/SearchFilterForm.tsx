@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
-import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 export function SearchAndFilterAdminMarketplace({
   initialSearch,

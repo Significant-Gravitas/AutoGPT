@@ -260,7 +260,7 @@ export function CronScheduler({
       )}
 
       {frequency !== "hourly" &&
-        !(frequency === "custom" && customInterval.unit === "hours") && (
+        !(frequency === "custom" && customInterval.unit !== "days") && (
           <TimeAt
             value={selectedTime}
             onChange={setSelectedTime}

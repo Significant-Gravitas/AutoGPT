@@ -1,9 +1,10 @@
+import asyncio
 import base64
 import hashlib
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -21,11 +22,14 @@ from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
+if TYPE_CHECKING:
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
+
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
-cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
+cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
 @cache_user_lookup
@@ -77,6 +81,28 @@ async def get_user_by_email(email: str) -> Optional[User]:
         return User.from_db(user) if user else None
     except Exception as e:
         raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+
+
+async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
+    """Search users by partial email or name.
+
+    Returns a list of ``(user_id, email)`` tuples, up to *limit* results.
+    Searches the User table directly — no dependency on credit history.
+    """
+    query = query.strip()
+    if not query or len(query) < 3:
+        return []
+    users = await prisma.user.find_many(
+        where={
+            "OR": [
+                {"email": {"contains": query, "mode": "insensitive"}},
+                {"name": {"contains": query, "mode": "insensitive"}},
+            ],
+        },
+        take=limit,
+        order={"email": "asc"},
+    )
+    return [(u.id, u.email) for u in users]
 
 
 async def update_user_email(user_id: str, email: str):
@@ -453,6 +479,43 @@ async def unsubscribe_user_by_token(token: str) -> None:
         raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
 
 
+async def cleanup_user_managed_credentials(
+    user_id: str,
+    store: Optional["IntegrationCredentialsStore"] = None,
+) -> None:
+    """Revoke all externally-provisioned managed credentials for *user_id*.
+
+    Call this before deleting a user account so that external resources
+    (e.g. AgentMail pods, pod-scoped API keys) are properly cleaned up.
+    The credential rows themselves are cascade-deleted with the User row.
+
+    Pass an existing *store* for testability; when omitted a fresh instance
+    is created.
+    """
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
+    from backend.integrations.managed_credentials import cleanup_managed_credentials
+
+    if store is None:
+        store = IntegrationCredentialsStore()
+    await cleanup_managed_credentials(user_id, store)
+
+
+# Strong refs to fire-and-forget tasks — the event loop only keeps weak
+# references, so an unretained task can be GC'd mid-flight and its
+# exception is never observed. Same pattern as
+# ``backend/copilot/chat_session_embeddings.py``.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _on_background_task_done(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("Background task %s failed", task.get_name(), exc_info=exc)
+
+
 async def update_user_timezone(user_id: str, timezone: str) -> User:
     """Update a user's timezone setting."""
     try:
@@ -463,8 +526,39 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
 
-        # Invalidate cache for this user
+        # Invalidate user caches so subsequent reads see the new timezone.
+        # get_user_by_id and get_user_by_email are keyed by a single value
+        # and can be deleted surgically; get_or_create_user is keyed by the
+        # JWT-payload dict so we can't delete a single entry — clear it
+        # entirely.
         get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
+        get_or_create_user.cache_clear()
+
+        # Dream-system schedules are bound to the timezone at job-creation
+        # time; without an eager re-register they'd keep firing at the old
+        # local time. Fire-and-forget so this profile update returns
+        # immediately — the helper's lazy drift-detection path (via the
+        # Redis dedup key value) is the durable backstop if this
+        # fails or the user doesn't trigger a memory write within the
+        # 7-day key TTL.
+        try:
+            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+
+            task = asyncio.create_task(
+                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                name=f"tz-reregister-{user_id[:12]}",
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_on_background_task_done)
+        except Exception:
+            logger.warning(
+                "Failed to spawn dream-system re-register after timezone "
+                "update for user %s — lazy drift detection will catch it",
+                user_id[:12],
+                exc_info=True,
+            )
 
         return User.from_db(user)
     except Exception as e:

@@ -1,24 +1,33 @@
 import logging
 import urllib.parse
 from collections import defaultdict
-from typing import Annotated, Any, Literal, Optional, Sequence
+from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, HTTPException, Security
+from fastapi import APIRouter, Body, HTTPException, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 import backend.api.features.store.cache as store_cache
+import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-import backend.data.block
-from backend.api.external.middleware import require_permission
+import backend.blocks
+from backend.api.external.middleware import require_auth, require_permission
+from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.executor.utils import add_graph_execution
+from backend.data.execution import ExecutionContext
+from backend.executor.utils import (
+    add_graph_execution,
+    charge_for_direct_block_execution,
+)
+from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .integrations import integrations_router
 from .tools import tools_router
@@ -67,7 +76,7 @@ async def get_user_info(
     dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in backend.data.block.get_blocks().values()]
+    blocks = [block() for block in backend.blocks.get_blocks().values()]
     return [b.to_dict() for b in blocks if not b.disabled]
 
 
@@ -83,14 +92,84 @@ async def execute_graph_block(
         require_permission(APIKeyPermission.EXECUTE_BLOCK)
     ),
 ) -> CompletedBlockOutput:
-    obj = backend.data.block.get_block(block_id)
+    # Sync block exec doesn't pass through ``add_graph_execution`` (no
+    # central enqueue), and external API routes use API-key auth instead
+    # of JWT so the JWT-based dep doesn't apply either. Inline strict
+    # gate with the same fail-closed (503-on-blip) posture as the dep —
+    # consistent with chat / internal block / internal graph routes.
+    await enforce_payment_paywall(auth.user_id)
+
+    obj = backend.blocks.get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+
+    user = await user_db.get_user_by_id(auth.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    try:
+        await charge_for_direct_block_execution(
+            user_id=auth.user_id, block=obj, input_data=data, source="external"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+        ) from e
+
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=auth.user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
 
     output = defaultdict(list)
-    async for name, data in obj.execute(data):
+    async for name, data in obj.execute(data, execution_context=execution_context):
         output[name].append(data)
     return output
+
+
+@v1_router.post(
+    path="/graphs",
+    tags=["graphs"],
+    status_code=201,
+    dependencies=[
+        Security(
+            require_permission(
+                APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
+            )
+        )
+    ],
+)
+async def create_graph(
+    graph: graph_db.Graph,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+    ),
+) -> graph_db.GraphModel:
+    """
+    Create a new agent graph.
+
+    The graph will be validated and assigned a new ID.
+    It is automatically added to the user's library.
+    """
+    from backend.api.features.library import db as library_db
+
+    graph_model = graph_db.make_graph_model(graph, auth.user_id)
+    graph_model.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
+    graph_model.validate_graph(for_run=False)
+
+    # Validate BEFORE persisting so a credential issue can't leave the graph
+    # and library agent half-saved.
+    graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
+
+    await graph_db.create_graph(graph_model, user_id=auth.user_id)
+    await library_db.create_library_agent(graph_model, auth.user_id)
+
+    return graph_model
 
 
 @v1_router.post(
@@ -105,6 +184,10 @@ async def execute_graph(
         require_permission(APIKeyPermission.EXECUTE_GRAPH)
     ),
 ) -> dict[str, Any]:
+    # Strict route-level paywall: 503 on tier-lookup failure (rather
+    # than fail-open via the deep gate inside add_graph_execution).
+    # Consistent with the JWT-gated internal graph-execute route.
+    await enforce_payment_paywall(auth.user_id)
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
@@ -113,6 +196,12 @@ async def execute_graph(
             graph_version=graph_version,
         )
         return {"id": graph_exec.id}
+    except UserPaywalledError:
+        # Defence-in-depth: even though the strict gate above catches
+        # paywall before this point, leave the re-raise so the broad
+        # ``except Exception`` doesn't accidentally collapse a future
+        # deep-gate hit into HTTP 400.
+        raise
     except Exception as e:
         msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
@@ -190,13 +279,13 @@ async def get_graph_execution_results(
 @v1_router.get(
     path="/store/agents",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.StoreAgentsResponse,
 )
 async def get_store_agents(
     featured: bool = False,
     creator: str | None = None,
-    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
+    sorted_by: store_db.StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -238,7 +327,7 @@ async def get_store_agents(
 @v1_router.get(
     path="/store/agents/{username}/{agent_name}",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.StoreAgentDetails,
 )
 async def get_store_agent(
@@ -266,13 +355,13 @@ async def get_store_agent(
 @v1_router.get(
     path="/store/creators",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.CreatorsResponse,
 )
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
+    sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:
@@ -308,7 +397,7 @@ async def get_store_creators(
 @v1_router.get(
     path="/store/creators/{username}",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.CreatorDetails,
 )
 async def get_store_creator(

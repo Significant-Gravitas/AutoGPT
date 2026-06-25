@@ -1,0 +1,1252 @@
+import logging
+import uuid
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from typing import Any, AsyncIterator, Self, cast
+
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionDeveloperMessageParam,
+    ChatCompletionFunctionMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionUserMessageParam,
+)
+from openai.types.chat.chat_completion_assistant_message_param import FunctionCall
+from openai.types.chat.chat_completion_message_tool_call_param import (
+    ChatCompletionMessageToolCallParam,
+    Function,
+)
+from prisma.errors import UniqueViolationError
+from prisma.models import ChatMessage as PrismaChatMessage
+from prisma.models import ChatSession as PrismaChatSession
+from pydantic import BaseModel, PrivateAttr
+
+from backend.data.db_accessors import chat_db, library_db
+from backend.data.graph import GraphSettings
+from backend.data.redis_client import get_redis_async
+from backend.util import json
+from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
+
+from .config import ChatConfig
+
+logger = logging.getLogger(__name__)
+config = ChatConfig()
+
+
+# Redis cache key prefix for chat sessions
+CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+
+
+def _get_session_cache_key(session_id: str) -> str:
+    """Get the Redis cache key for a chat session."""
+    return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
+
+
+# ChatSession.chatStatus lifecycle values.  Open enum: future states
+# (e.g. ``"errored"``, ``"paused"``) can be added without a migration.
+# Within a session, turns are serialized so at most one task is in
+# flight at a time — the status sits at session scope, not message.
+CHAT_STATUS_IDLE = "idle"
+CHAT_STATUS_QUEUED = "queued"
+CHAT_STATUS_RUNNING = "running"
+
+
+# ===================== Chat data models ===================== #
+
+
+class ChatSessionMetadata(BaseModel):
+    """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
+
+    Add new session-level flags here instead of adding DB columns —
+    no migration required for new fields as long as a default is provided.
+    """
+
+    dry_run: bool = False
+
+    # Builder-panel binding: when set, the session is locked to the given
+    # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
+    # this graph and reject calls targeting a different agent.  Also used
+    # as a lookup key so refreshing the builder resumes the same chat.
+    builder_graph_id: str | None = None
+    source_platform: str | None = None
+
+    # Session kind — distinguishes regular chats from dream-pass and
+    # daydream artifacts so the frontend can render them differently
+    # (and so analytics / retention rules can filter them out).
+    # Open enum: future kinds (e.g. ``"daydream"``) can land without a
+    # migration; readers must tolerate unknown values.
+    kind: str = "normal"
+
+    # When ``kind == "dream"``, the originating pass id so the session
+    # links back to the orchestrator run that produced it.
+    dream_pass_id: str | None = None
+
+
+class ChatMessage(BaseModel):
+    id: str | None = None
+    """Stable per-send id.  When supplied by the caller (e.g. AI SDK's
+    ``messageId`` plumbed from the frontend's ``crypto.randomUUID()`` per
+    user click), it becomes the Prisma row's ``id`` — the PK uniqueness
+    constraint then makes the INSERT itself the atomic dedup primitive
+    for retransmits / RMQ redeliveries / browser auto-retries.  ``None``
+    leaves Prisma to generate via ``@default(uuid())``."""
+
+    role: str
+    content: str | None = None
+    name: str | None = None
+    tool_call_id: str | None = None
+    refusal: str | None = None
+    tool_calls: list[dict] | None = None
+    function_call: dict | None = None
+    sequence: int | None = None
+    duration_ms: int | None = None
+    created_at: datetime | None = None
+
+    # Owning session id and generic per-row JSONB bag.  Today the
+    # dispatcher uses ``metadata`` to preserve the submit-time payload
+    # (file_ids / mode / model / permissions / context / arrival_at)
+    # on the user row that triggered a queued turn, so a later
+    # promotion can replay the turn faithfully.  Generic so future
+    # per-row state can land here without a migration.
+    session_id: str | None = None
+    metadata: dict | None = None
+
+    @staticmethod
+    def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
+        """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
+        return ChatMessage(
+            id=prisma_message.id,
+            role=prisma_message.role,
+            content=prisma_message.content,
+            name=prisma_message.name,
+            tool_call_id=prisma_message.toolCallId,
+            refusal=prisma_message.refusal,
+            tool_calls=_parse_json_field(prisma_message.toolCalls),
+            function_call=_parse_json_field(prisma_message.functionCall),
+            sequence=prisma_message.sequence,
+            duration_ms=prisma_message.durationMs,
+            created_at=prisma_message.createdAt,
+            session_id=prisma_message.sessionId,
+            metadata=_parse_json_field(prisma_message.metadata),
+        )
+
+
+def is_message_duplicate(
+    messages: list[ChatMessage],
+    role: str,
+    content: str,
+) -> bool:
+    """Check whether *content* is already present in the current pending turn.
+
+    Only inspects trailing messages that share the given *role* (i.e. the
+    current turn). This ensures legitimately repeated messages across different
+    turns are not suppressed, while same-turn duplicates from stale cache are
+    still caught.
+    """
+    for m in reversed(messages):
+        if m.role == role:
+            if m.content == content:
+                return True
+        else:
+            break
+    return False
+
+
+def maybe_append_user_message(
+    session: "ChatSession",
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    """Append a user/assistant message to the session if not already present.
+
+    The route handler already persists the user message before enqueueing,
+    so we check trailing same-role messages to avoid re-appending when the
+    session cache is slightly stale.
+
+    Returns True if the message was appended, False if skipped.
+    """
+    if not message:
+        return False
+    role = "user" if is_user_message else "assistant"
+    if is_message_duplicate(session.messages, role, message):
+        return False
+    session.messages.append(ChatMessage(role=role, content=message))
+    return True
+
+
+class Usage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    # Cache breakdown (Anthropic-specific; zero for non-Anthropic models)
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
+
+class ChatSessionInfo(BaseModel):
+    session_id: str
+    user_id: str
+    title: str | None = None
+    usage: list[Usage]
+    credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
+    started_at: datetime
+    updated_at: datetime
+    successful_agent_runs: dict[str, int] = {}
+    successful_agent_schedules: dict[str, int] = {}
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
+    # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
+    chat_status: str = "idle"
+
+    @property
+    def dry_run(self) -> bool:
+        """Convenience accessor for ``metadata.dry_run``."""
+        return self.metadata.dry_run
+
+    @classmethod
+    def from_db(cls, prisma_session: PrismaChatSession) -> Self:
+        """Convert Prisma ChatSession to Pydantic ChatSession."""
+        # Parse JSON fields from Prisma
+        credentials = _parse_json_field(prisma_session.credentials, default={})
+        successful_agent_runs = _parse_json_field(
+            prisma_session.successfulAgentRuns, default={}
+        )
+        successful_agent_schedules = _parse_json_field(
+            prisma_session.successfulAgentSchedules, default={}
+        )
+
+        # Parse typed metadata from the JSON column.
+        raw_metadata = _parse_json_field(prisma_session.metadata, default={})
+        metadata = ChatSessionMetadata.model_validate(raw_metadata)
+
+        # Calculate usage from token counts.
+        # NOTE: Per-turn cache_read_tokens / cache_creation_tokens breakdown
+        # is lost after persistence — the DB only stores aggregate prompt and
+        # completion totals. This is a known limitation.
+        usage = []
+        if prisma_session.totalPromptTokens or prisma_session.totalCompletionTokens:
+            usage.append(
+                Usage(
+                    prompt_tokens=prisma_session.totalPromptTokens or 0,
+                    completion_tokens=prisma_session.totalCompletionTokens or 0,
+                    total_tokens=(prisma_session.totalPromptTokens or 0)
+                    + (prisma_session.totalCompletionTokens or 0),
+                )
+            )
+
+        return cls(
+            session_id=prisma_session.id,
+            user_id=prisma_session.userId,
+            title=prisma_session.title,
+            usage=usage,
+            credentials=credentials,
+            started_at=prisma_session.createdAt,
+            updated_at=prisma_session.updatedAt,
+            successful_agent_runs=successful_agent_runs,
+            successful_agent_schedules=successful_agent_schedules,
+            metadata=metadata,
+            chat_status=prisma_session.chatStatus,
+        )
+
+
+class ChatSession(ChatSessionInfo):
+    messages: list[ChatMessage]
+    # In-flight tool-call names for the CURRENT turn.  Not persisted to
+    # DB and not serialised on the wire — ``PrivateAttr`` keeps this a
+    # process-local scratch buffer that's invisible to ``model_dump`` /
+    # ``model_dump_json`` / the redis cache path.  Populated by the
+    # baseline tool executor the moment a tool is dispatched so in-turn
+    # guards (e.g. ``require_guide_read``) can see the call before it
+    # lands in ``messages`` at turn-end.  Cleared when the turn
+    # completes.
+    _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
+
+    # Optional argument capture for in-flight tool calls.  Some guards
+    # (e.g. ``require_guide_read``) discriminate by argument as well as
+    # by name — for ``read_skill(name="agent_building_guide")`` we need
+    # to know the *name* arg, not just that ``read_skill`` was called.
+    # Populated alongside the name set by
+    # :meth:`announce_inflight_tool_call`; mapping from tool name to a
+    # list of argument dicts (one entry per dispatched call).
+    _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
+
+    @classmethod
+    def new(
+        cls,
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+        source_platform: str | None = None,
+    ) -> Self:
+        return cls(
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=None,
+            messages=[],
+            usage=[],
+            credentials={},
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            metadata=ChatSessionMetadata(
+                dry_run=dry_run,
+                builder_graph_id=builder_graph_id,
+                source_platform=source_platform,
+            ),
+        )
+
+    @classmethod
+    def from_db(cls, prisma_session: PrismaChatSession) -> Self:
+        """Convert Prisma ChatSession to Pydantic ChatSession."""
+        if prisma_session.Messages is None:
+            raise ValueError(
+                f"Prisma session {prisma_session.id} is missing Messages relation"
+            )
+
+        return cls(
+            **ChatSessionInfo.from_db(prisma_session).model_dump(),
+            messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
+        )
+
+    def announce_inflight_tool_call(
+        self, tool_name: str, arguments: Any = None
+    ) -> None:
+        """Record that *tool_name* is being dispatched in the current turn.
+
+        Called by the baseline tool executor **before** the tool actually
+        runs (the announcement is about dispatch, not success).  If the
+        tool raises, the name stays in the buffer for the rest of the
+        turn — that matches the guide-read gate's contract ("was the tool
+        called?") but means any future gate wanting *successful*
+        dispatches would need its own tracking.
+
+        Lets in-turn guards (see
+        ``copilot/tools/helpers.py::require_guide_read``) see a tool
+        call the moment it's issued, instead of waiting for the
+        ``session.messages`` flush at turn end — fixing a loop where a
+        second tool in the same turn re-fires a guard despite the
+        guarding tool having already been called (seen on Kimi K2.6 in
+        particular because its aggressive tool-call chaining exercises
+        this path much more than Sonnet does).  The buffer is cleared by
+        :meth:`clear_inflight_tool_calls` at turn end.
+
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
+        """
+        self._inflight_tool_calls.add(tool_name)
+        if isinstance(arguments, dict):
+            self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
+
+    def clear_inflight_tool_calls(self) -> None:
+        """Reset the in-flight tool-call announcement buffer."""
+        self._inflight_tool_calls.clear()
+        self._inflight_tool_call_args.clear()
+
+    def get_inflight_tool_call_args(self, tool_name: str) -> list[dict]:
+        """Return arg snapshots captured for *tool_name* in this turn.
+
+        Returns an empty list when no in-flight call recorded args
+        (anonymous-tool-name announcements with ``arguments=None``).
+        """
+        return list(self._inflight_tool_call_args.get(tool_name, ()))
+
+    def has_tool_been_called(self, tool_name: str) -> bool:
+        """True when *tool_name* has been called in this session.
+
+        Checks the in-flight announcement buffer (for calls dispatched
+        in the *current* turn but not yet flushed into ``messages``) and
+        the durable ``messages`` history (for past turns + prior rounds
+        within this turn whose writes already landed).  The durable
+        scan is session-wide, not turn-scoped: a matching tool call
+        anywhere in ``messages`` counts.  This matches the guide-read
+        contract — once the guide has been read in the session, the
+        agent doesn't need to re-read it for later create/edit/fix
+        tools.
+        """
+        if tool_name in self._inflight_tool_calls:
+            return True
+        for msg in reversed(self.messages):
+            if msg.role != "assistant" or not msg.tool_calls:
+                continue
+            for tc in msg.tool_calls:
+                name = tc.get("function", {}).get("name") or tc.get("name")
+                if name == tool_name:
+                    return True
+        return False
+
+    def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
+        """Attach a tool_call to the current turn's assistant message.
+
+        Searches backwards for the most recent assistant message (stopping at
+        any user message boundary). If found, appends the tool_call to it.
+        Otherwise creates a new assistant message with the tool_call.
+        """
+        for msg in reversed(self.messages):
+            if msg.role == "user":
+                break
+            if msg.role == "assistant":
+                if not msg.tool_calls:
+                    msg.tool_calls = []
+                msg.tool_calls.append(tool_call)
+                return
+
+        self.messages.append(
+            ChatMessage(role="assistant", content="", tool_calls=[tool_call])
+        )
+
+    def to_openai_messages(self) -> list[ChatCompletionMessageParam]:
+        messages = []
+        for message in self.messages:
+            if message.role == "developer":
+                m = ChatCompletionDeveloperMessageParam(
+                    role="developer",
+                    content=message.content or "",
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "system":
+                m = ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=message.content or "",
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "user":
+                m = ChatCompletionUserMessageParam(
+                    role="user",
+                    content=message.content or "",
+                )
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "assistant":
+                m = ChatCompletionAssistantMessageParam(
+                    role="assistant",
+                    content=message.content or "",
+                )
+                if message.function_call:
+                    m["function_call"] = FunctionCall(
+                        arguments=message.function_call["arguments"],
+                        name=message.function_call["name"],
+                    )
+                if message.refusal:
+                    m["refusal"] = message.refusal
+                if message.tool_calls:
+                    t: list[ChatCompletionMessageToolCallParam] = []
+                    for tool_call in message.tool_calls:
+                        # Tool calls are stored with nested structure: {id, type, function: {name, arguments}}
+                        function_data = tool_call.get("function", {})
+
+                        # Skip tool calls that are missing required fields
+                        if "id" not in tool_call or "name" not in function_data:
+                            logger.warning(
+                                f"Skipping invalid tool call: missing required fields. "
+                                f"Got: {tool_call.keys()}, function keys: {function_data.keys()}"
+                            )
+                            continue
+
+                        # Arguments are stored as a JSON string
+                        arguments_str = function_data.get("arguments", "{}")
+
+                        t.append(
+                            ChatCompletionMessageToolCallParam(
+                                id=tool_call["id"],
+                                type="function",
+                                function=Function(
+                                    arguments=arguments_str,
+                                    name=function_data["name"],
+                                ),
+                            )
+                        )
+                    m["tool_calls"] = t
+                if message.name:
+                    m["name"] = message.name
+                messages.append(m)
+            elif message.role == "tool":
+                messages.append(
+                    ChatCompletionToolMessageParam(
+                        role="tool",
+                        content=message.content or "",
+                        tool_call_id=message.tool_call_id or "",
+                    )
+                )
+            elif message.role == "function":
+                messages.append(
+                    ChatCompletionFunctionMessageParam(
+                        role="function",
+                        content=message.content,
+                        name=message.name or "",
+                    )
+                )
+        return self._merge_consecutive_assistant_messages(messages)
+
+    @staticmethod
+    def _merge_consecutive_assistant_messages(
+        messages: list[ChatCompletionMessageParam],
+    ) -> list[ChatCompletionMessageParam]:
+        """Merge consecutive assistant messages into single messages.
+
+        Long-running tool flows can create split assistant messages: one with
+        text content and another with tool_calls. Anthropic's API requires
+        tool_result blocks to reference a tool_use in the immediately preceding
+        assistant message, so these splits cause 400 errors via OpenRouter.
+        """
+        if len(messages) < 2:
+            return messages
+
+        result: list[ChatCompletionMessageParam] = [messages[0]]
+        for msg in messages[1:]:
+            prev = result[-1]
+            if prev.get("role") != "assistant" or msg.get("role") != "assistant":
+                result.append(msg)
+                continue
+
+            prev = cast(ChatCompletionAssistantMessageParam, prev)
+            curr = cast(ChatCompletionAssistantMessageParam, msg)
+
+            curr_content = curr.get("content") or ""
+            if curr_content:
+                prev_content = prev.get("content") or ""
+                prev["content"] = (
+                    f"{prev_content}\n{curr_content}" if prev_content else curr_content
+                )
+
+            curr_tool_calls = curr.get("tool_calls")
+            if curr_tool_calls:
+                prev_tool_calls = prev.get("tool_calls")
+                prev["tool_calls"] = (
+                    list(prev_tool_calls) + list(curr_tool_calls)
+                    if prev_tool_calls
+                    else list(curr_tool_calls)
+                )
+        return result
+
+
+def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
+    """Parse a JSON field that may be stored as string or already parsed."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+# ================ Chat cache + DB operations ================ #
+
+# NOTE: Database calls are automatically routed through DatabaseManager if Prisma is not
+#       connected directly.
+
+
+async def cache_chat_session(session: ChatSession) -> None:
+    """Cache a chat session in Redis (without persisting to the database)."""
+    redis_key = _get_session_cache_key(session.session_id)
+    async_redis = await get_redis_async()
+    await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
+
+
+async def invalidate_session_cache(session_id: str) -> None:
+    """Invalidate a chat session from Redis cache.
+
+    Used by background tasks to ensure fresh data is loaded on next access.
+    This is best-effort - Redis failures are logged but don't fail the operation.
+    """
+    try:
+        redis_key = _get_session_cache_key(session_id)
+        async_redis = await get_redis_async()
+        await async_redis.delete(redis_key)
+    except Exception as e:
+        # Best-effort: log but don't fail - cache will expire naturally
+        logger.warning(f"Failed to invalidate session cache for {session_id}: {e}")
+
+
+async def get_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSession | None:
+    """Get a chat session by ID.
+
+    Checks Redis cache first, falls back to database if not found.
+    Caches database results back to Redis.
+
+    Args:
+        session_id: The session ID to fetch.
+        user_id: If provided, validates that the session belongs to this user.
+            If None, ownership is not validated (admin/system access).
+    """
+    # Try cache first
+    try:
+        session = await _get_session_from_cache(session_id)
+        if session:
+            # Verify user ownership if user_id was provided for validation
+            if user_id is not None and session.user_id != user_id:
+                logger.warning(
+                    f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
+                )
+                return None
+            return session
+    except RedisError:
+        logger.warning(f"Cache error for session {session_id}, trying database")
+    except Exception as e:
+        logger.warning(f"Unexpected cache error for session {session_id}: {e}")
+
+    # Fall back to database
+    logger.debug(f"Session {session_id} not in cache, checking database")
+    session = await _get_session_from_db(session_id)
+
+    if session is None:
+        logger.warning(f"Session {session_id} not found in cache or database")
+        return None
+
+    # Verify user ownership if user_id was provided for validation
+    if user_id is not None and session.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
+        )
+        return None
+
+    # Cache the session from DB
+    try:
+        await cache_chat_session(session)
+        logger.info(f"Cached session {session_id} from database")
+    except Exception as e:
+        logger.warning(f"Failed to cache session {session_id}: {e}")
+
+    return session
+
+
+async def get_chat_session_metadata(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSessionInfo | None:
+    """Get chat session metadata only (no messages).
+
+    Goes directly to the DB by primary key — bypasses the Redis cache,
+    which stores the full session and would deserialize the entire message
+    history just to read ``user_id``. Use this for ownership/existence
+    checks; use ``get_chat_session`` when the message history is actually
+    needed.
+    """
+    session_meta = await chat_db().get_chat_session_metadata(session_id)
+    if session_meta is None:
+        return None
+    if user_id is not None and session_meta.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: "
+            f"{session_meta.user_id} != {user_id}"
+        )
+        return None
+    return session_meta
+
+
+async def _get_session_from_cache(session_id: str) -> ChatSession | None:
+    """Get a chat session from Redis cache."""
+    redis_key = _get_session_cache_key(session_id)
+    async_redis = await get_redis_async()
+    raw_session: bytes | None = await async_redis.get(redis_key)
+
+    if raw_session is None:
+        return None
+
+    try:
+        session = ChatSession.model_validate_json(raw_session)
+        logger.info(
+            f"Loading session {session_id} from cache: "
+            f"message_count={len(session.messages)}, "
+            f"roles={[m.role for m in session.messages]}"
+        )
+        return session
+    except Exception as e:
+        logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
+        raise RedisError(f"Corrupted session data for {session_id}") from e
+
+
+async def _get_session_from_db(session_id: str) -> ChatSession | None:
+    """Get a chat session from the database, capped at MAX_LOADED_CHAT_MESSAGES.
+
+    Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
+    no cursor) so the LLM-context path inherits the same tool-pair boundary
+    expansion and visibility guarantees the UI scroll-back path uses. The
+    cap-hit log surfaces here (the LLM-context use case) rather than inside the
+    generic paginated function.
+    """
+    # Local import to avoid the model→db→model cycle.
+    from .db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    if page is None:
+        return None
+
+    if page.has_more:
+        logger.warning(
+            "Session %s loaded with capped messages (%d) — older history "
+            "must come from transcript checkpoint or context will be lost",
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+        )
+
+    session = ChatSession(
+        **page.session.model_dump(),
+        messages=page.messages,
+    )
+
+    logger.info(
+        f"Loaded session {session_id} from DB: "
+        f"has_messages={bool(session.messages)}, "
+        f"message_count={len(session.messages)}, "
+        f"roles={[m.role for m in session.messages]}"
+    )
+
+    return session
+
+
+async def upsert_chat_session(
+    session: ChatSession,
+) -> ChatSession:
+    """Update a chat session in both cache and database.
+
+    Uses session-level locking to prevent race conditions when concurrent
+    operations (e.g., background title update and main stream handler)
+    attempt to upsert the same session simultaneously.
+
+    Raises:
+        DatabaseError: If the database write fails. The cache is still updated
+            as a best-effort optimization, but the error is propagated to ensure
+            callers are aware of the persistence failure.
+        RedisError: If the cache write fails (after successful DB write).
+    """
+    async with _get_session_lock(session.session_id) as _:
+        # Always query DB for existing message count to ensure consistency
+        existing_message_count = await chat_db().get_next_sequence(session.session_id)
+
+        db_error: Exception | None = None
+
+        # Save to database (primary storage)
+        try:
+            await _save_session_to_db(
+                session,
+                existing_message_count,
+                skip_existence_check=existing_message_count > 0,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to save session {session.session_id} to database: {e}"
+            )
+            db_error = e
+
+        # Save to cache (best-effort, even if DB failed).
+        # Title updates (update_session_title) run *outside* this lock because
+        # they only touch the title field, not messages.  So a concurrent rename
+        # or auto-title may have written a newer title to Redis while this
+        # upsert was in progress.  Always prefer the cached title to avoid
+        # overwriting it with the stale in-memory copy.
+        try:
+            existing_cached = await _get_session_from_cache(session.session_id)
+            if existing_cached and existing_cached.title:
+                session = session.model_copy(update={"title": existing_cached.title})
+            await cache_chat_session(session)
+        except Exception as e:
+            # If DB succeeded but cache failed, raise cache error
+            if db_error is None:
+                raise RedisError(
+                    f"Failed to persist chat session {session.session_id} to Redis: {e}"
+                ) from e
+            # If both failed, log cache error but raise DB error (more critical)
+            logger.warning(
+                f"Cache write also failed for session {session.session_id}: {e}"
+            )
+
+        # Propagate DB error after attempting cache (prevents data loss)
+        if db_error is not None:
+            raise DatabaseError(
+                f"Failed to persist chat session {session.session_id} to database"
+            ) from db_error
+
+        return session
+
+
+async def _save_session_to_db(
+    session: ChatSession,
+    existing_message_count: int,
+    *,
+    skip_existence_check: bool = False,
+) -> None:
+    """Save or update a chat session in the database.
+
+    Args:
+        skip_existence_check: When True, skip the ``get_chat_session`` query
+            and assume the session row already exists.  Saves one DB round trip
+            for incremental saves during streaming.
+    """
+    db = chat_db()
+
+    if not skip_existence_check:
+        # Existence check only — use the metadata-only fetch, no need to
+        # eager-load any messages here.
+        existing = await db.get_chat_session_metadata(session.session_id)
+
+        if not existing:
+            # Create new session
+            await db.create_chat_session(
+                session_id=session.session_id,
+                user_id=session.user_id,
+                metadata=session.metadata,
+            )
+            existing_message_count = 0
+
+    # Calculate total tokens from usage
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
+    # Update session metadata
+    await db.update_chat_session(
+        session_id=session.session_id,
+        credentials=session.credentials,
+        successful_agent_runs=session.successful_agent_runs,
+        successful_agent_schedules=session.successful_agent_schedules,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+    # Identify unsaved messages.  Two cases:
+    #
+    # - Brand-new session (existing_message_count == 0): persist every message,
+    #   regardless of whether it carries a sequence (callers may construct
+    #   ``ChatSession`` from a list of ChatMessage objects that already have
+    #   sequences set, e.g. when re-using a fixture across tests — those still
+    #   need to be saved as new rows).
+    # - Existing session: filter by ``sequence is None``.  Slicing by
+    #   ``session.messages[existing_message_count:]`` is incorrect for windowed
+    #   loads (cap of MAX_LOADED_CHAT_MESSAGES) — a session with 1500 saved
+    #   messages comes back with 1000 entries, and that slice would silently
+    #   drop every newly-appended message.
+    if existing_message_count == 0:
+        new_messages = list(session.messages)
+    else:
+        new_messages = [m for m in session.messages if m.sequence is None]
+    if new_messages:
+        messages_data = []
+        for msg in new_messages:
+            messages_data.append(
+                {
+                    # ``id`` is optional — when the caller supplies one
+                    # (frontend-provided per-click UUID) it becomes the
+                    # Prisma row's PK and a duplicate POST raises
+                    # ``UniqueViolationError`` we catch as the dedup
+                    # signal.  When None, Prisma generates via
+                    # ``@default(uuid())`` (existing behaviour).
+                    "id": msg.id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "name": msg.name,
+                    "tool_call_id": msg.tool_call_id,
+                    "refusal": msg.refusal,
+                    "tool_calls": msg.tool_calls,
+                    "function_call": msg.function_call,
+                }
+            )
+        logger.info(
+            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
+            f"roles={[m['role'] for m in messages_data]}, "
+            f"start_sequence={existing_message_count}"
+        )
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
+            session_id=session.session_id,
+            messages=messages_data,
+            start_sequence=existing_message_count,
+        )
+        for i, msg in enumerate(new_messages):
+            msg.sequence = actual_start + i
+
+
+async def append_and_save_message(
+    session_id: str, message: ChatMessage
+) -> ChatSession | None:
+    """Atomically append a message to a session and persist it.
+
+    Returns the updated session, or None if the message was detected as a
+    duplicate (idempotency guard). Callers must check for None and skip any
+    downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
+
+    Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
+    The idempotency check below provides a last-resort guard when the lock degrades.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        # When the lock degraded (Redis down or 2s timeout), bypass cache for
+        # the idempotency check. Stale cache could let two concurrent writers
+        # both see the old state, pass the check, and write the same message.
+        if lock_acquired:
+            session = await get_chat_session(session_id)
+        else:
+            session = await _get_session_from_db(session_id)
+        if session is None:
+            raise ValueError(f"Session {session_id} not found")
+
+        # Idempotency layer 1: caller-supplied id collision.  The frontend
+        # sends a per-click UUID as ``message.id``; AI SDK / network / RMQ
+        # retransmits of the *same* logical send carry the same id.  Catch
+        # the dup before the DB round-trip when we already see it cached
+        # in-memory.  The DB INSERT below is the authoritative atomic
+        # check (PK uniqueness on ``ChatMessage.id``) — this is just the
+        # fast path.
+        if message.id is not None and any(
+            existing.id == message.id for existing in session.messages
+        ):
+            return None  # duplicate — caller should skip enqueue
+
+        # Idempotency layer 2: trailing same-role-and-content collapse.
+        # Catches retransmits from older clients that don't supply
+        # ``message.id``, plus mid-turn re-sends of identical text from
+        # the same role.  Uses is_message_duplicate which checks all
+        # consecutive trailing messages of the same role, not just [-1].
+        #
+        # Legit same-text messages across turns are distinguished by the
+        # intervening assistant reply: if the user said "yes", got a
+        # response, and says "yes" again, ``messages[-1]`` is the
+        # assistant reply, so the role check fails and the second
+        # message goes through normally.
+        #
+        # Edge case: if a turn dies without writing any assistant
+        # message, the user's next send of the same text is blocked here
+        # permanently.  The fix is to ensure failed turns always write
+        # an error/timeout assistant message so the session always ends
+        # on an assistant turn.
+        if message.content is not None and is_message_duplicate(
+            session.messages, message.role, message.content
+        ):
+            return None  # duplicate — caller should skip enqueue
+
+        session.messages.append(message)
+        existing_message_count = await chat_db().get_next_sequence(session_id)
+
+        try:
+            await _save_session_to_db(session, existing_message_count)
+        except Exception as e:
+            # Any save failure rolls back the optimistic append so the
+            # in-memory ``session.messages`` stays consistent with what's
+            # persisted (the function-scoped session is fresh per call,
+            # but the cache write below would otherwise persist the
+            # phantom row).
+            session.messages.pop()
+            # PK collision is the dedup signal — caller short-circuits to
+            # subscribe-only.  Other ``UniqueViolationError`` (e.g. a
+            # ``(sessionId, sequence)`` race that exhausted the retry
+            # loop in ``add_chat_messages_batch``) and unrelated
+            # exceptions surface as ``DatabaseError``.
+            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+                return None
+            raise DatabaseError(
+                f"Failed to persist message to session {session_id}"
+            ) from e
+
+        try:
+            await cache_chat_session(session)
+        except Exception as e:
+            logger.warning(f"Cache write failed for session {session_id}: {e}")
+            # Invalidate the stale entry so future reads fall back to DB,
+            # preventing a retry from bypassing the idempotency check above.
+            await invalidate_session_cache(session_id)
+
+        return session
+
+
+async def create_chat_session(
+    user_id: str,
+    *,
+    dry_run: bool,
+    builder_graph_id: str | None = None,
+    source_platform: str | None = None,
+) -> ChatSession:
+    """Create a new chat session and persist it.
+
+    Args:
+        user_id: The authenticated user ID.
+        dry_run: When True, run_block and run_agent tool calls in this
+            session are forced to use dry-run simulation mode.
+        builder_graph_id: When set, locks the session to the given graph.
+            The builder panel uses this to bind a chat to the currently-
+            opened agent and to resume the same session on refresh.
+        source_platform: External chat platform that originated the session.
+
+    Raises:
+        DatabaseError: If the database write fails. We fail fast to ensure
+            callers never receive a non-persisted session that only exists
+            in cache (which would be lost when the cache expires).
+    """
+    session = ChatSession.new(
+        user_id,
+        dry_run=dry_run,
+        builder_graph_id=builder_graph_id,
+        source_platform=source_platform,
+    )
+
+    # Create in database first - fail fast if this fails
+    try:
+        await chat_db().create_chat_session(
+            session_id=session.session_id,
+            user_id=user_id,
+            metadata=session.metadata,
+        )
+    except Exception as e:
+        logger.error(f"Failed to create session {session.session_id} in database: {e}")
+        raise DatabaseError(
+            f"Failed to create chat session {session.session_id} in database"
+        ) from e
+
+    # Cache the session (best-effort optimization, DB is source of truth)
+    try:
+        await cache_chat_session(session)
+    except Exception as e:
+        logger.warning(f"Failed to cache new session {session.session_id}: {e}")
+
+    return session
+
+
+async def get_or_create_builder_session(
+    user_id: str,
+    graph_id: str,
+) -> ChatSession:
+    """Return the user's builder session for *graph_id*, creating it if absent.
+
+    The session pointer is stored on
+    ``LibraryAgent.settings.builder_chat_session_id``. Ownership is enforced
+    by ``get_library_agent_by_graph_id`` (filters on ``userId``); a miss
+    raises :class:`NotFoundError` (HTTP 404), which also blocks graph-id
+    probing by unauthorized callers.
+    """
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id=user_id, graph_id=graph_id
+    )
+    if library_agent is None:
+        raise NotFoundError(f"Graph {graph_id} not found")
+
+    existing_sid = library_agent.settings.builder_chat_session_id
+    if existing_sid:
+        session = await get_chat_session(existing_sid, user_id)
+        if session is not None:
+            return session
+
+    # Serialise create-and-claim so concurrent callers for the same
+    # (user_id, graph_id) don't each mint a session and orphan one
+    # (double-click / two-tab race — sentry 13632535).
+    async with _get_session_lock(f"builder:{user_id}:{graph_id}"):
+        library_agent = await library_db().get_library_agent_by_graph_id(
+            user_id=user_id, graph_id=graph_id
+        )
+        if library_agent is None:
+            raise NotFoundError(f"Graph {graph_id} not found")
+        existing_sid = library_agent.settings.builder_chat_session_id
+        if existing_sid:
+            session = await get_chat_session(existing_sid, user_id)
+            if session is not None:
+                return session
+
+        session = await create_chat_session(
+            user_id,
+            dry_run=False,
+            builder_graph_id=graph_id,
+        )
+        await library_db().update_library_agent(
+            library_agent_id=library_agent.id,
+            user_id=user_id,
+            settings=GraphSettings(builder_chat_session_id=session.session_id),
+        )
+        return session
+
+
+async def get_user_sessions(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    title_contains: str | None = None,
+) -> tuple[list[ChatSessionInfo], int]:
+    """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
+
+    Returns:
+        A tuple of (sessions, total_count) where total_count is the overall
+        number of sessions for the user (not just the current page).
+    """
+    db = chat_db()
+    sessions = await db.get_user_chat_sessions(
+        user_id, limit, offset, title_contains=title_contains
+    )
+    # Total count ignores the filter — it's the user's overall session
+    # count, used by paginated listings. The /search/global caller
+    # discards it.
+    total_count = await db.get_user_session_count(user_id)
+
+    return sessions, total_count
+
+
+async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+    """Delete a chat session from both cache and database.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: If provided, validates that the session belongs to this user
+            before deletion. This prevents unauthorized deletion.
+
+    Returns:
+        True if deleted successfully, False otherwise.
+    """
+    # Delete from database first (with optional user_id validation)
+    # This confirms ownership before invalidating cache
+    deleted = await chat_db().delete_chat_session(session_id, user_id)
+
+    if not deleted:
+        return False
+
+    # Only invalidate cache and clean up lock after DB confirms deletion
+    try:
+        redis_key = _get_session_cache_key(session_id)
+        async_redis = await get_redis_async()
+        await async_redis.delete(redis_key)
+    except Exception as e:
+        logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Best-effort embedding cleanup so deleted sessions stop appearing in
+    # /search/global hits. Only attempt when we have a user_id since the
+    # embedding row is user-scoped; without it the user-filter would miss
+    # and the orphan row (if any) gets cleaned up by the periodic embedder.
+    if user_id:
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                delete_chat_session_embedding,
+            )
+
+            await delete_chat_session_embedding(session_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
+
+    # Shut down any local browser daemon for this session (best-effort).
+    # Inline import required: all tool modules import ChatSession from this
+    # module, so any top-level import from tools.* would create a cycle.
+    try:
+        from .tools.agent_browser import close_browser_session
+
+        await close_browser_session(session_id, user_id=user_id)
+    except Exception as e:
+        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+
+    return True
+
+
+async def update_session_title(
+    session_id: str,
+    user_id: str,
+    title: str,
+    *,
+    only_if_empty: bool = False,
+) -> bool:
+    """Update the title of a chat session, scoped to the owning user.
+
+    Lightweight operation that doesn't touch messages, avoiding race conditions
+    with concurrent message updates.
+
+    Args:
+        session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
+        title: The new title to set.
+        only_if_empty: When True, uses an atomic ``UPDATE WHERE title IS NULL``
+            so auto-generated titles never overwrite a user-set title.
+
+    Returns:
+        True if updated successfully, False otherwise (not found, wrong user,
+        or — when only_if_empty — title was already set).
+    """
+    try:
+        updated = await chat_db().update_chat_session_title(
+            session_id, user_id, title, only_if_empty=only_if_empty
+        )
+        if not updated:
+            return False
+
+        # Update title in cache if it exists (instead of invalidating).
+        # This prevents race conditions where cache invalidation causes
+        # the frontend to see stale DB data while streaming is still in progress.
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.title = title
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache title update failed for session {session_id} (non-critical): {e}"
+            )
+
+        # Fire-and-forget: index the new title so /search/global can find
+        # this session. Local import keeps the heavy embedding deps
+        # (OpenAI client, prisma raw SQL) off the model import path.
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                schedule_chat_session_embedding,
+            )
+
+            schedule_chat_session_embedding(session_id, user_id, title)
+        except Exception as e:
+            logger.warning(
+                f"Failed to schedule session title embedding for {session_id}: {e}"
+            )
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update title for session {session_id}: {e}")
+        return False
+
+
+# ==================== Chat session locks ==================== #
+
+
+@asynccontextmanager
+async def _get_session_lock(session_id: str) -> AsyncIterator[bool]:
+    """Distributed Redis lock for a session, usable as an async context manager.
+
+    Yields True if the lock was acquired, False if it timed out or Redis was
+    unavailable. Callers should treat False as a degraded mode and prefer fresh
+    DB reads over cache to avoid acting on stale state.
+
+    Uses redis-py's built-in Lock (Lua-script acquire/release) so lock acquisition
+    is atomic and release is owner-verified. Blocks up to 2s for a concurrent
+    writer to finish; the 10s TTL ensures a dead pod never holds the lock forever.
+    """
+    _lock_key = f"copilot:session_lock:{session_id}"
+    lock = None
+    acquired = False
+    try:
+        _redis = await get_redis_async()
+        lock = _redis.lock(_lock_key, timeout=10, blocking_timeout=2)
+        acquired = await lock.acquire(blocking=True)
+        if not acquired:
+            logger.warning(
+                "Could not acquire session lock for %s within 2s", session_id
+            )
+    except Exception as e:
+        logger.warning("Redis unavailable for session lock on %s: %s", session_id, e)
+
+    try:
+        yield acquired
+    finally:
+        if acquired and lock is not None:
+            try:
+                await lock.release()
+            except Exception:
+                pass  # TTL will expire the key

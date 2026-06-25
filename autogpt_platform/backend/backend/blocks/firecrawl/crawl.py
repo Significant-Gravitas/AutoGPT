@@ -4,6 +4,7 @@ from firecrawl import FirecrawlApp
 from firecrawl.v2.types import ScrapeOptions
 
 from backend.blocks.firecrawl._api import ScrapeFormat
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -85,6 +86,14 @@ class FirecrawlCrawlBlock(Block):
                 max_age=input_data.max_age,
                 wait_for=input_data.wait_for,
             ),
+        )
+        # Firecrawl bills 1 credit (~$0.001) per crawled page. crawl_result.data
+        # is the list of scraped pages actually returned.
+        pages = len(crawl_result.data) if crawl_result.data else 0
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=pages * 0.001, provider_cost_type="cost_usd"
+            )
         )
         yield "data", crawl_result.data
 
