@@ -8,6 +8,7 @@ import { videoRenderer } from "./renderers/VideoRenderer";
 import { audioRenderer } from "./renderers/AudioRenderer";
 import { jsonRenderer } from "./renderers/JSONRenderer";
 import { markdownRenderer } from "./renderers/MarkdownRenderer";
+import { notebookRenderer } from "./renderers/NotebookRenderer";
 import { workspaceFileRenderer } from "./renderers/WorkspaceFileRenderer";
 import { linkRenderer } from "./renderers/LinkRenderer";
 
@@ -18,8 +19,9 @@ globalRegistry.register(audioRenderer);
 globalRegistry.register(htmlRenderer);
 globalRegistry.register(imageRenderer);
 globalRegistry.register(csvRenderer);
-globalRegistry.register(codeRenderer);
 globalRegistry.register(markdownRenderer);
+globalRegistry.register(notebookRenderer);
+globalRegistry.register(codeRenderer);
 globalRegistry.register(jsonRenderer);
 globalRegistry.register(linkRenderer);
 globalRegistry.register(textRenderer);

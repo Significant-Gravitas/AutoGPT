@@ -171,6 +171,9 @@ importers:
       dexie:
         specifier: 4.2.1
         version: 4.2.1
+      dompurify:
+        specifier: 3.4.0
+        version: 3.4.0
       dotenv:
         specifier: 17.2.3
         version: 17.2.3
@@ -5183,8 +5186,8 @@ packages:
     resolution: {integrity: sha512-GrwoxYN+uWlzO8uhUXRl0P+kHE4GtVPfYzVLcUxPL7KNdHKj66vvlhiweIHqYYXWlw+T8iLMp42Lm67ghw4WMQ==}
     engines: {node: '>= 4'}
 
-  dompurify@3.3.1:
-    resolution: {integrity: sha512-qkdCKzLNtrgPFP1Vo+98FRzJnBRGe4ffyCea9IwHB1fyxPOeNTHpLKYGd4Uk9xvNoH0ZoOjwZxNptyMwqrId1Q==}
+  dompurify@3.4.0:
+    resolution: {integrity: sha512-nolgK9JcaUXMSmW+j1yaSvaEaoXYHwWyGJlkoCTghc97KgGDDSnpoU/PlEnw63Ah+TGKFOyY+X5LnxaWbCSfXg==}
 
   domutils@2.8.0:
     resolution: {integrity: sha512-w96Cjofp72M5IIhpjgobBimYEfoPjx1Vx0BSX9P30WBdZW2WIKU0T1Bd0kz2eNZ9ikjKgHbEyKx8BB6H1L3h3A==}
@@ -14356,7 +14359,7 @@ snapshots:
     dependencies:
       domelementtype: 2.3.0
 
-  dompurify@3.3.1:
+  dompurify@3.4.0:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -16338,7 +16341,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.13
       dayjs: 1.11.19
-      dompurify: 3.3.1
+      dompurify: 3.4.0
       katex: 0.16.25
       khroma: 2.1.0
       lodash-es: 4.17.23
@@ -17300,7 +17303,7 @@ snapshots:
       '@posthog/core': 1.13.0
       '@posthog/types': 1.334.1
       core-js: 3.48.0
-      dompurify: 3.3.1
+      dompurify: 3.4.0
       fflate: 0.4.8
       preact: 10.28.2
       query-selector-shadow-dom: 1.0.1
