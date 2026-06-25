@@ -831,7 +831,7 @@ export interface CreditTransaction {
   transaction_time: Date;
   transaction_type: CreditTransactionType;
   amount: number;
-  running_balance: number;
+  running_balance?: number;
   current_balance: number;
   description: string;
   usage_graph_id: GraphID;

@@ -8,13 +8,14 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
+import { UploadSkillButton } from "./components/UploadSkillButton/UploadSkillButton";
 import { useSkillsPage } from "./useSkillsPage";
 
 export default function SkillsPage() {
   const { skills, isLoading, error } = useSkillsPage();
 
   useEffect(() => {
-    document.title = "Copilot skills – AutoGPT Platform";
+    document.title = "AutoPilot skills – AutoGPT Platform";
   }, []);
 
   return (
@@ -27,13 +28,18 @@ export default function SkillsPage() {
         <ArrowLeftIcon size={14} weight="bold" />
         Back to Library
       </Link>
-      <header className="flex flex-col gap-2">
-        <Text variant="h2">Copilot skills</Text>
-        <Text variant="body" className="!text-zinc-500">
-          Reusable procedures your copilot has distilled from past sessions.
-          Review what it remembers, or delete a skill you no longer want it to
-          reach for.
-        </Text>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <Text variant="h2">AutoPilot skills</Text>
+          <Text variant="body" className="!text-zinc-500">
+            Reusable procedures your AutoPilot has distilled from past sessions.
+            Review what it remembers, upload your own, download one to share, or
+            delete a skill you no longer want it to reach for.
+          </Text>
+        </div>
+        <div className="flex-shrink-0">
+          <UploadSkillButton />
+        </div>
       </header>
 
       {error ? (
@@ -42,7 +48,7 @@ export default function SkillsPage() {
             message:
               error instanceof Error ? error.message : "Failed to load skills",
           }}
-          context="copilot skills"
+          context="AutoPilot skills"
         />
       ) : isLoading ? (
         <div
@@ -57,7 +63,7 @@ export default function SkillsPage() {
         <ul
           className="flex flex-col gap-3"
           data-testid="skills-list"
-          aria-label="Copilot skills"
+          aria-label="AutoPilot skills"
         >
           {skills.map((skill) => (
             <li key={skill.name}>

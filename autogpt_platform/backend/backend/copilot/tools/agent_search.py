@@ -114,7 +114,13 @@ async def _search_library(
     user_id: str | None,
     include_graph: bool = False,
 ) -> ToolResponseBase:
-    """Search user's library agents, with direct UUID lookup fallback."""
+    """Search user's library agents by name/description.
+
+    For UUID-shaped queries this also tries a direct id lookup as a
+    convenience. The strict, no-fuzzy-fallback by-id path lives in
+    ``lookup_library_agent_by_id`` (dispatched by the tool when ``agent_id``
+    is given) — prefer that when the exact id is known.
+    """
     if not user_id:
         return ErrorResponse(
             message="User authentication required to search library",
@@ -128,6 +134,8 @@ async def _search_library(
 
     agents: list[AgentInfo] = []
     try:
+        # Safety net for a UUID passed as the query; the preferred by-id path
+        # is the tool's explicit agent_id → lookup_library_agent_by_id.
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(user_id, query)
@@ -147,6 +155,10 @@ async def _search_library(
                 # (parent-coupled, single-purpose). AutoPilot accesses
                 # them via list_agent_triggers instead.
                 is_hidden=False,
+                # Load nodes so has_external_trigger / trigger_setup_info are
+                # populated — lets AutoPilot recognise (and set up) webhook
+                # triggers from the listing without re-reading the full graph.
+                include_nodes=True,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))
@@ -199,12 +211,21 @@ async def _search_library(
 
     message = (
         "Found agents in the user's library. You can provide a link to view "
-        "an agent at: /library/agents/{agent_id}. Use agent_output to get "
+        "an agent at: /library/agents/{agent_id}. Use view_agent_output to get "
         "execution results, or run_agent to execute. Let the user know we can "
         "create a custom agent for them based on their needs."
     )
+    if any(a.trigger_info for a in agents):
+        message += (
+            "\n\nSome agents have a webhook trigger (see their "
+            "`trigger_info`). To set up or activate "
+            "such a trigger, call setup_agent_webhook_trigger and pass the "
+            "config_schema fields as `trigger_config` — you don't need the full "
+            "graph for this, and must NOT edit the trigger node's values in the "
+            "graph (that changes the agent's global default for everyone)."
+        )
     if truncation_notice:
-        message = f"{message}\n\nNote: {truncation_notice}"
+        message += f"\n\nNote: {truncation_notice}"
 
     return AgentsFoundResponse(
         message=message,
@@ -323,6 +344,7 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
         graph_version=agent.graph_version,
         input_schema=agent.input_schema,
         output_schema=agent.output_schema,
+        trigger_info=agent.trigger_setup_info,
     )
 
 
@@ -515,6 +537,69 @@ async def _load_and_format_matched_agents(
         info.match_score = match.get("combined_score") or 0.0
         agents.append(info)
     return agents
+
+
+async def lookup_library_agent_by_id(
+    agent_id: str,
+    session_id: str | None,
+    user_id: str | None,
+    include_graph: bool = False,
+) -> ToolResponseBase:
+    """Strict direct resolution of one library agent by id.
+
+    Resolves an exact ``library_agent_id`` or ``graph_id`` and never falls back
+    to a fuzzy name search — returns ``NoResultsResponse`` when the id doesn't
+    resolve. Backs ``find_library_agent``'s ``agent_id`` parameter.
+    """
+    if not user_id:
+        return ErrorResponse(
+            message="User authentication required to fetch a library agent",
+            session_id=session_id,
+        )
+
+    try:
+        agent = await _get_library_agent_by_id(user_id, agent_id)
+    except DatabaseError as e:
+        logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
+        return ErrorResponse(
+            message="Failed to fetch the library agent. Please try again.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    if agent is None:
+        return NoResultsResponse(
+            message=(
+                f"No library agent found with id '{agent_id}'. It may have been "
+                "deleted or you may not have access. Retry find_library_agent "
+                "with a name query, or create a custom agent."
+            ),
+            suggestions=[
+                "Retry find_library_agent with a name/description query",
+                "Check your library at /library",
+            ],
+            session_id=session_id,
+        )
+
+    truncation_notice: str | None = None
+    if include_graph:
+        truncation_notice = await _enrich_agents_with_graph([agent], user_id)
+
+    message = (
+        "Found the requested library agent. Link to it at "
+        "/library/agents/{agent_id}. Use view_agent_output for execution "
+        "results, or run_agent to execute it."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
+    return AgentsFoundResponse(
+        message=message,
+        title=f"Loaded agent '{agent.name}'",
+        agents=[agent],
+        count=1,
+        session_id=session_id,
+    )
 
 
 async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:

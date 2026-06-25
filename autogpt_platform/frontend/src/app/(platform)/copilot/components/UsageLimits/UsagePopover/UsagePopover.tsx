@@ -30,7 +30,10 @@ export function UsagePopover() {
           <ChartBarIcon className="!size-5" weight="light" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-4">
+      {/* z-[80]: must layer above the AutoPilot mobile drawer
+          (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
+          popover doesn't render under the drawer's blur. */}
+      <PopoverContent align="start" className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <Text variant="body-medium" className="text-neutral-800">

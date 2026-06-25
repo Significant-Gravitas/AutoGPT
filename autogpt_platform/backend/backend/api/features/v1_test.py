@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import fastapi
 import fastapi.testclient
@@ -11,19 +11,26 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.exceptions import VirusDetectedError
+from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
+    SkillLimitError,
     SkillNotFoundError,
 )
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
+# Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
+# tests below verify the same behaviour the real app exposes.
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 
 client = fastapi.testclient.TestClient(app)
 
@@ -200,6 +207,52 @@ def test_execute_graph_block(
     )
 
 
+def test_execute_graph_block_forwards_execution_context(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """Regression for #12648: blocks that read execution_context (e.g. time
+    blocks) crashed because the direct-block-execute route didn't forward
+    one. The route must construct an ExecutionContext carrying the caller's
+    user_id + timezone and pass it through to ``Block.execute``."""
+    captured_kwargs: dict = {}
+
+    mock_block = Mock()
+    mock_block.disabled = False
+    mock_block.name = "TestBlock"
+
+    async def mock_execute(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        yield "output", {"data": "ok"}
+
+    mock_block.execute = mock_execute
+
+    mocker.patch(
+        "backend.api.features.v1.get_block",
+        return_value=mock_block,
+    )
+
+    mock_user = Mock()
+    mock_user.timezone = "America/New_York"
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        return_value=mock_user,
+    )
+
+    mocker.patch(
+        "backend.api.features.v1.execution_utils.block_usage_cost",
+        return_value=(0, {}),
+    )
+
+    response = client.post("/blocks/test-block/execute", json={"x": "y"})
+
+    assert response.status_code == 200
+    assert "execution_context" in captured_kwargs
+    ctx = captured_kwargs["execution_context"]
+    assert ctx.user_id == test_user_id
+    assert ctx.user_timezone == "America/New_York"
+
+
 def test_execute_graph_block_charges_when_cost_positive(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -364,6 +417,37 @@ def test_request_top_up(
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
+    )
+
+
+def test_request_top_up_forwards_datafast_headers(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DataFast attribution headers are forwarded to top_up_intent."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits",
+        json={"credit_amount": 500},
+        headers={
+            "X-Datafast-Visitor-Id": "vis_1",
+            "X-Datafast-Session-Id": "ses_1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_credit_model.top_up_intent.assert_awaited_once_with(
+        ANY,
+        500,
+        datafast_visitor_id="vis_1",
+        datafast_session_id="ses_1",
     )
 
 
@@ -796,6 +880,105 @@ def test_delete_graph(
         json.dumps(response_data, indent=2, sort_keys=True),
         "grphs_del",
     )
+
+
+def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Core atomicity guarantee: when before_graph_activate raises,
+    POST /graphs must return 400 and never call create_graph / create_library_agent.
+    Reordering activation back to post-save would break this test."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+
+    mock_graph_model = Mock()
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    create_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "name": "Test Graph",
+                "description": "Test",
+                "nodes": [],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    create_lib_agent_mock.assert_not_awaited()
+
+
+def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Same atomicity guarantee on PUT /graphs/{id}: an activation failure
+    must short-circuit with 400 before any new graph version is written."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+
+    mock_graph_model = Mock(is_active=True)
+    existing_version = Mock(version=1, is_active=True)
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[existing_version]),
+    )
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    update_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.update_library_agent_version_and_settings",
+        new=AsyncMock(),
+    )
+
+    response = client.put(
+        "/graphs/graph-123",
+        json={
+            "id": "graph-123",
+            "name": "Test Graph",
+            "description": "Test",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    update_lib_agent_mock.assert_not_awaited()
 
 
 # Invalid request tests
@@ -1239,3 +1422,85 @@ def test_read_copilot_skill_returns_404_when_missing(
 
     response = client.get("/skills/missing")
     assert response.status_code == 404
+
+
+_VALID_SKILL_MD = (
+    "---\n"
+    "name: oauth_flow\n"
+    "description: OAuth handshake recipe\n"
+    "triggers:\n"
+    "  - auth\n"
+    "---\n\n"
+    "# OAuth flow\n\nStep 1: redirect to /authorize\n"
+)
+
+
+def test_upload_copilot_skill_creates_skill(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """POST /skills parses the SKILL.md and persists it via store_user_skill."""
+    store_mock = AsyncMock(
+        return_value=ParsedSkill(
+            name="oauth_flow",
+            description="OAuth handshake recipe",
+            body="# OAuth flow",
+            triggers=("auth",),
+        )
+    )
+    mocker.patch("backend.api.features.v1.store_user_skill", store_mock)
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "oauth_flow"
+    assert body["triggers"] == ["auth"]
+    store_mock.assert_awaited_once()
+    assert store_mock.await_args.kwargs["name"] == "oauth_flow"
+
+
+def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
+    """A file without valid frontmatter returns 400 before touching storage."""
+    response = client.post(
+        "/skills", json={"content": "just some text, no frontmatter"}
+    )
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_409_when_at_cap(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The per-user cap surfaces as 409 so the UI can prompt a delete."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=SkillLimitError("Skill limit reached (50).")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 409
+
+
+def test_upload_copilot_skill_returns_400_on_validation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A validation failure from store_user_skill maps to 400."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=ValueError("name must be a slug")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_400_on_virus_detection(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A virus-scan rejection surfaces as a 400 client error, not a 500."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=VirusDetectedError("nasty")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+    assert "virus scan" in response.json()["detail"]

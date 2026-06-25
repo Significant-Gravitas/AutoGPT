@@ -232,6 +232,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Interval in hours between execution accuracy alert checks.",
     )
 
+    # Embeddings
+    store_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description=(
+            "Embedding model used by the unified content embeddings service. "
+            "Overridable so deployments with a compatible backend (vLLM, "
+            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
+            "OpenAI, ...) can swap models without code changes. Model MUST "
+            "emit 1536-dim vectors to match the hardcoded pgvector column."
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -298,6 +310,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=8010,
         description="The port for the CoPilot chat bridge (multi-platform bot) "
         "service daemon to run on",
+    )
+
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
     )
 
     otto_api_url: str = Field(
@@ -462,6 +482,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
     )
 
     upload_file_size_limit_mb: int = Field(
@@ -751,7 +781,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
-    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")

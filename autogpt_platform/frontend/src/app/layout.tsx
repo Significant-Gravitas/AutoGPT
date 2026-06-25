@@ -28,8 +28,10 @@ const faviconPath = isDev
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: faviconPath,
+    apple: "/apple-touch-icon.png",
   },
 };
 

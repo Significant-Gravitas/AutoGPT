@@ -1,5 +1,7 @@
 """Tests for message batching + boundary splitting."""
 
+from backend.data.sharing.workspace_refs import extract_artifact_links
+
 from .text import _balance_code_fences, format_batch, split_at_boundary
 
 
@@ -63,6 +65,26 @@ class TestSplitAtBoundary:
         before, after = split_at_boundary(text, 100)
         assert len(before) == 100
         assert after == "a" * 400
+
+    def test_does_not_split_inside_workspace_artifact_link(self):
+        # A sentence boundary inside the display name would otherwise bisect
+        # the `[name](workspace://id)` link and break artifact extraction.
+        text = "x [report. final.txt](workspace://abc-123) y"
+        before, after = split_at_boundary(text, 12)
+        assert "workspace://" not in before
+        assert "[report. final.txt](workspace://abc-123)" in after
+        _, artifacts = extract_artifact_links(after)
+        assert [a.file_id for a in artifacts] == ["abc-123"]
+
+    def test_leading_long_artifact_link_does_not_stall(self):
+        # A long link at the very start spanning the boundary must not return
+        # an empty chunk (which would stall the stream) — emit the whole link.
+        link = "[" + "report " * 30 + "final.txt](workspace://abc-123)"
+        text = link + " and then more trailing text"
+        before, after = split_at_boundary(text, 30)
+        assert before != ""  # forward progress — never empty
+        assert link in before  # whole link emitted intact
+        assert "workspace://" not in after
 
 
 class TestBalanceCodeFences:
