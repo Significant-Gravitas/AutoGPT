@@ -2,59 +2,65 @@ import { usePostV1CreateNewGraph } from "@/app/api/__generated__/endpoints/graph
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { sanitizeImportedGraph, validateGraphStructure } from "@/lib/autogpt-server-api";
+import {
+  sanitizeImportedGraph,
+  validateGraphStructure,
+} from "@/lib/autogpt-server-api";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { uploadAgentFormSchema } from "./LibraryUploadAgentDialog";
 
-export function useLibraryUploadAgentDialog(options?: { onSuccess?: () => void }) {
+export function useLibraryUploadAgentDialog(options?: {
+  onSuccess?: () => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const [agentObject, setAgentObject] = useState<Graph | null>(null);
 
-  const { mutateAsync: createGraph, isPending: isUploading } = usePostV1CreateNewGraph({
-    mutation: {
-      onSuccess: ({ data }) => {
-        setIsOpen(false);
-        options?.onSuccess?.();
-        toast({
-          title: "Success",
-          description: "Agent uploaded successfully",
-          variant: "default",
-        });
-        const qID = "flowID";
-        window.location.href = `/build?${qID}=${(data as GraphModel).id}`;
-      },
-      onError: (error: Error) => {
-        // Try to extract backend error detail from the API response.
-        // Use a type predicate so we never cast through `any` or `unknown`.
-        const _isApiError = (
-          e: unknown,
-        ): e is {
-          response?: { data?: { detail?: string } };
-          body?: { detail?: string };
-        } => typeof e === "object" && e !== null;
+  const { mutateAsync: createGraph, isPending: isUploading } =
+    usePostV1CreateNewGraph({
+      mutation: {
+        onSuccess: ({ data }) => {
+          setIsOpen(false);
+          options?.onSuccess?.();
+          toast({
+            title: "Success",
+            description: "Agent uploaded successfully",
+            variant: "default",
+          });
+          const qID = "flowID";
+          window.location.href = `/build?${qID}=${(data as GraphModel).id}`;
+        },
+        onError: (error: Error) => {
+          // Try to extract backend error detail from the API response.
+          // Use a type predicate so we never cast through `any` or `unknown`.
+          const _isApiError = (
+            e: unknown,
+          ): e is {
+            response?: { data?: { detail?: string } };
+            body?: { detail?: string };
+          } => typeof e === "object" && e !== null;
 
-        const apiError = _isApiError(error)
-          ? (error.response?.data?.detail ?? error.body?.detail)
-          : undefined;
+          const apiError = _isApiError(error)
+            ? (error.response?.data?.detail ?? error.body?.detail)
+            : undefined;
 
-        const description =
-          typeof apiError === "string"
-            ? apiError
-            : error instanceof Error
-              ? error.message
-              : "Error Uploading agent. The server did not provide additional details.";
-        toast({
-          title: "Error Uploading Agent",
-          description,
-          variant: "destructive",
-        });
+          const description =
+            typeof apiError === "string"
+              ? apiError
+              : error instanceof Error
+                ? error.message
+                : "Error Uploading agent. The server did not provide additional details.";
+          toast({
+            title: "Error Uploading Agent",
+            description,
+            variant: "destructive",
+          });
+        },
       },
-    },
-  });
+    });
 
   const form = useForm<z.infer<typeof uploadAgentFormSchema>>({
     resolver: zodResolver(uploadAgentFormSchema),
@@ -97,7 +103,9 @@ export function useLibraryUploadAgentDialog(options?: { onSuccess?: () => void }
       const obj = JSON.parse(jsonString);
 
       if (
-        !["name", "description", "nodes", "links"].every((key) => key in obj && obj[key] != null)
+        !["name", "description", "nodes", "links"].every(
+          (key) => key in obj && obj[key] != null,
+        )
       ) {
         throw new Error(
           "Invalid agent file. Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",

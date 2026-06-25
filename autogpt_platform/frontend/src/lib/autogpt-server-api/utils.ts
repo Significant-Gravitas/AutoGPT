@@ -4,7 +4,8 @@ import { Graph } from "@/app/api/__generated__/models/graph";
 
 export function removeAgentInputBlockValues(graph: Graph, blocks: Block[]) {
   const inputBlocks = graph.nodes?.filter(
-    (node) => blocks.find((b) => b.id === node.block_id)?.uiType === BlockUIType.INPUT,
+    (node) =>
+      blocks.find((b) => b.id === node.block_id)?.uiType === BlockUIType.INPUT,
   );
 
   const modifiedNodes = graph.nodes?.map((node) => {
