@@ -33,7 +33,7 @@ Sentry.init({
 
   // Add optional integrations for additional features
   integrations: [
-    Sentry.captureConsoleIntegration(),
+    Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     Sentry.extraErrorDataIntegration(),
     Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
