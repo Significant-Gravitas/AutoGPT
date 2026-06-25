@@ -52,33 +52,43 @@ triggered_presets AS (
     WHERE ap."isDeleted" = false
 ),
 
--- Get all current input data for triggered presets
+-- Get all current input data for triggered presets. Join via the child FK
+-- `agentPresetId` — `InputPresets` is a Prisma relation field, not a SQL column.
 current_inputs AS (
     SELECT
         tp.preset_id,
         tp.node_prefix,
+        aneio."id" as input_id,
         aneio."name" as input_name,
         aneio."data" as input_data
     FROM triggered_presets tp
-    JOIN "AgentNodeExecutionInputOutput" aneio ON aneio."id" = ANY(
-        SELECT unnest(ap."InputPresets")
-        FROM "AgentPreset" ap
-        WHERE ap."id" = tp.preset_id
-    )
+    JOIN "AgentNodeExecutionInputOutput" aneio
+        ON aneio."agentPresetId" = tp.preset_id
+),
+
+-- Create the aggregated `_node_input_mask_{node_prefix}` entry per preset.
+inserted_masks AS (
+    INSERT INTO "AgentNodeExecutionInputOutput" ("id", "name", "data", "agentPresetId")
+    SELECT
+        gen_random_uuid()::text,
+        '_node_input_mask_' || ci.node_prefix,
+        jsonb_object_agg(ci.input_name, ci.input_data),
+        ci.preset_id
+    FROM current_inputs ci
+    GROUP BY ci.preset_id, ci.node_prefix
+    RETURNING 1
 )
 
--- Create new trigger parameter entries and link them to presets
-INSERT INTO "AgentNodeExecutionInputOutput" ("id", "name", "data", "agentPresetId")
-SELECT
-    gen_random_uuid()::text,
-    '_node_input_mask_' || ci.node_prefix,
-    jsonb_object_agg(ci.input_name, ci.input_data),
-    ci.preset_id
-FROM current_inputs ci
-GROUP BY ci.preset_id, ci.node_prefix;
+-- Remove the original flat input rows. The executor pops only the mask key and
+-- forwards the remaining preset inputs as regular graph inputs, so leaving the
+-- legacy per-input rows behind would re-send the trigger config as graph input.
+-- Deleting by captured id never touches the freshly-inserted mask rows.
+DELETE FROM "AgentNodeExecutionInputOutput"
+WHERE "id" IN (SELECT input_id FROM current_inputs);
 
--- Note: This migration converts ALL existing inputs in triggered presets to trigger parameters
--- In the new system, regular graph inputs would be stored alongside these trigger parameters
--- but without the special _node_input_mask_ prefix
+-- Note: this migration folds ALL existing inputs of a triggered preset into the
+-- wrapped `_node_input_mask_{node_prefix}` entry and removes the originals.
+-- Presets created after this migration store regular graph inputs alongside the
+-- mask (without the prefix) via setup_triggered_preset.
 
 COMMIT;
