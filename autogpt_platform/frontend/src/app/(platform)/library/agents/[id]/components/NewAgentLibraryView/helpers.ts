@@ -1,1 +1,0 @@
-export const AGENT_LIBRARY_SECTION_PADDING_X = "px-4";
