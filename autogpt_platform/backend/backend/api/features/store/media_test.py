@@ -208,6 +208,10 @@ async def test_upload_media_mismatched_signature_auto_corrects(
     )
     # File should be stored as PNG based on actual content
     mock_storage_client.upload.assert_called_once()
+    upload_args, upload_kwargs = mock_storage_client.upload.call_args
+    assert upload_args[1].endswith(".png")
+    assert upload_kwargs["content_type"] == "image/png"
+    assert result.endswith(".png")
 
 
 async def test_upload_media_invalid_signature(mock_settings, mock_storage_client):

@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+CONTENT_TYPE_EXTENSIONS = {
+    "image/jpeg": ".jpeg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -82,10 +90,12 @@ async def upload_media(
         detected_content_type = "image/png"
     elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
         detected_content_type = "image/gif"
-    elif content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP":  # WebP
+    elif (
+        content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP"
+    ):  # WebP
         detected_content_type = "image/webp"
     # Check video file signatures
-    elif content.startswith(b"\x00\x00\x00") and len(content) >= 8 and content[4:8] == b"ftyp":  # MP4
+    elif len(content) >= 8 and content[4:8] == b"ftyp":  # MP4
         detected_content_type = "video/mp4"
     elif content.startswith(b"\x1a\x45\xdf\xa3"):  # WebM
         detected_content_type = "video/webm"
@@ -99,7 +109,7 @@ async def upload_media(
 
     # Log if we're auto-correcting a mismatched content-type
     if file.content_type != detected_content_type:
-        logger.info(
+        logger.warning(
             f"Auto-correcting content-type from '{file.content_type}' to "
             f"'{detected_content_type}' based on file signature"
         )
@@ -142,9 +152,10 @@ async def upload_media(
 
         # Generate unique filename
         filename = file.filename or ""
-        file_ext = os.path.splitext(filename)[1].lower()
+        file_base = os.path.splitext(filename)[0]
+        file_ext = CONTENT_TYPE_EXTENSIONS[content_type]
         if use_file_name:
-            unique_filename = filename
+            unique_filename = f"{file_base}{file_ext}" if file_base else file_ext
         else:
             unique_filename = f"{uuid.uuid4()}{file_ext}"
 
