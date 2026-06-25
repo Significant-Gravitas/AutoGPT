@@ -83,6 +83,18 @@ SET e.status = $status,
 """
 
 
+def _is_past(timestamp: datetime | None, *, now: datetime) -> bool:
+    """True if a temporal-validity timestamp marks an edge already retired.
+
+    ``invalid_at`` is graphiti's scheduled end-of-validity and can be
+    FUTURE-dated (a fact true now with a known end date) — such an edge is
+    still live. Only a past/now timestamp means the edge is already out of
+    validity. Mirrors the backfill migration's deliberate "don't treat
+    future invalid_at as retired" reasoning.
+    """
+    return timestamp is not None and timestamp <= now
+
+
 async def _stamp_edge_metadata(
     client,
     group_id: str,
@@ -108,30 +120,47 @@ async def _stamp_edge_metadata(
     exists with graphiti's defaults; only the dream metadata is missing.
     """
     episode_uuid = result.episode.uuid
+    now = datetime.now(timezone.utc)
     targets = [
         edge.uuid
         for edge in result.edges
         # Sole-sourced by THIS episode (newly created, not a dedup-merge or
-        # an invalidated pre-existing edge) AND temporally live: graphiti
-        # can self-expire a brand-new edge within the same add_episode (an
-        # LLM-supplied invalid_at, or a newer contradicting fact), leaving
-        # it in result.edges with episodes==[uuid] but expired_at set.
-        # Stamping status='active' onto that would contradict its temporal
-        # fields, so skip temporally-retired edges.
+        # an invalidated pre-existing edge) AND temporally live: graphiti can
+        # self-expire a brand-new edge within the same add_episode — a newer
+        # contradicting fact sets ``expired_at``, and a past ``invalid_at``
+        # marks it already out of validity. Stamping a live status onto a
+        # retired edge would contradict its temporal fields, so skip those.
+        # A FUTURE ``invalid_at`` is still live (true now, ends later) and
+        # MUST be stamped, or its dream status/source_kind/provenance never
+        # land and ratification filters miss it.
         if list(edge.episodes) == [episode_uuid]
-        and getattr(edge, "expired_at", None) is None
-        and getattr(edge, "invalid_at", None) is None
+        and edge.expired_at is None
+        and not _is_past(edge.invalid_at, now=now)
     ]
     if not targets:
+        return
+    # The sole producer (``dream/apply._edge_metadata``) always supplies
+    # these three from a ``MemoryEnvelope`` whose fields are non-null by
+    # default. Guard anyway so a future partial payload skips the stamp
+    # loudly instead of silently NULL-clobbering required edge fields.
+    required = ("status", "source_kind", "scope")
+    missing = [key for key in required if edge_metadata.get(key) is None]
+    if missing:
+        logger.warning(
+            "Incomplete edge_metadata for user %s (missing %s) — skipping "
+            "stamp; edges keep graphiti defaults",
+            user_id[:12],
+            ",".join(missing),
+        )
         return
     try:
         await client.driver.execute_query(
             _STAMP_EDGE_METADATA_QUERY,
             uuids=targets,
             gid=group_id,
-            status=edge_metadata.get("status"),
-            source_kind=edge_metadata.get("source_kind"),
-            scope=edge_metadata.get("scope"),
+            status=edge_metadata["status"],
+            source_kind=edge_metadata["source_kind"],
+            scope=edge_metadata["scope"],
             confidence=edge_metadata.get("confidence"),
             provenance=edge_metadata.get("provenance"),
         )

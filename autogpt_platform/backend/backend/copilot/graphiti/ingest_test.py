@@ -1,6 +1,7 @@
 """Tests for Graphiti ingestion queue and worker logic."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -393,6 +394,17 @@ class TestStampEdgeMetadata:
     episode newly created, gated on the ``episodes == [episode_uuid]``
     dedup-safety invariant so user-authored edges are never clobbered."""
 
+    # The real producer (``dream/apply._edge_metadata``) always emits all
+    # five keys, so tests pass a complete payload unless exercising the
+    # incomplete-payload guard explicitly.
+    FULL_META = {
+        "status": "active",
+        "source_kind": "user_asserted",
+        "scope": "real:global",
+        "confidence": None,
+        "provenance": None,
+    }
+
     def _edge(self, uuid: str, episodes: list[str], expired_at=None, invalid_at=None):
         return SimpleNamespace(
             uuid=uuid,
@@ -425,7 +437,7 @@ class TestStampEdgeMetadata:
             ],
         )
         await ingest._stamp_edge_metadata(
-            client, "user_abc", result, {"status": "active"}, "abc"
+            client, "user_abc", result, self.FULL_META, "abc"
         )
         client.driver.execute_query.assert_awaited_once()
         kwargs = client.driver.execute_query.await_args.kwargs
@@ -433,24 +445,31 @@ class TestStampEdgeMetadata:
         assert kwargs["gid"] == "user_abc"
 
     @pytest.mark.asyncio
-    async def test_skips_self_expired_brand_new_edge(self) -> None:
-        """A brand-new edge graphiti self-expired in the same add_episode
-        (episodes==[uuid] but expired_at/invalid_at set) must NOT be stamped
-        with a live status — that would contradict its temporal fields."""
+    async def test_skips_retired_but_stamps_future_invalid_at(self) -> None:
+        """A brand-new edge graphiti retired in the same add_episode
+        (episodes==[uuid] but expired_at, or a PAST invalid_at) must NOT be
+        stamped with a live status — that would contradict its temporal
+        fields. A FUTURE invalid_at is still live (true now, ends later) and
+        MUST be stamped, else its dream metadata never lands."""
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        future = datetime.now(timezone.utc) + timedelta(days=365)
         client = self._client()
         result = self._result(
             "ep-1",
             [
                 self._edge("live", ["ep-1"]),  # new + temporally live → stamp
-                self._edge("expired", ["ep-1"], expired_at="2026-06-18T00:00:00Z"),
-                self._edge("invalid", ["ep-1"], invalid_at="2026-06-18T00:00:00Z"),
+                self._edge("expired", ["ep-1"], expired_at=past),  # retired → skip
+                self._edge("invalid_past", ["ep-1"], invalid_at=past),  # → skip
+                self._edge(
+                    "invalid_future", ["ep-1"], invalid_at=future
+                ),  # still live → stamp
             ],
         )
         await ingest._stamp_edge_metadata(
-            client, "user_abc", result, {"status": "active"}, "abc"
+            client, "user_abc", result, self.FULL_META, "abc"
         )
         kwargs = client.driver.execute_query.await_args.kwargs
-        assert kwargs["uuids"] == ["live"]
+        assert kwargs["uuids"] == ["live", "invalid_future"]
 
     @pytest.mark.asyncio
     async def test_no_new_edges_skips_query_entirely(self) -> None:
@@ -458,6 +477,18 @@ class TestStampEdgeMetadata:
         sole-sourced target → no Cypher runs at all."""
         client = self._client()
         result = self._result("ep-1", [self._edge("merged", ["ep-1", "old"])])
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, self.FULL_META, "abc"
+        )
+        client.driver.execute_query.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_incomplete_metadata_skips_stamp(self) -> None:
+        """A partial payload missing a required field (status/source_kind/
+        scope) must skip the stamp entirely rather than NULL-clobber the
+        edge's required props."""
+        client = self._client()
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
         await ingest._stamp_edge_metadata(
             client, "user_abc", result, {"status": "active"}, "abc"
         )
@@ -488,7 +519,7 @@ class TestStampEdgeMetadata:
         result = self._result("ep-1", [self._edge("new", ["ep-1"])])
         # Should not raise.
         await ingest._stamp_edge_metadata(
-            client, "user_abc", result, {"status": "active"}, "abc"
+            client, "user_abc", result, self.FULL_META, "abc"
         )
 
 
