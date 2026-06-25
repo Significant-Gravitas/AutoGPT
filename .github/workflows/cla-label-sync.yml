@@ -26,6 +26,15 @@ permissions:
   statuses: read
   checks: read
 
+# Serialize runs that target the same PR (or same commit, for status events) so
+# rapid synchronize/status events don't race on label and comment writes. The
+# per-PR marker check (hasCommentWithMarker) remains the primary idempotency
+# guard; this just narrows the window. Scheduled sweeps fall back to run_id so
+# they never block each other.
+concurrency:
+  group: cla-label-sync-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.event.sha || github.run_id }}
+  cancel-in-progress: false
+
 env:
   CLA_CHECK_NAME: 'license/cla'
   LABEL_PENDING: 'cla: pending'
@@ -312,7 +321,15 @@ jobs:
                   // Check if we need to send reminder or close
                   const REMINDER_MARKER = '<!-- cla-reminder -->';
                   const CLOSE_WARNING_MARKER = '<!-- cla-close-warning -->';
-                  
+
+                  // Only escalate to a close warning / auto-close when we have a
+                  // definitive CLA signal. found:false means no license/cla status
+                  // or check exists for this commit (CLA-assistant added after the
+                  // PR, an outage, or status not yet posted) — we must not threaten
+                  // or execute a close on a PR we've never actually evaluated. The
+                  // gentle reminder below is still fine.
+                  const claConfirmedUnsigned = claStatus.found;
+
                   // 📢 Reminder after REMINDER_DAYS (but before warning window)
                   if (prAgeDays >= REMINDER_DAYS && prAgeDays < CLOSE_WARNING_DAYS) {
                     const hasReminder = await hasCommentWithMarker(prNumber, REMINDER_MARKER);
@@ -353,7 +370,7 @@ jobs:
                   }
                   
                   // ⚠️ Close warning at CLOSE_WARNING_DAYS
-                  if (prAgeDays >= CLOSE_WARNING_DAYS && prAgeDays < CLOSE_DAYS) {
+                  if (claConfirmedUnsigned && prAgeDays >= CLOSE_WARNING_DAYS && prAgeDays < CLOSE_DAYS) {
                     const hasCloseWarning = await hasCommentWithMarker(prNumber, CLOSE_WARNING_MARKER);
                     
                     if (!hasCloseWarning) {
@@ -377,7 +394,7 @@ jobs:
                   }
                   
                   // 🚪 Auto-close after CLOSE_DAYS
-                  if (prAgeDays >= CLOSE_DAYS) {
+                  if (claConfirmedUnsigned && prAgeDays >= CLOSE_DAYS) {
                     const CLOSE_MARKER = '<!-- cla-auto-closed -->';
                     const OVERRIDE_LABEL = 'cla: override';
                     
