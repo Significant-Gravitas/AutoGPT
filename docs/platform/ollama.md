@@ -246,7 +246,7 @@ If you encounter any issues, verify that:
   ```bash
   ollama pull llama3.2
   ```
-- If using a custom model, ensure it's added to the model list in `backend/api/model.py`
+- If using a custom model, ensure it's added to the model list in `autogpt_platform/backend/backend/blocks/llm.py`
 
 #### Docker Issues
 - Ensure Docker daemon is running:
