@@ -161,6 +161,13 @@ descriptions; read and follow those when `find_block` surfaces a match.
 
 ### Key Rules
 
+- **Prefer pure logic over AI**: AI blocks (text generation, orchestrators)
+  cost orders of magnitude more than deterministic blocks. When a task has an
+  equivalent non-AI solution — e.g. parsing, filtering, math, string formatting,
+  date handling, conditionals, code execution — use the deterministic block
+  (e.g. `CodeExecutionBlock`, `ConditionBlock`) instead of an LLM. Reserve AI
+  for what genuinely needs it (open-ended reasoning, summarization, generation).
+  Don't spend the user's money on AI for work plain logic can do.
 - **Name & description**: Include `name` and `description` in the agent JSON
   when creating a new agent, or when editing and the agent's purpose changed.
   Without these the agent gets a generic default name.
@@ -436,66 +443,67 @@ saves a run as one). See each tool's description for arguments.
 
 ### Building Trigger Agents
 
-A **trigger agent** is a scheduled agent that watches for changes in an
-external source (e.g. email inbox, RSS feed, API) and runs a parent agent
-or AutoPilot session for each new item. Trigger agents are hidden from the
-user's library but listed under the parent agent's triggers.
+A **trigger agent** is a hidden, scheduled agent that watches an external
+source (email, RSS, API) and runs a separate **action agent** (a.k.a.
+**parent agent**) once per detected change. It's listed under the parent's
+triggers, not in the user's library.
 
-**Pattern: Fetch → Compare → Store → Sink**
+**Split into two agents (REQUIRED):** when the goal is to **poll a source and
+act only when a change/event is detected**, build **TWO SEPARATE agents** — an
+action agent that handles ONE event, and a trigger agent that polls and
+invokes it via `AgentExecutorBlock`. Never merge polling + action into one
+scheduled agent: it runs on every poll, so its run list is mostly empty polls
+and the user can't tell which runs did anything. Splitting gives the action
+agent **one run per real event** — the history users actually want.
 
-1. **Fetch current state**: Use a data-fetching block (e.g. RSS, email,
-   HTTP request) to get the latest items from the source.
-2. **Retrieve stored state**: Use `RetrieveInformationBlock`
-   (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`) with scope `within_agent`
-   to load the previously stored state (e.g. list of seen item IDs).
-3. **Compare**: Use a `CodeExecutionBlock` to diff the fetched items
-   against the stored state. Output the new items (if any).
-4. **Store updated state**: Use `PersistInformationBlock`
-   (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`) with scope `within_agent`
-   to save the current state for the next run.
+**Boundary — do NOT over-split:** an agent that does the same work and emits
+output every run (e.g. "email me prices every morning") stays a **single
+scheduled agent**. Only split when some runs would otherwise do nothing.
+
+**Trigger-agent pattern: Fetch → Compare → Store → Sink**
+
+1. **Fetch**: a data-fetching block (RSS, email, HTTP request) gets the
+   latest items from the source.
+2. **Retrieve stored state**: `RetrieveInformationBlock`
+   (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`), scope `within_agent`, loads
+   previously-seen item IDs.
+3. **Compare**: a `CodeExecutionBlock` diffs fetched items against stored
+   state and outputs the new ones (if any).
+4. **Store updated state**: `PersistInformationBlock`
+   (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`), scope `within_agent`, saves
+   the current state for next run.
 5. **Sink** — for each new item, do one of:
-   - **Run an agent**: Use `AgentExecutorBlock`
-     (ID: `e189baac-8c20-45a1-94a7-55177ea42565`) to run the parent
-     agent with the new item as input.
-   - **Start an AutoPilot session**: Use `AutoPilotBlock`
-     (ID: `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) with a prompt
-     describing the new item (e.g. "New email from {sender} about
+   - **Run the action agent (preferred)**: `AgentExecutorBlock`
+     (ID: `e189baac-8c20-45a1-94a7-55177ea42565`) runs the parent agent with
+     the new item as input — one parent run per event.
+   - **Start an AutoPilot session** (only when there's no reusable action
+     agent): `AutoPilotBlock` (ID: `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`)
+     with a prompt describing the item (e.g. "New email from {sender} about
      {subject}. Analyze and draft a reply.").
 
-**Creating a trigger agent:**
+**Creating the two agents:**
 
-1. Build the trigger agent JSON following the pattern above. When using
-   the AgentExecutorBlock sink, set its `graph_id` (in `input_default`)
-   to the parent agent's graph_id — this is how the trigger is linked
-   to the parent agent.
-2. Save it with `is_hidden=true` via `create_agent` so it doesn't
-   clutter the user's library.
-3. Schedule it to run on a cron interval (e.g. every 15 minutes:
-   `*/15 * * * *`) using `run_agent` with `schedule_name` and `cron`.
+1. Build and save the **action agent** first, visibly (`create_agent`); it
+   takes a single event as input. Reuse an existing agent if one fits.
+2. Read its `graph_id`, `graph_version`, `input_schema`, and `output_schema`
+   via `find_library_agent` to wire the `AgentExecutorBlock`.
+3. Build the **trigger agent** with the pattern above; set its
+   `AgentExecutorBlock` `graph_id` (in `input_default`) to the action agent's
+   `graph_id`, and save with `is_hidden=true`.
+4. Schedule it on a cron interval (e.g. `*/15 * * * *`) via `run_agent` with
+   `schedule_name` and `cron`.
 
-The parent → trigger relationship is **derived from the graph
-contents**: any hidden agent whose graph contains an AgentExecutorBlock
-referencing the parent's graph_id is listed under that parent's
-triggers. No explicit linking is needed.
+The parent → trigger link is **derived from graph contents**: any hidden
+agent whose graph contains an `AgentExecutorBlock` referencing the parent's
+`graph_id` is listed under that parent's triggers — no explicit linking
+needed.
 
-**Inspecting an agent's existing triggers:**
-
-- Use `list_agent_triggers` with the parent's `library_agent_id` to see
-  all triggers configured for that agent — both trigger agents
-  (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
-  before adding a new trigger (to avoid duplicates) or before deleting
-  one (to find the right ID). For `kind="webhook"` triggers it also
-  returns the `webhook_url` — give that to the user verbatim if they need
-  to (re)configure their external service.
-
-**Managing schedules:**
-
-- Use `list_schedules` to see existing schedules (optionally filtered by
-  `graph_id`).
-- Use `delete_schedule` with a `schedule_id` to remove one.
-- To change a schedule's cron, delete it and re-create via `run_agent`
-  with the new `cron`.
-
-**Note**: When a trigger agent is edited and a new version is created,
-the existing schedule will still run the old version. Delete the old
-schedule and re-create it with the new version after editing.
+**Managing triggers:** `list_agent_triggers` (parent's `library_agent_id`)
+lists trigger agents (`kind="agent"`) and webhook presets (`kind="webhook"`);
+check it before adding or deleting one. For `kind="webhook"` triggers it also
+returns the `webhook_url` — give that to the user verbatim if they need to
+(re)configure their external service. `list_schedules` (optionally filtered by
+`graph_id`) and `delete_schedule` manage schedules — change a cron by deleting
+and re-creating via `run_agent`. **Note**: editing a trigger agent makes a new
+version, but the old schedule keeps running the old one — delete and re-create
+the schedule after editing.
