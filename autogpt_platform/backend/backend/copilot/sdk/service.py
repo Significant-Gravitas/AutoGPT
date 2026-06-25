@@ -235,6 +235,11 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     internal turn run without auth).  Floored at ``_MAX_BUDGET_USD_FLOOR``
     so a near-capped user still gets enough headroom to surface the
     "wrap up" reminder rather than failing to dispatch.
+
+    Returns ``0.0`` when the user's *actual* remaining budget is positive
+    but below ``_MIN_VIABLE_BUDGET_USD`` — the turn would be doomed (the
+    CLI would hard-kill it mid-stream).  Callers must check for ``0.0``
+    and short-circuit with a rate-limit error instead of dispatching.
     """
     static_cap = config.claude_agent_max_budget_usd
     if not user_id:
@@ -259,6 +264,11 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     )
     if remaining < 0 or remaining == float("inf"):
         return static_cap
+    # If the user's actual remaining budget is below the viable threshold
+    # the turn is doomed — it will be hard-killed mid-stream.  Signal this
+    # to the caller so it can surface a rate-limit error instead.
+    if 0 < remaining < _MIN_VIABLE_BUDGET_USD:
+        return 0.0
     return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
 
 
@@ -1016,7 +1026,7 @@ def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
 # ``_append_error_marker`` directly already pass ``retryable=True``; this set
 # covers the codes that flow through the adapter -> ``_dispatch_response``.
 _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", "empty_completion", "max_budget_exhausted"}
+    {"transient_api_error", "empty_completion", "max_budget_exhausted", "budget_below_viable"}
 )
 
 
@@ -4132,6 +4142,38 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
+        # --- Pre-dispatch budget viability gate ---
+        # Resolve the per-query budget *before* building SDK options so we
+        # can short-circuit with a rate-limit error when the user's
+        # remaining daily/weekly budget is too low for a viable turn.
+        # ``_resolve_dynamic_max_budget_usd`` returns 0.0 when the actual
+        # remaining is positive but below ``_MIN_VIABLE_BUDGET_USD`` —
+        # dispatching in that case would produce a doomed turn that the
+        # CLI hard-kills mid-stream.
+        resolved_budget = await _resolve_dynamic_max_budget_usd(user_id)
+        if resolved_budget == 0.0:
+            logger.info(
+                "%s Remaining budget below viable threshold ($%.2f); "
+                "rejecting turn with rate-limit error",
+                log_prefix,
+                _MIN_VIABLE_BUDGET_USD,
+            )
+            _append_error_marker(
+                session,
+                "Your remaining budget is too low to start a new turn. "
+                "Please wait for your budget to reset, or upgrade your plan.",
+                retryable=True,
+            )
+            yield StreamError(
+                errorText=(
+                    "Your remaining budget is too low to start a new turn. "
+                    "Please wait for your budget to reset, or upgrade your plan."
+                ),
+                code="budget_below_viable",
+            )
+            yield StreamFinish()
+            return
+
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
@@ -4153,7 +4195,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # the user's *actual* remaining daily/weekly USD cap so the
             # CLI's "wrap up gracefully" reminder fires when they're close
             # to the real limit, not the static $10 default.
-            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
+            max_budget_usd=resolved_budget,
             # thinking: specify extended thinking mode. Thinking tokens are
             # billed at output rate ($75/M for Opus) and account for ~54%
             # of total cost.  The CLI silently ignores this field for

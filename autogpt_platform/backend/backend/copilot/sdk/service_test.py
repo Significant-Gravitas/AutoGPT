@@ -1873,10 +1873,10 @@ class TestResolveDynamicMaxBudgetUsd:
         assert result == 2.5
 
     @pytest.mark.asyncio
-    async def test_clamps_to_floor_when_remaining_is_below(self):
-        # A near-capped user still gets enough headroom to dispatch the
-        # turn (and surface the wrap-up reminder) instead of being
-        # blocked at the SDK level.
+    async def test_returns_zero_when_remaining_below_viable(self):
+        # When the user's actual remaining budget is below the viable
+        # threshold the turn would be doomed — return 0.0 so the caller
+        # can short-circuit with a rate-limit error.
         with (
             patch(
                 "backend.copilot.sdk.service.get_global_rate_limits",
@@ -1885,6 +1885,28 @@ class TestResolveDynamicMaxBudgetUsd:
             patch(
                 "backend.copilot.sdk.service.get_remaining_usd_budget",
                 new=AsyncMock(return_value=0.05),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 0.0
+
+    @pytest.mark.asyncio
+    async def test_clamps_to_floor_when_remaining_is_at_viable(self):
+        # When remaining is at or above the viable threshold, the floor
+        # still applies so a near-capped user gets enough headroom to
+        # dispatch the turn (and surface the wrap-up reminder).
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=1.0),
             ),
             patch(
                 "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
