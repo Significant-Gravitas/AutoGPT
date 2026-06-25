@@ -10,7 +10,6 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { analytics } from "@/services/analytics";
 import { useQueryClient } from "@tanstack/react-query";
@@ -259,11 +258,8 @@ export function useAgentRunModal(
       schema: { required?: unknown } | undefined,
       values: Record<string, any>,
     ) => {
-      const nonEmpty = new Set(
-        Object.keys(values).filter((k) => !isEmpty(values[k])),
-      );
-      const required = new Set((schema?.required as string[]) || []);
-      return [...required].filter((field) => !nonEmpty.has(field));
+      const required = (schema?.required as string[]) || [];
+      return required.filter((field) => !isFilled(values[field]));
     };
 
     const missing = [
@@ -424,6 +420,15 @@ export function useAgentRunModal(
     handleRun,
     handleSimulate,
   };
+}
+
+// Mirror the backend's `_is_filled`: only null/undefined, "", {}, and [] count
+// as missing — falsy primitives like 0 and false are valid provided values.
+export function isFilled(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
 }
 
 // Pull the non-hidden field schemas out of a JSON schema object, tolerating a
