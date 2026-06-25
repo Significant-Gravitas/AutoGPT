@@ -760,9 +760,7 @@ async def run_interaction_loop(
             # interprets as "episode in progress, reuse proposal".
             from forge.models.action import ActionSuccessResult
 
-            agent.event_history.register_result(
-                ActionSuccessResult(outputs=e.message)
-            )
+            agent.event_history.register_result(ActionSuccessResult(outputs=e.message))
 
             # Start new task in same workspace, keeping prior context
             agent.state.task = next_task
