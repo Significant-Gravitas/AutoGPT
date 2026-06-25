@@ -178,5 +178,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-
-# ci: no-op touch to run backend CI so codecov refreshes the platform-backend carryforward
