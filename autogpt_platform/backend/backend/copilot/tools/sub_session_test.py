@@ -10,13 +10,22 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse
-from .run_sub_session import MAX_SUB_SESSION_WAIT_SECONDS, RunSubSessionTool
+from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
+from .run_sub_session import (
+    MAX_SUB_SESSION_WAIT_SECONDS,
+    RunSubSessionTool,
+    response_from_outcome,
+)
 
 
 def _session(user_id: str = "u", session_id: str = "s1") -> MagicMock:
@@ -73,7 +82,6 @@ def mock_waiter(monkeypatch):
     ``run_copilot_turn_via_queue`` mock (used by run_sub_session) and
     the ``wait_for_session_result`` mock (used by get_sub_session_result)
     wired to return ``("running", SessionResult())`` by default."""
-    from backend.copilot.sdk.session_waiter import SessionResult
 
     turn_mock = AsyncMock(return_value=("running", SessionResult()))
     result_mock = AsyncMock(return_value=("running", SessionResult()))
@@ -88,6 +96,27 @@ def mock_waiter(monkeypatch):
     # Single handle with both attrs for tests that only care about one.
     turn_mock.result_mock = result_mock
     return turn_mock
+
+
+@pytest.fixture(autouse=True)
+def stub_workspace_listing(monkeypatch):
+    """Stub the authoritative sub workspace-file listing for every test.
+
+    Default return is ``None`` so completed paths fall back to tool-call mining
+    and never touch the workspace DB. Tests that exercise the listing override
+    ``return_value``. A single mock backs both tool-module bindings so an
+    override applies wherever the listing is read.
+    """
+    listing = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.list_sub_workspace_files",
+        listing,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
+        listing,
+    )
+    return listing
 
 
 @pytest.fixture
@@ -192,7 +221,6 @@ class TestRunSubSession:
     ):
         """The parent's CopilotPermissions must be passed through to the
         queue primitive so the worker applies the same filter."""
-        from backend.copilot.permissions import CopilotPermissions
 
         perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
         monkeypatch.setattr(
@@ -235,8 +263,6 @@ class TestRunSubSession:
         """When the queue primitive returns 'completed' + a SessionResult,
         the tool surfaces response_text + tool_calls directly — no DB
         round-trip needed for the content."""
-        from backend.copilot.sdk.session_waiter import SessionResult
-        from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
         res = SessionResult()
         res.response_text = "the answer"
@@ -265,13 +291,45 @@ class TestRunSubSession:
         mock_waiter.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_completed_surfaces_workspace_file_manifest(
+        self, mock_queue, mock_waiter, mock_model, stub_workspace_listing
+    ):
+        """On completion run_sub_session reads the authoritative workspace
+        listing for the sub and surfaces it as sub_workspace_files."""
+
+        res = SessionResult()
+        res.response_text = "delivered in the docs, what's next?"
+        mock_waiter.return_value = ("completed", res)
+        stub_workspace_listing.return_value = [
+            WorkspaceFileInfoData(
+                file_id="file-1",
+                name="PLAN.md",
+                path="/sessions/inner-1/PLAN.md",
+                mime_type="text/markdown",
+                size_bytes=14563,
+            )
+        ]
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="audit the platform",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        stub_workspace_listing.assert_awaited_once_with("alice", "inner-1")
+        assert r.sub_workspace_files is not None
+        assert r.sub_workspace_files[0].path == "/sessions/inner-1/PLAN.md"
+        assert "workspace file" in (r.message or "")
+
+    @pytest.mark.asyncio
     async def test_queued_outcome_surfaces_queued_status(
         self, mock_queue, mock_waiter, mock_model
     ):
         """When the shared primitive reports the target session already has
         a turn running, the tool surfaces ``status='queued'`` so the LLM can
         decide whether to poll or move on."""
-        from backend.copilot.sdk.session_waiter import SessionResult
 
         queued_res = SessionResult(queued=True, pending_buffer_length=2)
         mock_waiter.return_value = ("queued", queued_res)
@@ -380,7 +438,6 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
-        from backend.copilot.sdk.session_waiter import SessionResult
 
         sub = MagicMock(user_id="alice", messages=[])  # not terminal-looking
 
@@ -524,3 +581,190 @@ class TestGetSubSessionResult:
         assert r.status == "cancelled"
         mock_queue["enqueue_cancel"].assert_awaited_once_with("inner-5")
         mock_waiter.result_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_terminal_path_surfaces_files_from_listing(
+        self, monkeypatch, mock_waiter, stub_workspace_listing
+    ):
+        """SECRT-2377 terminal-path fix: when the sub already finished (cold
+        poll, last message terminal) the waiter is skipped and the tool-call
+        log only holds the last message — yet the file manifest is still
+        populated from the authoritative workspace listing."""
+
+        sub = MagicMock(user_id="alice")
+        assistant = MagicMock()
+        assistant.role = "assistant"
+        assistant.content = "done — see the docs I wrote"
+        assistant.tool_calls = None  # no write calls on the last message
+        sub.messages = [assistant]
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+        stub_workspace_listing.return_value = [
+            WorkspaceFileInfoData(
+                file_id="file-1",
+                name="AUDIT.md",
+                path="/sessions/inner-9/AUDIT.md",
+                mime_type="text/markdown",
+                size_bytes=16170,
+            )
+        ]
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-9",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        # Waiter skipped (terminal short-circuit) — the tool-call log is stale.
+        mock_waiter.result_mock.assert_not_awaited()
+        # ...but the manifest is still populated, from the workspace listing.
+        stub_workspace_listing.assert_awaited_once_with("alice", "inner-9")
+        assert r.sub_workspace_files is not None
+        assert r.sub_workspace_files[0].path == "/sessions/inner-9/AUDIT.md"
+        assert "workspace file" in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# SECRT-2377 — hollow response after delivering work via workspace files
+# ---------------------------------------------------------------------------
+
+
+class TestHollowResponseRepro:
+    """Deterministic repro for SECRT-2377.
+
+    A sub-AutoPilot that does its real work into workspace files and then
+    returns a short "delivered in three docs, what's next?" message finishes
+    ``COMPLETED`` with a hollow body. ``response_from_outcome`` surfaces only
+    ``response_text`` plus a raw tool-call log to the parent — it carries no
+    discoverable manifest of the files the sub wrote, and those files are
+    scoped to the sub's own session, so the parent silently loses the work
+    and re-does it.
+
+    The test exercises the pure ``response_from_outcome`` function (no queue,
+    Redis, or DB) and asserts the fixed contract: the completed response
+    exposes ``sub_workspace_files`` — a manifest of the files the sub created,
+    each with a cross-session ``read_path`` — so the parent can retrieve them.
+    """
+
+    @staticmethod
+    def _hollow_completed_result():
+        """A completed SessionResult mirroring the incident: 3 large files
+        written to the workspace, then a 227-token hollow final message."""
+
+        def _write_call(idx: int, name: str, size: int) -> ToolCallEntry:
+            # write_workspace_file's stream output is a WorkspaceWriteResponse
+            # JSON string carrying only a 200-char content_preview — never the
+            # full body. Its `path` is already session-qualified (the workspace
+            # manager resolves it on write). This is all the parent could mine
+            # from the tool log, and it is not the findings.
+            return ToolCallEntry(
+                tool_call_id=f"tc-{idx}",
+                tool_name="write_workspace_file",
+                input={"filename": name},
+                output=json.dumps(
+                    {
+                        "type": "workspace_file_written",
+                        "file_id": f"file-{idx}",
+                        "name": name,
+                        "path": f"/sessions/inner-1/{name}",
+                        "size_bytes": size,
+                        "content_preview": "A" * 200,
+                    }
+                ),
+                success=True,
+            )
+
+        res = SessionResult()
+        res.response_text = (
+            "Since the comprehensive audit has been completed and delivered "
+            "in three workspace documents, I'm ready to assist with the next "
+            "phase. What would you like me to do next?"
+        )
+        res.tool_calls = [
+            _write_call(1, "ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md", 16170),
+            _write_call(2, "MODEL_CHANGES_QUICK_REFERENCE.md", 6528),
+            _write_call(3, "EXACT_CODE_SNIPPETS.md", 14563),
+        ]
+        res.total_tokens = 22667
+        res.completion_tokens = 227
+        return res
+
+    def test_completed_status_is_surfaced(self):
+        """Sanity: the hollow result still reports COMPLETED — the failure
+        mode is invisible, which is exactly why it wastes tokens silently."""
+        r = response_from_outcome(
+            outcome="completed",
+            result=self._hollow_completed_result(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        # The body the parent reads is the hollow summary, nothing more.
+        assert "next phase" in (r.response or "")
+
+    def test_completed_response_exposes_workspace_files_written(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=self._hollow_completed_result(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+        # Fixed contract: the parent can discover the 3 files the sub wrote
+        # without scraping the raw tool log. Each path is session-qualified and
+        # ready to hand straight to read_workspace_file.
+        manifest = r.sub_workspace_files
+        assert manifest, "no workspace-file manifest surfaced to the parent"
+        by_path = {f.path: f for f in manifest}
+        assert set(by_path) == {
+            "/sessions/inner-1/ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md",
+            "/sessions/inner-1/MODEL_CHANGES_QUICK_REFERENCE.md",
+            "/sessions/inner-1/EXACT_CODE_SNIPPETS.md",
+        }
+        audit = by_path["/sessions/inner-1/ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md"]
+        assert audit.size_bytes == 16170
+        # The message nudges the parent toward the files so a hollow `response`
+        # isn't mistaken for an empty run.
+        assert "workspace file" in (r.message or "")
+
+    def test_no_manifest_when_sub_returned_inline(self):
+        """A sub that answered inline (no file writes) must not grow an empty
+        or noisy manifest — sub_workspace_files stays None."""
+
+        res = SessionResult()
+        res.response_text = "Here is the full answer, inline."
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="web_search",
+                input={"q": "x"},
+                output="some results",
+                success=True,
+            )
+        ]
+        r = response_from_outcome(
+            outcome="completed",
+            result=res,
+            inner_session_id="inner-2",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.sub_workspace_files is None
+        assert "workspace file" not in (r.message or "")

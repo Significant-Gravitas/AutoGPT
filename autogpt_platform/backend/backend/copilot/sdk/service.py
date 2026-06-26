@@ -786,22 +786,9 @@ async def _consume_sdk_until_done(
         if not isinstance(sdk_msg, StreamEvent):
             loop_state.msgs_since_flush += 1
         now = time.monotonic()
-        has_pending_tools = (
-            acc.has_appended_assistant
-            and acc.accumulated_tool_calls
-            and not acc.has_tool_results
-        )
-        adapter = state.adapter
-        has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
-            adapter.has_started_reasoning and not adapter.has_ended_reasoning
-        )
-        if (
-            not has_pending_tools
-            and not has_open_block
-            and (
-                loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
-                or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
-            )
+        if not _intermediate_flush_blocked(acc, state.adapter) and (
+            loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+            or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
@@ -838,6 +825,46 @@ _THINKING_ONLY_REPROMPT = (
 # session-message flush so page reloads show progress on long turns.
 _FLUSH_INTERVAL_SECONDS = 30.0
 _FLUSH_MESSAGE_THRESHOLD = 10
+
+
+def _intermediate_flush_blocked(
+    acc: "_StreamAccumulator", adapter: SDKResponseAdapter
+) -> bool:
+    """Whether the periodic mid-turn session flush must be held off.
+
+    The DB save is append-only (uses ``start_sequence``), so flushing mid-turn
+    locks the trailing rows at their current sequence permanently. Hold the
+    flush while any of these is true:
+
+    - ``has_pending_tools`` — a tool call is dispatched but its result hasn't
+      been recorded yet; the ``assistant(tool_calls)`` and ``tool`` result rows
+      must persist together.
+    - ``has_unsealed_assistant`` — a live assistant row hasn't acquired
+      ``tool_calls`` yet. The model often emits a text preamble, pauses, then
+      calls a tool — text and ``tool_use`` arrive as *separate* AssistantMessage
+      events, and ``StreamToolInputAvailable`` attaches the ``tool_calls`` onto
+      this same ``acc.assistant_response`` object. Flushing now would lock the
+      row without ``tool_calls``; the later attach could never reach the DB,
+      orphaning the ``tool`` result (no call row → the tool card vanishes on
+      reload).
+    - ``has_open_block`` — text/reasoning is still streaming, so the row would
+      be locked at a truncated length.
+
+    The guaranteed turn-end persist (the ``finally`` upsert) always saves the
+    rows, so holding an intermediate flush never loses data.
+    """
+    has_pending_tools = (
+        acc.has_appended_assistant
+        and bool(acc.accumulated_tool_calls)
+        and not acc.has_tool_results
+    )
+    has_unsealed_assistant = (
+        acc.has_appended_assistant and not acc.accumulated_tool_calls
+    )
+    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+        adapter.has_started_reasoning and not adapter.has_ended_reasoning
+    )
+    return has_pending_tools or has_unsealed_assistant or has_open_block
 
 
 def _hidden_short_names_for_permissions(

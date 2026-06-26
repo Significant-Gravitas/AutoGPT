@@ -12,6 +12,24 @@ poetry run copilot-bot
 poetry run app   # starts the bot too if AUTOPILOT_BOT_DISCORD_TOKEN is set
 ```
 
+### Docker (local dev)
+
+The bot's link/unlink flow talks to `platform_linking_manager` over cluster-
+internal RPC. The service runs as its own pod in dev/prod but is **opt-in**
+locally via the `bot` Docker Compose profile so it doesn't slow regular
+`docker compose up`:
+
+```bash
+# Start the linking manager alongside your existing stack
+docker compose up -d platform_linking_manager
+
+# Or include it via the profile flag (also brings up anything else profile-tagged)
+docker compose --profile bot up -d
+```
+
+Without it running, `/setup` and other token-issuing flows fail with an
+`httpx.ConnectError` from the backend trying to reach a missing host.
+
 ## Required environment variables
 
 See `backend/.env.default` for the full list with documentation. Minimum setup:
