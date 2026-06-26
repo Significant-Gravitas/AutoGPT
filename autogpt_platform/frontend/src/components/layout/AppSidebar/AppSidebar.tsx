@@ -26,6 +26,7 @@ import {
   StorefrontIcon,
 } from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
@@ -118,13 +119,23 @@ function NavMenu({
 function CollapsibleNavGroup({
   label,
   children,
+  scrollable = false,
 }: {
   label: string;
   children: ReactNode;
+  scrollable?: boolean;
 }) {
   return (
-    <Collapsible defaultOpen className="group/collapsible">
-      <SidebarGroup className="py-1">
+    <Collapsible
+      defaultOpen
+      className={cn(
+        "group/collapsible",
+        scrollable && "flex min-h-0 flex-1 flex-col",
+      )}
+    >
+      <SidebarGroup
+        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
+      >
         <SidebarGroupLabel asChild className="text-[13px] font-medium">
           <CollapsibleTrigger>
             {label}
@@ -134,8 +145,21 @@ function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
+        <CollapsibleContent
+          className={cn(
+            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down",
+            scrollable && "flex min-h-0 flex-1 flex-col",
+          )}
+        >
+          <SidebarGroupContent
+            className={
+              scrollable
+                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                : undefined
+            }
+          >
+            {children}
+          </SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -156,12 +180,12 @@ export function AppSidebar(props: Props) {
     >
       <AppSidebarHeader />
 
-      <SidebarContent className="gap-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+      <SidebarContent className="gap-2 overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
           animate="show"
-          className="flex flex-col gap-2"
+          className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
@@ -200,9 +224,9 @@ export function AppSidebar(props: Props) {
 
           <motion.div
             variants={itemVariants}
-            className="group-data-[collapsible=icon]:hidden"
+            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
           >
-            <CollapsibleNavGroup label="Recent chats">
+            <CollapsibleNavGroup label="Recent chats" scrollable>
               <RecentChats />
             </CollapsibleNavGroup>
           </motion.div>

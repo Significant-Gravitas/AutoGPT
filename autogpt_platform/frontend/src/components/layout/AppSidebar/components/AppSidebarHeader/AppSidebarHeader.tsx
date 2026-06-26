@@ -20,7 +20,10 @@ export function AppSidebarHeader() {
       <Link
         href="/copilot"
         aria-label="AutoGPT"
-        className={cn("flex items-center", isCollapsed && "group-hover:hidden")}
+        className={cn(
+          "flex items-center",
+          isCollapsed && "group-focus-within:hidden group-hover:hidden",
+        )}
       >
         {isCollapsed ? (
           <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
