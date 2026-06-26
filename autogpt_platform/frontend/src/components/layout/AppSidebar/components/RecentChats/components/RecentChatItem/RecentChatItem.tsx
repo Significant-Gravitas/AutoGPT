@@ -24,7 +24,6 @@ import {
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRef } from "react";
-import { formatChatDate } from "../../helpers";
 
 interface Session {
   id: string;
@@ -45,7 +44,6 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   chatSharingEnabled: boolean;
-  showDate?: boolean;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
@@ -63,7 +61,6 @@ export function RecentChatItem({
   isExporting,
   isDeleting,
   chatSharingEnabled,
-  showDate = false,
   onRename,
   onExport,
   onShare,
@@ -129,11 +126,6 @@ export function RecentChatItem({
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
           <span className="truncate">{title}</span>
-          {showDate && (
-            <span className="ml-auto shrink-0 text-xs text-zinc-400">
-              {formatChatDate(session.updated_at)}
-            </span>
-          )}
         </Link>
       </SidebarMenuButton>
 

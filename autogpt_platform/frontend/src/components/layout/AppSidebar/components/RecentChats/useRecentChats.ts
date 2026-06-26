@@ -15,7 +15,8 @@ import { useState } from "react";
 
 export function useRecentChats() {
   const queryClient = useQueryClient();
-  const { sessions, isLoading } = useSessionList();
+  const { sessions, isLoading, hasMore, isLoadingMore, loadMore } =
+    useSessionList();
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -94,6 +95,9 @@ export function useRecentChats() {
   return {
     sessions,
     isLoading,
+    hasMore,
+    isLoadingMore,
+    loadMore,
     activeSessionId,
     editingSessionId,
     editingTitle,

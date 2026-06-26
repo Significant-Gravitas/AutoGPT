@@ -5,22 +5,18 @@ import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialo
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { CalendarBlankIcon, ListIcon } from "@phosphor-icons/react";
-import { useState } from "react";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
-// TEMPORARY: toggle between two date-display variants while the team decides
-// which one to keep. Remove this along with the toggle button once chosen.
-type DateView = "grouped" | "inline";
-
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
-  const [dateView, setDateView] = useState<DateView>("grouped");
   const {
     sessions,
     isLoading,
+    hasMore,
+    isLoadingMore,
+    loadMore,
     activeSessionId,
     editingSessionId,
     editingTitle,
@@ -53,7 +49,7 @@ export function RecentChats() {
     );
   }
 
-  function renderItem(session: (typeof sessions)[number], showDate: boolean) {
+  function renderItem(session: (typeof sessions)[number]) {
     return (
       <RecentChatItem
         key={session.id}
@@ -67,7 +63,6 @@ export function RecentChats() {
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
         chatSharingEnabled={chatSharingEnabled}
-        showDate={showDate}
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
@@ -78,37 +73,27 @@ export function RecentChats() {
 
   return (
     <>
-      {/* TEMPORARY: variant toggle for team review — remove once decided. */}
-      <button
-        type="button"
-        onClick={() =>
-          setDateView((prev) => (prev === "grouped" ? "inline" : "grouped"))
-        }
-        className="mb-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200"
-      >
-        {dateView === "grouped" ? (
-          <ListIcon className="size-3.5" />
-        ) : (
-          <CalendarBlankIcon className="size-3.5" />
-        )}
-        {dateView === "grouped" ? "Show date inline" : "Group by date"}
-      </button>
+      {groupSessionsByDate(sessions).map((group) => (
+        <div key={group.label}>
+          <p className="px-2 pb-1 pt-2 text-xs font-medium text-zinc-400">
+            {group.label}
+          </p>
+          <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+        </div>
+      ))}
 
-      {dateView === "grouped" ? (
-        groupSessionsByDate(sessions).map((group) => (
-          <div key={group.label}>
-            <p className="px-2 pb-1 pt-2 text-xs font-medium text-zinc-400">
-              {group.label}
-            </p>
-            <SidebarMenu>
-              {group.sessions.map((session) => renderItem(session, false))}
-            </SidebarMenu>
-          </div>
-        ))
-      ) : (
-        <SidebarMenu>
-          {sessions.map((session) => renderItem(session, true))}
-        </SidebarMenu>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => loadMore()}
+          disabled={isLoadingMore}
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 disabled:opacity-60"
+        >
+          {isLoadingMore && (
+            <LoadingSpinner size="small" className="size-4 text-zinc-500" />
+          )}
+          {isLoadingMore ? "Loading…" : "Load more"}
+        </button>
       )}
 
       <DeleteChatDialog

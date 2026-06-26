@@ -35,13 +35,6 @@ function formatDayLabel(date: Date): string {
   return sameYear ? label : `${label} ${date.getFullYear()}`;
 }
 
-export function formatChatDate(iso: string): string {
-  const diffDays = diffInDays(iso);
-  if (diffDays <= 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return formatDayLabel(new Date(iso));
-}
-
 export function getDateGroupLabel(iso: string): string {
   const diffDays = diffInDays(iso);
   if (diffDays <= 0) return "Today";
