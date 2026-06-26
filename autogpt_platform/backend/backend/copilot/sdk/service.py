@@ -209,6 +209,7 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 
+
 async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     """Pick the per-query ``max_budget_usd`` for this user *now*.
 
@@ -1009,7 +1010,12 @@ def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
 # ``_append_error_marker`` directly already pass ``retryable=True``; this set
 # covers the codes that flow through the adapter -> ``_dispatch_response``.
 _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", "empty_completion", "max_budget_exhausted", "budget_below_viable"}
+    {
+        "transient_api_error",
+        "empty_completion",
+        "max_budget_exhausted",
+        "budget_below_viable",
+    }
 )
 
 

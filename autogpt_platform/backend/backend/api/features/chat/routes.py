@@ -20,8 +20,8 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.budget import MIN_VIABLE_TASK_BUDGET_USD
+from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
