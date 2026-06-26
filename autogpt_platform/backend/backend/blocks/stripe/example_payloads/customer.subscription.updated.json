@@ -1,0 +1,88 @@
+{
+  "id": "evt_1OxK2fLkdIwHu7ixSubscriptionUpdated",
+  "object": "event",
+  "api_version": "2023-10-16",
+  "created": 1712086400,
+  "type": "customer.subscription.updated",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "sub_1OxK2fLkdIwHu7ixABCDEFGH",
+      "object": "subscription",
+      "billing_cycle_anchor": 1712000000,
+      "cancel_at": null,
+      "cancel_at_period_end": false,
+      "canceled_at": null,
+      "collection_method": "charge_automatically",
+      "created": 1712000000,
+      "currency": "usd",
+      "current_period_end": 1717948800,
+      "current_period_start": 1715356800,
+      "customer": "cus_Pq1234ABCDEF",
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_1OxK2fLkdIwHu7ixABCDEFGH",
+            "object": "subscription_item",
+            "created": 1712000000,
+            "price": {
+              "id": "price_1OxABCLkdIwHu7ixYearlyPro",
+              "object": "price",
+              "active": true,
+              "billing_scheme": "per_unit",
+              "currency": "usd",
+              "nickname": "Pro Yearly",
+              "product": "prod_Pq1234ProPlan",
+              "recurring": {
+                "interval": "year",
+                "interval_count": 1
+              },
+              "type": "recurring",
+              "unit_amount": 19200
+            },
+            "quantity": 1
+          }
+        ]
+      },
+      "latest_invoice": "in_1OxK2fLkdIwHu7ixUPDATED",
+      "livemode": false,
+      "metadata": {},
+      "plan": {
+        "id": "price_1OxABCLkdIwHu7ixYearlyPro",
+        "object": "plan",
+        "active": true,
+        "amount": 19200,
+        "currency": "usd",
+        "interval": "year",
+        "interval_count": 1,
+        "nickname": "Pro Yearly",
+        "product": "prod_Pq1234ProPlan"
+      },
+      "quantity": 1,
+      "start_date": 1712000000,
+      "status": "active",
+      "trial_end": null,
+      "trial_start": null
+    },
+    "previous_attributes": {
+      "items": {
+        "data": [
+          {
+            "price": {
+              "id": "price_1OxABCLkdIwHu7ixMonthlyPro",
+              "nickname": "Pro Monthly",
+              "unit_amount": 2000
+            }
+          }
+        ]
+      },
+      "plan": {
+        "id": "price_1OxABCLkdIwHu7ixMonthlyPro",
+        "amount": 2000,
+        "interval": "month",
+        "nickname": "Pro Monthly"
+      }
+    }
+  }
+}
