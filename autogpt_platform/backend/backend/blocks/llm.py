@@ -234,7 +234,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
     # Avian models
     AVIAN_DEEPSEEK_V3_2 = "deepseek/deepseek-v3.2"
-    AVIAN_KIMI_K2_5 = "moonshotai/kimi-k2.5"
+    AVIAN_KIMI_K2_5 = "avian/kimi-k2.5"
     AVIAN_GLM_5 = "avian/glm-5"
     AVIAN_MINIMAX_M2_5 = "minimax/minimax-m2.5"
     # v0 by Vercel models

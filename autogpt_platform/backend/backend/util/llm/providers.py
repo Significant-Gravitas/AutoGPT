@@ -106,6 +106,7 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # value and the actual API model string.
 _AVIAN_MODEL_MAP: dict[str, str] = {
     "avian/glm-5": "z-ai/glm-5",
+    "avian/kimi-k2.5": "moonshotai/kimi-k2.5",
 }
 
 # Anthropic deprecated ``temperature`` on its newest model generation —

@@ -111,6 +111,27 @@ class TestAvianLlmCall:
         assert call_kwargs["model"] == "z-ai/glm-5"
 
     @pytest.mark.asyncio
+    async def test_kimi_k2_5_model_name_remapped(self):
+        """AVIAN_KIMI_K2_5 enum value 'avian/kimi-k2.5' must be sent as 'moonshotai/kimi-k2.5'."""
+        mock_response = _mock_openai_chat_response()
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = MagicMock()
+            mock_openai.return_value = mock_client
+            mock_create = AsyncMock(return_value=mock_response)
+            mock_client.chat.completions.create = mock_create
+
+            await llm.llm_call(
+                credentials=AVIAN_CREDENTIALS,
+                llm_model=llm.LlmModel.AVIAN_KIMI_K2_5,
+                prompt=[{"role": "user", "content": "Test"}],
+                max_tokens=100,
+            )
+
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["model"] == "moonshotai/kimi-k2.5"
+
+    @pytest.mark.asyncio
     async def test_non_remapped_model_uses_enum_value(self):
         """Models without a remap entry use the raw enum value as the API model."""
         mock_response = _mock_openai_chat_response()
