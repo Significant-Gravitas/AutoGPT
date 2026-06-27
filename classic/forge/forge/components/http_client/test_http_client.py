@@ -2,6 +2,8 @@
 
 import pytest
 
+from forge.utils.exceptions import HTTPError
+
 from .http_client import HTTPClientComponent, HTTPClientConfiguration
 
 
@@ -40,3 +42,11 @@ def test_userinfo_bypass_rejected(allowlisted_component):
     assert not allowlisted_component._is_domain_allowed(
         "http://127.0.0.1@whitelist.com.evil.com/"
     )
+
+
+def test_make_request_blocks_internal_address_without_allowlist():
+    # Even with the default empty allowlist, _make_request must reject
+    # internal/private targets before issuing the request.
+    component = HTTPClientComponent(HTTPClientConfiguration())
+    with pytest.raises(HTTPError):
+        component._make_request("GET", "http://127.0.0.1/")

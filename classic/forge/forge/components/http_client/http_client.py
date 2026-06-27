@@ -10,6 +10,7 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import HTTPError
+from forge.utils.url_validator import check_public_address
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,15 @@ class HTTPClientComponent(
         Returns:
             dict: Structured response with status, headers, and body
         """
+        # Block internal/private targets regardless of the allowlist. With the
+        # default empty allowlist `_is_domain_allowed` returns True, so without
+        # this the client could still be pointed at 127.0.0.1, metadata IPs, etc.
+        if not check_public_address(url):
+            raise HTTPError(
+                "Access to internal/private addresses is restricted",
+                url=url,
+            )
+
         if not self._is_domain_allowed(url):
             raise HTTPError(
                 f"Domain not in allowed list. Allowed: {self.config.allowed_domains}",

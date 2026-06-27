@@ -10,6 +10,7 @@ Usage:
 import os
 import platform
 import subprocess
+import urllib.request
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -177,11 +178,25 @@ def _assert_download_url_allowed(url: str) -> None:
         )
 
 
+class _AllowlistRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target against the download allowlist.
+
+    `urlretrieve` follows redirects, so validating only the initial URL would
+    let a redirect bounce the download to an internal/arbitrary host. This
+    re-runs `_assert_download_url_allowed` on each hop.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _assert_download_url_allowed(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def download_file(url: str, to_file: Path) -> None:
     _assert_download_url_allowed(url)
     print(f"Downloading {to_file.name}...")
-    import urllib.request
 
+    opener = urllib.request.build_opener(_AllowlistRedirectHandler())
+    urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, to_file, reporthook=report_download_progress)
     print()
 

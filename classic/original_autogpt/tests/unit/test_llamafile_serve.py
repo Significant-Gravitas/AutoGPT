@@ -40,3 +40,18 @@ def test_allowed_huggingface_url_passes():
 def test_disallowed_urls_are_rejected(url: str):
     with pytest.raises(ValueError):
         serve._assert_download_url_allowed(url)
+
+
+def test_redirect_to_disallowed_host_is_rejected():
+    # A redirect that bounces the download to a disallowed host must be rejected
+    # (our check runs before delegating to the base redirect handler).
+    handler = serve._AllowlistRedirectHandler()
+    with pytest.raises(ValueError):
+        handler.redirect_request(
+            None,
+            None,
+            302,
+            "Found",
+            {},
+            "https://evil.example.com/model.llamafile",
+        )
