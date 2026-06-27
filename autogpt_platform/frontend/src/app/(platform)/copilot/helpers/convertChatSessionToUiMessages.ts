@@ -142,7 +142,7 @@ function toToolInput(rawArguments: unknown): unknown {
 // caller refuses the merge in those cases (the safer default).
 const HYDRATED_ID_SEQ_RE = /-seq-(\d+)$/;
 
-function extractDbSequence(uiMessage: UIMessage): number | null {
+export function extractDbSequence(uiMessage: UIMessage): number | null {
   if (typeof uiMessage.id !== "string") return null;
   const match = HYDRATED_ID_SEQ_RE.exec(uiMessage.id);
   return match ? Number(match[1]) : null;

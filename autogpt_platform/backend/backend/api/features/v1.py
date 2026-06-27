@@ -35,6 +35,7 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
@@ -52,12 +53,15 @@ from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
+    SkillLimitError,
     SkillNotFoundError,
     delete_user_skill,
     get_default_skill_with_body,
     list_user_skill_sibling_paths,
     list_user_skills,
+    parse_skill_markdown,
     read_user_skill_with_body,
+    store_user_skill,
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -127,7 +131,7 @@ from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -1663,11 +1667,16 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
+    # Validate node credentials (and clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. before_graph_activate may also mutate input_default; those
+    # edits need to be persisted, so it must run before create_graph.
+    graph = await before_graph_activate(graph, user_id=user_id)
+
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    return activated_graph
+    return graph
 
 
 @v1_router.delete(
@@ -1712,13 +1721,19 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. before_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=user_id)
+
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
         )
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
@@ -1768,8 +1783,11 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
+    new_active_graph = await before_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -2470,6 +2488,17 @@ class CopilotSkillDetail(BaseModel):
     sibling_files: list[str] = []
 
 
+class UploadCopilotSkillRequest(BaseModel):
+    """Body for the library UI's "upload skill" action.
+
+    Carries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the
+    user picked from disk; the server parses + validates it so the upload and
+    the copilot's ``store_skill`` tool share one source of truth.
+    """
+
+    content: str
+
+
 @v1_router.get(
     path="/skills",
     summary="List user-distilled copilot skills",
@@ -2496,6 +2525,64 @@ async def list_copilot_skills(
         )
         for s in skills
     ]
+
+
+@v1_router.post(
+    path="/skills",
+    summary="Upload a copilot skill from a SKILL.md file",
+    operation_id="uploadCopilotSkill",
+    tags=["skills"],
+    status_code=201,
+    responses={
+        400: {"description": "Malformed SKILL.md or validation error"},
+        409: {"description": "Per-user skill limit reached"},
+    },
+    dependencies=[Security(requires_user)],
+)
+async def upload_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    body: UploadCopilotSkillRequest,
+) -> CopilotSkillInfo:
+    """Create a user-distilled skill from an uploaded ``SKILL.md`` file.
+
+    Parses the canonical frontmatter + body, then reuses
+    :func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill
+    is validated, capped, and persisted exactly like one the copilot distils
+    via ``store_skill``.  Malformed files return 400, the per-user cap returns
+    409, and an existing slug is overwritten (upsert).
+    """
+    parsed = parse_skill_markdown(body.content)
+    if parsed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "File is not a valid SKILL.md — expected YAML frontmatter with "
+                "'name' and 'description' followed by a markdown body."
+            ),
+        )
+    try:
+        stored = await store_user_skill(
+            user_id,
+            name=parsed.name,
+            description=parsed.description,
+            body=parsed.body,
+            triggers=list(parsed.triggers),
+            version=parsed.version,
+        )
+    except SkillLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (VirusDetectedError, VirusScanError) as exc:
+        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Skill content rejected by virus scan"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return CopilotSkillInfo(
+        name=stored.name,
+        description=stored.description,
+        triggers=list(stored.triggers),
+    )
 
 
 @v1_router.get(

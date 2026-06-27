@@ -22,6 +22,8 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import type { User } from "@supabase/supabase-js";
+import { validateSession as validateSessionHelper } from "../helpers";
 import { useSupabaseStore } from "../useSupabaseStore";
 
 function makeRouter() {
@@ -117,5 +119,63 @@ describe("useSupabaseStore.setCurrentRequestContext", () => {
     expect(after.routerRef).toBe(next.router ?? baseRouter);
     expect(after.apiRef).toBe(next.api ?? baseApi);
     expect(after.currentPath).toBe(next.path ?? basePath);
+  });
+});
+
+describe("useSupabaseStore.validateSession", () => {
+  afterEach(() => {
+    useSupabaseStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      isUserLoading: false,
+      isValidating: false,
+      lastValidation: 0,
+    });
+    vi.clearAllMocks();
+  });
+
+  it("clears the user and redirects when the server says the session is invalid", async () => {
+    const router = makeRouter();
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Fbuild",
+      shouldUpdateUser: false,
+    });
+    useSupabaseStore.setState({
+      user: { id: "user-1" } as User,
+      hasLoadedUser: true,
+    });
+
+    const stillValid = await useSupabaseStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(false);
+    expect(useSupabaseStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Fbuild");
+  });
+
+  it("keeps the user and does not redirect when the session is valid", async () => {
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      user,
+      isValid: true,
+      shouldUpdateUser: false,
+    });
+    useSupabaseStore.setState({ user, hasLoadedUser: true });
+
+    const stillValid = await useSupabaseStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(true);
+    expect(useSupabaseStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
   });
 });
