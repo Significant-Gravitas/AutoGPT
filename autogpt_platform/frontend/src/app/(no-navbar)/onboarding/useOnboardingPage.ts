@@ -1,8 +1,10 @@
+import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import {
   getV1OnboardingState,
   postV1CompleteOnboardingStep,
   postV1SubmitOnboardingProfile,
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import { resolveResponse } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
@@ -11,7 +13,12 @@ import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { normalizeOnboardingProfile } from "./helpers";
-import { Step, useOnboardingWizardStore } from "./store";
+import {
+  NO_PAYWALL_STEPS,
+  PAYWALL_FIRST_STEPS,
+  Step,
+  useOnboardingWizardStore,
+} from "./store";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
@@ -47,7 +54,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -84,9 +91,31 @@ export function useOnboardingPage() {
   if (paymentEnabledSnapshot.current === null && areFlagsReady) {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
-  const isPaymentEnabled = paymentEnabledSnapshot.current ?? false;
-  const preparingStep: Step = isPaymentEnabled ? 5 : 4;
+
+  // Skip the paywall for users already on a paid tier (admin grants or
+  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
+    query: {
+      enabled: isLoggedIn,
+      select: (res) =>
+        res.status === 200
+          ? (res.data as SubscriptionStatusResponse).tier
+          : null,
+    },
+  });
+  const userHasActivePlan = !!tier && tier !== "NO_TIER";
+
+  const isPaymentEnabled =
+    (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
+  const steps = isPaymentEnabled ? PAYWALL_FIRST_STEPS : NO_PAYWALL_STEPS;
+  const preparingStep: Step = steps.preparing;
   const totalSteps = isPaymentEnabled ? 4 : 3;
+
+  // Wait for auth too — without !isUserLoading, LD can resolve while
+  // isLoggedIn is transiently false, the tier query stays disabled
+  // (isTierLoading=false), and init fires with the wrong preparingStep.
+  const isReady =
+    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
@@ -100,26 +129,28 @@ export function useOnboardingPage() {
   // would defeat the point of persistence by wiping the user's name/role
   // every time they refresh mid-wizard.
   useEffect(() => {
-    if (!areFlagsReady || hasInitialized.current) return;
+    if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    // A successful Stripe checkout return is a trusted intent to advance to
-    // Preparing — without this, the highestStep ceiling (capped at 4 before
-    // redirect) clamps the user back to step 4 and onboarding deadlocks.
+    // The paywall is the first step, so a successful Stripe checkout return is
+    // a trusted intent to advance past it onto Welcome and start the actual
+    // onboarding — without this, the highestStep ceiling (capped at the
+    // subscription step before redirect) would clamp the user back onto the
+    // paywall they just paid through.
     const isSubscriptionSuccess =
       searchParams.get("subscription") === "success";
     const ceiling = isSubscriptionSuccess
-      ? preparingStep
+      ? steps.welcome
       : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-  }, [areFlagsReady, searchParams, goToStep, preparingStep]);
+  }, [isReady, searchParams, goToStep, preparingStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
-    if (!areFlagsReady) return;
+    if (!isReady) return;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     if (currentStep !== urlStep) {
       router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
@@ -127,7 +158,7 @@ export function useOnboardingPage() {
     if (currentStep > readHighestStep()) {
       writeHighestStep(currentStep);
     }
-  }, [areFlagsReady, currentStep, router, searchParams, preparingStep]);
+  }, [isReady, currentStep, router, searchParams, preparingStep]);
 
   // Check if onboarding already completed
   useEffect(() => {
@@ -165,15 +196,11 @@ export function useOnboardingPage() {
       useOnboardingWizardStore.getState(),
     );
 
-    // Profile is submitted before the Stripe Checkout redirect (defence in
-    // depth: persist keeps the store across the round-trip, but submitting
-    // pre-redirect ensures the backend has the data even if the user
-    // closes the tab during checkout). Skip the resubmit on return to
-    // avoid overwriting saved data with empties — belt-and-suspenders:
-    // also skip when `name` is empty so that even if the success query
-    // param gets stripped (manual edit, share link, upstream proxy
-    // normalising URLs), we don't blank the saved profile.
-    if (searchParams.get("subscription") === "success" || !name.trim()) return;
+    // The paywall now runs first (before any profile data is collected), so
+    // the profile is only ever submitted here, once, on reaching Preparing.
+    // Guard against an empty name so a stray Preparing visit can't blank a
+    // previously-saved profile.
+    if (!name.trim()) return;
 
     postV1SubmitOnboardingProfile({
       user_name: name,
@@ -182,7 +209,7 @@ export function useOnboardingPage() {
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep, searchParams]);
+  }, [currentStep, preparingStep]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -203,9 +230,10 @@ export function useOnboardingPage() {
 
   return {
     currentStep,
-    isLoading: isOnboardingStateLoading || !areFlagsReady,
+    isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    steps,
     preparingStep,
     totalSteps,
   };

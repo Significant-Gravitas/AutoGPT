@@ -7,23 +7,15 @@ import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
 import { classifyArtifact } from "./helpers";
 
-// SSR fallback for viewport width before window is available.
-const DEFAULT_VIEWPORT_WIDTH = 1280;
-
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
-  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
-  const minimizeArtifactPanel = useCopilotUIStore(
-    (s) => s.minimizeArtifactPanel,
-  );
-  const maximizeArtifactPanel = useCopilotUIStore(
-    (s) => s.maximizeArtifactPanel,
-  );
-  const restoreArtifactPanel = useCopilotUIStore((s) => s.restoreArtifactPanel);
+  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
+  const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
+  const showFilesTab = useCopilotUIStore((s) => s.showFilesTab);
+  const artifactPanelWidth = useCopilotUIStore((s) => s.artifactPanelWidth);
   const setArtifactPanelWidth = useCopilotUIStore(
     (s) => s.setArtifactPanelWidth,
   );
-  const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
 
   const [isSourceView, setIsSourceView] = useState(false);
 
@@ -42,43 +34,9 @@ export function useArtifactPanel() {
     setIsSourceView(false);
   }, [activeArtifact?.id]);
 
-  // Keyboard: Escape to close
-  useEffect(() => {
-    if (!artifactPanel.isOpen) return;
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (document.querySelector('[role="dialog"], [data-state="open"]'))
-          return;
-        closeArtifactPanel();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [artifactPanel.isOpen, closeArtifactPanel]);
-
-  // Track viewport width reactively for maximize mode.
-  const [viewportWidth, setViewportWidth] = useState(
-    typeof window !== "undefined" ? window.innerWidth : DEFAULT_VIEWPORT_WIDTH,
-  );
-  useEffect(() => {
-    // Throttle to ~10Hz: resize fires continuously during drag, but we only
-    // need the panel width to follow the viewport within a frame or two.
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    function handleResize() {
-      if (timer) return;
-      timer = setTimeout(() => {
-        setViewportWidth(window.innerWidth);
-        timer = null;
-      }, 100);
-    }
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
+  // Escape-to-close is owned by the vaul Drawer.Root in ArtifactPanel — its
+  // onOpenChange already routes to clearArtifactPreview. A manual document
+  // listener here would self-block on the drawer's own [role="dialog"].
 
   const canCopy =
     classification != null &&
@@ -123,27 +81,19 @@ export function useArtifactPanel() {
     });
   }
 
-  // Always clamp against the current viewport so a previously-dragged-wide
-  // panel doesn't spill offscreen after the user resizes their window.
-  const maxWidth = viewportWidth * 0.85;
-  const effectiveWidth = artifactPanel.isMaximized
-    ? maxWidth
-    : Math.min(artifactPanel.width, maxWidth);
-
   return {
-    ...artifactPanel,
-    effectiveWidth,
+    activeArtifact,
+    history: artifactPanel.history,
     isSourceView,
     classification,
     setIsSourceView,
-    closeArtifactPanel,
-    minimizeArtifactPanel,
-    maximizeArtifactPanel,
-    restoreArtifactPanel,
-    setArtifactPanelWidth,
+    clearArtifactPreview,
     goBackArtifact,
+    showFilesTab,
     canCopy,
     handleCopy,
     handleDownload,
+    artifactPanelWidth,
+    setArtifactPanelWidth,
   };
 }

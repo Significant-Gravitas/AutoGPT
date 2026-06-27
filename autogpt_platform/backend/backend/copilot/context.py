@@ -69,7 +69,7 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 
 def set_execution_context(
     user_id: str | None,
-    session: ChatSession,
+    session: ChatSession | None,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
@@ -208,6 +208,101 @@ def resolve_executor_path(path: str, sandbox: "AsyncSandbox | None") -> str:
             return normalized
     raise ValueError(
         f"Path must be within {' or '.join(allowed)}: {os.path.basename(path)}"
+    )
+
+
+# Anchored matches for host-side SDK tool-result paths. Used by
+# wrong-tool detectors (bash_exec, read_workspace_file) to redirect the
+# model to ``read_tool_result`` / ``@@agptfile:`` rather than letting it
+# bounce off ``Permission denied`` repeatedly.
+#
+# Two shapes are matched:
+#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
+#
+# The shorthand branch requires the SDK's actual ID prefix so a user
+# repo that happens to use a ``tool-outputs/`` directory name does NOT
+# trigger a false redirect on legitimate paths like
+# ``my-pipeline/tool-outputs/data.json``.
+_SDK_TOOL_RESULT_RE = re.compile(
+    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
+    r"[\w-]+\.json"
+    r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
+    re.IGNORECASE,
+)
+
+
+def looks_like_sdk_tool_result_path(text: str) -> bool:
+    """Return True if *text* references a host-side SDK tool-result file.
+
+    Anchored regex match — avoids false positives on user paths that
+    happen to contain a ``tool-outputs/`` directory by requiring either
+    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
+    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    """
+    if not text:
+        return False
+    return _SDK_TOOL_RESULT_RE.search(text) is not None
+
+
+# Shell separators used by ``_extract_offending_segment`` to bound the
+# path-like token that triggered the redirect. Quotes are included so a
+# quoted SDK path inside a command (e.g. ``cat "/root/.claude/..."``)
+# extracts the path without the surrounding quotes.
+_SHELL_TOKEN_DELIMS = frozenset(" |;&<>'\"\n\t`()")
+
+
+def _extract_offending_segment(text: str) -> str:
+    """Return the path-shaped token in *text* that tripped a redirect hint.
+
+    Uses the regex match position as the anchor (so false positives like
+    ``my-pipeline/tool-outputs/data.json`` never reach this path) and
+    walks outward to shell-token delimiters to capture the full
+    surrounding path (handles ``--file=/path/...`` and quoted paths).
+    Falls back to the first whitespace-separated token so callers that
+    pass an isolated path (e.g. ``read_workspace_file``) still echo
+    cleanly.
+    """
+    match = _SDK_TOOL_RESULT_RE.search(text)
+    if match:
+        # Walk outward from the matched span to shell-token boundaries
+        # so we capture the full path token, not just the regex hit
+        # (which excludes the leading slash on the absolute branch).
+        end = match.end()
+        while end < len(text) and text[end] not in _SHELL_TOKEN_DELIMS:
+            end += 1
+        start = match.start()
+        # Skip any leading delimiter the regex consumed (e.g. the space
+        # before "/root/.claude/...").
+        while start < end and text[start] in _SHELL_TOKEN_DELIMS:
+            start += 1
+        while start > 0 and text[start - 1] not in _SHELL_TOKEN_DELIMS:
+            start -= 1
+        return text[start:end]
+    stripped = text.strip()
+    return stripped.split()[0] if stripped else ""
+
+
+def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
+    """User-facing redirect message for wrong-tool access to SDK tool-results.
+
+    Names the two right ways to get at the bytes so the model doesn't
+    burn another turn retrying with yet another wrong tool, and quotes
+    the *actual* matched SDK path (not just ``bash``/``cat``) so the
+    model knows which fragment of its command tripped the redirect.
+    """
+    fragment = _extract_offending_segment(path_or_command) if path_or_command else ""
+    return (
+        "This path lives in the Claude Agent SDK's host-side "
+        "tool-results directory, which is not mounted into the bash "
+        "sandbox / workspace storage. Use one of:\n"
+        "  - `read_tool_result(file_path=...)` for direct reads "
+        "(supports offset/limit; auto-unwraps the MCP envelope).\n"
+        "  - `@@agptfile:<absolute-path>[<start>-<end>]` inside another "
+        "tool's argument to inline a slice of the file's content "
+        '(e.g. `bash_exec(command="echo @@agptfile:/root/.claude/'
+        'projects/.../result.json[1-200] | jq .field")`).\n'
+        f"Offending fragment: {fragment!r}"
     )
 
 

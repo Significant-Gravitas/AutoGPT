@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 import fastapi
@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
@@ -148,6 +149,7 @@ class WorkspaceFileItem(BaseModel):
     mime_type: str
     size_bytes: int
     metadata: dict = Field(default_factory=dict)
+    origin: Literal["uploaded", "generated"]
     created_at: str
 
 
@@ -155,6 +157,18 @@ class ListFilesResponse(BaseModel):
     files: list[WorkspaceFileItem]
     offset: int = 0
     has_more: bool = False
+
+
+# Exact metadata stamped on user uploads by ``upload_file``. Used to split
+# "Uploaded" vs "Generated" on the Artifacts page.
+_UPLOADED_METADATA = {"origin": "user-upload"}
+
+
+def _derive_origin(metadata: dict | None) -> Literal["uploaded", "generated"]:
+    """Classify a file as user-uploaded vs agent/block-generated."""
+    if (metadata or {}).get("origin") == "user-upload":
+        return "uploaded"
+    return "generated"
 
 
 @router.get(
@@ -180,6 +194,35 @@ async def download_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return await create_file_download_response(file)
+
+
+@router.get(
+    "/files/{file_id}/preview",
+    summary="Preview file by ID",
+    operation_id="getWorkspaceFilePreview",
+)
+async def preview_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+    w: int = Query(default=400, ge=16, le=1024),
+    bytes_: int = Query(default=4096, ge=256, le=131072, alias="bytes"),
+) -> Response:
+    """
+    Return a cheap preview of a file.
+
+    Images/PDFs/Office docs are returned as a small WebP thumbnail; text-like
+    files return only their first ``bytes`` bytes. Used by the Artifacts page so
+    a grid of files no longer downloads every file in full.
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    return await build_preview_response(file, width=w, max_bytes=bytes_)
 
 
 @router.delete(
@@ -339,6 +382,24 @@ async def list_workspace_files(
     session_id: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    q: str | None = Query(
+        default=None,
+        description=(
+            "Case-insensitive substring search on file name. Applied "
+            "in the database for fresh results without waiting on "
+            "embedding generation."
+        ),
+    ),
+    origin: Literal["uploaded", "generated"] | None = Query(
+        default=None,
+        description=(
+            "Filter by file origin. ``uploaded`` matches files the user "
+            "uploaded (``metadata.origin == 'user-upload'``, set by the "
+            "upload endpoint for both Builder and CoPilot uploads); "
+            "``generated`` matches everything else (agent/block output). "
+            "Ignored when ``session_id`` is set."
+        ),
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -346,6 +407,9 @@ async def list_workspace_files(
     When session_id is provided, only files for that session are returned.
     Otherwise, all files across sessions are listed. Results are paginated
     via `limit`/`offset`; `has_more` indicates whether additional pages exist.
+
+    The Artifacts page uses ``q`` for name search and ``origin`` to filter
+    between Uploaded (user-uploaded) and Generated (agent/block output) files.
     """
     workspace = await get_or_create_workspace(user_id)
 
@@ -356,11 +420,30 @@ async def list_workspace_files(
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
+
+    # Origin → metadata filter. Uploads carry an exact ``{"origin":
+    # "user-upload"}`` metadata; everything else (agent/block output, which
+    # stores ``{}`` or other metadata) is "generated". ``metadata`` is never
+    # SQL NULL (column default ``{}``), so whole-object (in)equality is
+    # null-safe. Only applied when not session-scoped.
+    metadata_equals: dict | None = None
+    metadata_not_equals: dict | None = None
+    if session_id is None and origin is not None:
+        if origin == "uploaded":
+            metadata_equals = _UPLOADED_METADATA
+        else:  # "generated"
+            metadata_not_equals = _UPLOADED_METADATA
+
+    name_contains = (q or "").strip() or None
+
     # Fetch one extra to compute has_more without a separate count query.
     files = await manager.list_files(
         limit=limit + 1,
         offset=offset,
         include_all_sessions=include_all,
+        name_contains=name_contains,
+        metadata_equals=metadata_equals,
+        metadata_not_equals=metadata_not_equals,
     )
     has_more = len(files) > limit
     page = files[:limit]
@@ -374,6 +457,7 @@ async def list_workspace_files(
                 mime_type=f.mime_type,
                 size_bytes=f.size_bytes,
                 metadata=f.metadata or {},
+                origin=_derive_origin(f.metadata),
                 created_at=f.created_at.isoformat(),
             )
             for f in page

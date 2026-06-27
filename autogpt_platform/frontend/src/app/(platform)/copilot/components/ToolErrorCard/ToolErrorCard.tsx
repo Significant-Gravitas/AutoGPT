@@ -24,7 +24,7 @@ export function ToolErrorCard({
   actions,
 }: Props) {
   return (
-    <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+    <div className="space-y-3 rounded-lg bg-red-50 p-4">
       <div className="flex items-start gap-2">
         <WarningDiamondIcon
           size={20}

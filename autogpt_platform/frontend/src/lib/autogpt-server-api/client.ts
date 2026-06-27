@@ -1,11 +1,12 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
+import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
@@ -113,15 +114,7 @@ export default class BackendAPI {
   }
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient
-      ? createBrowserClient(
-          environment.getSupabaseUrl(),
-          environment.getSupabaseAnonKey(),
-          {
-            isSingleton: true,
-          },
-        )
-      : await getServerSupabase();
+    return isClient ? ensureSupabaseClient() : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -145,7 +138,7 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  async getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number | null }> {
     try {
       const response = await this._get("/credits");
       return response ?? { credits: 0 };
@@ -153,7 +146,10 @@ export default class BackendAPI {
       if (!(error instanceof LogoutInterruptError)) {
         Sentry.captureException(error);
       }
-      return { credits: 0 };
+      // Return null (rather than 0) so callers can distinguish a real $0
+      // balance from a failed fetch — used by TopUpPromptProvider to avoid
+      // nudging users to top up on transient API errors.
+      return { credits: null };
     }
   }
 
@@ -687,19 +683,6 @@ export default class BackendAPI {
     return this._request("GET", path, query);
   }
 
-  private async getAuthToken(): Promise<string> {
-    // Only try client-side session (for WebSocket connections)
-    // This will return "no-token-found" with httpOnly cookies, which is expected
-    const supabaseClient = await this.getSupabaseClient();
-    const {
-      data: { session },
-    } = (await supabaseClient?.auth.getSession()) || {
-      data: { session: null },
-    };
-
-    return session?.access_token || "no-token-found";
-  }
-
   private async _uploadFile(path: string, file: File): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);
@@ -910,6 +893,8 @@ export default class BackendAPI {
       headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
 
+    Object.assign(headers, getDatafastAttribution());
+
     const response = await fetch(url, {
       method,
       headers,
@@ -932,6 +917,12 @@ export default class BackendAPI {
       throw error;
     }
 
+    if (
+      response.status === 204 ||
+      response.headers.get("Content-Length") === "0"
+    ) {
+      return null;
+    }
     return await response.json();
   }
 

@@ -58,6 +58,14 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 
+vi.mock("../components/QueueBadge", () => ({
+  QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
+    <span data-testid="queue-badge" data-session-id={sessionID ?? ""}>
+      QueueBadge
+    </span>
+  ),
+}));
+
 vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
 vi.mock("../components/CollapsedToolGroup", () => ({
   CollapsedToolGroup: () => null,
@@ -101,6 +109,7 @@ vi.mock("../helpers", () => ({
     }
     return { markerType: null };
   },
+  shouldShowTaskListNotice: () => false,
   splitReasoningAndResponse: (parts: unknown[]) => ({
     reasoning: [],
     response: parts,
@@ -514,5 +523,199 @@ describe("ChatMessagesContainer — turnStats", () => {
       /2026/.test(el?.textContent ?? ""),
     );
     expect(labels.length).toBe(0);
+  });
+});
+
+// ── per-message queue badge ───────────────────────────────────────────────
+
+describe("ChatMessagesContainer — queue badges on user messages", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a QueueBadge when the row is the latest user in a queued session", () => {
+    const userId = "user-q1";
+    const turnStats = new Map([
+      [
+        userId,
+        {
+          isLatestUserMessage: true,
+          rawMessageId: "uuid-q1",
+        },
+      ],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="queued"
+      />,
+    );
+    const badge = screen.getByTestId("queue-badge");
+    expect(badge.getAttribute("data-session-id")).toBe("sess-123");
+  });
+
+  it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
+    const userId = "user-n1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+
+  it("does NOT render the badge when isLatestUserMessage but session is idle", () => {
+    // Guards against regressing the AND-gate: even if a row is the
+    // latest user message, the badge should stay hidden unless the
+    // OWNING session is in the queued state.
+    const userId = "user-q2";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "live", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="idle"
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── readOnly viewer behaviour ─────────────────────────────────────────────
+//
+// The shared-chat viewer (``/share/chat/[token]``) renders the same
+// ChatMessagesContainer with ``readOnly`` so the public viewer cannot
+// trigger any owner-only interactions (load-more, queue badges,
+// feedback actions, error banners).  These tests pin the gate.
+
+describe("ChatMessagesContainer — readOnly mode", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the load-older-messages sentinel even when more history exists", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages
+        onLoadMore={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /load older messages/i }),
+    ).toBeNull();
+  });
+
+  it("hides queued messages even when queuedMessages is non-empty", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["should not show"]}
+        readOnly
+      />,
+    );
+    expect(screen.queryByText("should not show")).toBeNull();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("hides the trailing error banner even on error status", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("upstream blew up")}
+        status="error"
+        readOnly
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByText(/upstream blew up/i)).toBeNull();
+  });
+
+  it("hides the queue-badge gate even when the session is queued", () => {
+    const userId = "user-q-readonly";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+        sessionChatStatus="queued"
+        readOnly
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
   });
 });

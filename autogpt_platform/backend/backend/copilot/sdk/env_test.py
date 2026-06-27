@@ -26,6 +26,9 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
+        # these tests target SDK behavior, not the aux check.
+        "aux_api_key": "or-aux-key",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -539,3 +542,30 @@ class TestComputerUseBetaEnablement:
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
         # And the beta env var is NOT set on the OpenRouter path.
         assert "ANTHROPIC_BETAS" not in result
+
+
+# ---------------------------------------------------------------------------
+# Defensive guard — local transport must never reach the SDK env builder
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSdkEnvLocalTransportGuard:
+    """``use_local=True`` is incompatible with the SDK CLI's Anthropic
+    wire protocol, so reaching ``build_sdk_env`` under that transport
+    indicates an upstream routing bug (the request layer should have
+    downgraded to baseline). The builder fails loudly rather than
+    constructing a doomed subprocess env."""
+
+    def test_local_transport_raises(self):
+        cfg = _make_config(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://host.docker.internal:11434/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(
+                RuntimeError, match=r"transport 'local'.*doesn't support the SDK"
+            ):
+                build_sdk_env()

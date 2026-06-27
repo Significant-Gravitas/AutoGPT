@@ -1,6 +1,7 @@
 import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { create } from "zustand";
+import { useConnectedProvidersStore } from "./connectedProvidersStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   createCopilotTransport,
@@ -131,6 +132,7 @@ export function shouldReloadCopilotChatRuntime(sessionId: string) {
 export function resetCopilotChatRuntime(sessionId: string) {
   copilotChatRuntimes.delete(sessionId);
   useCopilotStreamStore.getState().clearSession(sessionId);
+  useConnectedProvidersStore.getState().clearSession(sessionId);
   useCopilotChatRuntimeStore.getState().clearNeedsReload(sessionId);
 }
 

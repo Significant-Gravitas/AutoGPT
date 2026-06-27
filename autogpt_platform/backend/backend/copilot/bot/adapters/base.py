@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
+from pydantic import BaseModel
+
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
 
@@ -29,6 +31,62 @@ class MessageHistoryEntry:
 
 
 @dataclass
+class ReferencedConversation:
+    """A different thread/channel the incoming message linked or @-referenced,
+    fetched by the bot via its own gateway so the model can read it directly
+    instead of trying to web-fetch a JS-rendered Discord page.
+
+    ``channel_id`` ties this content back to the raw link/mention in the user's
+    message so the renderer can rewrite that link into a readable ``#name``.
+    ``messages`` is in chronological order and already bounded to a char budget.
+    """
+
+    title: str
+    channel_id: str
+    messages: tuple[MessageHistoryEntry, ...]
+
+
+class FileAttachment(BaseModel):
+    """A workspace artifact ready to attach to a platform message.
+
+    ``content`` carries the file bytes — the handler only ever produces
+    these after the backend has already checked them against the adapter's
+    ``max_attachment_bytes``, so adapters can attach directly without
+    re-validating size.
+    """
+
+    filename: str
+    mime_type: str
+    content: bytes
+
+
+class ChannelInfo(BaseModel):
+    """A channel the bot can post to, scoped to a server it's connected to.
+
+    Returned by ``list_text_channels`` so the proactive-output path (and the
+    copilot tool above it) can resolve a human channel reference like
+    ``#announcements`` to a concrete ``id`` and present a picker.
+    """
+
+    id: str
+    name: str
+    server_id: str
+    server_name: Optional[str] = None
+
+
+class PostedRef(BaseModel):
+    """Pointer to something the bot just created on the platform.
+
+    ``url`` is a best-effort permalink (Discord ``jump_url``) so callers can
+    surface a clickable link in their confirmation; platforms without
+    permalinks leave it ``None``.
+    """
+
+    id: str
+    url: Optional[str] = None
+
+
+@dataclass
 class MessageContext:
     """Everything the core handler needs to know about an incoming message."""
 
@@ -42,6 +100,14 @@ class MessageContext:
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
+    # Users the bot is allowed to @-mention back in this turn — populated
+    # from the inbound platform message's mentions (excluding the bot itself).
+    # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
+    # get pinged even if the LLM produces `@theirname` in its output.
+    mentionable_users: tuple[tuple[str, str], ...] = ()
+    # Other threads/channels the message linked or @-referenced, fetched by the
+    # bot up-front so the model has their content without web-fetching Discord.
+    referenced_conversations: tuple[ReferencedConversation, ...] = ()
 
     @property
     def is_dm(self) -> bool:
@@ -65,7 +131,22 @@ class PlatformAdapter(ABC):
     async def stop(self) -> None: ...
 
     @abstractmethod
-    async def send_message(self, channel_id: str, text: str) -> None: ...
+    async def send_message(
+        self,
+        channel_id: str,
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> None:
+        """Send `text` to `channel_id`.
+
+        `mentionable_users` is the allowlist of `(display_name, user_id)` pairs
+        the bot may ping in this message. Adapters should resolve `@DisplayName`
+        in the text to a real platform mention only for users on this list — a
+        defence against the LLM hallucinating mentions or pinging unrelated
+        users it learned about elsewhere. Default empty = render mentions as
+        plain text.
+        """
+        ...
 
     @abstractmethod
     async def send_link(
@@ -80,7 +161,11 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     async def send_reply(
-        self, channel_id: str, text: str, reply_to_message_id: str
+        self,
+        channel_id: str,
+        text: str,
+        reply_to_message_id: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None: ...
 
     @abstractmethod
@@ -103,6 +188,11 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    @abstractmethod
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        """Rename a platform thread/conversation when supported."""
+        ...
+
     @property
     @abstractmethod
     def max_message_length(self) -> int:
@@ -117,5 +207,70 @@ class PlatformAdapter(ABC):
         Should be slightly under max_message_length to leave headroom for
         any trailing content that the splitter might pull into the current
         chunk.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def max_attachment_bytes(self) -> int:
+        """Hard platform cap on a single uploaded file's size in bytes."""
+        ...
+
+    @abstractmethod
+    async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
+        """Send a single file as an attachment, with optional accompanying text.
+
+        Callers must ensure ``len(file.content) <= max_attachment_bytes`` —
+        the handler enforces that upstream via the workspace fetch path.
+        """
+        ...
+
+    # -- Proactive output (backend → platform) ----------------------------
+    # These power scheduled / autopilot-initiated posts, where the bot speaks
+    # without a triggering user message. Authorization (which servers a user
+    # may post to) is enforced one layer up; adapters here only translate an
+    # already-authorized request into platform API calls.
+
+    @abstractmethod
+    async def list_text_channels(
+        self, server_ids: tuple[str, ...]
+    ) -> list[ChannelInfo]:
+        """List the text channels the bot can post to across ``server_ids``.
+
+        Only channels the bot can actually send in should be returned, so the
+        caller's picker never offers a channel the post would fail on.
+        """
+        ...
+
+    @abstractmethod
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+        """Return the server (guild) ID a channel belongs to, or ``None``.
+
+        Used to authorize a post target given a raw channel ID without
+        enumerating every channel first.
+        """
+        ...
+
+    @abstractmethod
+    async def post_channel_message(
+        self, channel_id: str, text: str
+    ) -> Optional[PostedRef]:
+        """Post a standalone message to ``channel_id``.
+
+        Distinct from ``send_message`` (the streaming-reply path): this
+        returns a ``PostedRef`` so proactive callers can report what was
+        created. Returns ``None`` if the channel can't be posted to.
+        """
+        ...
+
+    @abstractmethod
+    async def create_channel_thread(
+        self, channel_id: str, name: str, text: str
+    ) -> Optional[PostedRef]:
+        """Create a standalone thread in ``channel_id`` and post ``text`` in it.
+
+        "Standalone" = not anchored to a pre-existing message (unlike
+        ``create_thread``). Returns the thread's ``PostedRef``, or ``None`` if
+        the platform/channel doesn't support it.
         """
         ...

@@ -16,6 +16,9 @@ export enum Key {
   COPILOT_NOTIFICATION_BANNER_DISMISSED = "copilot-notification-banner-dismissed",
   COPILOT_NOTIFICATION_DIALOG_DISMISSED = "copilot-notification-dialog-dismissed",
   COPILOT_ARTIFACT_PANEL_WIDTH = "copilot-artifact-panel-width",
+  COPILOT_CONTEXT_PANEL_WIDTH = "copilot-context-panel-width",
+  COPILOT_CONTEXT_PANEL_OPEN = "copilot-context-panel-open",
+  COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
@@ -28,6 +31,9 @@ export enum Key {
   // §9.1. JSON array of remembered recording-kind keys. Revocable in
   // settings (clearing this key re-enables the prompt).
   COPILOT_RECORDING_CLOUD_CONSENT_KINDS = "copilot-recording-cloud-consent-kinds",
+  TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
+  LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
+  BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
 }
 
 function get(key: Key) {

@@ -111,10 +111,7 @@ export function DialogWrap({
               {title}
             </RXDialog.Title>
           ) : (
-            <span className="sr-only">
-              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
-              <RXDialog.Title>{title}</RXDialog.Title>
-            </span>
+            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
           )}
 
           {isForceOpen ? null : (
@@ -139,7 +136,7 @@ export function DialogWrap({
             )}
             style={{
               scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
             }}
           >
             {children}

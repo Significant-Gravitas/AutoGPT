@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.builder_context import (
+    BUILDER_BLOCKED_TOOLS,
     BUILDER_CONTEXT_TAG,
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
@@ -92,6 +93,38 @@ async def test_system_prompt_suffix_contains_only_static_content():
     assert "graph-1" not in suffix
     assert "id=" not in suffix
     assert "name=" not in suffix
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_steers_to_edit_agent():
+    """The suffix must tell the model to use edit_agent on the bound
+    graph and forbid calling the blocked tools — production traces
+    showed the model hallucinating a Claude-Code permission prompt when
+    it reached for create_agent / get_agent_building_guide instead."""
+    session = _session("graph-1")
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert "<tool_usage>" in suffix
+    assert "edit_agent" in suffix
+    # Every blocked tool must be named in the prose (drift guard: if
+    # BUILDER_BLOCKED_TOOLS grows, the prose must grow with it).
+    for blocked in BUILDER_BLOCKED_TOOLS:
+        assert blocked in suffix
+    # "intentionally unavailable" is the prohibitive framing — a bare
+    # "create_agent in suffix" check would pass even if the prose said
+    # "create_agent is available". This anchors the assertion to the
+    # exclusion semantics.
+    assert "intentionally unavailable" in suffix
+    # The "no permission prompt UI" framing is what stops the model from
+    # asking the user to "click Allow" when a tool is unavailable.
+    assert "no permission prompt UI" in suffix
+    # Concrete sequence (find_block → edit_agent) gives the model a
+    # template to follow instead of reaching for the blocked tools.
+    assert "find_block" in suffix
 
 
 @pytest.mark.asyncio
