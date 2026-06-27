@@ -5,16 +5,11 @@ This script creates test data for E2E tests by using API functions instead of di
 This approach ensures compatibility with future model changes by using the API layer.
 
 Image/Video URL Domains Used:
-- Images: picsum.photos (for all image URLs - avatars, store listing images, etc.)
+- Images: none. Avatars and store listing images are seeded empty so the
+  frontend renders its built-in solid-color/boring-avatars fallback. This
+  avoids any external image dependency (e.g. picsum.photos) that intermittently
+  504'd through Next's /_next/image optimizer and stalled E2E navigations.
 - Videos: youtube.com (for store listing video URLs)
-
-Add these domains to your Next.js config:
-```javascript
-// next.config.js
-images: {
-  domains: ['picsum.photos'],
-}
-```
 """
 
 import asyncio
@@ -91,14 +86,6 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.a@example.com",
     "e2e.qa.parallel.b@example.com",
 ]
-
-
-def get_image():
-    """Generate a consistent image URL using picsum.photos service."""
-    width = random.choice([200, 300, 400, 500, 600, 800])
-    height = random.choice([200, 300, 400, 500, 600, 800])
-    seed = random.randint(1, 1000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 def get_video_url():
@@ -600,7 +587,10 @@ class TestDataCreator:
                         + str(random.randint(100, 999)),  # Ensure uniqueness
                         "description": faker.text(max_nb_chars=200),
                         "links": [faker.url() for _ in range(random.randint(1, 3))],
-                        "avatarUrl": get_image(),
+                        # Empty (not None): the Creator view types avatar_url as
+                        # non-nullable, so null breaks /api/store/creators. Empty
+                        # string renders the frontend's fallback avatar.
+                        "avatarUrl": "",
                         "isFeatured": is_featured,
                     },
                 )
@@ -638,7 +628,8 @@ class TestDataCreator:
                             "username": E2E_MARKETPLACE_CREATOR_USERNAME,
                             "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
                             "links": ["https://example.com/e2e-marketplace"],
-                            "avatarUrl": get_image(),
+                            # Empty (not None) — Creator view requires non-null avatar_url.
+                            "avatarUrl": "",
                             "isFeatured": True,
                         },
                     )
@@ -744,11 +735,7 @@ class TestDataCreator:
                     "name": E2E_MARKETPLACE_AGENT_NAME,
                     "sub_heading": "A deterministic calculator agent for PR E2E coverage",
                     "video_url": "https://www.youtube.com/watch?v=test123",
-                    "image_urls": [
-                        "https://picsum.photos/seed/e2e-marketplace-1/200/300",
-                        "https://picsum.photos/seed/e2e-marketplace-2/200/301",
-                        "https://picsum.photos/seed/e2e-marketplace-3/200/302",
-                    ],
+                    "image_urls": [],
                     "description": (
                         "A deterministic marketplace calculator agent that adds "
                         f"{E2E_MARKETPLACE_AGENT_INPUT_VALUE} and 34 to produce "
@@ -875,7 +862,7 @@ class TestDataCreator:
                         name=graph.get("name", faker.sentence(nb_words=3)),
                         sub_heading=faker.sentence(),
                         video_url=get_video_url() if random.random() < 0.3 else None,
-                        image_urls=[get_image() for _ in range(3)],
+                        image_urls=[],
                         description=faker.text(),
                         categories=[get_category()],
                         changes_summary="Initial E2E test submission",

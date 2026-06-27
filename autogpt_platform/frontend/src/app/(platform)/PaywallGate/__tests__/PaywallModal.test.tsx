@@ -22,6 +22,14 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToastOnFail: () => mockToast,
 }));
 
+// test-utils wraps every render in OnboardingProvider, which asynchronously
+// redirects incomplete users via router.replace("/onboarding"). That timer can
+// fire mid-test and pollute the router.replace assertions below, so stub the
+// provider to a passthrough (same approach as the login/signup tests).
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Strip Radix portals — happy-dom doesn't render them. The mock keeps the
 // Dialog tree visible while ignoring controlled/forceOpen props.
 function MockDialog({ children }: { children: React.ReactNode }) {

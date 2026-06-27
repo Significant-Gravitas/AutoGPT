@@ -69,6 +69,11 @@ export function Navbar() {
 
   return (
     <>
+      {/* Drives banner-aware offsets in fixed-position siblings (e.g. ChatSidebar)
+          that can't read the navbar's natural height through normal layout. */}
+      <style>{`:root { --preview-banner-height: ${
+        shouldShowPreviewBanner ? "2.25rem" : "0px"
+      }; }`}</style>
       <div className="sticky top-0 z-40 w-full">
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />

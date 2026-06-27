@@ -41,6 +41,7 @@ class TestManagerWiring:
             "create_user_link_token",
             "get_link_token_status",
             "start_chat_turn",
+            "list_user_server_ids",
         }
         for name in expected:
             assert hasattr(

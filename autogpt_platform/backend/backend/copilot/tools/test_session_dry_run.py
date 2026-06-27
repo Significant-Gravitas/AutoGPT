@@ -180,6 +180,7 @@ class TestRunAgentToolSessionDryRun:
         mock_graph.description = "A test agent"
         mock_graph.input_schema = {"properties": {}, "required": []}
         mock_graph.trigger_setup_info = None
+        mock_graph.has_external_trigger = False
 
         mock_library_agent = MagicMock()
         mock_library_agent.id = "lib-1"
