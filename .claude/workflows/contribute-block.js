@@ -486,6 +486,10 @@ for (const item of items) {
     // Otherwise {clean:false, findings:[]} or {passed:false, failures:[]} would
     // leave partialReasons empty and ship a non-draft PR labeled success.
     const partialReasons = []
+    // A null impl means the executor agent died — review/verify/PR still run
+    // (degrade-to-draft), but the failed implement step MUST register so the PR
+    // ships as a draft with the reason, never as a clean success.
+    if (!impl) partialReasons.push('implementation step returned no result (executor agent failed)')
     if (!planClean) partialReasons.push(`plan review not clean after ${MAX_PLAN_REVIEW_ROUNDS} rounds`)
     if (!implReviewClean) partialReasons.push(`impl review not clean after ${MAX_IMPL_REVIEW_ROUNDS} rounds`)
     if (!cross.clean) {
