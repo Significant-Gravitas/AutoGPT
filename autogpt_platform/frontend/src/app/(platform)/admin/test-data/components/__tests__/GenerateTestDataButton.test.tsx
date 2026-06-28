@@ -120,7 +120,7 @@ describe("GenerateTestDataButton", () => {
         status: 200,
         data: {
           success: false,
-          message: "Test data generation is disabled in production environments.",
+          message: "Generation rejected for this environment",
         },
       });
 
@@ -134,7 +134,7 @@ describe("GenerateTestDataButton", () => {
       ),
     );
     expect(
-      screen.getByText(/disabled in production environments/i),
+      screen.getByText("Generation rejected for this environment"),
     ).toBeDefined();
   });
 
