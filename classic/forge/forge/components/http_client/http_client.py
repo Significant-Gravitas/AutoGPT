@@ -61,16 +61,17 @@ class HTTPClientComponent(
 
     def _is_domain_allowed(self, url: str) -> bool:
         """Check if the URL's host is in the allowed list."""
+        # Backslashes are normalized to forward slashes by requests/browsers,
+        # which lets userinfo tricks like "http://evil\@allowed.com" reach an
+        # unintended host. Reject them up front, before the empty-allowlist
+        # shortcut, so a malformed URL can't slip through the default config.
+        if "\\" in url:
+            return False
+
         if not self.config.allowed_domains:
             return True
 
         from urllib.parse import urlparse
-
-        # Backslashes are normalized to forward slashes by requests/browsers,
-        # which lets userinfo tricks like "http://evil\@allowed.com" bypass the
-        # allowlist while the request goes elsewhere.
-        if "\\" in url:
-            return False
 
         parsed = urlparse(url)
         # .hostname strips userinfo and port and lowercases the host.

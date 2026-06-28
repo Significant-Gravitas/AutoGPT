@@ -54,6 +54,15 @@ def test_make_request_blocks_internal_address_without_allowlist():
         component._make_request("GET", "http://127.0.0.1/")
 
 
+def test_backslash_url_rejected_without_allowlist():
+    # Backslash authority trick must be rejected even with the default empty
+    # allowlist (requests normalizes "\" and would reach an unintended host).
+    component = HTTPClientComponent(HTTPClientConfiguration())
+    assert not component._is_domain_allowed("http://127.0.0.1:6666\\@example.com/")
+    with pytest.raises(HTTPError):
+        component._make_request("GET", "http://127.0.0.1:6666\\@example.com/")
+
+
 def test_make_request_blocks_redirect_to_internal():
     # A public URL that redirects to an internal host must be rejected: redirects
     # are followed manually and each hop is re-validated.
