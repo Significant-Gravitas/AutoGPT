@@ -8,7 +8,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 // Generated types and hooks from OpenAPI spec
 // Run `npm run generate:api` to regenerate after backend changes
-import { usePostAdminGenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
+import { usePostV2GenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { GenerateTestDataResponse } from "@/app/api/__generated__/models/generateTestDataResponse";
 import type { TestDataScriptType } from "@/app/api/__generated__/models/testDataScriptType";
 
@@ -30,7 +30,7 @@ export function GenerateTestDataButton() {
   const [scriptType, setScriptType] = useState<TestDataScriptType>("e2e");
   const [result, setResult] = useState<GenerateTestDataResponse | null>(null);
 
-  const generateMutation = usePostAdminGenerateTestData({
+  const generateMutation = usePostV2GenerateTestData({
     mutation: {
       onSuccess: (response) => {
         const data = response.data;

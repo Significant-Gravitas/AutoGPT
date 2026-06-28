@@ -390,7 +390,7 @@ app.include_router(
 app.include_router(
     backend.api.features.admin.test_data_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/admin",
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,
