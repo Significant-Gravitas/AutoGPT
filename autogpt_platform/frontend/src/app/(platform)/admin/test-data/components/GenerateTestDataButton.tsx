@@ -33,6 +33,7 @@ export function GenerateTestDataButton() {
   const generateMutation = usePostV2GenerateTestData({
     mutation: {
       onSuccess: (response) => {
+        if (response.status !== 200) return;
         const data = response.data;
         setResult(data);
         if (data.success) {
