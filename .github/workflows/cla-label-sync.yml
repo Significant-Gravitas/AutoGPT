@@ -52,7 +52,7 @@ jobs:
     
     steps:
       - name: Ensure CLA labels exist
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const labels = [
@@ -84,7 +84,7 @@ jobs:
             }
 
       - name: Sync CLA labels and handle stale PRs
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const CLA_CHECK_NAME = process.env.CLA_CHECK_NAME;
