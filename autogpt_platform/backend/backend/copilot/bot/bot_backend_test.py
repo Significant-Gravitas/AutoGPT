@@ -1,6 +1,7 @@
 """Tests for the bot's thin facade over PlatformLinkingManagerClient."""
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,7 +25,12 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .bot_backend import BotBackend
+from .bot_backend import (
+    BotBackend,
+    BotStreamError,
+    _extract_setup_requirements,
+    _is_corrupted_setup_requirements,
+)
 
 
 @pytest.fixture
@@ -54,6 +60,22 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+
+
+class TestListLinkedServerIds:
+    @pytest.mark.asyncio
+    async def test_forwards_uppercased_platform_and_returns_ids(self, api: BotBackend):
+        api._client.list_user_server_ids = AsyncMock(return_value=["g1", "g2"])
+        result = await api.list_linked_server_ids("discord", "user-1")
+        assert result == ["g1", "g2"]
+        api._client.list_user_server_ids.assert_awaited_once_with(
+            platform=Platform.DISCORD, user_id="user-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_when_no_links(self, api: BotBackend):
+        api._client.list_user_server_ids = AsyncMock(return_value=[])
+        assert await api.list_linked_server_ids("discord", "user-1") == []
 
 
 class TestRefreshServerName:
@@ -132,8 +154,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
+        # Same block id — a continuous text stream, no separator inserted.
         await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="2", delta="world"))
+        await queue.put(StreamTextDelta(id="1", delta="world"))
         await queue.put(StreamFinish())
 
         captured_session_ids: list[str] = []
@@ -164,6 +187,40 @@ class TestStreamChat:
         assert captured_session_ids == ["sess"]
 
     @pytest.mark.asyncio
+    async def test_inserts_paragraph_break_between_text_blocks(self, api: BotBackend):
+        # AutoPilot emits text in separate blocks around tool calls / reasoning,
+        # each with its own id. Concatenating them without a separator runs the
+        # blocks together ("first thought.second thought"); a paragraph break
+        # keeps them readable, matching the frontend's distinct-part rendering.
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(StreamTextDelta(id="1", delta="first thought."))
+        await queue.put(StreamTextDelta(id="2", delta="second thought."))
+        await queue.put(StreamFinish())
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            chunks: list[str] = []
+            async for chunk in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+            ):
+                chunks.append(chunk)
+
+        assert "".join(chunks) == "first thought.\n\nsecond thought."
+
+    @pytest.mark.asyncio
     async def test_surfaces_stream_error(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
@@ -180,14 +237,15 @@ class TestStreamChat:
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
+            pytest.raises(BotStreamError) as excinfo,
         ):
-            chunks: list[str] = []
-            async for chunk in api.stream_chat(
+            async for _ in api.stream_chat(
                 platform="discord", platform_user_id="u1", message="hi"
             ):
-                chunks.append(chunk)
+                pass
 
-        assert any("executor crashed" in c for c in chunks)
+        assert excinfo.value.error_kind == "backend_stream_error"
+        assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_notifies_setup_requirements_tool_output(self, api: BotBackend):
@@ -239,6 +297,54 @@ class TestStreamChat:
         ]
 
     @pytest.mark.asyncio
+    async def test_notifies_setup_dropped_on_corrupted_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            StreamToolOutputAvailable(
+                toolCallId="tool-1",
+                toolName="connect_integration",
+                output='{"type":"setup_requirements","message":"Connect Goo',
+            )
+        )
+        await queue.put(StreamFinish())
+
+        setup_calls: list[tuple[str, dict, str | None]] = []
+        dropped_calls: list[tuple[str, str | None]] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append((session_id, output, tool_name))
+
+        async def on_dropped(session_id: str, tool_name: str | None):
+            dropped_calls.append((session_id, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_setup_required=on_setup,
+                on_setup_dropped=on_dropped,
+            ):
+                pass
+
+        # The corrupted payload yields no card, so on_setup_required must not
+        # fire — but the user is told the link was dropped.
+        assert setup_calls == []
+        assert dropped_calls == [("sess", "connect_integration")]
+
+    @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):
         api._client.start_chat_turn = AsyncMock(
             side_effect=DuplicateChatMessageError("in flight")
@@ -266,7 +372,7 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_yields_error(self, api: BotBackend):
+    async def test_subscribe_returns_none_raises(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
@@ -279,11 +385,56 @@ class TestStreamChat:
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
+            pytest.raises(BotStreamError) as excinfo,
         ):
-            chunks: list[str] = []
-            async for chunk in api.stream_chat(
+            async for _ in api.stream_chat(
                 platform="discord", platform_user_id="u1", message="hi"
             ):
-                chunks.append(chunk)
+                pass
 
-        assert any("failed to subscribe" in c.lower() for c in chunks)
+        assert excinfo.value.error_kind == "subscribe_failed"
+
+
+class TestExtractSetupRequirements:
+    def test_extracts_from_json_string(self):
+        payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
+        assert _extract_setup_requirements(payload) == {
+            "type": "setup_requirements",
+            "message": "Connect GitHub",
+        }
+
+    def test_truncated_setup_requirements_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """A corrupted setup_requirements payload must not be dropped silently —
+        the user never receives their sign-in link, so we need telemetry."""
+        truncated = '{"type":"setup_requirements","message":"Connect Goo'
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements(truncated) is None
+        assert any("setup_requirements" in record.message for record in caplog.records)
+
+    def test_non_setup_unparseable_output_stays_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements("plain text tool result") is None
+        assert not caplog.records
+
+
+class TestIsCorruptedSetupRequirements:
+    def test_truncated_setup_requirements_is_corrupted(self):
+        assert _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect Goo'
+        )
+
+    def test_valid_setup_requirements_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect GitHub"}'
+        )
+
+    def test_unparseable_non_setup_output_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements('{"type":"other","x')
+
+    def test_plain_text_and_dict_outputs_are_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements("plain text tool result")
+        assert not _is_corrupted_setup_requirements({"type": "setup_requirements"})

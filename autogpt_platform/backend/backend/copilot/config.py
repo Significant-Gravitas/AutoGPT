@@ -13,9 +13,10 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.llm.providers import ProviderLiteral
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,25 @@ class TransportProfile(BaseModel):
     # ``provider="open_router"`` row from a local Ollama turn would
     # falsely show up as OR spend on the admin dashboard.
     cost_log_provider: str
+    # Provider literal that any out-of-chat caller (dream pass, graphiti
+    # memory ingest, future scheduled batch jobs) should pass to
+    # ``backend.util.llm.providers.call_provider``. Maps the transport's
+    # OpenAI-compat / direct-Anthropic / OpenRouter / Ollama endpoint
+    # back into the typed ``ProviderLiteral`` ``call_provider`` accepts.
+    # Read by ``backend.copilot.transport_routing`` to build the actual
+    # provider kwargs; kept on the profile so adding a new transport row
+    # automatically tells dream + graphiti where to dispatch.
+    dispatch_provider: ProviderLiteral
+    # Whether OpenAI's ``service_tier="flex"`` flows end-to-end on this
+    # transport. True only for ``openrouter`` today: OpenRouter forwards
+    # ``extra_body.service_tier`` to OpenAI-backed upstreams and gets the
+    # ~50% discount; OpenAI native would also support it but we don't have
+    # a "direct OpenAI" transport. False on subscription / direct_anthropic
+    # (Anthropic has no flex tier — their cost-saver is batch) and on
+    # ``local`` (Ollama silently ignores ``service_tier`` and there's no
+    # discount to chase). Read by graphiti's flex-client builder to fall
+    # back to the sync client when the active transport can't honour it.
+    supports_flex_tier: bool
 
 
 _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
@@ -112,6 +132,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=False,
         cost_log_provider="anthropic",
+        dispatch_provider="anthropic",
+        supports_flex_tier=False,
     ),
     "openrouter": TransportProfile(
         name="openrouter",
@@ -120,6 +142,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
         cost_log_provider="open_router",
+        dispatch_provider="open_router",
+        supports_flex_tier=True,
     ),
     "direct_anthropic": TransportProfile(
         name="direct_anthropic",
@@ -128,6 +152,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
         cost_log_provider="anthropic",
+        dispatch_provider="anthropic",
+        supports_flex_tier=False,
     ),
     "local": TransportProfile(
         name="local",
@@ -136,6 +162,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=True,
         cost_log_provider="ollama",
+        dispatch_provider="ollama",
+        supports_flex_tier=False,
     ),
 }
 
@@ -549,25 +577,6 @@ class ChatConfig(BaseSettings):
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
     )
-    local_num_ctx: int = Field(
-        default=32768,
-        ge=2048,
-        description="Context window (in tokens) requested from the local "
-        "backend for every chat call when ``use_local`` is True. Ollama's "
-        "OpenAI shim ignores the model's advertised window and defaults to "
-        "``num_ctx=4096`` — small enough to silently truncate AutoPilot's "
-        "~8 k-token system prompt and produce a corrupted first turn "
-        "(ollama/ollama#2714). 32 768 leaves room for the system prompt + a "
-        "few turns of conversation while staying well inside what an 8 GB "
-        "Q4 model can hold on consumer hardware. Adjust for very small "
-        "(set to model's actual window) or very large (only with GPU) "
-        "deployments. NOTE: Ollama's ``/v1/chat/completions`` endpoint does "
-        "NOT honor ``options.num_ctx`` in the request body — set the server "
-        "via ``OLLAMA_CONTEXT_LENGTH=32768`` env var on the systemd unit. "
-        "This config field is forwarded for OpenAI-compatible backends that "
-        "DO honor it in the request (vLLM, LM Studio, LiteLLM proxy, …). "
-        "Ignored under cloud transports.",
-    )
     local_request_timeout_s: float = Field(
         default=1800.0,
         ge=60.0,
@@ -705,6 +714,34 @@ class ChatConfig(BaseSettings):
         return self.transport.supports_sdk
 
     @property
+    def baseline_provider(self) -> Literal["local", "openrouter", "anthropic"]:
+        """Endpoint + wire dialect the baseline OpenAI-compat client speaks.
+
+        The single source of truth that ``main_client_credentials`` (which
+        picks the endpoint) and the baseline request-shaping / cost path
+        (wire format + cost attribution) both read, so the dialect can never
+        disagree with the endpoint the client actually dialed.  Resolved
+        ``local → openrouter_active → anthropic`` — the same ladder as
+        ``main_client_credentials``.
+
+        Deliberately *not* ``effective_transport`` / ``transport.name``: in
+        subscription mode the CLI authenticates via OAuth, which can't drive
+        an OpenAI-compat client, so the baseline falls back to
+        OR-if-available-else-direct.  Keying the dialect on
+        ``transport.name == "openrouter"`` (which is ``"subscription"`` here)
+        while ``main_client_credentials`` still routes to OpenRouter (gated on
+        ``openrouter_active``) would send direct-Anthropic shape to an
+        OpenRouter endpoint.  ``local`` is checked first because its default
+        ``api_key`` of ``ollama`` also satisfies the shape-only
+        ``openrouter_active``.
+        """
+        if self.transport.name == "local":
+            return "local"
+        if self.openrouter_active:
+            return "openrouter"
+        return "anthropic"
+
+    @property
     def main_client_credentials(self) -> tuple[str | None, str | None]:
         """``(api_key, base_url)`` for the main OpenAI-compatible client.
 
@@ -724,9 +761,7 @@ class ChatConfig(BaseSettings):
           so the baseline OpenAI-compat client talks straight to
           api.anthropic.com.
         """
-        if self.transport.name == "local":
-            return self.api_key, self.base_url
-        if self.openrouter_active:
+        if self.baseline_provider in ("local", "openrouter"):
             return self.api_key, self.base_url
         return self.direct_anthropic_api_key, ANTHROPIC_OPENAI_COMPAT_BASE_URL
 
@@ -1317,17 +1352,16 @@ class ChatConfig(BaseSettings):
         "onboarding": "prompts/onboarding_system.md",
     }
 
-    class Config:
-        """Pydantic config."""
-
-        env_prefix = "CHAT_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = SettingsConfigDict(
+        env_prefix="CHAT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra environment variables
         # Accept both the Python attribute name and the validation_alias when
         # constructing a ``ChatConfig`` directly (e.g. in tests passing
         # ``thinking_standard_model=...``).  Without this, pydantic only
         # accepts the alias names (``CHAT_THINKING_STANDARD_MODEL`` env) and
         # rejects field-name kwargs — breaking ``ChatConfig(field=...)`` in
         # every test that constructs a config.
-        populate_by_name = True
+        populate_by_name=True,
+    )

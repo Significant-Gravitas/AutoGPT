@@ -20,6 +20,18 @@ import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 
+const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
+  "/marketplace": IconType.Marketplace,
+  "/build": IconType.Builder,
+  "/copilot": IconType.Chat,
+  "/library": IconType.Library,
+  "/monitor": IconType.Library,
+};
+
+function pickMobileNavIcon(href: string): IconType {
+  return MOBILE_NAV_ICONS[href] ?? IconType.LayoutDashboard;
+}
+
 export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const breakpoint = useBreakpoint();
@@ -43,6 +55,8 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
+  // Files is reached via the icon in the CoPilot sidebar (gated by
+  // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
@@ -55,6 +69,11 @@ export function Navbar() {
 
   return (
     <>
+      {/* Drives banner-aware offsets in fixed-position siblings (e.g. ChatSidebar)
+          that can't read the navbar's natural height through normal layout. */}
+      <style>{`:root { --preview-banner-height: ${
+        shouldShowPreviewBanner ? "2.25rem" : "0px"
+      }; }`}</style>
       <div className="sticky top-0 z-40 w-full">
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />
@@ -123,30 +142,11 @@ export function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: actualLoggedInLinks
-                    .map((link) => {
-                      return {
-                        icon:
-                          link.href === "/marketplace"
-                            ? IconType.Marketplace
-                            : link.href === "/build"
-                              ? IconType.Builder
-                              : link.href === "/copilot"
-                                ? IconType.Chat
-                                : link.href === "/library"
-                                  ? IconType.Library
-                                  : link.href === "/monitor"
-                                    ? IconType.Library
-                                    : IconType.LayoutDashboard,
-                        text: link.name,
-                        href: link.href,
-                      };
-                    })
-                    .filter((item) => item !== null) as Array<{
-                    icon: IconType;
-                    text: string;
-                    href: string;
-                  }>,
+                  items: actualLoggedInLinks.map((link) => ({
+                    icon: pickMobileNavIcon(link.href),
+                    text: link.name,
+                    href: link.href,
+                  })),
                 },
                 ...dynamicMenuItems,
               ]}

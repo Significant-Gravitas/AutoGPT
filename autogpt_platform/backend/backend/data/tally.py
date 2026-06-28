@@ -405,13 +405,6 @@ async def extract_business_understanding(
         else _LLM_TIMEOUT
     )
 
-    # Mirror the other three call sites (``baseline/service.py``,
-    # ``simulator.py``, ``activity_status_generator.py``) and forward
-    # ``options.num_ctx`` under local transport so Ollama's OpenAI shim
-    # doesn't silently cap context at its 4 k default and chew through
-    # long form submissions (see ollama/ollama#2714). Non-Ollama
-    # OpenAI-compat backends ignore unknown ``options`` keys, so the
-    # forward is safe across the local stack.
     messages: list[ChatCompletionUserMessageParam] = [
         {
             "role": "user",
@@ -419,27 +412,15 @@ async def extract_business_understanding(
         }
     ]
     try:
-        if chat_cfg.transport.name == "local":
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.0,
-                    extra_body={"options": {"num_ctx": chat_cfg.local_num_ctx}},
-                ),
-                timeout=timeout_s,
-            )
-        else:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.0,
-                ),
-                timeout=timeout_s,
-            )
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            ),
+            timeout=timeout_s,
+        )
     except asyncio.TimeoutError:
         logger.warning("Tally: LLM extraction timed out")
         raise

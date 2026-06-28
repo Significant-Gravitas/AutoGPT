@@ -251,10 +251,13 @@ async def get_workspace_file_by_path(
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
+    path_not_starts_with: Optional[str] = None,
     include_deleted: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
     name_contains: Optional[str] = None,
+    metadata_equals: Optional[dict] = None,
+    metadata_not_equals: Optional[dict] = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -262,12 +265,22 @@ async def list_workspace_files(
     Args:
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/documents/")
+        path_not_starts_with: Optional path prefix to *exclude* from results.
+            Generic path filter; the Artifacts origin filter is handled
+            separately via ``metadata_equals``/``metadata_not_equals``.
         include_deleted: Whether to include soft-deleted files
         limit: Maximum number of files to return
         offset: Number of files to skip
         name_contains: Case-insensitive substring filter applied to
             ``name``. Used by /search/global so files are findable by
             literal name match without waiting on async embedding.
+        metadata_equals: Match files whose ``metadata`` JSON equals this
+            object exactly. Used by the Artifacts page "Uploaded" filter
+            (``{"origin": "user-upload"}``).
+        metadata_not_equals: Match files whose ``metadata`` JSON does *not*
+            equal this object. Used by the "Generated" filter. ``metadata``
+            is never SQL NULL (column default ``{}``), so whole-object
+            inequality is null-safe and covers untagged/legacy files.
 
     Returns:
         List of WorkspaceFile instances
@@ -282,6 +295,21 @@ async def list_workspace_files(
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
+
+    not_clause: list[UserWorkspaceFileWhereInput] = []
+    if path_not_starts_with:
+        if not path_not_starts_with.startswith("/"):
+            path_not_starts_with = f"/{path_not_starts_with}"
+        not_clause.append({"path": {"startswith": path_not_starts_with}})
+
+    if metadata_equals is not None:
+        where_clause["metadata"] = {"equals": SafeJson(metadata_equals)}
+
+    if metadata_not_equals is not None:
+        not_clause.append({"metadata": {"equals": SafeJson(metadata_not_equals)}})
+
+    if not_clause:
+        where_clause["NOT"] = not_clause
 
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}

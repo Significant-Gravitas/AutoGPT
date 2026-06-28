@@ -563,12 +563,11 @@ class TestGenerateActivityStatusForExecution:
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
             assert entry.block_name == "activity_status_generator"
-            # ``provider`` is threaded from ``chat_cfg.transport.cost_log_provider``
-            # so the row reflects the backend that actually billed the call.
-            # The test runs against whichever transport the ambient env
-            # resolves to (``CHAT_USE_LOCAL`` / ``OPEN_ROUTER_API_KEY`` /
-            # ``ANTHROPIC_API_KEY``), so accept every transport's label.
-            assert entry.provider in {"anthropic", "open_router", "ollama"}
+            # Routes through ``get_openai_client(prefer_openrouter=True)``, which
+            # only hits OpenRouter (or None) under non-local transport — so the
+            # cost row is always ``open_router`` here, never the chat transport's
+            # identity. See ``clients_test.TestOpenrouterHelperCostProvider``.
+            assert entry.provider == "open_router"
             assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"
             assert entry.tracking_amount == pytest.approx(0.0042)
@@ -576,7 +575,14 @@ class TestGenerateActivityStatusForExecution:
             assert entry.cost_microdollars == 4200
             assert entry.input_tokens == 120
             assert entry.output_tokens == 40
-            assert entry.metadata == {"source": "activity_status_generator"}
+            # ``execution_path`` was added by dev's TransportProfile rollout
+            # (#12993). For the cloud-baseline test config we exercise here
+            # the activity-status generator routes through the sync OR client,
+            # which the new cost-log labelling tags as ``execution_path=sync``.
+            assert entry.metadata == {
+                "source": "activity_status_generator",
+                "execution_path": "sync",
+            }
 
     @pytest.mark.asyncio
     async def test_generate_status_no_cost_no_log(

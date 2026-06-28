@@ -83,10 +83,10 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return "Editing the agent";
+      return "Editing agent, this might take a minute";
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Editing the agent";
+      if (!output) return "Editing agent, this might take a minute";
       if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       return "Error editing agent";
@@ -94,7 +94,7 @@ export function getAnimationText(part: {
     case "output-error":
       return "Error editing agent";
     default:
-      return "Editing the agent";
+      return "Editing agent, this might take a minute";
   }
 }
 

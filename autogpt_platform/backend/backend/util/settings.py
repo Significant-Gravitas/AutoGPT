@@ -312,6 +312,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "service daemon to run on",
     )
 
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -474,6 +482,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
     )
 
     upload_file_size_limit_mb: int = Field(
@@ -763,7 +781,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
-    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")

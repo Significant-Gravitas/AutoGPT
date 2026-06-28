@@ -99,7 +99,7 @@ The installer:
 
 1. Installs Ollama (skipped if already present, or if `--ollama-host` points at an existing one).
 2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=32768` so containers can reach it and so AutoPilot's ~8 k system prompt isn't truncated by Ollama's 4 k default.
-3. Pulls the chat model (default `llama3.1:8b-instruct-q4_K_M`).
+3. Pulls the chat model (default `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`).
 4. Appends a marker-bounded block to `autogpt_platform/backend/.env` with `CHAT_USE_LOCAL=true` plus the `CHAT_BASE_URL` / `CHAT_API_KEY` / `CHAT_*_MODEL` overrides.
 
 Re-running with `--with-ollama` is idempotent — the wiring block is rewritten in place.
