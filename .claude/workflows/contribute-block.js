@@ -142,6 +142,15 @@ const VERIFY_SCHEMA = {
   },
 }
 
+const CLEANUP_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['clean'],
+  properties: {
+    clean: { type: 'boolean', description: 'true only if the final `git status --short` is empty' },
+  },
+}
+
 const PR_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -513,18 +522,6 @@ for (const item of items) {
     })
     log(`${request}: ${status}${pr?.prUrl ? ' -> ' + pr.prUrl : ''}`)
   } catch (e) {
-    // The batch shares ONE working tree. If this item died after editing files,
-    // the tree is dirty and the next item's createBranch (which requires a clean
-    // tree) would STOP — cascading the abort to every remaining item. Reset so a
-    // single failure can't stall the batch. Committed work on feature branches is
-    // already safe on its own ref and is NOT touched.
-    await agent(
-      `A batch item failed mid-run. Restore a clean shared working tree for the next ` +
-        `item: from the repo root run \`git reset --hard\` then \`git clean -fd\`. Do NOT ` +
-        `delete or force-update any branch — only discard uncommitted/untracked changes. ` +
-        `Report done.`,
-      { label: `cleanup:${request.slice(0, 40)}`, phase: 'Implement', model: 'haiku' },
-    ).catch(() => {})
     summary.push({
       request,
       issue: item.issue || null,
@@ -535,6 +532,28 @@ for (const item of items) {
       status: 'aborted',
     })
     log(`${request}: aborted -- ${e && e.message ? e.message : 'error'}`)
+  } finally {
+    // The batch shares ONE working tree. Whatever this item committed is already
+    // safe on its branch; anything still uncommitted is junk. Restore a clean
+    // tree on EVERY exit path — success, partial-draft, pr-not-opened, and abort
+    // all can leave edits behind (e.g. the PR agent returning opened:false), and
+    // the next item's createBranch requires an empty `git status`. Verify the
+    // result and log loudly if cleanup could not confirm a clean tree, rather
+    // than swallowing the failure and letting later items abort mysteriously.
+    const cleaned = await agent(
+      `Ensure the shared working tree is clean for the next batch item. Run ` +
+        `\`git status --short\`; if empty, do nothing. If non-empty, run ` +
+        `\`git reset --hard\` then \`git clean -fd\` (discard only uncommitted/untracked ` +
+        `changes — never delete or force-update a branch), then re-check. Set ` +
+        `clean=true only if the final \`git status --short\` is empty.`,
+      { label: `cleanup:${request.slice(0, 40)}`, phase: 'Implement', model: 'haiku', schema: CLEANUP_SCHEMA },
+    )
+    if (!cleaned || !cleaned.clean) {
+      log(
+        `WARNING: working tree not confirmed clean after "${request}" — ` +
+          `subsequent items may abort at createBranch until it is cleaned manually`,
+      )
+    }
   }
 }
 
