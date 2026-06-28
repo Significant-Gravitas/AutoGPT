@@ -64,12 +64,19 @@ prices from Amazon and email me daily").
    - When editing, apply targeted changes and preserve unchanged parts
 7. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-8. **Validate**: Call `validate_agent_graph` with the agent JSON to check
-   for errors
+   - **Large or existing agents**: pass the graph to the tools below by
+     reference instead of inlining it. Every agent tool that takes
+     `agent_json` (`validate_agent_graph`, `fix_agent_graph`, `create_agent`,
+     `edit_agent`, `customize_agent`) also accepts `agent_json_ref` — set it to
+     `"workspace:///agent.json"` (the file you just wrote) and omit
+     `agent_json`. Re-emitting a big graph inline gets truncated and dropped;
+     a reference does not.
+8. **Validate**: Call `validate_agent_graph` (pass `agent_json` for small
+   graphs, or `agent_json_ref="workspace:///agent.json"` for larger ones)
 9. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-10. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-    the final `agent_json`.
+10. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with the
+    final graph — `agent_json` inline, or `agent_json_ref` for larger agents.
 11. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
 12. **Inspect & fix**: Check the dry-run output for errors. If issues are

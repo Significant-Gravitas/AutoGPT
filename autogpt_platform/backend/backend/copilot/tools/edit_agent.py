@@ -9,6 +9,11 @@ from backend.data.model import is_credentials_field_name
 
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_input,
+)
 from .base import BaseTool
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
@@ -43,10 +48,8 @@ class EditAgentTool(BaseTool):
                     "type": "string",
                     "description": "Graph ID or library agent ID to edit.",
                 },
-                "agent_json": {
-                    "type": "object",
-                    "description": "Updated agent JSON with nodes and links.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -58,7 +61,7 @@ class EditAgentTool(BaseTool):
                     "default": True,
                 },
             },
-            "required": ["agent_id", "agent_json"],
+            "required": ["agent_id"],
         }
 
     async def _execute(
@@ -67,6 +70,7 @@ class EditAgentTool(BaseTool):
         session: ChatSession,
         agent_id: str = "",
         agent_json: dict[str, Any] | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         **kwargs,
@@ -105,10 +109,20 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        agent_json, resolve_error = await resolve_agent_json_input(
+            agent_json, agent_json_ref, user_id, session
+        )
+        if resolve_error is not None:
+            return ErrorResponse(
+                message=resolve_error,
+                error="invalid_agent_json",
+                session_id=session_id,
+            )
         if not agent_json:
             return ErrorResponse(
                 message=(
-                    "Please provide agent_json with the complete updated agent graph."
+                    "Please provide agent_json with the complete updated agent "
+                    "graph, or agent_json_ref pointing at the workspace agent file."
                 ),
                 error="missing_agent_json",
                 session_id=session_id,

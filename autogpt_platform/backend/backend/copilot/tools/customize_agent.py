@@ -7,6 +7,11 @@ from typing import Any
 from backend.copilot.model import ChatSession
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_input,
+)
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase
 
@@ -35,10 +40,8 @@ class CustomizeAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": "object",
-                    "description": "Customized agent JSON with nodes and links.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -54,7 +57,7 @@ class CustomizeAgentTool(BaseTool):
                     "description": "Folder ID to save into (default: root).",
                 },
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
@@ -62,6 +65,7 @@ class CustomizeAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_json: dict[str, Any] | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
@@ -69,10 +73,20 @@ class CustomizeAgentTool(BaseTool):
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
 
+        agent_json, resolve_error = await resolve_agent_json_input(
+            agent_json, agent_json_ref, user_id, session
+        )
+        if resolve_error is not None:
+            return ErrorResponse(
+                message=resolve_error,
+                error="invalid_agent_json",
+                session_id=session_id,
+            )
         if not agent_json:
             return ErrorResponse(
                 message=(
-                    "Please provide agent_json with the complete customized agent graph."
+                    "Please provide agent_json with the complete customized agent "
+                    "graph, or agent_json_ref pointing at the workspace agent file."
                 ),
                 error="missing_agent_json",
                 session_id=session_id,
