@@ -201,6 +201,9 @@ function Install-Docker {
     Die "Docker Desktop installer exited with code $($proc.ExitCode). Install it manually from https://www.docker.com/products/docker-desktop and re-run."
   }
   try { Add-LocalGroupMember -Group 'docker-users' -Member $env:USERNAME -ErrorAction SilentlyContinue } catch {}
+  # Refresh PATH so the freshly-installed `docker` CLI is visible to
+  # Test-DockerReady in this session (mirrors Install-Git).
+  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
   Warn "Docker Desktop installed. Windows usually needs a REBOOT before the engine starts."
   $dd = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
   if (Test-Path $dd) { Start-Process $dd }
