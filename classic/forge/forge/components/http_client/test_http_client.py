@@ -1,5 +1,7 @@
 """Tests for the HTTP client component."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from forge.utils.exceptions import HTTPError
@@ -50,3 +52,16 @@ def test_make_request_blocks_internal_address_without_allowlist():
     component = HTTPClientComponent(HTTPClientConfiguration())
     with pytest.raises(HTTPError):
         component._make_request("GET", "http://127.0.0.1/")
+
+
+def test_make_request_blocks_redirect_to_internal():
+    # A public URL that redirects to an internal host must be rejected: redirects
+    # are followed manually and each hop is re-validated.
+    component = HTTPClientComponent(HTTPClientConfiguration())
+    redirect = MagicMock()
+    redirect.is_redirect = True
+    redirect.status_code = 302
+    redirect.headers = {"Location": "http://127.0.0.1/"}
+    component.session.request = MagicMock(return_value=redirect)
+    with pytest.raises(HTTPError):
+        component._make_request("GET", "https://example.com/")

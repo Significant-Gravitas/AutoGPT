@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Any, Iterator, Optional
+from urllib.parse import urljoin
 
 import requests
 from pydantic import BaseModel, Field
@@ -42,6 +43,7 @@ class HTTPClientComponent(
     """Provides commands to make HTTP requests."""
 
     config_class = HTTPClientConfiguration
+    MAX_REDIRECTS = 5
 
     def __init__(self, config: Optional[HTTPClientConfiguration] = None):
         ConfigurableComponent.__init__(self, config)
@@ -104,53 +106,64 @@ class HTTPClientComponent(
         Returns:
             dict: Structured response with status, headers, and body
         """
-        # Block internal/private targets regardless of the allowlist. With the
-        # default empty allowlist `_is_domain_allowed` returns True, so without
-        # this the client could still be pointed at 127.0.0.1, metadata IPs, etc.
-        if not check_public_address(url):
-            raise HTTPError(
-                "Access to internal/private addresses is restricted",
-                url=url,
-            )
-
-        if not self._is_domain_allowed(url):
-            raise HTTPError(
-                f"Domain not in allowed list. Allowed: {self.config.allowed_domains}",
-                url=url,
-            )
-
         request_timeout = timeout or self.config.default_timeout
         request_headers = headers or {}
 
+        method = method.upper()
+        if method not in ("GET", "POST", "PUT", "DELETE"):
+            raise HTTPError(f"Unsupported HTTP method: {method}", url=url)
+
+        # Follow redirects manually so every hop is re-validated. `requests`
+        # follows redirects by default, which would otherwise let a public URL
+        # redirect to 127.0.0.1 / metadata IPs and bypass the checks below.
+        current_url = url
+        current_method = method
+        current_body = body
+        current_params = params
+
         try:
-            if method == "GET":
-                response = self.session.get(
-                    url, headers=request_headers, params=params, timeout=request_timeout
-                )
-            elif method == "POST":
-                response = self.session.post(
-                    url,
+            for _ in range(self.MAX_REDIRECTS + 1):
+                # Block internal/private targets regardless of the allowlist.
+                # With the default empty allowlist `_is_domain_allowed` returns
+                # True, so without this the client could still reach 127.0.0.1,
+                # metadata IPs, etc. — checked on the initial URL and every hop.
+                if not check_public_address(current_url):
+                    raise HTTPError(
+                        "Access to internal/private addresses is restricted",
+                        url=current_url,
+                    )
+                if not self._is_domain_allowed(current_url):
+                    raise HTTPError(
+                        "Domain not in allowed list. "
+                        f"Allowed: {self.config.allowed_domains}",
+                        url=current_url,
+                    )
+
+                response = self.session.request(
+                    current_method,
+                    current_url,
                     headers=request_headers,
-                    params=params,
-                    json=body if isinstance(body, dict) else None,
-                    data=body if isinstance(body, str) else None,
+                    params=current_params,
+                    json=current_body if isinstance(current_body, dict) else None,
+                    data=current_body if isinstance(current_body, str) else None,
                     timeout=request_timeout,
+                    allow_redirects=False,
                 )
-            elif method == "PUT":
-                response = self.session.put(
-                    url,
-                    headers=request_headers,
-                    params=params,
-                    json=body if isinstance(body, dict) else None,
-                    data=body if isinstance(body, str) else None,
-                    timeout=request_timeout,
-                )
-            elif method == "DELETE":
-                response = self.session.delete(
-                    url, headers=request_headers, params=params, timeout=request_timeout
-                )
+
+                location = response.headers.get("Location")
+                if not (response.is_redirect and location):
+                    break
+
+                # Resolve the next hop; it gets re-validated next iteration.
+                current_url = urljoin(current_url, location)
+                # Per HTTP semantics, 301/302/303 downgrade to GET without a body.
+                if response.status_code in (301, 302, 303):
+                    current_method = "GET"
+                    current_body = None
+                # The redirect target carries its own query string.
+                current_params = None
             else:
-                raise HTTPError(f"Unsupported HTTP method: {method}", url=url)
+                raise HTTPError("Too many redirects", url=url)
 
             # Check response size
             content_length = len(response.content)
