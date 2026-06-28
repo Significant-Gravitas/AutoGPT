@@ -146,9 +146,10 @@ preflight() {
   # Disk (free GB on the install target's filesystem). df -Pk is POSIX on
   # both Linux and macOS; convert KB -> GB.
   local target_dir free_gb
-  # Walk up to the nearest existing ancestor of $DIR so e.g. --dir
-  # /mnt/data/new/AutoGPT measures /mnt/data, not $HOME.
-  target_dir="$(dirname "$DIR")"
+  # Measure the install path itself when it already exists (a custom --dir on
+  # its own mount), otherwise walk up to its nearest existing ancestor so e.g.
+  # --dir /mnt/data/new/AutoGPT measures /mnt/data, not $HOME.
+  target_dir="$DIR"
   while [ -n "$target_dir" ] && [ ! -d "$target_dir" ] && [ "$target_dir" != "/" ]; do
     target_dir="$(dirname "$target_dir")"
   done
