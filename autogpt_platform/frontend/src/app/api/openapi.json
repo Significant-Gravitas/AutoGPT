@@ -1220,6 +1220,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/generate-test-data": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "test-data"],
+        "summary": "Generate Test Data",
+        "description": "Generate test data for the platform.\n\nThis endpoint runs the test data generation scripts to populate the database\nwith sample users, agents, graphs, executions, store listings, and more.\n\nAvailable script types:\n- `e2e`: Creates 15 test users with graphs, library agents, presets, and store submissions.\n         Uses API functions for better compatibility. (Recommended)\n- `full`: Creates 100+ users with comprehensive test data using direct Prisma calls.\n          Generates more data but may take longer.\n\n**Warning**: This will add significant data to your database. Use with caution.\n**Note**: This endpoint is disabled in production environments.",
+        "operationId": "postV2Generate test data",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTestDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateTestDataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/memory/{user_id}/communities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -2329,47 +2371,6 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/admin/generate-test-data": {
-      "post": {
-        "tags": ["v2", "admin"],
-        "summary": "Generate Test Data",
-        "operationId": "postAdminGenerateTestData",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateTestDataRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenerateTestDataResponse"
-                }
-              }
-            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -14798,6 +14799,34 @@
         "title": "FolderUpdateRequest",
         "description": "Request model for updating a folder."
       },
+      "GenerateTestDataRequest": {
+        "properties": {
+          "script_type": {
+            "$ref": "#/components/schemas/TestDataScriptType",
+            "default": "e2e"
+          }
+        },
+        "type": "object",
+        "title": "GenerateTestDataRequest",
+        "description": "Request model for test data generation."
+      },
+      "GenerateTestDataResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "message": { "type": "string", "title": "Message" },
+          "details": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "GenerateTestDataResponse",
+        "description": "Response model for test data generation."
+      },
       "GlobalSearchResponse": {
         "properties": {
           "agents": {
@@ -14895,32 +14924,6 @@
         "required": ["uuid", "label", "source", "target"],
         "title": "GraphEdge",
         "description": "An edge in the visualizer graph payload."
-      },
-      "GenerateTestDataRequest": {
-        "properties": {
-          "script_type": {
-            "allOf": [{ "$ref": "#/components/schemas/TestDataScriptType" }],
-            "default": "e2e"
-          }
-        },
-        "type": "object",
-        "title": "GenerateTestDataRequest"
-      },
-      "GenerateTestDataResponse": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "message": { "type": "string", "title": "Message" },
-          "details": {
-            "anyOf": [
-              { "type": "object", "additionalProperties": true },
-              { "type": "null" }
-            ],
-            "title": "Details"
-          }
-        },
-        "type": "object",
-        "required": ["success", "message"],
-        "title": "GenerateTestDataResponse"
       },
       "GraphExecution": {
         "properties": {
@@ -20618,7 +20621,8 @@
       "TestDataScriptType": {
         "type": "string",
         "enum": ["full", "e2e"],
-        "title": "TestDataScriptType"
+        "title": "TestDataScriptType",
+        "description": "Available test data generation scripts."
       },
       "TimezoneResponse": {
         "properties": {
