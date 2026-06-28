@@ -16,7 +16,6 @@
 #   -WithOllama          also install Ollama + wire local-LLM AutoPilot (no cloud keys)
 #   -OllamaModel <name>  model to pull (implies -WithOllama)
 #   -OllamaHost <url>    use an existing Ollama at this URL (implies -WithOllama)
-#   -Yes                 non-interactive; assume "yes" to prompts
 #   -SkipPreflight       skip the capability checks (not recommended)
 #   -Help
 # ============================================================================
@@ -29,7 +28,6 @@ param(
   [switch]$WithOllama,
   [string]$OllamaModel,
   [string]$OllamaHost,
-  [switch]$Yes,
   [switch]$SkipPreflight,
   [switch]$PreflightOnly,
   [switch]$Help
@@ -51,7 +49,12 @@ function Step  ($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Die   ($m) { Write-Host "`nError: $m" -ForegroundColor Red; exit 1 }
 
 if ($Help) {
-  Get-Content $PSCommandPath | Select-String -Pattern '^#' | ForEach-Object { $_.Line -replace '^# ?','' } | Select-Object -First 28
+  # Print the contiguous leading comment header (stop at the first non-# line),
+  # stripping the leading "# ".
+  foreach ($line in Get-Content $PSCommandPath) {
+    if ($line -notmatch '^#') { break }
+    $line -replace '^# ?',''
+  }
   exit 0
 }
 
@@ -107,10 +110,13 @@ function Invoke-Preflight {
   } elseif ($firmwareVirt) {
     Ok "CPU virtualization enabled in firmware (WSL2 can use it)"
   } else {
-    Fail "CPU virtualization (VT-x / AMD-V / SVM) is DISABLED. Docker/WSL2 cannot run without it."
-    Info "Fix: reboot into BIOS/UEFI and enable 'Intel VT-x' / 'AMD-V (SVM)' / 'Virtualization'."
-    Info "If your CPU genuinely lacks it (very old hardware), AutoGPT can't run here."
-    $hardFail = $true
+    # VirtualizationFirmwareEnabled is unreliable: it reflects one specific
+    # firmware flag and reports $false/$null on plenty of machines where
+    # VT-x/AMD-V is actually on and WSL2/Docker run fine. Don't hard-block on
+    # it — warn and let Docker's own engine start be the real test (Wait-Docker
+    # surfaces a clear failure + BIOS fix if virtualization really is off).
+    Warn "Couldn't confirm CPU virtualization from firmware flags (this probe is unreliable, so this isn't a hard stop)."
+    Info "If Docker fails to start later, reboot into BIOS/UEFI and enable 'Intel VT-x' / 'AMD-V (SVM)' / 'Virtualization'."
   }
 
   # RAM
@@ -145,6 +151,7 @@ function Install-Git {
   Step "Installing Git for Windows"
   $asset = (Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing).assets |
     Where-Object { $_.name -match '-64-bit\.exe$' -and $_.name -notmatch 'Portable' } | Select-Object -First 1
+  if (-not $asset) { Die "Couldn't find a Git for Windows installer in the latest release. Install it from https://git-scm.com and re-run." }
   $exe = "$env:TEMP\git-install.exe"
   Info "Downloading $($asset.name)..."
   Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $exe
@@ -174,10 +181,19 @@ function Install-Docker {
   try { wsl.exe --install --no-distribution 2>&1 | Out-Null } catch {}
   try { wsl.exe --update --web-download 2>&1 | Out-Null } catch {}
   $exe = "$env:TEMP\DockerDesktopInstaller.exe"
-  Info "Downloading Docker Desktop (~700 MB)..."
-  Invoke-WebRequest -UseBasicParsing 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' -OutFile $exe
+  # Docker Desktop ships separate x64 and ARM64 builds; the amd64 installer
+  # won't run on ARM64 Windows (Snapdragon etc.). PROCESSOR_ARCHITEW6432 covers
+  # the case where this is a 32-bit PowerShell on a 64-bit/ARM64 OS.
+  $dockerArch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'arm64' } else { 'amd64' }
+  Info "Downloading Docker Desktop ($dockerArch, ~700 MB)..."
+  Invoke-WebRequest -UseBasicParsing "https://desktop.docker.com/win/main/$dockerArch/Docker%20Desktop%20Installer.exe" -OutFile $exe
   Info "Installing silently (WSL2 backend, license accepted)..."
-  Start-Process $exe -ArgumentList 'install','--quiet','--accept-license','--backend=wsl-2' -Wait
+  $proc = Start-Process $exe -ArgumentList 'install','--quiet','--accept-license','--backend=wsl-2' -Wait -PassThru
+  # 0 = success, 3010 = success but reboot required. Anything else failed — bail
+  # now rather than polling Wait-Docker for ten minutes on a broken install.
+  if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+    Die "Docker Desktop installer exited with code $($proc.ExitCode). Install it manually from https://www.docker.com/products/docker-desktop and re-run."
+  }
   try { Add-LocalGroupMember -Group 'docker-users' -Member $env:USERNAME -ErrorAction SilentlyContinue } catch {}
   Warn "Docker Desktop installed. Windows usually needs a REBOOT before the engine starts."
   $dd = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
@@ -203,10 +219,17 @@ function Get-Repo($ver) {
   if (Test-Path (Join-Path $Dir '.git')) {
     Info "Repo already present - updating..."
     git -C $Dir fetch --depth 1 origin $ver.ref 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Die "git fetch failed for '$($ver.ref)'. Check the branch/tag name and your network, then re-run." }
     git -C $Dir checkout FETCH_HEAD 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Die "git checkout failed in $Dir. Resolve the repo state (or remove $Dir) and re-run." }
+  } elseif ((Test-Path $Dir) -and (Get-ChildItem -Force $Dir -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+    # Non-empty but not a git checkout — usually a half-finished clone from an
+    # interrupted run; a plain clone into it would fail every rerun.
+    Die "$Dir exists but is not a git checkout (leftover from an interrupted run?). Remove it and re-run:  Remove-Item -Recurse -Force `"$Dir`""
   } else {
     New-Item -ItemType Directory -Force -Path (Split-Path $Dir) | Out-Null
     git clone --depth 1 --branch $ver.ref $REPO_URL $Dir 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Die "git clone failed (branch/tag '$($ver.ref)'). Check the name and your network, then re-run." }
   }
   if (-not (Test-Path (Join-Path $Dir 'autogpt_platform\installer\setup-autogpt.bat'))) {
     Die "Clone/checkout failed - $Dir doesn't contain the installer."
@@ -222,7 +245,13 @@ function Invoke-Setup {
   if ($OllamaModel) { $setupArgs += "/ollama-model=$OllamaModel" }
   if ($OllamaHost)  { $setupArgs += "/ollama-host=$OllamaHost" }
   Info "Running: setup-autogpt.bat $($setupArgs -join ' ')"
-  & cmd /c "`"$bat`" $($setupArgs -join ' ')"
+  # Invoke the .bat directly with array args (NOT a composed `cmd /c "<string>"`):
+  # PowerShell passes each element as one properly-quoted argument, so a value
+  # like an Ollama URL containing '&' isn't split into separate cmd commands.
+  & $bat @setupArgs
+  if ($LASTEXITCODE -ne 0) {
+    Die "setup-autogpt.bat failed (exit code $LASTEXITCODE). Scroll up for the error, fix it, then re-run."
+  }
 }
 
 # ============================================================================

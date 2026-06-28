@@ -16,9 +16,8 @@
 #   --release <tag>      install a specific release tag
 #   --dir <path>         install location (default: $HOME/AutoGPT)
 #   --with-ollama        also install Ollama + wire local-LLM AutoPilot (no cloud keys)
-#   --ollama-model=NAME  model to pull (implies --with-ollama)
-#   --ollama-host=URL    use an existing Ollama at this URL (implies --with-ollama)
-#   --yes                non-interactive; assume "yes" to prompts
+#   --ollama-model NAME  model to pull (implies --with-ollama)
+#   --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
 #   --skip-preflight     skip the capability checks (not recommended)
 #   --help
 # ============================================================================
@@ -31,7 +30,7 @@ MIN_DISK_GB=25
 
 DEV=false; BRANCH=''; RELEASE=''; DIR="$HOME/AutoGPT"
 WITH_OLLAMA=false; OLLAMA_MODEL=''; OLLAMA_HOST=''
-ASSUME_YES=false; SKIP_PREFLIGHT=false; PREFLIGHT_ONLY=false
+SKIP_PREFLIGHT=false; PREFLIGHT_ONLY=false
 
 # ---- tiny UI helpers (parity vocabulary with install.ps1) ----
 if [ -t 1 ]; then C_G=$'\033[0;32m'; C_Y=$'\033[1;33m'; C_R=$'\033[0;31m'; C_C=$'\033[0;36m'; C_0=$'\033[0m'; else C_G=; C_Y=; C_R=; C_C=; C_0=; fi
@@ -43,25 +42,33 @@ efail(){ printf '  %s[FAIL]%s %s\n' "$C_R" "$C_0" "$*"; }
 step() { printf '\n%s==> %s%s\n' "$C_C" "$*" "$C_0"; }
 die()  { printf '\n%sError: %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 
-print_help() { sed -n '4,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+# Print the leading comment header (everything after the shebang up to the
+# first non-comment line), stripping the leading "# ".
+print_help() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; exit 0; }
 
-# ---- args (parity with install.ps1) ----
-for arg in "$@"; do
-  case "$arg" in
+# ---- args: accept both "--flag=value" and "--flag value" (parity with install.ps1,
+# where -Branch/-Release/-Dir take the next token) ----
+need_val() { [ -n "${2:-}" ] || die "$1 needs a value (try --help)"; }
+while [ $# -gt 0 ]; do
+  case "$1" in
     --dev)              DEV=true ;;
-    --branch=*)         BRANCH="${arg#*=}" ;;
-    --branch)           die "--branch needs a value (use --branch=name)" ;;
-    --release=*)        RELEASE="${arg#*=}" ;;
-    --dir=*)            DIR="${arg#*=}" ;;
+    --branch=*)         BRANCH="${1#*=}" ;;
+    --branch)           need_val "$1" "${2:-}"; BRANCH="$2"; shift ;;
+    --release=*)        RELEASE="${1#*=}" ;;
+    --release)          need_val "$1" "${2:-}"; RELEASE="$2"; shift ;;
+    --dir=*)            DIR="${1#*=}" ;;
+    --dir)              need_val "$1" "${2:-}"; DIR="$2"; shift ;;
     --with-ollama)      WITH_OLLAMA=true ;;
-    --ollama-model=*)   OLLAMA_MODEL="${arg#*=}"; WITH_OLLAMA=true ;;
-    --ollama-host=*)    OLLAMA_HOST="${arg#*=}";  WITH_OLLAMA=true ;;
-    --yes|-y)           ASSUME_YES=true ;;
+    --ollama-model=*)   OLLAMA_MODEL="${1#*=}"; WITH_OLLAMA=true ;;
+    --ollama-model)     need_val "$1" "${2:-}"; OLLAMA_MODEL="$2"; WITH_OLLAMA=true; shift ;;
+    --ollama-host=*)    OLLAMA_HOST="${1#*=}";  WITH_OLLAMA=true ;;
+    --ollama-host)      need_val "$1" "${2:-}"; OLLAMA_HOST="$2";  WITH_OLLAMA=true; shift ;;
     --skip-preflight)   SKIP_PREFLIGHT=true ;;
     --preflight-only)   PREFLIGHT_ONLY=true ;;
     -h|--help)          print_help ;;
-    *) die "Unknown flag: $arg (try --help)" ;;
+    *) die "Unknown flag: $1 (try --help)" ;;
   esac
+  shift
 done
 
 OS="$(uname -s)"
@@ -184,11 +191,18 @@ install_docker() {
     elif command -v brew >/dev/null 2>&1; then info "Installing via Homebrew..."; brew install --cask docker
     else
       local dmg="$HOME/Downloads/Docker.dmg"
-      local url="https://desktop.docker.com/mac/main/$([ "$ARCH" = arm64 ] && echo arm64 || echo amd64)/Docker.dmg"
+      local dmg_arch url
+      dmg_arch="$([ "$ARCH" = arm64 ] && echo arm64 || echo amd64)"
+      url="https://desktop.docker.com/mac/main/$dmg_arch/Docker.dmg"
       info "Downloading Docker Desktop..."; curl -fsSL "$url" -o "$dmg"
       info "Mounting + copying to /Applications (needs your password)..."
       hdiutil attach "$dmg" -nobrowse -quiet
-      $SUDO cp -R "/Volumes/Docker/Docker.app" /Applications/ 2>/dev/null || cp -R "/Volumes/Docker/Docker.app" /Applications/
+      # Always detach the mounted volume, even if the copy fails (set -e would
+      # otherwise exit before the detach line and leave /Volumes/Docker mounted).
+      if ! { $SUDO cp -R "/Volumes/Docker/Docker.app" /Applications/ 2>/dev/null || cp -R "/Volumes/Docker/Docker.app" /Applications/; }; then
+        hdiutil detach "/Volumes/Docker" -quiet || true
+        die "Failed to copy Docker.app to /Applications. Install Docker Desktop manually from https://www.docker.com/products/docker-desktop and re-run."
+      fi
       hdiutil detach "/Volumes/Docker" -quiet || true
     fi
     info "Starting Docker Desktop..."; open -a Docker || true
@@ -215,6 +229,11 @@ get_repo() {
   if [ -d "$DIR/.git" ]; then
     info "Repo already present - updating..."
     git -C "$DIR" fetch --depth 1 origin "$VER_REF" && git -C "$DIR" checkout FETCH_HEAD
+  elif [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+    # Non-empty but not a git checkout — usually a half-finished clone from an
+    # interrupted run. A plain `git clone` into it would fail every rerun, so
+    # tell the user exactly how to recover instead of failing cryptically.
+    die "$DIR exists but is not a git checkout (leftover from an interrupted run?). Remove it and re-run:  rm -rf \"$DIR\""
   else
     mkdir -p "$(dirname "$DIR")"
     git clone --depth 1 --branch "$VER_REF" "$REPO_URL" "$DIR"
@@ -230,11 +249,15 @@ invoke_setup() {
   [ -n "$OLLAMA_MODEL" ] && args+=("--ollama-model=$OLLAMA_MODEL")
   [ -n "$OLLAMA_HOST" ]  && args+=("--ollama-host=$OLLAMA_HOST")
   info "Running: setup-autogpt.sh ${args[*]:-}"
+  # Run from inside the checkout: setup-autogpt.sh's detect_repo() keys off $PWD
+  # (not --dir), so launching it from elsewhere makes it try to git-clone a
+  # fresh copy into $PWD/AutoGPT instead of using the repo we just fetched.
+  cd "$DIR" || die "Cannot enter $DIR"
   # Guard the empty-array case (set -u + bash <4.4 errors on "${a[@]}" when empty)
   if [ "${#args[@]}" -gt 0 ]; then
-    bash "$DIR/autogpt_platform/installer/setup-autogpt.sh" "${args[@]}"
+    bash "autogpt_platform/installer/setup-autogpt.sh" "${args[@]}"
   else
-    bash "$DIR/autogpt_platform/installer/setup-autogpt.sh"
+    bash "autogpt_platform/installer/setup-autogpt.sh"
   fi
 }
 
