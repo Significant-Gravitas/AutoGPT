@@ -49,5 +49,6 @@ describe("AdminLayout", () => {
     expect(screen.getByText("Platform Costs")).toBeDefined();
     expect(screen.getByText("Execution Analytics")).toBeDefined();
     expect(screen.getByText("Admin User Management")).toBeDefined();
+    expect(screen.getByText("Test Data")).toBeDefined();
   });
 });
