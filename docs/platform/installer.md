@@ -31,6 +31,10 @@ These commands install everything from scratch — prerequisites included.
 curl -fsSL https://setup.agpt.co/install.sh | bash
 ```
 
+To pass any of the [options](#options) below, use the `bash -s --` form so the
+flags reach the script (not `bash`), e.g.
+`curl -fsSL https://setup.agpt.co/install.sh | bash -s -- --dev`.
+
 ### Windows (PowerShell)
 
 ```powershell

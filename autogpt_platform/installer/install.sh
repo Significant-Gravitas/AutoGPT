@@ -42,9 +42,33 @@ efail(){ printf '  %s[FAIL]%s %s\n' "$C_R" "$C_0" "$*"; }
 step() { printf '\n%s==> %s%s\n' "$C_C" "$*" "$C_0"; }
 die()  { printf '\n%sError: %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 
-# Print the leading comment header (everything after the shebang up to the
-# first non-comment line), stripping the leading "# ".
-print_help() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; exit 0; }
+# Usage text as an inline heredoc — reading "$0" breaks under `curl | bash`
+# (where $0 is "bash", not this script).
+print_help() {
+  cat <<'EOF'
+AutoGPT Platform - Ultimate Installer (Linux + macOS)
+
+Zero-prerequisite bootstrap: checks whether your machine CAN run AutoGPT,
+installs git + Docker if missing, fetches the repo at the version you pick,
+then hands off to setup-autogpt.sh to bring the stack up.
+
+One-liner:
+  curl -fsSL https://setup.agpt.co/install.sh | bash
+  curl -fsSL https://setup.agpt.co/install.sh | bash -s -- --dev --with-ollama
+
+Flags (parity with install.ps1):
+  --dev                install the dev branch (default: latest release)
+  --branch <name>      install a specific branch
+  --release <tag>      install a specific release tag
+  --dir <path>         install location (default: $HOME/AutoGPT)
+  --with-ollama        also install Ollama + wire local-LLM AutoPilot (no cloud keys)
+  --ollama-model NAME  model to pull (implies --with-ollama)
+  --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
+  --skip-preflight     skip the capability checks (not recommended)
+  --help
+EOF
+  exit 0
+}
 
 # ---- args: accept both "--flag=value" and "--flag value" (parity with install.ps1,
 # where -Branch/-Release/-Dir take the next token) ----
@@ -96,7 +120,8 @@ resolve_version() {
   # default: latest release tag
   local tag=''
   tag="$(curl -fsSL "$REPO_API/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' || true)"
-  if [ -n "$tag" ]; then VER_KIND=tag; VER_REF="$tag"; else warn "Couldn't resolve latest release; using dev."; VER_KIND=branch; VER_REF=dev; fi
+  if [ -n "$tag" ]; then VER_KIND=tag; VER_REF="$tag"
+  else die "Couldn't determine the latest AutoGPT release (GitHub API unreachable?). Re-run when you're back online, or pass --dev for the development branch (or --release <tag> for a specific version)."; fi
 }
 
 # ============================================================================
@@ -121,7 +146,13 @@ preflight() {
   # Disk (free GB on the install target's filesystem). df -Pk is POSIX on
   # both Linux and macOS; convert KB -> GB.
   local target_dir free_gb
-  target_dir="$(dirname "$DIR")"; [ -d "$target_dir" ] || target_dir="$HOME"
+  # Walk up to the nearest existing ancestor of $DIR so e.g. --dir
+  # /mnt/data/new/AutoGPT measures /mnt/data, not $HOME.
+  target_dir="$(dirname "$DIR")"
+  while [ -n "$target_dir" ] && [ ! -d "$target_dir" ] && [ "$target_dir" != "/" ]; do
+    target_dir="$(dirname "$target_dir")"
+  done
+  [ -d "$target_dir" ] || target_dir="$HOME"
   free_gb=$(df -Pk "$target_dir" 2>/dev/null | awk 'NR==2{print int($4/1024/1024)}')
   if [ "${free_gb:-0}" -lt "$MIN_DISK_GB" ]; then
     efail "Only ${free_gb} GB free; AutoGPT images + stack need ~${MIN_DISK_GB} GB."
@@ -172,17 +203,40 @@ install_git() {
   command -v git >/dev/null 2>&1 && ok "git installed" || die "git install failed."
 }
 
+install_curl() {
+  if command -v curl >/dev/null 2>&1; then return; fi
+  step "Installing curl"
+  need_sudo
+  if [ "$OS_FAMILY" = macos ]; then
+    die "curl not found (it normally ships with macOS). Install it (e.g. 'brew install curl') and re-run."
+  fi
+  if   command -v apt-get >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y curl
+  elif command -v dnf     >/dev/null 2>&1; then $SUDO dnf install -y curl
+  elif command -v yum     >/dev/null 2>&1; then $SUDO yum install -y curl
+  elif command -v pacman  >/dev/null 2>&1; then $SUDO pacman -Sy --noconfirm curl
+  elif command -v zypper  >/dev/null 2>&1; then $SUDO zypper install -y curl
+  else die "No supported package manager found - install curl manually and re-run."; fi
+  command -v curl >/dev/null 2>&1 && ok "curl installed" || die "curl install failed."
+}
+
 docker_ready() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 
 install_docker() {
   if docker_ready; then ok "Docker is installed and running"; return; fi
   if [ "$OS_FAMILY" = linux ]; then
-    step "Installing Docker Engine (get.docker.com)"
     need_sudo
-    curl -fsSL https://get.docker.com | $SUDO sh
-    $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
-    if [ "$(id -u)" -ne 0 ]; then $SUDO usermod -aG docker "$USER" 2>/dev/null || true
-      warn "Added you to the 'docker' group - a fresh login is needed for non-sudo docker. setup-autogpt.sh will use sudo as needed this run."; fi
+    if command -v docker >/dev/null 2>&1; then
+      # Already installed, just not responding — the daemon is stopped. Start it
+      # rather than re-running the get.docker.com installer.
+      step "Starting the Docker daemon"
+      $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
+    else
+      step "Installing Docker Engine (get.docker.com)"
+      curl -fsSL https://get.docker.com | $SUDO sh
+      $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
+      if [ "$(id -u)" -ne 0 ]; then $SUDO usermod -aG docker "$USER" 2>/dev/null || true
+        warn "Added you to the 'docker' group - a fresh login is needed for non-sudo docker. setup-autogpt.sh will use sudo as needed this run."; fi
+    fi
     docker_ready || $SUDO docker info >/dev/null 2>&1 || die "Docker installed but the daemon isn't running. Start it and re-run."
     ok "Docker Engine ready"
   else
@@ -264,11 +318,12 @@ invoke_setup() {
 # ============================================================================
 # MAIN
 # ============================================================================
-resolve_version
-info "Selected version -> $VER_KIND: $VER_REF"
 if [ "$SKIP_PREFLIGHT" = true ]; then warn "Pre-flight skipped (--skip-preflight)."; else preflight; fi
 if [ "$PREFLIGHT_ONLY" = true ]; then say ""; say "(--preflight-only: stopping before any install.)"; exit 0; fi
+install_curl   # resolve_version + get.docker.com both rely on curl
 install_git
+resolve_version
+info "Selected version -> $VER_KIND: $VER_REF"
 install_docker
 get_repo
 invoke_setup

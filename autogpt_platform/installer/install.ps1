@@ -72,8 +72,8 @@ function Resolve-Version {
   try {
     $tag = (Invoke-RestMethod "$REPO_API/releases/latest" -UseBasicParsing).tag_name
     if ($tag) { return @{ kind='tag'; ref=$tag } }
-  } catch { Warn "Couldn't resolve latest release ($($_.Exception.Message)); falling back to dev." }
-  return @{ kind='branch'; ref='dev' }
+  } catch { }
+  Die "Couldn't determine the latest AutoGPT release (GitHub API unreachable?). Re-run when you're back online, or pass -Dev for the development branch (or -Release <tag> for a specific version)."
 }
 
 # ---- privilege check ----
@@ -124,14 +124,20 @@ function Invoke-Preflight {
   if ($ramGB -lt $MIN_RAM_GB) { Warn "Only $ramGB GB RAM; the stack wants >= $MIN_RAM_GB GB. It may be slow / OOM." }
   else { Ok "$ramGB GB RAM (>= $MIN_RAM_GB GB)" }
 
-  # Disk
-  $sys = (Get-Item $env:SystemDrive).Root.Name.TrimEnd('\')
-  $freeGB = [math]::Round((Get-PSDrive ($sys.TrimEnd(':'))).Free/1GB,1)
+  # Disk — check the drive the install actually lands on ($Dir, walking up to
+  # its nearest existing parent), not just the system drive: with -Dir on
+  # another volume the system drive could pass while the target is full.
+  $diskTarget = $Dir
+  while ($diskTarget -and -not (Test-Path $diskTarget)) { $diskTarget = Split-Path $diskTarget -Parent }
+  if (-not $diskTarget) { $diskTarget = $env:SystemDrive }
+  try { $drive = (Get-Item $diskTarget).PSDrive } catch { $drive = $null }
+  if (-not $drive) { $drive = Get-PSDrive ($env:SystemDrive.TrimEnd(':')) }
+  $freeGB = [math]::Round($drive.Free/1GB,1)
   if ($freeGB -lt $MIN_DISK_GB) {
-    Fail "Only $freeGB GB free on $sys; AutoGPT images + stack need ~$MIN_DISK_GB GB."
+    Fail "Only $freeGB GB free on $($drive.Name): (install target $Dir); AutoGPT images + stack need ~$MIN_DISK_GB GB."
     Info "Fix: free up space (the backend image + base images are ~15-20 GB) and re-run."
     $hardFail = $true
-  } else { Ok "$freeGB GB free on $sys (>= $MIN_DISK_GB GB)" }
+  } else { Ok "$freeGB GB free on $($drive.Name): (>= $MIN_DISK_GB GB)" }
 
   # Admin (needed to install Docker Desktop / enable WSL2)
   if (Test-Admin) { Ok "Running with administrator rights" }
@@ -227,7 +233,10 @@ function Get-Repo($ver) {
     # interrupted run; a plain clone into it would fail every rerun.
     Die "$Dir exists but is not a git checkout (leftover from an interrupted run?). Remove it and re-run:  Remove-Item -Recurse -Force `"$Dir`""
   } else {
-    New-Item -ItemType Directory -Force -Path (Split-Path $Dir) | Out-Null
+    # Split-Path is empty for a bare relative name like "AutoGPT" — only create
+    # the parent when there is one.
+    $parent = Split-Path $Dir -Parent
+    if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
     git clone --depth 1 --branch $ver.ref $REPO_URL $Dir 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Die "git clone failed (branch/tag '$($ver.ref)'). Check the name and your network, then re-run." }
   }
