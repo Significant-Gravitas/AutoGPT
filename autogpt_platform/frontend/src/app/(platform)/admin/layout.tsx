@@ -2,11 +2,18 @@ import { Sidebar } from "@/components/__legacy__/Sidebar";
 import {
   Users,
   CurrencyDollar,
-  UserFocus,
+  MagnifyingGlass,
+  Gauge,
+  Receipt,
   FileText,
+  Heartbeat,
+  CalculatorIcon,
+  Brain,
+  RobotIcon,
   Database,
-  Faders,
-} from "@phosphor-icons/react";
+} from "@phosphor-icons/react/dist/ssr";
+
+import { IconSliders } from "@/components/__legacy__/ui/icons";
 
 const sidebarLinkGroups = [
   {
@@ -14,32 +21,62 @@ const sidebarLinkGroups = [
       {
         text: "Marketplace Management",
         href: "/admin/marketplace",
-        icon: <Users size={24} />,
+        icon: <Users className="h-6 w-6" />,
       },
       {
         text: "User Spending",
         href: "/admin/spending",
-        icon: <CurrencyDollar size={24} />,
+        icon: <CurrencyDollar className="h-6 w-6" />,
+      },
+      {
+        text: "System Diagnostics",
+        href: "/admin/diagnostics",
+        icon: <Heartbeat className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
         href: "/admin/impersonation",
-        icon: <UserFocus size={24} />,
+        icon: <MagnifyingGlass className="h-6 w-6" />,
+      },
+      {
+        text: "Rate Limits",
+        href: "/admin/rate-limits",
+        icon: <Gauge className="h-6 w-6" />,
+      },
+      {
+        text: "Platform Costs",
+        href: "/admin/platform-costs",
+        icon: <Receipt className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
-        icon: <FileText size={24} />,
+        icon: <FileText className="h-6 w-6" />,
+      },
+      {
+        text: "Bot Analytics",
+        href: "/admin/bots",
+        icon: <RobotIcon className="h-6 w-6" />,
+      },
+      {
+        text: "Block Cost Estimates",
+        href: "/admin/block-cost-estimates",
+        icon: <CalculatorIcon className="h-6 w-6" />,
+      },
+      {
+        text: "Memory Inspector",
+        href: "/admin/memory",
+        icon: <Brain className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",
         href: "/admin/settings",
-        icon: <Faders size={24} />,
+        icon: <IconSliders className="h-6 w-6" />,
       },
       {
         text: "Test Data",
         href: "/admin/test-data",
-        icon: <Database size={24} />,
+        icon: <Database className="h-6 w-6" />,
       },
     ],
   },

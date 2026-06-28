@@ -6,10 +6,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import {
-  StoreSubmission,
-  SubmissionStatus,
-} from "@/lib/autogpt-server-api/types";
+import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
+import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
 import { ExpandableRow } from "./ExpandleRow";
@@ -17,12 +15,14 @@ import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";
 
 // Helper function to get the latest version by version number
 const getLatestVersionByNumber = (
-  versions: StoreSubmission[],
-): StoreSubmission | null => {
+  versions: StoreSubmissionAdminView[] | undefined,
+): StoreSubmissionAdminView | null => {
   if (!versions || versions.length === 0) return null;
   return versions.reduce(
     (latest, current) =>
-      (current.version ?? 0) > (latest.version ?? 1) ? current : latest,
+      (current.listing_version ?? 0) > (latest.listing_version ?? 1)
+        ? current
+        : latest,
     versions[0],
   );
 };
@@ -37,12 +37,14 @@ export async function AdminAgentsDataTable({
   initialSearch?: string;
 }) {
   // Server-side data fetching
-  const { listings, pagination } = await getAdminListingsWithVersions(
+  const data = await getAdminListingsWithVersions(
     initialStatus,
     initialSearch,
     initialPage,
     10,
   );
+  const listings = data?.listings ?? [];
+  const pagination = data?.pagination;
 
   return (
     <div className="space-y-4">
@@ -92,7 +94,7 @@ export async function AdminAgentsDataTable({
 
       <PaginationControls
         currentPage={initialPage}
-        totalPages={pagination.total_pages}
+        totalPages={pagination?.total_pages ?? 1}
       />
     </div>
   );

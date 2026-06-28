@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
-import { FixedSizeList as List } from "react-window";
+import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
 import styles from "./styles.module.css";
@@ -19,14 +19,16 @@ interface Props {
   recentFailures: AgentExecutionWithInfo[];
 }
 
-interface VirtualizedItemProps {
-  index: number;
-  style: React.CSSProperties;
-  data: AgentExecutionWithInfo[];
+interface ActivityRowProps {
+  executions: AgentExecutionWithInfo[];
 }
 
-function VirtualizedActivityItem({ index, style, data }: VirtualizedItemProps) {
-  const execution = data[index];
+function VirtualizedActivityItem({
+  index,
+  style,
+  executions,
+}: RowComponentProps<ActivityRowProps>) {
+  const execution = executions[index];
   return (
     <div style={style}>
       <ActivityItem execution={execution} />
@@ -129,14 +131,13 @@ export function ActivityDropdown({
       >
         {filteredExecutions.length > 0 ? (
           <List
-            height={listHeight}
-            width={320} // Match dropdown width (w-80 = 20rem = 320px)
-            itemCount={filteredExecutions.length}
-            itemSize={itemHeight}
-            itemData={filteredExecutions}
-          >
-            {VirtualizedActivityItem}
-          </List>
+            defaultHeight={listHeight}
+            rowCount={filteredExecutions.length}
+            rowHeight={itemHeight}
+            rowProps={{ executions: filteredExecutions }}
+            rowComponent={VirtualizedActivityItem}
+            style={{ width: 320, height: listHeight }}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">

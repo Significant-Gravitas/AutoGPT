@@ -34,10 +34,12 @@ def main(output: Path, pretty: bool):
     """Generate and output the OpenAPI JSON specification."""
     openapi_schema = get_openapi_schema()
 
-    json_output = json.dumps(openapi_schema, indent=2 if pretty else None)
+    json_output = json.dumps(
+        openapi_schema, indent=2 if pretty else None, ensure_ascii=False
+    )
 
     if output:
-        output.write_text(json_output)
+        output.write_text(json_output, encoding="utf-8")
         click.echo(f"✅ OpenAPI specification written to {output}\n\nPreview:")
         click.echo(f"\n{json_output[:500]} ...")
     else:

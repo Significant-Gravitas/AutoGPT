@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

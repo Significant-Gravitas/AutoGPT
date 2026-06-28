@@ -1,0 +1,710 @@
+import logging
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
+
+from backend.api.features.library.db import (
+    add_store_agent_to_library,
+    bulk_move_agents_to_folder,
+    create_folder,
+    create_graph_in_library,
+    create_library_agent,
+    create_preset,
+    delete_folder,
+    get_folder_agents_map,
+    get_folder_tree,
+    get_library_agent,
+    get_library_agent_by_graph_id,
+    get_preset,
+    get_root_agent_summaries,
+    list_folders,
+    list_library_agents,
+    list_presets,
+    list_trigger_agents,
+    move_folder,
+    update_folder,
+    update_graph_in_library,
+    update_library_agent,
+)
+from backend.api.features.library.triggers import (
+    delete_preset_with_webhook_cleanup,
+    setup_triggered_preset,
+    update_triggered_preset,
+)
+from backend.api.features.search.embeddings import (
+    cleanup_orphaned_embeddings,
+    get_embedding_stats,
+)
+from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store.db import (
+    get_agent,
+    get_available_graph,
+    get_store_agent_details,
+    get_store_agents,
+)
+from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.copilot import db as chat_db
+from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.data import bot_analytics as bot_analytics_db
+from backend.data import db
+from backend.data.analytics import (
+    get_accuracy_trends_and_alerts,
+    get_marketplace_graphs_for_monitoring,
+)
+from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.block import (
+    get_blocks_needing_optimization,
+    update_block_optimized_description,
+)
+from backend.data.credit import (
+    UsageTransactionMetadata,
+    get_user_credit_model,
+    reconcile_stripe_tier_for_user,
+)
+from backend.data.execution import (
+    create_graph_execution,
+    get_block_error_stats,
+    get_child_graph_executions,
+    get_execution_kv_data,
+    get_execution_outputs_by_node_exec_id,
+    get_frequently_executed_graphs,
+    get_graph_execution,
+    get_graph_execution_meta,
+    get_graph_executions,
+    get_graph_executions_count,
+    get_latest_node_execution,
+    get_node_execution,
+    get_node_executions,
+    set_execution_kv_data,
+    update_graph_execution_start_time,
+    update_graph_execution_stats,
+    update_node_execution_status,
+    update_node_execution_status_batch,
+    upsert_execution_input,
+    upsert_execution_output,
+)
+from backend.data.generate_data import get_user_execution_summary_data
+from backend.data.graph import (
+    get_connected_output_nodes,
+    get_graph,
+    get_graph_metadata,
+    get_graph_settings,
+    get_node,
+    get_store_listed_graphs,
+    validate_graph_execution_permissions,
+)
+from backend.data.human_review import (
+    cancel_pending_reviews_for_execution,
+    check_approval,
+    delete_review_by_node_exec_id,
+    get_or_create_human_review,
+    get_pending_reviews_for_execution,
+    get_reviews_by_node_exec_ids,
+    has_pending_reviews_for_graph_exec,
+    update_review_processed_status,
+)
+from backend.data.notifications import (
+    clear_all_user_notification_batches,
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+    get_all_batches_by_type,
+    get_user_notification_batch,
+    get_user_notification_oldest_message_in_batch,
+    remove_notifications_from_batch,
+)
+from backend.data.onboarding import increment_onboarding_runs
+from backend.data.platform_cost import log_platform_cost
+from backend.data.push_subscription import (
+    cleanup_failed_subscriptions,
+    delete_push_subscription,
+    get_user_push_subscriptions,
+    increment_fail_count,
+)
+from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
+from backend.data.understanding import (
+    get_business_understanding,
+    upsert_business_understanding,
+)
+from backend.data.user import (
+    get_active_user_ids_in_timerange,
+    get_user_by_id,
+    get_user_email_by_id,
+    get_user_email_verification,
+    get_user_integrations,
+    get_user_notification_preference,
+    update_user_integrations,
+)
+from backend.data.workspace import (
+    count_workspace_files,
+    create_workspace_file,
+    get_or_create_workspace,
+    get_workspace_file,
+    get_workspace_file_by_path,
+    get_workspace_total_size,
+    list_workspace_files,
+    soft_delete_workspace_file,
+)
+from backend.platform_linking import db as platform_linking_db
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_sync,
+    expose,
+)
+from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+config = Config()
+logger = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+async def _spend_credits(
+    user_id: str,
+    cost: int,
+    metadata: UsageTransactionMetadata,
+    fail_insufficient_credits: bool = True,
+) -> int:
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(
+        user_id, cost, metadata, fail_insufficient_credits=fail_insufficient_credits
+    )
+
+
+async def _get_credits(user_id: str) -> int:
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_credits = _get_credits
+spend_credits = _spend_credits
+
+
+class DatabaseManager(AppService):
+    """Database connection pooling service.
+
+    This service connects to the Prisma engine and exposes database
+    operations via RPC endpoints. It acts as a centralized connection pool
+    for all services that need database access.
+    """
+
+    @asynccontextmanager
+    async def lifespan(self, app: "FastAPI"):
+        async with super().lifespan(app):
+            logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+            await db.connect()
+
+            logger.info(f"[{self.service_name}] ✅ Ready")
+            yield
+
+            logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+            await db.disconnect()
+
+    async def health_check(self) -> str:
+        if not db.is_connected():
+            raise UnhealthyServiceError("Database is not connected")
+
+        try:
+            # Test actual database connectivity by executing a simple query
+            # This will fail if Prisma query engine is not responding
+            result = await db.query_raw_with_schema("SELECT 1 as health_check")
+            if not result or result[0].get("health_check") != 1:
+                raise UnhealthyServiceError("Database query test failed")
+        except Exception as e:
+            raise UnhealthyServiceError(f"Database health check failed: {e}")
+
+        return await super().health_check()
+
+    @classmethod
+    def get_port(cls) -> int:
+        return config.database_api_port
+
+    @staticmethod
+    def _(
+        f: Callable[P, R], name: str | None = None
+    ) -> Callable[Concatenate[object, P], R]:
+        """
+        Exposes a function as an RPC endpoint, and adds a virtual `self` param
+        to the function's type so it can be bound as a method.
+        """
+        if name is not None:
+            f.__name__ = name
+        return cast(Callable[Concatenate[object, P], R], expose(f))
+
+    # ============ Graph Executions ============ #
+    get_child_graph_executions = _(get_child_graph_executions)
+    get_graph_executions = _(get_graph_executions)
+    get_graph_executions_count = _(get_graph_executions_count)
+    get_graph_execution = _(get_graph_execution)
+    get_graph_execution_meta = _(get_graph_execution_meta)
+    create_graph_execution = _(create_graph_execution)
+    get_node_execution = _(get_node_execution)
+    get_node_executions = _(get_node_executions)
+    get_latest_node_execution = _(get_latest_node_execution)
+    update_node_execution_status = _(update_node_execution_status)
+    update_node_execution_status_batch = _(update_node_execution_status_batch)
+    update_graph_execution_start_time = _(update_graph_execution_start_time)
+    update_graph_execution_stats = _(update_graph_execution_stats)
+    upsert_execution_input = _(upsert_execution_input)
+    upsert_execution_output = _(upsert_execution_output)
+    get_execution_outputs_by_node_exec_id = _(get_execution_outputs_by_node_exec_id)
+    get_execution_kv_data = _(get_execution_kv_data)
+    set_execution_kv_data = _(set_execution_kv_data)
+    get_block_error_stats = _(get_block_error_stats)
+    get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
+
+    # ============ Graphs ============ #
+    get_node = _(get_node)
+    get_graph = _(get_graph)
+    get_connected_output_nodes = _(get_connected_output_nodes)
+    get_graph_metadata = _(get_graph_metadata)
+    get_graph_settings = _(get_graph_settings)
+    get_store_listed_graphs = _(get_store_listed_graphs)
+
+    # ============ Credits ============ #
+    spend_credits = _(_spend_credits, name="spend_credits")
+    get_credits = _(_get_credits, name="get_credits")
+
+    # ============ User + Integrations ============ #
+    get_user_by_id = _(get_user_by_id)
+    get_user_integrations = _(get_user_integrations)
+    update_user_integrations = _(update_user_integrations)
+
+    # ============ User Comms ============ #
+    get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_email_by_id = _(get_user_email_by_id)
+    get_user_email_verification = _(get_user_email_verification)
+    get_user_notification_preference = _(get_user_notification_preference)
+
+    # ============ Human In The Loop ============ #
+    cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
+    check_approval = _(check_approval)
+    delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
+    get_or_create_human_review = _(get_or_create_human_review)
+    get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
+    has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    update_review_processed_status = _(update_review_processed_status)
+
+    # ============ Notifications ============ #
+    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
+    create_or_add_to_user_notification_batch = _(
+        create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = _(empty_user_notification_batch)
+    remove_notifications_from_batch = _(remove_notifications_from_batch)
+    get_all_batches_by_type = _(get_all_batches_by_type)
+    get_user_notification_batch = _(get_user_notification_batch)
+    get_user_notification_oldest_message_in_batch = _(
+        get_user_notification_oldest_message_in_batch
+    )
+
+    # ============ Library ============ #
+    list_library_agents = _(list_library_agents)
+    add_store_agent_to_library = _(add_store_agent_to_library)
+    create_graph_in_library = _(create_graph_in_library)
+    create_library_agent = _(create_library_agent)
+    get_library_agent = _(get_library_agent)
+    get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    update_library_agent = _(update_library_agent)
+    update_graph_in_library = _(update_graph_in_library)
+    validate_graph_execution_permissions = _(validate_graph_execution_permissions)
+    setup_triggered_preset = _(setup_triggered_preset)
+    update_triggered_preset = _(update_triggered_preset)
+    delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
+    get_preset = _(get_preset)
+    create_preset = _(create_preset)
+    list_presets = _(list_presets)
+    list_trigger_agents = _(list_trigger_agents)
+
+    create_folder = _(create_folder)
+    list_folders = _(list_folders)
+    get_folder_tree = _(get_folder_tree)
+    update_folder = _(update_folder)
+    move_folder = _(move_folder)
+    delete_folder = _(delete_folder)
+    bulk_move_agents_to_folder = _(bulk_move_agents_to_folder)
+    get_folder_agents_map = _(get_folder_agents_map)
+    get_root_agent_summaries = _(get_root_agent_summaries)
+
+    # ============ Onboarding ============ #
+    increment_onboarding_runs = _(increment_onboarding_runs)
+
+    # ============ OAuth ============ #
+    cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
+
+    # ============ Store ============ #
+    get_store_agents = _(get_store_agents)
+    get_store_agent_details = _(get_store_agent_details)
+    get_agent = _(get_agent)
+    get_available_graph = _(get_available_graph)
+
+    # ============ Search ============ #
+    get_embedding_stats = _(get_embedding_stats)
+    backfill_missing_embeddings = _(backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
+    unified_hybrid_search = _(unified_hybrid_search)
+
+    # ============ Summary Data ============ #
+    get_user_execution_summary_data = _(get_user_execution_summary_data)
+
+    # ============ Chat Sharing ============ #
+    # Exposed so the run_agent tool (running in the CoPilotExecutor
+    # worker, which doesn't keep its own connected Prisma client) can
+    # auto-link new executions into an already-shared chat without
+    # crashing when its local Prisma engine is unconnected.
+    link_new_execution_to_chat_share = _(link_new_execution_to_chat_share)
+
+    # ============ Workspace ============ #
+    count_workspace_files = _(count_workspace_files)
+    create_workspace_file = _(create_workspace_file)
+    get_or_create_workspace = _(get_or_create_workspace)
+    get_workspace_file = _(get_workspace_file)
+    get_workspace_file_by_path = _(get_workspace_file_by_path)
+    get_workspace_total_size = _(get_workspace_total_size)
+    list_workspace_files = _(list_workspace_files)
+    soft_delete_workspace_file = _(soft_delete_workspace_file)
+
+    # ============ Understanding ============ #
+    get_business_understanding = _(get_business_understanding)
+    upsert_business_understanding = _(upsert_business_understanding)
+
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = _(get_blocks_needing_optimization)
+    update_block_optimized_description = _(update_block_optimized_description)
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = _(log_platform_cost)
+
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = _(get_user_push_subscriptions)
+    delete_push_subscription = _(delete_push_subscription)
+    increment_push_fail_count = _(
+        increment_fail_count, name="increment_push_fail_count"
+    )
+    cleanup_failed_push_subscriptions = _(
+        cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
+    )
+
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+    # Per-user lazy reconcile, exposed so Prisma-less processes
+    # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
+    # row via db_accessors.credit_db() instead of crashing on direct Prisma.
+    reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+
+    # ============ Platform Linking ============ #
+    find_server_link_owner = _(platform_linking_db.find_server_link_owner)
+    find_user_link_owner = _(platform_linking_db.find_user_link_owner)
+    resolve_server_link = _(platform_linking_db.resolve_server_link)
+    resolve_user_link = _(platform_linking_db.resolve_user_link)
+    create_server_link_token = _(platform_linking_db.create_server_link_token)
+    create_user_link_token = _(platform_linking_db.create_user_link_token)
+    get_link_token_status = _(platform_linking_db.get_link_token_status)
+    get_link_token_info = _(platform_linking_db.get_link_token_info)
+    confirm_server_link = _(platform_linking_db.confirm_server_link)
+    confirm_user_link = _(platform_linking_db.confirm_user_link)
+    list_server_links = _(platform_linking_db.list_server_links)
+    list_user_links = _(platform_linking_db.list_user_links)
+    refresh_server_link_name = _(platform_linking_db.refresh_server_link_name)
+    delete_server_link = _(platform_linking_db.delete_server_link)
+    delete_user_link = _(platform_linking_db.delete_user_link)
+    cleanup_expired_platform_link_tokens = _(
+        platform_linking_db.cleanup_expired_platform_link_tokens
+    )
+    fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = _(bot_analytics_db.record_bot_event)
+    record_guild_joined = _(bot_analytics_db.record_guild_joined)
+    mark_guild_left = _(bot_analytics_db.mark_guild_left)
+    sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
+
+    # ============ CoPilot Chat Sessions ============ #
+    # NOTE: no eager-load `get_chat_session` here — callers go through
+    # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
+    # tool-pair boundary expansion + visibility guarantees apply uniformly
+    # across the LLM-context and UI scroll paths.
+    get_chat_session_metadata = _(chat_db.get_chat_session_metadata)
+    get_chat_messages_paginated = _(chat_db.get_chat_messages_paginated)
+    create_chat_session = _(chat_db.create_chat_session)
+    update_chat_session = _(chat_db.update_chat_session)
+    add_chat_message = _(chat_db.add_chat_message)
+    add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    get_user_session_count = _(chat_db.get_user_session_count)
+    delete_chat_session = _(chat_db.delete_chat_session)
+    get_next_sequence = _(chat_db.get_next_sequence)
+    update_tool_message_content = _(chat_db.update_tool_message_content)
+    update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_session_title = _(chat_db.update_chat_session_title)
+    set_turn_duration = _(chat_db.set_turn_duration)
+    # ChatSession lifecycle primitives.  Three functions cover the
+    # cap-count + cross-session queue (count/list/transition).
+    count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
+    list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
+    update_chat_session_status = _(chat_db.update_chat_session_status)
+    get_chat_session_status = _(chat_db.get_chat_session_status)
+    get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+    add_chat_message = _(chat_db.add_chat_message)
+
+
+class DatabaseManagerClient(AppServiceClient):
+    d = DatabaseManager
+    _ = endpoint_to_sync
+
+    @classmethod
+    def get_service_type(cls):
+        return DatabaseManager
+
+    # Executions
+    get_graph_executions = _(d.get_graph_executions)
+    get_graph_executions_count = _(d.get_graph_executions_count)
+    get_graph_execution_meta = _(d.get_graph_execution_meta)
+    get_node_executions = _(d.get_node_executions)
+    update_node_execution_status = _(d.update_node_execution_status)
+    update_graph_execution_start_time = _(d.update_graph_execution_start_time)
+    update_graph_execution_stats = _(d.update_graph_execution_stats)
+    upsert_execution_output = _(d.upsert_execution_output)
+
+    # Graphs
+    get_graph_metadata = _(d.get_graph_metadata)
+
+    # Credits
+    spend_credits = _(d.spend_credits)
+    get_credits = _(d.get_credits)
+
+    # Block error monitoring
+    get_block_error_stats = _(d.get_block_error_stats)
+    # Execution accuracy monitoring
+    get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
+
+    # Human In The Loop
+    has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
+
+    # User Emails
+    get_user_email_by_id = _(d.get_user_email_by_id)
+
+    # Library
+    list_library_agents = _(d.list_library_agents)
+    add_store_agent_to_library = _(d.add_store_agent_to_library)
+    validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+
+    # Store
+    get_store_agents = _(d.get_store_agents)
+    get_store_agent_details = _(d.get_store_agent_details)
+
+    # Store Embeddings
+    get_embedding_stats = _(d.get_embedding_stats)
+    backfill_missing_embeddings = _(d.backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
+
+    # Block Descriptions
+    get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
+    update_block_optimized_description = _(d.update_block_optimized_description)
+
+
+class DatabaseManagerAsyncClient(AppServiceClient):
+    d = DatabaseManager
+
+    @classmethod
+    def get_service_type(cls):
+        return DatabaseManager
+
+    # ============ Graph Executions ============ #
+    create_graph_execution = d.create_graph_execution
+    get_child_graph_executions = d.get_child_graph_executions
+    get_connected_output_nodes = d.get_connected_output_nodes
+    get_latest_node_execution = d.get_latest_node_execution
+    get_graph_execution = d.get_graph_execution
+    get_graph_execution_meta = d.get_graph_execution_meta
+    get_graph_executions = d.get_graph_executions
+    get_node_execution = d.get_node_execution
+    get_node_executions = d.get_node_executions
+    update_graph_execution_stats = d.update_graph_execution_stats
+    update_node_execution_status = d.update_node_execution_status
+    update_node_execution_status_batch = d.update_node_execution_status_batch
+    upsert_execution_input = d.upsert_execution_input
+    upsert_execution_output = d.upsert_execution_output
+    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
+    get_execution_kv_data = d.get_execution_kv_data
+    set_execution_kv_data = d.set_execution_kv_data
+
+    # ============ Graphs ============ #
+    get_graph = d.get_graph
+    get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
+    get_node = d.get_node
+    get_store_listed_graphs = d.get_store_listed_graphs
+
+    # ============ User + Integrations ============ #
+    get_user_by_id = d.get_user_by_id
+    get_user_integrations = d.get_user_integrations
+    update_user_integrations = d.update_user_integrations
+
+    # ============ Human In The Loop ============ #
+    cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
+    check_approval = d.check_approval
+    delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
+    get_or_create_human_review = d.get_or_create_human_review
+    get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    update_review_processed_status = d.update_review_processed_status
+
+    # ============ User Comms ============ #
+    get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
+    get_user_email_by_id = d.get_user_email_by_id
+    get_user_email_verification = d.get_user_email_verification
+    get_user_notification_preference = d.get_user_notification_preference
+
+    # ============ Notifications ============ #
+    clear_all_user_notification_batches = d.clear_all_user_notification_batches
+    create_or_add_to_user_notification_batch = (
+        d.create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = d.empty_user_notification_batch
+    remove_notifications_from_batch = d.remove_notifications_from_batch
+    get_all_batches_by_type = d.get_all_batches_by_type
+    get_user_notification_batch = d.get_user_notification_batch
+    get_user_notification_oldest_message_in_batch = (
+        d.get_user_notification_oldest_message_in_batch
+    )
+
+    # ============ Library ============ #
+    list_library_agents = d.list_library_agents
+    add_store_agent_to_library = d.add_store_agent_to_library
+    create_graph_in_library = d.create_graph_in_library
+    create_library_agent = d.create_library_agent
+    get_library_agent = d.get_library_agent
+    get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    update_library_agent = d.update_library_agent
+    update_graph_in_library = d.update_graph_in_library
+    validate_graph_execution_permissions = d.validate_graph_execution_permissions
+    setup_triggered_preset = d.setup_triggered_preset
+    update_triggered_preset = d.update_triggered_preset
+    delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup
+    get_preset = d.get_preset
+    create_preset = d.create_preset
+    list_presets = d.list_presets
+    list_trigger_agents = d.list_trigger_agents
+
+    # ============ Library Folders ============ #
+    create_folder = d.create_folder
+    list_folders = d.list_folders
+    get_folder_tree = d.get_folder_tree
+    update_folder = d.update_folder
+    move_folder = d.move_folder
+    delete_folder = d.delete_folder
+    bulk_move_agents_to_folder = d.bulk_move_agents_to_folder
+    get_folder_agents_map = d.get_folder_agents_map
+    get_root_agent_summaries = d.get_root_agent_summaries
+
+    # ============ Onboarding ============ #
+    increment_onboarding_runs = d.increment_onboarding_runs
+
+    # ============ OAuth ============ #
+    cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
+
+    # ============ Store ============ #
+    get_store_agents = d.get_store_agents
+    get_store_agent_details = d.get_store_agent_details
+    get_agent = d.get_agent
+    get_available_graph = d.get_available_graph
+
+    # ============ Search ============ #
+    unified_hybrid_search = d.unified_hybrid_search
+
+    # ============ Summary Data ============ #
+    get_user_execution_summary_data = d.get_user_execution_summary_data
+
+    # ============ Chat Sharing ============ #
+    link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
+
+    # ============ Workspace ============ #
+    count_workspace_files = d.count_workspace_files
+    create_workspace_file = d.create_workspace_file
+    get_or_create_workspace = d.get_or_create_workspace
+    get_workspace_file = d.get_workspace_file
+    get_workspace_file_by_path = d.get_workspace_file_by_path
+    get_workspace_total_size = d.get_workspace_total_size
+    list_workspace_files = d.list_workspace_files
+    soft_delete_workspace_file = d.soft_delete_workspace_file
+
+    # ============ Credits ============ #
+    spend_credits = d.spend_credits
+    get_credits = d.get_credits
+
+    # ============ Understanding ============ #
+    get_business_understanding = d.get_business_understanding
+    upsert_business_understanding = d.upsert_business_understanding
+
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = d.get_blocks_needing_optimization
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = d.log_platform_cost
+
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = d.get_user_push_subscriptions
+    delete_push_subscription = d.delete_push_subscription
+    increment_push_fail_count = d.increment_push_fail_count
+    cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
+
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+    reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+
+    # ============ Platform Linking ============ #
+    find_server_link_owner = d.find_server_link_owner
+    find_user_link_owner = d.find_user_link_owner
+    resolve_server_link = d.resolve_server_link
+    resolve_user_link = d.resolve_user_link
+    create_server_link_token = d.create_server_link_token
+    create_user_link_token = d.create_user_link_token
+    get_link_token_status = d.get_link_token_status
+    get_link_token_info = d.get_link_token_info
+    confirm_server_link = d.confirm_server_link
+    confirm_user_link = d.confirm_user_link
+    list_server_links = d.list_server_links
+    list_user_links = d.list_user_links
+    refresh_server_link_name = d.refresh_server_link_name
+    delete_server_link = d.delete_server_link
+    delete_user_link = d.delete_user_link
+    cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
+    fetch_workspace_artifact = d.fetch_workspace_artifact
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = d.record_bot_event
+    record_guild_joined = d.record_guild_joined
+    mark_guild_left = d.mark_guild_left
+    sync_guild_presence = d.sync_guild_presence
+
+    # ============ CoPilot Chat Sessions ============ #
+    get_chat_session_metadata = d.get_chat_session_metadata
+    get_chat_messages_paginated = d.get_chat_messages_paginated
+    create_chat_session = d.create_chat_session
+    update_chat_session = d.update_chat_session
+    add_chat_message = d.add_chat_message
+    add_chat_messages_batch = d.add_chat_messages_batch
+    get_user_chat_sessions = d.get_user_chat_sessions
+    get_user_session_count = d.get_user_session_count
+    delete_chat_session = d.delete_chat_session
+    get_next_sequence = d.get_next_sequence
+    update_tool_message_content = d.update_tool_message_content
+    update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_session_title = d.update_chat_session_title
+    set_turn_duration = d.set_turn_duration
+    count_chat_sessions_by_status = d.count_chat_sessions_by_status
+    list_chat_sessions_by_status = d.list_chat_sessions_by_status
+    update_chat_session_status = d.update_chat_session_status
+    get_chat_session_status = d.get_chat_session_status
+    get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    add_chat_message = d.add_chat_message

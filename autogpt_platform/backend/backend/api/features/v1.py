@@ -2,10 +2,10 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Annotated, Any, Sequence, get_args
+from typing import Annotated, Any, Literal, Sequence, cast, get_args
+from urllib.parse import urlparse
 
 import pydantic
 import stripe
@@ -14,7 +14,9 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     File,
+    Header,
     HTTPException,
     Path,
     Query,
@@ -24,10 +26,17 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
-from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
+from prisma.enums import SubscriptionTier
+from pydantic import BaseModel, Field
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_404_NOT_FOUND,
+)
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -40,18 +49,54 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.blocks import get_block, get_blocks
+from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillLimitError,
+    SkillNotFoundError,
+    delete_user_skill,
+    get_default_skill_with_body,
+    list_user_skill_sibling_paths,
+    list_user_skills,
+    parse_skill_markdown,
+    read_user_skill_with_body,
+    store_user_skill,
+)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    InvoiceListItem,
+    PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
     UserCredit,
+    cancel_stripe_subscription,
+    create_subscription_checkout,
+    get_active_subscription_period_end,
     get_auto_top_up,
+    get_pending_subscription_change,
+    get_proration_credit_cents,
+    get_subscription_price_id,
+    get_user_billing_cycle,
     get_user_credit_model,
+    handle_subscription_payment_failure,
+    handle_subscription_payment_success,
+    modify_stripe_subscription_for_tier,
+    release_pending_subscription_schedule,
     set_auto_top_up,
+    set_subscription_tier,
+    sync_subscription_from_stripe,
+    sync_subscription_schedule_from_stripe,
+    sync_tier_from_checkout_session,
+)
+from backend.data.execution import ExecutionContext
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    get_user_cost_summary,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -61,12 +106,18 @@ from backend.data.onboarding import (
     OnboardingStep,
     UserOnboardingUpdate,
     complete_onboarding_step,
-    complete_re_run_agent,
+    format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
-    onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
+)
+from backend.data.redis_client import get_redis_async
+from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.tally import extract_business_understanding
+from backend.data.understanding import (
+    BusinessUnderstandingInput,
+    upsert_business_understanding,
 )
 from backend.data.user import (
     get_or_create_user,
@@ -76,10 +127,11 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -90,7 +142,11 @@ from backend.monitoring.instrumentation import (
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    InsufficientBalanceError,
+    NotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -101,7 +157,6 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
-from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -126,6 +181,9 @@ v1_router = APIRouter()
 ########################################################
 
 
+_tally_background_tasks: set[asyncio.Task] = set()
+
+
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
@@ -134,6 +192,24 @@ v1_router = APIRouter()
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
+
+    # Fire-and-forget: populate business understanding from Tally form.
+    # We use created_at proximity instead of an is_new flag because
+    # get_or_create_user is cached — a separate is_new return value would be
+    # unreliable on repeated calls within the cache TTL.
+    age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
+    if age_seconds < 30:
+        try:
+            from backend.data.tally import populate_understanding_from_tally
+
+            task = asyncio.create_task(
+                populate_understanding_from_tally(user.id, user.email)
+            )
+            _tally_background_tasks.add(task)
+            task.add_done_callback(_tally_background_tasks.discard)
+        except Exception:
+            logger.debug("Failed to start Tally population task", exc_info=True)
+
     return user.model_dump()
 
 
@@ -261,35 +337,33 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
-class OnboardingStatusResponse(pydantic.BaseModel):
-    """Response for onboarding status check."""
+class OnboardingProfileRequest(pydantic.BaseModel):
+    """Request body for onboarding profile submission."""
 
-    is_onboarding_enabled: bool
-    is_chat_enabled: bool
+    user_name: str = pydantic.Field(min_length=1, max_length=100)
+    user_role: str = pydantic.Field(min_length=1, max_length=100)
+    pain_points: list[str] = pydantic.Field(default_factory=list, max_length=20)
+
+
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding completion check."""
+
+    is_completed: bool
 
 
 @v1_router.get(
-    "/onboarding/enabled",
-    summary="Is onboarding enabled",
+    "/onboarding/completed",
+    summary="Check if onboarding is completed",
     tags=["onboarding", "public"],
     response_model=OnboardingStatusResponse,
+    dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled(
+async def is_onboarding_completed(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OnboardingStatusResponse:
-    # Check if chat is enabled for user
-    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
-
-    # If chat is enabled, skip legacy onboarding
-    if is_chat_enabled:
-        return OnboardingStatusResponse(
-            is_onboarding_enabled=False,
-            is_chat_enabled=True,
-        )
-
+    user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_onboarding_enabled=await onboarding_enabled(),
-        is_chat_enabled=False,
+        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
     )
 
 
@@ -302,6 +376,38 @@ async def is_onboarding_enabled(
 )
 async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
+
+
+@v1_router.post(
+    "/onboarding/profile",
+    summary="Submit onboarding profile",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def submit_onboarding_profile(
+    data: OnboardingProfileRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+):
+    formatted = format_onboarding_for_extraction(
+        user_name=data.user_name,
+        user_role=data.user_role,
+        pain_points=data.pain_points,
+    )
+
+    try:
+        understanding_input = await extract_business_understanding(formatted)
+    except Exception:
+        understanding_input = BusinessUnderstandingInput.model_construct()
+
+    # Ensure the direct fields are set even if LLM missed them
+    understanding_input.user_name = data.user_name
+    understanding_input.user_role = data.user_role
+    if not understanding_input.pain_points:
+        understanding_input.pain_points = data.pain_points
+
+    await upsert_business_understanding(user_id, understanding_input)
+
+    return {"status": "ok"}
 
 
 ########################################################
@@ -378,7 +484,10 @@ async def get_graph_blocks() -> Response:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+    },
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -393,13 +502,28 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    try:
+        await execution_utils.charge_for_direct_block_execution(
+            user_id=user_id, block=obj, input_data=data, source="internal"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
+
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
@@ -428,7 +552,6 @@ async def execute_graph_block(
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile = File(...),
-    provider: str = "gcs",
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
     """
@@ -491,7 +614,6 @@ async def upload_file(
     storage_path = await cloud_storage.store_file(
         content=content,
         filename=file_name,
-        provider=provider,
         expiration_hours=expiration_hours,
         user_id=user_id,
     )
@@ -530,10 +652,22 @@ async def get_user_credits(
     dependencies=[Security(requires_user)],
 )
 async def request_top_up(
-    request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
+    request: RequestTopUp,
+    user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ):
     user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
+    checkout_url = await user_credit_model.top_up_intent(
+        user_id,
+        request.credit_amount,
+        datafast_visitor_id=x_datafast_visitor_id,
+        datafast_session_id=x_datafast_session_id,
+    )
     return {"checkout_url": checkout_url}
 
 
@@ -573,6 +707,11 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
+    """Configure auto top-up settings and perform an immediate top-up if needed.
+
+    Raises HTTPException(422) if the request parameters are invalid or if
+    the credit top-up fails.
+    """
     if request.threshold < 0:
         raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
@@ -587,14 +726,27 @@ async def configure_user_auto_top_up(
     user_credit_model = await get_user_credit_model(user_id)
     current_balance = await user_credit_model.get_credits(user_id)
 
-    if current_balance < request.threshold:
-        await user_credit_model.top_up_credits(user_id, request.amount)
-    else:
-        await user_credit_model.top_up_credits(user_id, 0)
+    try:
+        if current_balance < request.threshold:
+            await user_credit_model.top_up_credits(user_id, request.amount)
+        else:
+            await user_credit_model.top_up_credits(user_id, 0)
+    except ValueError as e:
+        known_messages = (
+            "must not be negative",
+            "already exists for user",
+            "No payment method found",
+        )
+        if any(msg in str(e) for msg in known_messages):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise
 
-    await set_auto_top_up(
-        user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
-    )
+    try:
+        await set_auto_top_up(
+            user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return "Auto top-up settings updated"
 
 
@@ -610,41 +762,751 @@ async def get_user_auto_top_up(
     return await get_auto_top_up(user_id)
 
 
+class SubscriptionTierRequest(BaseModel):
+    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
+    success_url: str = ""
+    cancel_url: str = ""
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
+
+
+class SubscriptionStatusResponse(BaseModel):
+    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    monthly_cost: int  # amount in cents (Stripe convention)
+    tier_costs: dict[str, int]  # tier name -> monthly amount in cents
+    tier_costs_yearly: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → yearly amount in cents. Populated only for tiers with a"
+            " yearly Stripe price configured in LaunchDarkly. Empty for"
+            " monthly-only configurations."
+        ),
+    )
+    billing_cycle: Literal["monthly", "yearly"] = Field(
+        default="monthly",
+        description=(
+            "Billing cycle of the user's active Stripe subscription. Defaults"
+            " to ``monthly`` for users without an active sub. ``monthly_cost``"
+            " above reflects this cycle's actual price (so a yearly subscriber"
+            " sees their yearly amount, not the monthly equivalent)."
+        ),
+    )
+    tier_multipliers: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → rate-limit multiplier. Covers the same tiers listed in"
+            " ``tier_costs`` so the frontend can render rate-limit badges"
+            " relative to the lowest visible tier without knowing backend"
+            " defaults."
+        ),
+    )
+    proration_credit_cents: int  # unused portion of current sub to convert on upgrade
+    has_active_stripe_subscription: bool = Field(
+        default=False,
+        description=(
+            "True when the user has an active/trialing Stripe subscription. The"
+            " frontend uses this to branch upgrade UX: modify-in-place + saved-card"
+            " auto-charge when True, redirect to Stripe Checkout when False."
+        ),
+    )
+    current_period_end: Optional[int] = Field(
+        default=None,
+        description=(
+            "Unix timestamp of the active subscription's current_period_end. Used"
+            " to show the date Stripe will issue the next invoice (with prorated"
+            " upgrade charges, if any). None when no active sub."
+        ),
+    )
+    pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
+    pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
+        default=None,
+        description=(
+            "Billing cycle of the queued change, when resolvable. Set alongside"
+            " ``pending_tier`` for tier downgrades and same-tier cycle"
+            " switches (yearly→monthly). The frontend uses this to differentiate"
+            " a cycle-only schedule (``pending_tier == current tier``) from a"
+            " real tier downgrade so the UI copy can describe the actual"
+            " change. ``None`` for cancellations and unconfigured legacy prices."
+        ),
+    )
+    url: str = Field(
+        default="",
+        description=(
+            "Populated only when POST /credits/subscription starts a Stripe Checkout"
+            " Session (BASIC → paid upgrade). Empty string in all other branches —"
+            " the client redirects to this URL when non-empty."
+        ),
+    )
+
+
+def _validate_checkout_redirect_url(url: str) -> bool:
+    """Return True if `url` matches the configured frontend origin.
+
+    Prevents open-redirect: attackers must not be able to supply arbitrary
+    success_url/cancel_url that Stripe will redirect users to after checkout.
+
+    Pre-parse rejection rules (applied before urlparse):
+    - Backslashes (``\\``) are normalised differently across parsers/browsers.
+    - Control characters (U+0000–U+001F) are not valid in URLs and may confuse
+      some URL-parsing implementations.
+    """
+    # Reject characters that can confuse URL parsers before any parsing.
+    if "\\" in url:
+        return False
+    if any(ord(c) < 0x20 for c in url):
+        return False
+
+    allowed = settings.config.frontend_base_url or settings.config.platform_base_url
+    if not allowed:
+        # No configured origin — refuse to validate rather than allow arbitrary URLs.
+        return False
+    try:
+        parsed = urlparse(url)
+        allowed_parsed = urlparse(allowed)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    # Reject ``user:pass@host`` authority tricks — ``@`` in the netloc component
+    # can trick browsers into connecting to a different host than displayed.
+    # ``@`` in query/fragment is harmless and must be allowed.
+    if "@" in parsed.netloc:
+        return False
+    return (
+        parsed.scheme == allowed_parsed.scheme
+        and parsed.netloc == allowed_parsed.netloc
+    )
+
+
+@cached(ttl_seconds=300, maxsize=32, cache_none=False)
+async def _get_stripe_price_amount(price_id: str) -> int | None:
+    """Return the unit_amount (cents) for a Stripe Price ID, cached for 5 minutes.
+
+    Returns ``None`` on transient Stripe errors. ``cache_none=False`` opts out
+    of caching the ``None`` sentinel so the next request retries Stripe instead
+    of being served a stale "no price" for the rest of the TTL window. Callers
+    should treat ``None`` as an unknown price and fall back to 0.
+
+    Stripe prices rarely change; caching avoids a ~200-600 ms Stripe round-trip on
+    every GET /credits/subscription page load and reduces quota consumption.
+    """
+    try:
+        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        return price.unit_amount or 0
+    except stripe.StripeError:
+        logger.warning(
+            "Failed to retrieve Stripe price %s — returning None (not cached)",
+            price_id,
+        )
+        return None
+
+
+@v1_router.get(
+    path="/credits/subscription",
+    summary="Get subscription tier, current cost, and all tier costs",
+    operation_id="getSubscriptionStatus",
+    tags=["credits"],
+    dependencies=[Security(requires_user)],
+)
+async def get_subscription_status(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SubscriptionStatusResponse:
+    user = await get_user_by_id(user_id)
+    tier = user.subscription_tier or SubscriptionTier.NO_TIER
+
+    # Tiers that *can* have a Stripe price configured (and therefore appear
+    # in the tier picker if the LD flag exposes a price-id). NO_TIER is not
+    # priceable — it's the implicit "no active subscription" state.
+    priceable_tiers = [
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ]
+    monthly_price_ids, yearly_price_ids = await asyncio.gather(
+        asyncio.gather(
+            *[get_subscription_price_id(t, "monthly") for t in priceable_tiers]
+        ),
+        asyncio.gather(
+            *[get_subscription_price_id(t, "yearly") for t in priceable_tiers]
+        ),
+    )
+
+    async def _cost(pid: str | None) -> int:
+        return (await _get_stripe_price_amount(pid) or 0) if pid else 0
+
+    monthly_costs, yearly_costs = await asyncio.gather(
+        asyncio.gather(*[_cost(pid) for pid in monthly_price_ids]),
+        asyncio.gather(*[_cost(pid) for pid in yearly_price_ids]),
+    )
+
+    # Row visibility: include a tier if EITHER cycle is configured. Monthly
+    # cost falls back to 0 when only yearly is configured so the frontend can
+    # still render the card and surface yearly via ``tier_costs_yearly``.
+    tier_costs: dict[str, int] = {}
+    tier_costs_yearly: dict[str, int] = {}
+    for t, m_pid, y_pid, m_cost, y_cost in zip(
+        priceable_tiers,
+        monthly_price_ids,
+        yearly_price_ids,
+        monthly_costs,
+        yearly_costs,
+    ):
+        if m_pid or y_pid:
+            tier_costs[t.value] = m_cost if m_pid else 0
+        if y_pid:
+            tier_costs_yearly[t.value] = y_cost
+
+    # Expose the effective rate-limit multipliers alongside prices so the
+    # frontend can render "Nx rate limits" relative to the lowest visible
+    # tier without hard-coding backend defaults.  Only emit entries for tiers
+    # that land in ``tier_costs`` — rows hidden at the price layer must stay
+    # hidden in the multiplier layer too.
+    multipliers = await get_tier_multipliers()
+    # get_tier_multipliers() keys by tier string value (see its docstring),
+    # so the lookup must use t.value — passing the enum t silently misses
+    # every tier and falls back to 1.0, ignoring LD-configured multipliers.
+    tier_multipliers: dict[str, float] = {
+        t.value: multipliers.get(t.value, 1.0)
+        for t in priceable_tiers
+        if t.value in tier_costs
+    }
+
+    user_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    if user_cycle == "yearly":
+        current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
+    else:
+        current_monthly_cost = tier_costs.get(tier.value, 0)
+    proration_credit, current_period_end = await asyncio.gather(
+        get_proration_credit_cents(user_id, current_monthly_cost),
+        get_active_subscription_period_end(user_id),
+    )
+
+    try:
+        pending = await get_pending_subscription_change(user_id)
+    except (stripe.StripeError, PendingChangeUnknown):
+        # Swallow Stripe-side failures (rate limits, transient network) AND
+        # PendingChangeUnknown (LaunchDarkly price-id lookup failed). Both
+        # propagate past the cache so the next request retries fresh instead
+        # of serving a stale None for the TTL window. Let real bugs (KeyError,
+        # AttributeError, etc.) propagate so they surface in Sentry.
+        logger.exception(
+            "get_subscription_status: failed to resolve pending change for user %s",
+            user_id,
+        )
+        pending = None
+
+    response = SubscriptionStatusResponse(
+        tier=tier.value,
+        monthly_cost=current_monthly_cost,
+        tier_costs=tier_costs,
+        tier_costs_yearly=tier_costs_yearly,
+        billing_cycle=user_cycle,
+        tier_multipliers=tier_multipliers,
+        proration_credit_cents=proration_credit,
+        has_active_stripe_subscription=current_period_end is not None,
+        current_period_end=current_period_end,
+    )
+    if pending is not None:
+        pending_tier_enum, pending_effective_at, pending_cycle = pending
+        if pending_tier_enum in (
+            SubscriptionTier.NO_TIER,
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+        ):
+            response.pending_tier = pending_tier_enum.value
+            response.pending_tier_effective_at = pending_effective_at
+            response.pending_billing_cycle = pending_cycle
+    return response
+
+
+@v1_router.post(
+    path="/credits/subscription",
+    summary="Update subscription tier or start a Stripe Checkout session",
+    operation_id="updateSubscriptionTier",
+    tags=["credits"],
+    dependencies=[Security(requires_user)],
+)
+async def update_subscription_tier(
+    request: SubscriptionTierRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+) -> SubscriptionStatusResponse:
+    # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
+    tier = SubscriptionTier(request.tier)
+
+    # ENTERPRISE tier is admin-managed — block self-service changes from ENTERPRISE users.
+    user = await get_user_by_id(user_id)
+    if (
+        user.subscription_tier or SubscriptionTier.NO_TIER
+    ) == SubscriptionTier.ENTERPRISE:
+        raise HTTPException(
+            status_code=403,
+            detail="ENTERPRISE subscription changes must be managed by an administrator",
+        )
+
+    # Same-tier + same-cycle request = "stay on my current tier" = cancel any
+    # pending scheduled change (paid→paid downgrade or paid→BASIC cancel). This
+    # replaces the old /credits/subscription/cancel-pending route. Safe when no
+    # pending change exists: release_pending_subscription_schedule returns
+    # False and we simply return the current status.
+    #
+    # Same-tier-DIFFERENT-cycle (monthly Pro → yearly Pro, or vice versa) must
+    # fall through to modify_stripe_subscription_for_tier so Stripe swaps the
+    # price ID for the cycle the user actually requested.
+    #
+    # Gate the short-circuit on an actual active/trialing Stripe subscription:
+    # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
+    # Checkout flow so "start paying for my current tier" is not a no-op.
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    current_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    has_active_stripe_subscription = (
+        await get_active_subscription_period_end(user_id) is not None
+    )
+    if (
+        current_tier == tier
+        and current_cycle == request.billing_cycle
+        and has_active_stripe_subscription
+    ):
+        try:
+            await release_pending_subscription_schedule(user_id)
+        except stripe.StripeError as e:
+            logger.exception(
+                "Stripe error releasing pending subscription change for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel the pending subscription change right now. "
+                    "Please try again or contact support."
+                ),
+            )
+        return await get_subscription_status(user_id)
+
+    payment_enabled = await is_feature_enabled(
+        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
+    )
+
+    target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
+
+    # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
+    # cancel_at_period_end=True lets the webhook flip the DB tier. No active
+    # sub (admin-granted or never-paid) or payment disabled → DB flip.
+    # NO_TIER is never priceable, so this branch always fires for cancel
+    # requests regardless of LD config.
+    if tier == SubscriptionTier.NO_TIER:
+        if payment_enabled:
+            try:
+                had_subscription = await cancel_stripe_subscription(user_id)
+            except stripe.StripeError as e:
+                logger.exception(
+                    "Stripe error cancelling subscription for user %s: %s",
+                    user_id,
+                    e,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Unable to cancel your subscription right now. "
+                        "Please try again or contact support."
+                    ),
+                )
+            if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid).
+                await set_subscription_tier(user_id, tier)
+            return await get_subscription_status(user_id)
+        await set_subscription_tier(user_id, tier)
+        return await get_subscription_status(user_id)
+
+    if not payment_enabled:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Subscription not available for tier {tier.value}",
+        )
+
+    # Target has no LD price — not provisionable (matches the GET hiding).
+    if target_price_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Subscription not available for tier {tier.value}",
+        )
+
+    # Modify in place if there's a sub; else fall through to Checkout below.
+    try:
+        modified = await modify_stripe_subscription_for_tier(
+            user_id, tier, request.billing_cycle
+        )
+        if modified:
+            return await get_subscription_status(user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except stripe.CardError as e:
+        # Auto-charge failed under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card or
+        # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
+        # different message so the user doesn't try a new card. Stripe emits
+        # ``authentication_required`` for raw PaymentIntent confirms but
+        # ``subscription_payment_intent_requires_action`` for Subscription.modify
+        # under ``error_if_incomplete``; both must map to the SCA branch.
+        if e.code in {
+            "authentication_required",
+            "subscription_payment_intent_requires_action",
+        }:
+            logger.warning(
+                "SCA required on subscription upgrade for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Your bank requires extra authentication for this charge."
+                    " The plan was not changed; please retry from the billing"
+                    " portal so you can complete authentication, or contact"
+                    " support."
+                ),
+            )
+        logger.warning(
+            "Card declined on subscription upgrade for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Your card was declined. The plan was not changed; please"
+                " update your payment method and try again."
+            ),
+        )
+    except stripe.InvalidRequestError as e:
+        # Stripe's e.param is documented as nullable, so we match by typed
+        # field first and fall back to substring when param is absent.
+        msg_lower = (e.user_message or str(e)).lower()
+        # "No payment method" presents as InvalidRequestError (not CardError)
+        # when error_if_incomplete fires with no default PM. Stripe signals
+        # this with code=resource_missing/missing — sometimes with a typed
+        # param, sometimes without (the raw "no attached payment source"
+        # message has empty param). Map it to 402 either way.
+        if e.code in {"resource_missing", "missing"} and (
+            e.param
+            in {
+                "default_payment_method",
+                "payment_method",
+                "invoice_settings.default_payment_method",
+            }
+            or "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
+            logger.warning(
+                "No payment method on subscription upgrade for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "No payment method on file. The plan was not changed;"
+                    " please add a payment method and try again."
+                ),
+            )
+        # Stripe rejects schedule modify when phases mix currencies, e.g. the
+        # active sub was checked out in GBP but the target tier's Price is
+        # USD-only. e.param is "currency" on the schedule API but may be
+        # "phases" or absent on older error shapes — substring fallback keeps
+        # the 422 firing instead of dropping to the generic 502.
+        if e.param == "currency" or "currency" in msg_lower:
+            logger.warning(
+                "Currency mismatch on tier change for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Tier change unavailable for your current billing currency."
+                    " Please contact support — the target tier needs to be"
+                    " configured for your currency in Stripe before this"
+                    " change can go through."
+                ),
+            )
+        logger.exception(
+            "Stripe error modifying subscription for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to update your subscription right now. "
+                "Please try again or contact support."
+            ),
+        )
+    except stripe.StripeError as e:
+        logger.exception(
+            "Stripe error modifying subscription for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to update your subscription right now. "
+                "Please try again or contact support."
+            ),
+        )
+
+    # No active Stripe subscription → create Stripe Checkout Session.
+    if not request.success_url or not request.cancel_url:
+        raise HTTPException(
+            status_code=422,
+            detail="success_url and cancel_url are required for paid tier upgrades",
+        )
+    # Open-redirect protection: both URLs must point to the configured frontend
+    # origin, otherwise an attacker could use our Stripe integration as a
+    # redirector to arbitrary phishing sites.
+    #
+    # Fail early with a clear 503 if the server is misconfigured (neither
+    # frontend_base_url nor platform_base_url set), so operators get an
+    # actionable error instead of the misleading "must match the platform
+    # frontend origin" 422 that _validate_checkout_redirect_url would otherwise
+    # produce when `allowed` is empty.
+    if not (settings.config.frontend_base_url or settings.config.platform_base_url):
+        logger.error(
+            "update_subscription_tier: neither frontend_base_url nor "
+            "platform_base_url is configured; cannot validate checkout redirect URLs"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Payment redirect URLs cannot be validated: "
+                "frontend_base_url or platform_base_url must be set on the server."
+            ),
+        )
+    if not _validate_checkout_redirect_url(
+        request.success_url
+    ) or not _validate_checkout_redirect_url(request.cancel_url):
+        raise HTTPException(
+            status_code=422,
+            detail="success_url and cancel_url must match the platform frontend origin",
+        )
+    try:
+        url = await create_subscription_checkout(
+            user_id=user_id,
+            tier=tier,
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+            billing_cycle=request.billing_cycle,
+            datafast_visitor_id=x_datafast_visitor_id,
+            datafast_session_id=x_datafast_session_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except stripe.StripeError as e:
+        logger.exception(
+            "Stripe error creating checkout session for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to start checkout right now. "
+                "Please try again or contact support."
+            ),
+        )
+
+    status = await get_subscription_status(user_id)
+    status.url = url
+    return status
+
+
+def _stripe_event_dedup_key(event_id: str) -> str:
+    return f"stripe_webhook_event:{event_id}"
+
+
+async def _claim_stripe_event(event_id: str) -> bool:
+    """Mark a Stripe webhook event as claimed via Redis SETNX.
+
+    Returns ``True`` when the caller acquired the claim (first time we've seen
+    ``event_id``) and should proceed with handler dispatch. Returns ``False``
+    when the event was already processed in a prior delivery — Stripe retries
+    the same ``event.id`` on non-2xx responses, and we don't want downstream
+    handlers (some of which only carry per-resource idempotency) to fire twice.
+
+    Pair with ``_release_stripe_event`` in a try/except around handler dispatch:
+    on handler failure we DELete the key so Stripe's retry isn't no-op'd, but
+    a retry that arrives *during* in-flight processing still hits the live
+    claim and is deduped.
+
+    TTL of 24h comfortably exceeds Stripe's retry window. On Redis failure we
+    fall open and let processing continue — better to risk a rare duplicate
+    than to drop a real event.
+    """
+    if not event_id:
+        # Malformed event without an id — fall open so the rest of the
+        # handler can decide what to do (it'll log and 200 anyway).
+        return True
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            _stripe_event_dedup_key(event_id), "1", nx=True, ex=86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup claim failed for event %s; processing anyway",
+            event_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _release_stripe_event(event_id: str) -> None:
+    """Release a previously-claimed dedup key so Stripe's retry can rerun."""
+    if not event_id:
+        return
+    try:
+        redis_client = await get_redis_async()
+        await redis_client.delete(_stripe_event_dedup_key(event_id))
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup release failed for event %s",
+            event_id,
+            exc_info=True,
+        )
+
+
 @v1_router.post(
     path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
 )
 async def stripe_webhook(request: Request):
+    webhook_secret = settings.secrets.stripe_webhook_secret
+    if not webhook_secret:
+        # Guard: an empty secret allows HMAC forgery (attacker can compute a valid
+        # signature over the same empty key). Reject all webhook calls when unconfigured.
+        logger.error(
+            "stripe_webhook: STRIPE_WEBHOOK_SECRET is not configured — "
+            "rejecting request to prevent signature bypass"
+        )
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
     # Get the raw request body
     payload = await request.body()
     # Get the signature header
     sig_header = request.headers.get("stripe-signature")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.secrets.stripe_webhook_secret
-        )
-    except ValueError as e:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except ValueError:
         # Invalid payload
-        raise HTTPException(
-            status_code=400, detail=f"Invalid payload: {str(e) or type(e).__name__}"
-        )
-    except stripe.SignatureVerificationError as e:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.SignatureVerificationError:
         # Invalid signature
-        raise HTTPException(
-            status_code=400, detail=f"Invalid signature: {str(e) or type(e).__name__}"
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Defensive payload extraction. A malformed payload (missing/non-dict
+    # `data.object`, missing `id`) would otherwise raise KeyError/TypeError
+    # AFTER signature verification — which Stripe interprets as a delivery
+    # failure and retries forever, while spamming Sentry with no useful info.
+    # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_id = event.get("id", "")
+    event_type = event.get("type", "")
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
+            event_type,
         )
+        return Response(status_code=200)
 
-    if (
-        event["type"] == "checkout.session.completed"
-        or event["type"] == "checkout.session.async_payment_succeeded"
-    ):
-        await UserCredit().fulfill_checkout(session_id=event["data"]["object"]["id"])
+    event_data = event.get("data") or {}
+    data_object = event_data.get("object") if isinstance(event_data, dict) else None
+    if not isinstance(data_object, dict):
+        logger.warning(
+            "stripe_webhook: %s missing or non-dict data.object; ignoring",
+            event_type,
+        )
+        return Response(status_code=200)
 
-    if event["type"] == "charge.dispute.created":
-        await UserCredit().handle_dispute(event["data"]["object"])
+    # Wrap handler dispatch so a downstream failure releases the dedup claim;
+    # otherwise Stripe's retry would hit the live key and silently drop the
+    # event. Concurrent retries that arrive *during* in-flight processing
+    # still hit the live claim and are deduped.
+    try:
+        if event_type in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        ):
+            session_id = data_object.get("id")
+            if not session_id:
+                logger.warning(
+                    "stripe_webhook: %s missing data.object.id; ignoring", event_type
+                )
+                return Response(status_code=200)
+            await UserCredit().fulfill_checkout(session_id=session_id)
+            await sync_tier_from_checkout_session(data_object)
 
-    if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
-        await UserCredit().deduct_credits(event["data"]["object"])
+        if event_type in (
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
+            await sync_subscription_from_stripe(data_object)
+
+        # `subscription_schedule.updated` is deliberately omitted: our own
+        # `SubscriptionSchedule.create` + `.modify` calls in
+        # `_schedule_downgrade_at_period_end` would fire that event right back
+        # at us and loop redundant traffic through this handler. We only care
+        # about state transitions (released / completed); phase advance to
+        # the new price is already covered by `customer.subscription.updated`.
+        if event_type in (
+            "subscription_schedule.released",
+            "subscription_schedule.completed",
+        ):
+            await sync_subscription_schedule_from_stripe(data_object)
+
+        if event_type == "invoice.payment_succeeded":
+            await handle_subscription_payment_success(data_object)
+
+        if event_type == "invoice.payment_failed":
+            await handle_subscription_payment_failure(data_object)
+
+        # New Stripe API (≥2025-04-01) split the per-payment events off the
+        # Invoice resource. data.object is an InvoicePayment, not an Invoice,
+        # so we hydrate the underlying Invoice before delegating to the
+        # existing handlers. A transient ``stripe.StripeError`` here propagates
+        # to the outer handler so the dedup claim is released and Stripe sees
+        # a 5xx + retries — swallowing it with a 200 would silently drop the
+        # event and leave the dedup key blocking the next delivery.
+        if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+            invoice_id = data_object.get("invoice")
+            if invoice_id:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice_payload = cast(dict, invoice)
+                if event_type == "invoice_payment.paid":
+                    await handle_subscription_payment_success(invoice_payload)
+                else:
+                    await handle_subscription_payment_failure(invoice_payload)
+
+        # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
+        # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
+        # StripeObject (a dict subclass) carrying that runtime shape, so we
+        # cast to satisfy the type checker without changing runtime behaviour.
+        if event_type == "charge.dispute.created":
+            await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+
+        if event_type == "refund.created" or event_type == "charge.dispute.closed":
+            await UserCredit().deduct_credits(
+                cast("stripe.Refund | stripe.Dispute", data_object)
+            )
+    except Exception:
+        # Release the dedup claim so Stripe's retry isn't no-op'd. Re-raise
+        # so the webhook returns 500 and Stripe retries (the normal contract).
+        await _release_stripe_event(event_id)
+        raise
 
     return Response(status_code=200)
 
@@ -697,6 +1559,26 @@ async def get_refund_requests(
 ) -> list[RefundRequest]:
     user_credit_model = await get_user_credit_model(user_id)
     return await user_credit_model.get_refund_requests(user_id)
+
+
+@v1_router.get(
+    path="/credits/invoices",
+    tags=["credits"],
+    summary="List Stripe invoices",
+    dependencies=[Security(requires_user)],
+)
+async def list_invoices(
+    user_id: Annotated[str, Security(get_user_id)],
+    limit: int = Query(24, ge=1, le=100),
+) -> list[InvoiceListItem]:
+    """Recent Stripe invoices for the current user.
+
+    Each item includes ``hosted_invoice_url`` (Stripe-hosted view) and
+    ``invoice_pdf_url`` (direct PDF download). Returns an empty list when
+    the credit system is disabled or the user has no Stripe customer yet.
+    """
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.list_invoices(user_id, limit=limit)
 
 
 ########################################################
@@ -785,14 +1667,16 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
+    # Validate node credentials (and clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. before_graph_activate may also mutate input_default; those
+    # edits need to be persisted, so it must run before create_graph.
+    graph = await before_graph_activate(graph, user_id=user_id)
+
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    if create_graph.source == "builder":
-        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
-
-    return activated_graph
+    return graph
 
 
 @v1_router.delete(
@@ -823,46 +1707,55 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    # Sanity check
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
-    # Determine new version
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-    latest_version_number = max(g.version for g in existing_versions)
-    graph.version = latest_version_number + 1
 
+    graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
+
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. before_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=user_id)
+
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
-        # Keep the library agent up to date with the new active version
-        await _update_library_agent_version_and_settings(user_id, new_graph_version)
-
-        # Handle activation of the new graph first to ensure continuity
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
-        # Ensure new version is the only active version
+        await library_db.update_library_agent_version_and_settings(
+            user_id, new_graph_version
+        )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
-            # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
+
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
         user_id=user_id,
         include_subgraphs=True,
     )
-    assert new_graph_version_with_subgraphs  # make type checker happy
+    assert new_graph_version_with_subgraphs
     return new_graph_version_with_subgraphs
 
 
@@ -890,8 +1783,11 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
+    new_active_graph = await before_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -900,31 +1796,22 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await _update_library_agent_version_and_settings(user_id, new_active_graph)
+    await library_db.update_library_agent_version_and_settings(
+        user_id, new_active_graph
+    )
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
 
-
-async def _update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
-) -> library_model.LibraryAgent:
-    library = await library_db.update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
-    )
-    updated_settings = GraphSettings.from_graph(
-        graph=agent_graph,
-        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
-        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
-    )
-    if updated_settings != library.settings:
-        library = await library_db.update_library_agent(
-            library_agent_id=library.id,
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
             user_id=user_id,
-            settings=updated_settings,
+            graph_id=graph_id,
+            new_version=new_active_version,
         )
-    return library
 
 
 @v1_router.patch(
@@ -958,7 +1845,19 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    # The route dep enforces fail-closed (503-on-blip) so a transient
+    # Supabase outage surfaces as a retryable error, not a free run
+    # for a paywalled user. The deep gate inside ``add_graph_execution``
+    # still covers scheduled / webhook / copilot-internal runs that
+    # don't pass through this route — those callers prefer fail-open
+    # so background work doesn't abandon valid jobs during a blip.
+    responses={
+        402: {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+        },
+        503: {"description": "Subscription state temporarily unavailable"},
+    },
 )
 async def execute_graph(
     graph_id: str,
@@ -970,14 +1869,16 @@ async def execute_graph(
     source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
+    dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
-        )
+    if not dry_run:
+        user_credit_model = await get_user_credit_model(user_id)
+        current_balance = await user_credit_model.get_credits(user_id)
+        if current_balance <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient balance to execute the agent. Please top up your account.",
+            )
 
     try:
         result = await execution_utils.add_graph_execution(
@@ -987,11 +1888,11 @@ async def execute_graph(
             preset_id=preset_id,
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
+            dry_run=dry_run,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(
                 user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
@@ -1084,6 +1985,43 @@ async def list_graphs_executions(
         paginated_result.executions, user_id
     )
     return filtered_executions
+
+
+@v1_router.get(
+    path="/executions/cost-summary",
+    summary="User cost summary",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def get_executions_cost_summary(
+    user_id: Annotated[str, Security(get_user_id)],
+    since: datetime | None = Query(
+        None,
+        description="Window start (UTC). Defaults to start of current calendar month.",
+    ),
+    until: datetime | None = Query(
+        None,
+        description="Window end (UTC). Defaults to now.",
+    ),
+    top_runs_limit: int = Query(
+        10,
+        ge=1,
+        le=50,
+        description="Maximum number of top-cost runs to return.",
+    ),
+) -> UserExecutionCostSummary:
+    """Aggregated cost breakdown for the calling user's graph executions."""
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="`since` must be earlier than or equal to `until`.",
+        )
+    return await get_user_cost_summary(
+        user_id=user_id,
+        since=since,
+        until=until,
+        top_runs_limit=top_runs_limit,
+    )
 
 
 @v1_router.get(
@@ -1247,15 +2185,33 @@ async def enable_execution_sharing(
         raise HTTPException(status_code=404, detail="Execution not found")
 
     # Generate a unique share token
-    share_token = str(uuid.uuid4())
+    share_token = generate_share_token()
 
-    # Update the execution with share info
-    await execution_db.update_graph_execution_share_status(
+    # Remove stale allowlist records before updating the token — prevents a
+    # window where old records + new token could coexist.
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
+    # Update the execution with share info — the underlying update_many
+    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
+    # between the pre-check above and this write surfaces as 404 rather
+    # than a silent no-op.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=True,
+            share_token=share_token,
+            shared_at=datetime.now(timezone.utc),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    # Create allowlist of workspace files referenced in outputs
+    await execution_db.create_shared_execution_files(
         execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=True,
         share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
+        user_id=user_id,
+        outputs=execution.outputs,
     )
 
     # Return the share URL
@@ -1283,21 +2239,28 @@ async def disable_execution_sharing(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
-    # Remove share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    # Remove shared file allowlist records
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
+    # Remove share info — owner-gated at the DB layer; TOCTOU delete
+    # after the pre-check surfaces as 404.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=False,
+            share_token=None,
+            shared_at=None,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
@@ -1306,6 +2269,43 @@ async def get_shared_execution(
         raise HTTPException(status_code=404, detail="Shared execution not found")
 
     return execution
+
+
+@v1_router.get(
+    "/public/shared/{share_token}/files/{file_id}/download",
+    summary="Download a file from a shared execution",
+    operation_id="download_shared_file",
+    tags=["graphs"],
+)
+async def download_shared_file(
+    share_token: Annotated[
+        str,
+        Path(pattern=SHARE_TOKEN_PATTERN),
+    ],
+    file_id: Annotated[
+        str,
+        Path(pattern=SHARE_TOKEN_PATTERN),
+    ],
+) -> Response:
+    """Download a workspace file from a shared execution (no auth required).
+
+    Validates that the file was explicitly exposed when sharing was enabled.
+    Returns a uniform 404 for all failure modes to prevent enumeration attacks.
+    """
+    # Single-query validation against the allowlist
+    execution_id = await execution_db.get_shared_execution_file(
+        share_token=share_token, file_id=file_id
+    )
+    if not execution_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Look up the actual file (no workspace scoping needed — the allowlist
+    # already validated that this file belongs to the shared execution)
+    file = await get_workspace_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return await create_file_download_response(file, inline=True)
 
 
 ########################################################
@@ -1386,7 +2386,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -1401,7 +2401,37 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+
+
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(
@@ -1422,6 +2452,219 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+########################################################
+##################### COPILOT SKILLS #####################
+########################################################
+
+
+class CopilotSkillInfo(BaseModel):
+    """User-distilled copilot skill metadata for the library UI.
+
+    Defaults (built-in agent-building / MCP-tool guides) are intentionally
+    excluded — they cannot be edited or deleted, so surfacing them in the
+    user-facing list would add noise without affordances.
+    """
+
+    name: str
+    description: str
+    triggers: list[str] = []
+
+
+class CopilotSkillDetail(BaseModel):
+    """Full SKILL.md content surfaced to the library expand-to-view UI."""
+
+    name: str
+    description: str
+    triggers: list[str] = []
+    body: str
+    version: str | None = None
+    is_default: bool = False
+    # Sibling files in the same skill folder (references/, scripts/,
+    # assets/, etc.) — the workspace paths the model can reach via
+    # ``read_workspace_file``.  Empty for built-in defaults since they
+    # ship as on-disk markdown and have no sibling artefacts.
+    sibling_files: list[str] = []
+
+
+class UploadCopilotSkillRequest(BaseModel):
+    """Body for the library UI's "upload skill" action.
+
+    Carries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the
+    user picked from disk; the server parses + validates it so the upload and
+    the copilot's ``store_skill`` tool share one source of truth.
+    """
+
+    content: str
+
+
+@v1_router.get(
+    path="/skills",
+    summary="List user-distilled copilot skills",
+    operation_id="listCopilotSkills",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_skills(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[CopilotSkillInfo]:
+    """Return user-stored skills for the current user.
+
+    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
+    library UI sees the exact same set the copilot ``<available_skills>``
+    block surfaces, minus the built-in defaults (which are read-only and
+    handled separately by the copilot runtime).
+    """
+    skills = await list_user_skills(user_id)
+    return [
+        CopilotSkillInfo(
+            name=s.name,
+            description=s.description,
+            triggers=list(s.triggers),
+        )
+        for s in skills
+    ]
+
+
+@v1_router.post(
+    path="/skills",
+    summary="Upload a copilot skill from a SKILL.md file",
+    operation_id="uploadCopilotSkill",
+    tags=["skills"],
+    status_code=201,
+    responses={
+        400: {"description": "Malformed SKILL.md or validation error"},
+        409: {"description": "Per-user skill limit reached"},
+    },
+    dependencies=[Security(requires_user)],
+)
+async def upload_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    body: UploadCopilotSkillRequest,
+) -> CopilotSkillInfo:
+    """Create a user-distilled skill from an uploaded ``SKILL.md`` file.
+
+    Parses the canonical frontmatter + body, then reuses
+    :func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill
+    is validated, capped, and persisted exactly like one the copilot distils
+    via ``store_skill``.  Malformed files return 400, the per-user cap returns
+    409, and an existing slug is overwritten (upsert).
+    """
+    parsed = parse_skill_markdown(body.content)
+    if parsed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "File is not a valid SKILL.md — expected YAML frontmatter with "
+                "'name' and 'description' followed by a markdown body."
+            ),
+        )
+    try:
+        stored = await store_user_skill(
+            user_id,
+            name=parsed.name,
+            description=parsed.description,
+            body=parsed.body,
+            triggers=list(parsed.triggers),
+            version=parsed.version,
+        )
+    except SkillLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (VirusDetectedError, VirusScanError) as exc:
+        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Skill content rejected by virus scan"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return CopilotSkillInfo(
+        name=stored.name,
+        description=stored.description,
+        triggers=list(stored.triggers),
+    )
+
+
+@v1_router.get(
+    path="/skills/{name}",
+    summary="Read a single copilot skill with its full SKILL.md body",
+    operation_id="readCopilotSkill",
+    tags=["skills"],
+    responses={404: {"description": "Skill not found"}},
+    dependencies=[Security(requires_user)],
+)
+async def read_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to read"),
+) -> CopilotSkillDetail:
+    """Return full SKILL.md content (name, description, triggers, body)
+    for the library UI's expand-to-view dialog.
+
+    Built-in default skills are returned with ``is_default=True`` so the
+    UI can hide destructive affordances; missing user skills return 404.
+    """
+    slug = name.strip().lower()
+    try:
+        default = get_default_skill_with_body(slug)
+    except OSError:
+        # Don't leak the on-disk path; operators trace via server logs.
+        logger.exception("[skills] failed to load default skill body for %s", slug)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load default skill body",
+        )
+    if default is not None:
+        return CopilotSkillDetail(
+            name=default.name,
+            description=default.description,
+            triggers=list(default.triggers),
+            body=default.body,
+            is_default=True,
+        )
+
+    parsed = await read_user_skill_with_body(user_id, slug)
+    if parsed is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
+    return CopilotSkillDetail(
+        name=parsed.name,
+        description=parsed.description,
+        triggers=list(parsed.triggers),
+        body=parsed.body,
+        version=parsed.version,
+        is_default=False,
+        sibling_files=sibling_files,
+    )
+
+
+@v1_router.delete(
+    path="/skills/{name}",
+    summary="Delete a user-distilled copilot skill",
+    operation_id="deleteCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def delete_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to delete"),
+) -> dict[str, str]:
+    """Delete a user-distilled skill by slug.
+
+    Built-in defaults are not user-deletable — attempting to delete one
+    returns 400.  Missing skills return 404 so the UI can reconcile a
+    stale list.
+    """
+    try:
+        slug = await delete_user_skill(user_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BuiltInSkillError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"name": slug}
 
 
 ########################################################

@@ -30,6 +30,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for enrichment results
@@ -178,9 +179,10 @@ class ExaGetWebsetItemBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_item = aexa.websets.items.get(
+        sdk_item = await aexa.websets.items.get(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
+        merge_exa_cost(self, sdk_item)
 
         item = WebsetItemModel.from_sdk(sdk_item)
 
@@ -269,7 +271,7 @@ class ExaListWebsetItemsBlock(Block):
             response = None
 
             while time.time() - start_time < input_data.wait_timeout:
-                response = aexa.websets.items.list(
+                response = await aexa.websets.items.list(
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
@@ -282,17 +284,18 @@ class ExaListWebsetItemsBlock(Block):
                 interval = min(interval * 1.2, 10)
 
             if not response:
-                response = aexa.websets.items.list(
+                response = await aexa.websets.items.list(
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
                 )
         else:
-            response = aexa.websets.items.list(
+            response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id,
                 cursor=input_data.cursor,
                 limit=input_data.limit,
             )
+        merge_exa_cost(self, response)
 
         items = [WebsetItemModel.from_sdk(item) for item in response.data]
 
@@ -340,9 +343,10 @@ class ExaDeleteWebsetItemBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_item = aexa.websets.items.delete(
+        deleted_item = await aexa.websets.items.delete(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
+        merge_exa_cost(self, deleted_item)
 
         yield "item_id", deleted_item.id
         yield "success", "true"
@@ -404,11 +408,12 @@ class ExaBulkWebsetItemsBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         all_items: List[WebsetItemModel] = []
+        # list_all paginates internally; cost_dollars is not surfaced per-page
         item_iterator = aexa.websets.items.list_all(
             webset_id=input_data.webset_id, limit=input_data.max_items
         )
 
-        for sdk_item in item_iterator:
+        async for sdk_item in item_iterator:
             if len(all_items) >= input_data.max_items:
                 break
 
@@ -475,7 +480,8 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, webset)
 
         entity_type = "unknown"
         if webset.searches:
@@ -495,9 +501,10 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Get sample items if requested
         sample_items: List[WebsetItemModel] = []
         if input_data.sample_size > 0:
-            items_response = aexa.websets.items.list(
+            items_response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id, limit=input_data.sample_size
             )
+            merge_exa_cost(self, items_response)
             # Convert to our stable models
             sample_items = [
                 WebsetItemModel.from_sdk(item) for item in items_response.data
@@ -569,11 +576,12 @@ class ExaGetNewItemsBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get items starting from cursor
-        response = aexa.websets.items.list(
+        response = await aexa.websets.items.list(
             webset_id=input_data.webset_id,
             cursor=input_data.since_cursor,
             limit=input_data.max_items,
         )
+        merge_exa_cost(self, response)
 
         # Convert SDK items to our stable models
         new_items = [WebsetItemModel.from_sdk(item) for item in response.data]

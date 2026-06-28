@@ -11,7 +11,7 @@ jobs:
     steps:
       # - name: Wait some time for all actions to start
       #   run: sleep 30
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         # with:
           # fetch-depth: 0
       - name: Set up Python
