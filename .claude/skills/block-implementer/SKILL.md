@@ -55,6 +55,10 @@ poetry run pytest backend/blocks/test/test_block.py -x
 
 For OAuth providers, the executor must confirm the block actually appears in the registry with test env vars set — a missing `*_CLIENT_ID`/`*_CLIENT_SECRET` filters the block out silently.
 
+### Step 4 — Spot-check verification
+
+Inherited unchanged from `/feature-implementer` — the orchestrator independently re-runs the executor's verification commands rather than trusting the returned report.
+
 ### Step 5 — Implementation review
 
 Reviewer invokes `/review-impl`; the Blocks surface lens is mandatory, with extra weight on:

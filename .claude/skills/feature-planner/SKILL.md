@@ -43,7 +43,11 @@ Name an existing feature most similar to the task and trace it end to end — li
 
 ### Step 3: Reuse building blocks
 
-Consult the existing infrastructure before proposing any new helper:
+Consult the existing infrastructure before proposing any new helper. Paths are
+project-relative: `backend/…` rows are under `autogpt_platform/backend/` (so on
+disk e.g. `autogpt_platform/backend/backend/util/request.py`) and `frontend/…`
+rows are under `autogpt_platform/frontend/` — the same roots the backend/frontend
+commands run from.
 
 | Module | What lives there |
 |--------|-----------------|

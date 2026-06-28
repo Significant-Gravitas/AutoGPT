@@ -2,6 +2,9 @@
 name: implementation-executor
 description: Execute an already-reviewed AutoGPT Platform implementation plan surgically. Receives the approved plan + scope, edits files test-first, runs verification, and returns a structured report. Does NOT plan, does NOT review, does NOT commit. Spawned by /feature-implementer or /block-implementer.
 tools: Read, Edit, Write, Bash, Grep, Glob
+# model is the FALLBACK only: the orchestrator (/feature-implementer, /block-implementer)
+# first requests a `fable` override when spawning this agent and drops to this `opus`
+# frontmatter value only if the harness rejects the override.
 model: opus
 ---
 

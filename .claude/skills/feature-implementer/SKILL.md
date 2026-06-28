@@ -136,5 +136,5 @@ Return after the commit:
 6. Commit hash and staged file list.
 7. If shipped: PR URL and `/pr-polish` outcome (rounds, final state).
 8. Deviations from the plan with reasons.
-8. Self-flagged risks and judgement calls (yours + executor's).
-9. Remaining items, if any, with reasons.
+9. Self-flagged risks and judgement calls (yours + executor's).
+10. Remaining items, if any, with reasons.
