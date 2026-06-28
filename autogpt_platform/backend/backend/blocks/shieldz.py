@@ -29,18 +29,24 @@ class ShieldzCreatePaymentLinkBlock(Block):
             description="Settlement chain: base, arbitrum, optimism, polygon, or ethereum",
         )
         asset: str = SchemaField(default="USDC", description="Stablecoin: USDC or USDT")
-        memo: str = SchemaField(default="", description="Description shown on the checkout")
+        memo: str = SchemaField(
+            default="", description="Description shown on the checkout"
+        )
         email: str = SchemaField(
             default="", description="Optional; lets the owner claim a dashboard later"
         )
 
     class Output(BlockSchemaOutput):
-        pay_url: str = SchemaField(description="Hosted checkout URL to send the payer to")
+        pay_url: str = SchemaField(
+            description="Hosted checkout URL to send the payer to"
+        )
         manage_url: str = SchemaField(
             description="Capability URL to read status later (keep private)"
         )
         embed: str = SchemaField(description="Embeddable <script> button snippet")
-        error: str = SchemaField(description="Error message if the link could not be created")
+        error: str = SchemaField(
+            description="Error message if the link could not be created"
+        )
 
     def __init__(self):
         super().__init__(
@@ -59,7 +65,10 @@ class ShieldzCreatePaymentLinkBlock(Block):
             test_output=[
                 ("pay_url", "https://shieldz.cash/pay/8kQ2x"),
                 ("manage_url", "https://shieldz.cash/a/cap_8kQ2x"),
-                ("embed", '<script src="https://shieldz.cash/embed/button.js" data-href="https://shieldz.cash/pay/8kQ2x"></script>'),
+                (
+                    "embed",
+                    '<script src="https://shieldz.cash/embed/button.js" data-href="https://shieldz.cash/pay/8kQ2x"></script>',
+                ),
             ],
             test_mock={
                 "create_link": lambda *args, **kwargs: {
@@ -90,7 +99,9 @@ class ShieldzCreatePaymentLinkBlock(Block):
 
         data = await self.create_link(body)
         if "pay_url" not in data:
-            yield "error", (data.get("error") or {}).get("message", "could not create payment link")
+            yield "error", (data.get("error") or {}).get(
+                "message", "could not create payment link"
+            )
             return
         yield "pay_url", data["pay_url"]
         yield "manage_url", data["manage_url"]
@@ -114,9 +125,12 @@ class ShieldzCreateTipJarBlock(Block):
             description="Settlement chain: base, arbitrum, optimism, polygon, or ethereum",
         )
         asset: str = SchemaField(default="USDC", description="Stablecoin: USDC or USDT")
-        title: str = SchemaField(default="", description="Heading shown on the tip page")
+        title: str = SchemaField(
+            default="", description="Heading shown on the tip page"
+        )
         suggested_amounts_usd: list[float] = SchemaField(
-            default_factory=list, description="Preset amount buttons in USD, e.g. [3, 5, 10]"
+            default_factory=list,
+            description="Preset amount buttons in USD, e.g. [3, 5, 10]",
         )
         email: str = SchemaField(
             default="", description="Optional; lets the owner claim a dashboard later"
@@ -127,7 +141,9 @@ class ShieldzCreateTipJarBlock(Block):
         manage_url: str = SchemaField(
             description="Capability URL to read status later (keep private)"
         )
-        error: str = SchemaField(description="Error message if the tip jar could not be created")
+        error: str = SchemaField(
+            description="Error message if the tip jar could not be created"
+        )
 
     def __init__(self):
         super().__init__(
@@ -178,7 +194,9 @@ class ShieldzCreateTipJarBlock(Block):
 
         data = await self.create_tip_jar(body)
         if "url" not in data:
-            yield "error", (data.get("error") or {}).get("message", "could not create tip jar")
+            yield "error", (data.get("error") or {}).get(
+                "message", "could not create tip jar"
+            )
             return
         yield "url", data["url"]
         yield "manage_url", data["manage_url"]
