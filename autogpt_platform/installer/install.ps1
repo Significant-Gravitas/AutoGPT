@@ -224,7 +224,10 @@ function Get-Repo($ver) {
   Step "Fetching AutoGPT ($($ver.kind): $($ver.ref)) into $Dir"
   if (Test-Path (Join-Path $Dir '.git')) {
     Info "Repo already present - updating..."
-    git -C $Dir fetch --depth 1 origin $ver.ref 2>&1 | Out-Null
+    # Fetch the fully-qualified ref: a bare name resolves remote branches only,
+    # so default/-Release installs (which are tags) would otherwise fail to update.
+    $fetchRef = if ($ver.kind -eq 'tag') { "refs/tags/$($ver.ref)" } else { "refs/heads/$($ver.ref)" }
+    git -C $Dir fetch --depth 1 origin $fetchRef 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Die "git fetch failed for '$($ver.ref)'. Check the branch/tag name and your network, then re-run." }
     git -C $Dir checkout FETCH_HEAD 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Die "git checkout failed in $Dir. Resolve the repo state (or remove $Dir) and re-run." }
@@ -266,11 +269,12 @@ function Invoke-Setup {
 # ============================================================================
 # MAIN
 # ============================================================================
-$ver = Resolve-Version
-Info "Selected version -> $($ver.kind): $($ver.ref)"
 if (-not $SkipPreflight) { Invoke-Preflight } else { Warn "Pre-flight skipped (-SkipPreflight)." }
 if ($PreflightOnly) { Say "`n(-PreflightOnly: stopping before any install.)"; exit 0 }
 Install-Git
+# Resolve the version after pre-flight so -PreflightOnly never needs the network.
+$ver = Resolve-Version
+Info "Selected version -> $($ver.kind): $($ver.ref)"
 Install-Docker
 Get-Repo $ver
 Invoke-Setup

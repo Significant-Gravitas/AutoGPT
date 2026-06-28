@@ -237,7 +237,15 @@ install_docker() {
       if [ "$(id -u)" -ne 0 ]; then $SUDO usermod -aG docker "$USER" 2>/dev/null || true
         warn "Added you to the 'docker' group - a fresh login is needed for non-sudo docker. setup-autogpt.sh will use sudo as needed this run."; fi
     fi
-    docker_ready || $SUDO docker info >/dev/null 2>&1 || die "Docker installed but the daemon isn't running. Start it and re-run."
+    # Poll for the daemon — a slow systemd/service start isn't ready on the
+    # first probe. docker_ready uses non-sudo `docker info`; also accept the
+    # sudo path since group membership needs a fresh login this run.
+    local i=0
+    while ! { docker info >/dev/null 2>&1 || $SUDO docker info >/dev/null 2>&1; }; do
+      i=$((i+1))
+      if [ "$i" -ge 12 ]; then die "Docker installed but the daemon isn't running after ~60s. Start it (e.g. 'sudo systemctl start docker') and re-run."; fi
+      sleep 5
+    done
     ok "Docker Engine ready"
   else
     step "Installing Docker Desktop (macOS)"
@@ -282,7 +290,11 @@ get_repo() {
   step "Fetching AutoGPT ($VER_KIND: $VER_REF) into $DIR"
   if [ -d "$DIR/.git" ]; then
     info "Repo already present - updating..."
-    git -C "$DIR" fetch --depth 1 origin "$VER_REF" && git -C "$DIR" checkout FETCH_HEAD
+    # Fully-qualify the ref: a bare name fetches remote branches only, so
+    # default/--release installs (which are tags) would otherwise fail to update.
+    local fetch_ref
+    if [ "$VER_KIND" = tag ]; then fetch_ref="refs/tags/$VER_REF"; else fetch_ref="refs/heads/$VER_REF"; fi
+    git -C "$DIR" fetch --depth 1 origin "$fetch_ref" && git -C "$DIR" checkout FETCH_HEAD
   elif [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
     # Non-empty but not a git checkout — usually a half-finished clone from an
     # interrupted run. A plain `git clone` into it would fail every rerun, so
