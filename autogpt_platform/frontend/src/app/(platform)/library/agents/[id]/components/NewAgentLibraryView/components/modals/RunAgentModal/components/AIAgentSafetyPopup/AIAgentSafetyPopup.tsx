@@ -33,6 +33,7 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
 
   return (
     <Dialog
+      title="Safety Checks"
       controlled={{ isOpen, set: () => {} }}
       styling={{ maxWidth: "480px" }}
     >
