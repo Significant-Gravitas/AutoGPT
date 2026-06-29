@@ -19,6 +19,7 @@ Use these URLs directly without asking the user:
 | Intercom | `https://mcp.intercom.com/mcp` |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
 | Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
+| BGPT (scientific literature) | `https://bgpt.pro/mcp/stream` |
 
 For other services, **web-search for the service's official MCP server URL**
 (e.g. "`<service>` MCP server URL") — many vendors host an MCP server even
