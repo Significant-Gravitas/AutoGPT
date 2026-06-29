@@ -156,8 +156,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
+        # Same block id — a continuous text stream, no separator inserted.
         await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="2", delta="world"))
+        await queue.put(StreamTextDelta(id="1", delta="world"))
         await queue.put(StreamFinish())
 
         captured_session_ids: list[str] = []
@@ -186,6 +187,40 @@ class TestStreamChat:
 
         assert "".join(chunks) == "Hello world"
         assert captured_session_ids == ["sess"]
+
+    @pytest.mark.asyncio
+    async def test_inserts_paragraph_break_between_text_blocks(self, api: BotBackend):
+        # AutoPilot emits text in separate blocks around tool calls / reasoning,
+        # each with its own id. Concatenating them without a separator runs the
+        # blocks together ("first thought.second thought"); a paragraph break
+        # keeps them readable, matching the frontend's distinct-part rendering.
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(StreamTextDelta(id="1", delta="first thought."))
+        await queue.put(StreamTextDelta(id="2", delta="second thought."))
+        await queue.put(StreamFinish())
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            chunks: list[str] = []
+            async for chunk in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+            ):
+                chunks.append(chunk)
+
+        assert "".join(chunks) == "first thought.\n\nsecond thought."
 
     @pytest.mark.asyncio
     async def test_surfaces_stream_error(self, api: BotBackend):

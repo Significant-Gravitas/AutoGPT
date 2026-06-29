@@ -109,6 +109,13 @@ services:
       file: ./docker-compose.platform.yml
       service: notification_server
 
+  platform_linking_manager:
+    <<: *agpt-services
+    profiles: ["bot"]
+    extends:
+      file: ./docker-compose.platform.yml
+      service: platform_linking_manager
+
   clamav:
     <<: *agpt-services
     image: clamav/clamav-debian:latest
