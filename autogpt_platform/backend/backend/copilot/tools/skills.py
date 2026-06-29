@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
-MAX_DESCRIPTION_CHARS = 200
+MAX_DESCRIPTION_CHARS = 250
 MAX_BODY_CHARS = 20_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
 # so an unbounded list (or one huge trigger) would balloon the prefix
@@ -926,7 +926,7 @@ class StoreSkillTool(BaseTool):
                 },
                 "description": {
                     "type": "string",
-                    "description": "One-line hook (≤200 chars).",
+                    "description": "One-line hook (≤250 chars).",
                 },
                 "body": {
                     "type": "string",
