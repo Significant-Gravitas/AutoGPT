@@ -8,7 +8,7 @@ import pytest
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .chat import list_user_chats, start_chat_turn, upload_chat_file
+from .chat import list_user_chats, start_chat_turn, upload_workspace_file
 from .models import BotChatRequest, Platform, WorkspaceUploadRequest
 
 
@@ -220,7 +220,7 @@ class TestListUserChats:
         mock_get_sessions.assert_awaited_once_with("owner-1", limit=25, offset=0)
 
 
-class TestUploadChatFile:
+class TestUploadWorkspaceFile:
     @staticmethod
     def _req(**overrides):
         defaults = dict(
@@ -254,7 +254,7 @@ class TestUploadChatFile:
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            result = await upload_chat_file(self._req())
+            result = await upload_workspace_file(self._req())
         assert result.file_id == "file-1"
         assert result.error is None
 
@@ -263,7 +263,7 @@ class TestUploadChatFile:
         write = AsyncMock(side_effect=VirusDetectedError("EICAR-Test"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            result = await upload_chat_file(self._req())
+            result = await upload_workspace_file(self._req())
         assert result.file_id is None
         assert result.error == "virus_detected"
 
@@ -272,7 +272,7 @@ class TestUploadChatFile:
         write = AsyncMock(side_effect=VirusScanError("clamd down"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            result = await upload_chat_file(self._req())
+            result = await upload_workspace_file(self._req())
         assert result.error == "scan_unavailable"
 
     @pytest.mark.asyncio
@@ -280,7 +280,7 @@ class TestUploadChatFile:
         write = AsyncMock(side_effect=ValueError("File too large"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            result = await upload_chat_file(self._req())
+            result = await upload_workspace_file(self._req())
         assert result.error == "rejected"
 
     @pytest.mark.asyncio
@@ -288,7 +288,7 @@ class TestUploadChatFile:
         write = AsyncMock(side_effect=RuntimeError("storage exploded"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            result = await upload_chat_file(self._req())
+            result = await upload_workspace_file(self._req())
         assert result.error == "upload_failed"
 
     @pytest.mark.asyncio
@@ -296,7 +296,7 @@ class TestUploadChatFile:
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
-            await upload_chat_file(self._req(filename="../../etc/passwd"))
+            await upload_workspace_file(self._req(filename="../../etc/passwd"))
         # Neither the storage path nor the filename passed to the storage
         # backend may carry traversal segments — only the sanitized basename.
         kwargs = write.await_args.kwargs
@@ -312,7 +312,7 @@ class TestUploadChatFile:
             "backend.platform_linking.chat.platform_linking_db", return_value=db
         ):
             with pytest.raises(NotFoundError):
-                await upload_chat_file(self._req())
+                await upload_workspace_file(self._req())
 
     @pytest.mark.asyncio
     async def test_not_found_in_try_propagates_not_rejected(self):
@@ -322,4 +322,4 @@ class TestUploadChatFile:
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
             with pytest.raises(NotFoundError):
-                await upload_chat_file(self._req())
+                await upload_workspace_file(self._req())

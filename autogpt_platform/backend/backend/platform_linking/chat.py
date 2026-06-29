@@ -63,7 +63,9 @@ async def resolve_chat_owner(request: BotChatRequest) -> str:
     )
 
 
-async def upload_chat_file(request: WorkspaceUploadRequest) -> WorkspaceUploadResult:
+async def upload_workspace_file(
+    request: WorkspaceUploadRequest,
+) -> WorkspaceUploadResult:
     """Store a user-attached file in the conversation owner's workspace.
 
     Runs the same machinery as the web upload endpoint

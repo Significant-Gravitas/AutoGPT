@@ -6,7 +6,7 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import list_user_chats, start_chat_turn, upload_chat_file
+from .chat import list_user_chats, start_chat_turn, upload_workspace_file
 from .models import (
     BotChatRequest,
     BotEventInput,
@@ -85,7 +85,7 @@ class PlatformLinkingManager(AppService):
     async def upload_workspace_file(
         self, request: WorkspaceUploadRequest
     ) -> WorkspaceUploadResult:
-        return await upload_chat_file(request)
+        return await upload_workspace_file(request)
 
     @expose
     async def refresh_server_link_name(
