@@ -305,6 +305,19 @@ class TestUploadWorkspaceFile:
         assert kwargs["filename"] == "passwd"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", [".", "..", "dir/..", "/"])
+    async def test_dot_filenames_fall_back_to_safe_name(self, name: str):
+        # Basename of "."/".." is still "."/"..", which would re-introduce a
+        # special segment into uploads/<uuid>/<name>; they must become "file".
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            await upload_workspace_file(self._req(filename=name))
+        kwargs = write.await_args.kwargs
+        assert kwargs["filename"] == "file"
+        assert kwargs["path"].endswith("/file")
+
+    @pytest.mark.asyncio
     async def test_unlinked_user_raises_not_found(self):
         db = MagicMock()
         db.find_user_link_owner = AsyncMock(return_value=None)

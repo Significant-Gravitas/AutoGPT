@@ -1,6 +1,7 @@
 """Chat-turn orchestration for the platform bot bridge."""
 
 import logging
+import os
 from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -82,7 +83,11 @@ async def upload_workspace_file(
     # filename so it can't traverse the workspace path or leak ".."/separators
     # into the storage backend (e.g. GCS blob names). write_file passes the
     # filename through to storage, so use the sanitized name everywhere.
-    safe_name = request.filename.replace("\\", "/").rsplit("/", 1)[-1] or "file"
+    # Basename alone still yields "."/".." for those inputs, which would re-
+    # introduce a special segment into uploads/<uuid>/<name>, so reject them.
+    safe_name = os.path.basename(request.filename.replace("\\", "/"))
+    if safe_name in {"", ".", ".."}:
+        safe_name = "file"
     try:
         workspace = await workspace_db().get_or_create_workspace(owner_user_id)
         manager = WorkspaceManager(owner_user_id, workspace.id)
