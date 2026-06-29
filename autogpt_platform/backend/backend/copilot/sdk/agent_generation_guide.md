@@ -190,8 +190,8 @@ descriptions; read and follow those when `find_block` surfaces a match.
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
 - **StoreValueBlock vs PersistInformationBlock** — these are NOT interchangeable:
   - `StoreValueBlock` (ID: `1ff065e9-88e8-4358-9d82-8dc91f622ba9`) — holds a
-    constant **within one run only** (ephemeral). Use it to fan a value out to
-    multiple blocks in the same execution, or as a prerequisite for ConditionBlock.
+    constant **within one run only** (ephemeral). Use it to reuse a single output value
+    as input for multiple node runs (within the same agent run).
   - `PersistInformationBlock` (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`) +
     `RetrieveInformationBlock` (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`) —
     write/read values that **survive across runs**. Use these whenever you need

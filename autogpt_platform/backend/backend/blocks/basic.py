@@ -68,10 +68,12 @@ class FileStoreBlock(Block):
 
 class StoreValueBlock(Block):
     """
-    Holds a constant value within a single run and forwards it to multiple blocks.
-    The value is ephemeral — it exists only for the duration of one execution and
-    is NOT persisted across runs. To store data that survives between runs, use
-    PersistInformationBlock (writer) and RetrieveInformationBlock (reader) instead.
+    Holds or receives a value and outputs it statically so that it can be used multiple
+    times within the same agent run. Whenever consumed, the output value reflects the
+    last input value that was received.
+
+    NOTE: The value is NOT persisted across runs. To store data that survives between
+    runs, use PersistInformationBlock and RetrieveInformationBlock instead.
     """
 
     class Input(BlockSchemaInput):
@@ -91,12 +93,7 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description=(
-                "Holds a constant value within a single run and forwards it to multiple "
-                "blocks. Ephemeral: the value lives only for one execution and is NOT "
-                "saved between runs. To persist data across runs use "
-                "PersistInformationBlock (write) + RetrieveInformationBlock (read)."
-            ),
+            description=StoreValueBlock.__doc__,
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,

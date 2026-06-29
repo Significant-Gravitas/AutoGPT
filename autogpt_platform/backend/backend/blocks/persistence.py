@@ -27,11 +27,11 @@ def get_storage_key(key: str, scope: StorageScope, graph_id: str) -> str:
 
 class PersistInformationBlock(Block):
     """
-    Saves a key-value pair that survives across multiple runs of an agent.
-    Unlike StoreValueBlock (which only holds a value for the current run),
-    data written here is durable and can be read back in future runs via
-    RetrieveInformationBlock. Use this when you need memory that persists
-    between executions, e.g. counters, last-seen state, user preferences.
+    Persists a key-value pair for use across multiple runs of an agent. Use this when
+    you need memory that persists between executions, e.g. last-seen state, counters,
+    accumulated data.
+
+    Beware of read->write race conditions for parallel use of the same key.
     """
 
     class Input(BlockSchemaInput):
@@ -52,13 +52,7 @@ class PersistInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="1d055e55-a2b9-4547-8311-907d05b0304d",
-            description=(
-                "Saves a key-value pair that persists across multiple runs. "
-                "Use to store state, counters, or memory that must survive between "
-                "executions. Pair with RetrieveInformationBlock to read the value back "
-                "in a later run. For temporary within-run value passing, use "
-                "StoreValueBlock instead."
-            ),
+            description=PersistInformationBlock.__doc__,
             categories={BlockCategory.DATA},
             input_schema=PersistInformationBlock.Input,
             output_schema=PersistInformationBlock.Output,
@@ -110,12 +104,7 @@ class PersistInformationBlock(Block):
 
 
 class RetrieveInformationBlock(Block):
-    """
-    Reads back a key-value pair previously saved by PersistInformationBlock.
-    The value is durable across runs — use this to recall state, counters, or
-    memory from a prior execution. This block does NOT read values set by
-    StoreValueBlock (which are ephemeral and limited to a single run).
-    """
+    """Reads back a key-value pair previously saved by PersistInformationBlock."""
 
     class Input(BlockSchemaInput):
         key: str = SchemaField(description="Key to retrieve the information for")
@@ -137,12 +126,7 @@ class RetrieveInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="d8710fc9-6e29-481e-a7d5-165eb16f8471",
-            description=(
-                "Reads back a key-value pair previously saved by PersistInformationBlock. "
-                "Returns data that persists across runs. Use with PersistInformationBlock "
-                "to build durable memory, counters, or state. Does NOT retrieve values "
-                "from StoreValueBlock (those are ephemeral, within-run only)."
-            ),
+            description=RetrieveInformationBlock.__doc__,
             categories={BlockCategory.DATA},
             input_schema=RetrieveInformationBlock.Input,
             output_schema=RetrieveInformationBlock.Output,
