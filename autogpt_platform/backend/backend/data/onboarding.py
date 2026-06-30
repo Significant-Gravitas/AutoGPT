@@ -94,10 +94,11 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        # data.notified is list[OnboardingStep]; coerce to plain str so the
-        # merge with the stored str[] column stays list[str] for Prisma.
+        # str(step): persist plain str so the merge with the stored str[] column
+        # stays list[str]. str() works whether the value is an OnboardingStep
+        # (StrEnum) or already a plain str, so it can't AttributeError.
         update["notified"] = list(
-            {step.value for step in data.notified} | set(onboarding.notified)
+            {str(step) for step in data.notified} | set(onboarding.notified)
         )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
@@ -157,9 +158,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            # step.value: persist a plain str so the stored TEXT[] column never
-            # holds an enum instance (consistent with update_user_onboarding).
-            "rewardedFor": list(set(onboarding.rewardedFor + [step.value])),
+            # str(step): persist a plain str (consistent with
+            # update_user_onboarding); robust whether step is a StrEnum or a str.
+            "rewardedFor": list(set(onboarding.rewardedFor + [str(step)])),
         },
     )
 
@@ -173,8 +174,9 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
-                # step.value: persist a plain str (see update_user_onboarding).
-                "completedSteps": list(set(onboarding.completedSteps + [step.value])),
+                # str(step): persist a plain str (see update_user_onboarding);
+                # robust whether step is a StrEnum or a str.
+                "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
         await _reward_user(user_id, onboarding, step)
