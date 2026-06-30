@@ -9,7 +9,7 @@ from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
-    resolve_agent_json_input,
+    resolve_agent_json_or_error,
 )
 from .base import BaseTool
 from .helpers import require_guide_read
@@ -63,24 +63,22 @@ class ValidateAgentGraphTool(BaseTool):
         if guide_gate is not None:
             return guide_gate
 
-        agent_json, resolve_error = await resolve_agent_json_input(
-            agent_json, agent_json_ref, user_id, session
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide a valid agent JSON object via agent_json, or "
+                "agent_json_ref pointing at the workspace agent file."
+            ),
+            missing_error="Missing or invalid agent_json parameter",
+            invalid_error="Missing or invalid agent_json parameter",
         )
         if resolve_error is not None:
-            return ErrorResponse(
-                message=resolve_error,
-                error="Missing or invalid agent_json parameter",
-                session_id=session_id,
-            )
-        if not agent_json or not isinstance(agent_json, dict):
-            return ErrorResponse(
-                message=(
-                    "Please provide a valid agent JSON object via agent_json, or "
-                    "agent_json_ref pointing at the workspace agent file."
-                ),
-                error="Missing or invalid agent_json parameter",
-                session_id=session_id,
-            )
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         nodes = agent_json.get("nodes", [])
 

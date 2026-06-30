@@ -11,7 +11,7 @@ from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_sav
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
-    resolve_agent_json_input,
+    resolve_agent_json_or_error,
 )
 from .base import BaseTool
 from .helpers import require_guide_read, require_library_check
@@ -109,25 +109,21 @@ class CreateAgentTool(BaseTool):
                 user_id=user_id, session_id=session_id, outcome="bypassed_ack"
             )
 
-        agent_json, resolve_error = await resolve_agent_json_input(
-            agent_json, agent_json_ref, user_id, session
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide agent_json with the complete agent graph, or "
+                "agent_json_ref pointing at the workspace agent file. "
+                "Use find_block to discover blocks, then generate the JSON."
+            ),
         )
         if resolve_error is not None:
-            return ErrorResponse(
-                message=resolve_error,
-                error="invalid_agent_json",
-                session_id=session_id,
-            )
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide agent_json with the complete agent graph, or "
-                    "agent_json_ref pointing at the workspace agent file. "
-                    "Use find_block to discover blocks, then generate the JSON."
-                ),
-                error="missing_agent_json",
-                session_id=session_id,
-            )
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         if library_agent_ids is None:
             library_agent_ids = []

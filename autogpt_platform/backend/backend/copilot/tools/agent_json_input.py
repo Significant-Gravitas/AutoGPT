@@ -28,6 +28,8 @@ from backend.copilot.sdk.file_ref import (
     read_file_bytes,
 )
 
+from .models import ErrorResponse
+
 # Structured (not bare ``{"type": "object"}``) so constrained tool-arg decoders
 # have keys to follow instead of collapsing the value to ``{}``. Nested props are
 # kept type-only to stay within the schema char budget.
@@ -79,6 +81,37 @@ async def resolve_agent_json_input(
     return None, None
 
 
+async def resolve_agent_json_or_error(
+    *,
+    agent_json: Any,
+    agent_json_ref: Any,
+    user_id: str | None,
+    session: ChatSession,
+    session_id: str | None,
+    missing_message: str,
+    missing_error: str = "missing_agent_json",
+    invalid_error: str = "invalid_agent_json",
+) -> tuple[dict[str, Any] | None, ErrorResponse | None]:
+    """Resolve the graph or build the tool-facing ``ErrorResponse``.
+
+    Wraps :func:`resolve_agent_json_input` with the resolve-error / missing-input
+    branching every agent-graph tool repeats. Returns ``(graph, None)`` on
+    success or ``(None, error)`` ready to return from ``_execute``.
+    """
+    graph, resolve_error = await resolve_agent_json_input(
+        agent_json, agent_json_ref, user_id, session
+    )
+    if resolve_error is not None:
+        return None, ErrorResponse(
+            message=resolve_error, error=invalid_error, session_id=session_id
+        )
+    if not graph:
+        return None, ErrorResponse(
+            message=missing_message, error=missing_error, session_id=session_id
+        )
+    return graph, None
+
+
 def _coerce_to_graph(value: Any) -> dict[str, Any] | None:
     """Return a graph dict from an inline object or stringified-JSON object."""
     if isinstance(value, dict) and value:
@@ -112,29 +145,41 @@ async def _resolve_ref(
             "or a 'workspace:///agent.json' reference as agent_json_ref."
         )
 
+    # Sanitize the reference in error messages so we never echo the raw
+    # exception text or the full workspace/directory path back to the model.
+    ref_name = os.path.basename(uri) or uri
     try:
         data = await read_file_bytes(uri, user_id, session)
-    except ValueError as exc:
-        return None, f"Could not read agent_json_ref file: {exc}"
+    except ValueError:
+        return None, f"Could not read agent_json_ref file '{ref_name}'."
 
     parsed = _try_parse_json(data.decode("utf-8", errors="replace"))
     if not isinstance(parsed, dict) or not parsed:
         return None, (
-            f"agent_json_ref file did not contain a JSON object: {uri}. Ensure the "
-            "file holds the full agent graph before referencing it."
+            f"agent_json_ref file '{ref_name}' did not contain a JSON object. "
+            "Ensure the file holds the full agent graph before referencing it."
         )
     return parsed, None
 
 
 def _ref_to_uri(ref: str) -> str | None:
-    """Normalise an ``agent_json_ref`` value to a URI ``read_file_bytes`` accepts."""
+    """Normalise an ``agent_json_ref`` value to a workspace URI.
+
+    Only workspace references are accepted — ``agent_json_ref`` is meant to
+    point at the workspace ``agent.json`` the assistant wrote. Absolute local /
+    sandbox paths are rejected so this input can't be used to read arbitrary
+    files. (A ``@@agptfile:`` token still routes through the audited file-ref
+    resolver, which enforces its own path allow-list.)
+    """
     if ref.startswith(FILE_REF_PREFIX):
         file_ref = parse_file_ref(ref)
         return file_ref.uri if file_ref is not None else None
-    if ref.startswith("workspace://") or ref.startswith("/"):
+    if ref.startswith("workspace://"):
         return ref
+    if ref.startswith("/"):
+        return None
     # Treat a bare value (e.g. "agent.json") as a workspace virtual path.
-    return f"workspace:///{ref.lstrip('/')}"
+    return f"workspace:///{ref}"
 
 
 def _try_parse_json(text: str) -> Any:
