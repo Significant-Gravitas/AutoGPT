@@ -42,7 +42,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
 )
-from backend.copilot.pending_messages import peek_pending_messages
+from backend.copilot.pending_messages import (
+    clear_pending_messages_unsafe,
+    peek_pending_messages,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -902,6 +905,22 @@ async def cancel_session_task(
       task status flips out of ``running`` or a 5 s timeout is hit.
     """
     await _validate_and_get_session(session_id, user_id)
+
+    # Cancelling discards any follow-ups the user queued for this turn:
+    # Stop means stop.  The pending buffer only exists to feed the
+    # *running* turn (drained at tool boundaries); once that turn is
+    # cancelled there is nothing left to feed it, so leaving entries
+    # behind would silently inject them into the next unrelated turn
+    # (up to the 1h buffer TTL).  Best-effort — a Redis hiccup here must
+    # not block the cancel itself, so we swallow and log.
+    try:
+        await clear_pending_messages_unsafe(session_id)
+    except Exception:
+        logger.warning(
+            "[CANCEL] Failed to clear pending buffer for session ...%s",
+            session_id[-8:],
+            exc_info=True,
+        )
 
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.

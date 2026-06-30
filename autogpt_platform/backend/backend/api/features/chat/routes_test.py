@@ -1530,6 +1530,52 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_enqueue.assert_called_once_with("sess-1")
 
 
+def test_cancel_session_clears_pending_buffer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Cancelling a turn must drop any queued follow-ups so they don't
+    leak into the next unrelated turn (the pending buffer only exists to
+    feed the running turn).  Regression test for the orphan-pending bug:
+    before the fix, cancel published the executor event but left the
+    Redis buffer intact until its 1h TTL."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    mock_clear = mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    mock_clear.assert_awaited_once_with("sess-1")
+
+
+def test_cancel_session_survives_pending_clear_failure(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Redis hiccup while clearing the pending buffer must not block the
+    cancel itself — the clear is best-effort cleanup, the cancel is not."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new=AsyncMock(side_effect=RuntimeError("redis down")),
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+
+
 # ─── session_assign_user ──────────────────────────────────────────────
 
 
