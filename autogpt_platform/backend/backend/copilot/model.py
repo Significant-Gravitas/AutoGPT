@@ -198,6 +198,8 @@ class ChatSessionInfo(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
     chat_status: str = "idle"
+    # Whether the user has pinned this session to the top of the sidebar.
+    is_pinned: bool = False
 
     @property
     def dry_run(self) -> bool:
@@ -247,6 +249,7 @@ class ChatSessionInfo(BaseModel):
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
             chat_status=prisma_session.chatStatus,
+            is_pinned=prisma_session.isPinned,
         )
 
 
@@ -1210,6 +1213,48 @@ async def update_session_title(
         return True
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
+        return False
+
+
+async def update_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Lightweight operation that doesn't touch messages, mirroring
+    ``update_session_title``. Keeps the Redis cache in sync so the
+    sidebar reflects the change without waiting on a cache invalidation.
+
+    Args:
+        session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
+        is_pinned: New pin state.
+
+    Returns:
+        True if updated successfully, False otherwise (not found or wrong user).
+    """
+    try:
+        updated = await chat_db().update_chat_session_pinned(
+            session_id, user_id, is_pinned
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.is_pinned = is_pinned
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache pin update failed for session {session_id} (non-critical): {e}"
+            )
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update pin state for session {session_id}: {e}")
         return False
 
 
