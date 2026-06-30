@@ -90,7 +90,7 @@ export function CopilotPage() {
         <ContextPanel sessionId={sessionId} mobile />
       )}
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
-      {isMobile && <MobileDrawer />}
+      {isMobile && !showNewLayout && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>
   );
