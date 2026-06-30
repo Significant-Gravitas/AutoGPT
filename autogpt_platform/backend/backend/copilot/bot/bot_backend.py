@@ -369,6 +369,13 @@ class BotBackend:
 
         setup_notified = False
         setup_drop_notified = False
+        # Track which text block each delta belongs to. AutoPilot emits text in
+        # separate blocks around tool calls / reasoning (each with its own id);
+        # the frontend renders them as distinct parts, but here we concatenate
+        # into one message, so insert a paragraph break when the block changes —
+        # otherwise the end of one block and the start of the next run together
+        # ("…first thought.second thought…").
+        last_text_block_id: str | None = None
 
         try:
             while True:
@@ -388,6 +395,12 @@ class BotBackend:
                     )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
+                        if (
+                            last_text_block_id is not None
+                            and chunk.id != last_text_block_id
+                        ):
+                            yield "\n\n"
+                        last_text_block_id = chunk.id
                         yield chunk.delta
                 elif isinstance(chunk, StreamToolOutputAvailable):
                     setup_output = _extract_setup_requirements(chunk.output)
