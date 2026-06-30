@@ -164,9 +164,7 @@ describe("useCopilotPendingChips", () => {
 
     // No mid-turn promotion of the old chip leaked into the new session.
     expect(
-      current.some((m) =>
-        m.id.startsWith("promoted-midturn-pending-chip-"),
-      ),
+      current.some((m) => m.id.startsWith("promoted-midturn-pending-chip-")),
     ).toBe(false);
   });
 
