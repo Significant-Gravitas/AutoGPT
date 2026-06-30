@@ -1,3 +1,5 @@
+import { TourHero } from "./components/TourHero/TourHero";
+
 export default function Page() {
-  return <div>tour ok</div>;
+  return <TourHero />;
 }
