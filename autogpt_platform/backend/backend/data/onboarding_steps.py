@@ -8,19 +8,19 @@ class OnboardingStep(StrEnum):
     Stored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}
     so adds/renames/retires are code-only. Boundary validation lives on the
     completion endpoint via ``FrontendOnboardingStep`` (a Pydantic ``Literal``).
-
-    Values are never deleted once shipped, even when a step is retired: existing
-    rows may still contain them and the strict ``list[OnboardingStep]`` response
-    model would raise on read otherwise, and the analytics onboarding funnel
-    reports on retired steps. Steps that are no longer set by any code path (no
-    writer and not accepted by the completion endpoint via
-    ``FrontendOnboardingStep``) are marked ``deprecated`` below — keep them, but
-    don't use them in new code.
+    Legacy values that no longer appear here remain readable from existing rows
+    as inert strings.
 
     Lives in its own module (rather than ``onboarding.py``) so the response
     model in ``backend.data.model`` can type its fields with this enum without
     importing the onboarding logic layer, which would create an import cycle.
     """
+
+    # Retired steps are kept, never deleted: existing rows may still contain
+    # them and the strict ``list[OnboardingStep]`` response model would 500 on
+    # read otherwise, and the analytics funnel reports on them. Steps marked
+    # ``# deprecated`` below are no longer set by any code path (no writer, not
+    # accepted by the completion endpoint) - keep them; don't use in new code.
 
     # Introductory onboarding (Library)
     WELCOME = "WELCOME"
