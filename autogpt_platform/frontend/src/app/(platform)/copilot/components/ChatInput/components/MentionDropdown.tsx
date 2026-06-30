@@ -34,6 +34,10 @@ export function MentionDropdown({
     <div
       role="listbox"
       aria-label="Workspace files"
+      // preventDefault on mousedown keeps focus in the textarea when clicking
+      // non-interactive areas (padding, empty/loading/error states) so the
+      // textarea's onBlur doesn't close the dropdown before a selection.
+      onMouseDown={(e) => e.preventDefault()}
       className="absolute bottom-full left-0 z-50 mb-2 max-h-60 w-72 overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
     >
       {isError ? (
