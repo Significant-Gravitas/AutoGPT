@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { ComponentProps, ReactNode } from "react";
+import { ComponentProps, ReactNode, Suspense } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
@@ -227,7 +227,12 @@ export function AppSidebar(props: Props) {
             className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
           >
             <CollapsibleNavGroup label="Recent chats" scrollable>
-              <RecentChats />
+              {/* Suspense boundary: RecentChats reads useSearchParams(), which
+                  Next.js requires to be wrapped to avoid forcing the route to
+                  client-side rendering. */}
+              <Suspense fallback={null}>
+                <RecentChats />
+              </Suspense>
             </CollapsibleNavGroup>
           </motion.div>
         </motion.div>
