@@ -3,7 +3,13 @@
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
+import { CaretDownIcon } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
@@ -74,12 +80,18 @@ export function RecentChats() {
   return (
     <>
       {groupSessionsByDate(sessions).map((group) => (
-        <div key={group.label}>
-          <p className="px-2 pb-1 pt-2 text-xs font-medium text-zinc-400">
-            {group.label}
-          </p>
-          <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-        </div>
+        <Collapsible key={group.label} defaultOpen className="group/day">
+          <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 pb-1 pt-2 text-xs font-medium text-zinc-600">
+            <span>{group.label}</span>
+            <CaretDownIcon
+              weight="bold"
+              className="ml-auto size-3.5 text-zinc-500 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/day:rotate-180 motion-reduce:transition-none"
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+            <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+          </CollapsibleContent>
+        </Collapsible>
       ))}
 
       {hasMore && (
@@ -87,7 +99,7 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-600 hover:bg-zinc-300 disabled:opacity-60"
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60"
         >
           {isLoadingMore && (
             <LoadingSpinner size="small" className="size-4 text-zinc-500" />

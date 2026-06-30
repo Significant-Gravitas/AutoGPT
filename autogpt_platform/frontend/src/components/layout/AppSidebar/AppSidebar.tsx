@@ -141,13 +141,13 @@ function CollapsibleNavGroup({
             {label}
             <CaretDownIcon
               weight="bold"
-              className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180"
+              className="ml-auto size-4 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
         <CollapsibleContent
           className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down",
+            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
             scrollable && "flex min-h-0 flex-1 flex-col",
           )}
         >
@@ -209,7 +209,7 @@ export function AppSidebar(props: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="py-1">
+            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
                 <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
               </SidebarGroupContent>
