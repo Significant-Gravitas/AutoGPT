@@ -913,8 +913,10 @@ export interface UserOnboarding {
 export interface OnboardingNotificationPayload {
   type: "onboarding";
   event: "step_completed" | "increment_runs";
-  // Plain string so legacy step names from existing rows pass through.
-  step: string | null;
+  // Typed enum: notifications only fire on fresh completions, so `step` is
+  // always a current OnboardingStep (or null for `increment_runs`). Legacy step
+  // names live only in stored rows, never in emitted notifications.
+  step: OnboardingStep | null;
 }
 
 export type WebSocketNotification =
