@@ -926,7 +926,7 @@ class StoreSkillTool(BaseTool):
                 },
                 "description": {
                     "type": "string",
-                    "description": "One-line hook (≤250 chars).",
+                    "description": f"One-line hook (≤{MAX_DESCRIPTION_CHARS} chars).",
                 },
                 "body": {
                     "type": "string",
