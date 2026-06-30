@@ -28,6 +28,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.response_model import StreamPendingDrained
+from backend.copilot.stream_registry import get_session, publish_chunk
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
 
@@ -212,7 +214,36 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             len(messages),
             session_id,
         )
+        await _notify_pending_drained(session_id, len(messages))
     return messages
+
+
+async def _notify_pending_drained(session_id: str, drained_count: int) -> None:
+    """Emit a ``data-pending-drained`` hint onto the session's live SSE
+    stream so the frontend promotes its queued chips to bubbles right away
+    instead of waiting for its backstop poll.
+
+    Best-effort by design: the frontend re-reads the authoritative buffer
+    count on the hint (and keeps a slow poll as a safety net), so a failed
+    or dropped emit only delays the chip→bubble swap — it never loses data.
+    The active turn is looked up from the session so the chunk lands on the
+    correct per-turn Redis stream.
+    """
+    try:
+        active = await get_session(session_id)
+        if active is None or not active.turn_id:
+            return
+        await publish_chunk(
+            active.turn_id,
+            StreamPendingDrained(drainedCount=drained_count),
+            session_id=session_id,
+        )
+    except Exception:
+        logger.debug(
+            "pending_messages: drain hint emit failed for session=%s",
+            session_id,
+            exc_info=True,
+        )
 
 
 async def peek_pending_count(session_id: str) -> int:

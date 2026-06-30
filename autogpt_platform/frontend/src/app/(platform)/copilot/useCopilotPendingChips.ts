@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 
-const MID_TURN_POLL_MS = 2_000;
+// Backstop only. Promotion is normally driven instantly by the backend's
+// ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
+// slow poll just catches a dropped hint so a chip can't get stuck mid-turn.
+const MID_TURN_BACKSTOP_POLL_MS = 10_000;
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
@@ -76,6 +79,7 @@ export function useCopilotPendingChips({
   useMidTurnDrainPromotion({
     sessionId,
     status,
+    messages,
     queue,
     setMessages,
     setQueue,
@@ -335,25 +339,28 @@ function promoteBeforeAssistant(
 }
 
 // ── 3. Mid-turn drain promotion ────────────────────────────────────────
-// The MCP tool wrapper can drain the buffer at a tool boundary without
-// emitting an SSE event, so the client doesn't know until we poll. On
-// every poll, if the backend count dropped below our local chip count,
-// promote the difference and keep the remainder as chips.
+// The executor drains the buffer at a tool boundary while the turn is
+// still streaming.  It now pushes a ``data-pending-drained`` SSE hint at
+// drain time, so the fast path promotes chips the instant the hint lands.
+// A slow backstop poll covers a dropped hint so a chip can't get stuck.
 //
-// TODO(followup): replace the 2s poll with an SSE event pushed from the
-// backend at drain time — the MCP wrapper already knows when it drains,
-// so a single "pending:drained" event would let us drop this effect
-// entirely.  Tracked separately from this PR.
+// Both paths funnel through the same ``pollBackendAndPromote`` (the GET
+// stays the source of truth: it re-reads the authoritative buffer count
+// and promotes only the difference).  Promotion dedupes bubbles by a
+// stable id, so the hint and the poll firing for the same drain is a
+// harmless no-op rather than a double-render.
 
 function useMidTurnDrainPromotion({
   sessionId,
   status,
+  messages,
   queue,
   setMessages,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
+  messages: UIMessage[];
   queue: QueuedMessage[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
@@ -368,6 +375,35 @@ function useMidTurnDrainPromotion({
     latestSessionIdRef.current = sessionId;
   }, [sessionId]);
 
+  // Fast path: promote the moment the backend signals a drain.  We count
+  // ``data-pending-drained`` parts across messages and react to the count
+  // increasing — replays (AI SDK resume re-emits the parts) leave the
+  // count unchanged on a stable render, and the GET re-read keeps a
+  // replayed hint idempotent regardless.
+  const drainHintCount = countPendingDrainedHints(messages);
+  const prevHintCountRef = useRef(drainHintCount);
+  useEffect(() => {
+    const isActive = status === "streaming" || status === "submitted";
+    if (!sessionId || !isActive || queue.length === 0) {
+      prevHintCountRef.current = drainHintCount;
+      return;
+    }
+    if (drainHintCount <= prevHintCountRef.current) return;
+    prevHintCountRef.current = drainHintCount;
+
+    const requestSessionId = sessionId;
+    const isCurrentSession = () =>
+      latestSessionIdRef.current === requestSessionId;
+    void pollBackendAndPromote(
+      sessionId,
+      queue,
+      setMessages,
+      setQueue,
+      isCurrentSession,
+    );
+  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
+
+  // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
     if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
@@ -384,9 +420,22 @@ function useMidTurnDrainPromotion({
         setQueue,
         isCurrentSession,
       );
-    }, MID_TURN_POLL_MS);
+    }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId, status, queue, setMessages, setQueue]);
+}
+
+// Count ``data-pending-drained`` hint parts the backend emits at each
+// mid-turn drain.  A rising count across renders means a fresh drain the
+// fast path should react to.
+function countPendingDrainedHints(messages: UIMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === "data-pending-drained") count++;
+    }
+  }
+  return count;
 }
 
 async function pollBackendAndPromote(
