@@ -48,10 +48,39 @@ class WorkspaceFolder(pydantic.BaseModel):
         )
 
 
-def _file_count(folder: "UserWorkspaceFolder") -> int:
-    # Prisma Python has no _count include; the Files relation is loaded with an
-    # isDeleted=False filter so len() yields the live file count.
-    return len(folder.Files) if folder.Files else 0
+async def _file_count(workspace_id: str, folder_id: str) -> int:
+    """Live (non-deleted) file count for a single folder."""
+    return await UserWorkspaceFile.prisma().count(
+        where={
+            "folderId": folder_id,
+            "workspaceId": workspace_id,
+            "isDeleted": False,
+        },
+    )
+
+
+async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, int]:
+    """Live file counts per folder in a single batched query.
+
+    Counts in SQL instead of hydrating every file row just to ``len()`` it, so
+    listing folders stays cheap regardless of how many files a workspace holds.
+    """
+    if not folder_ids:
+        return {}
+    rows = await UserWorkspaceFile.prisma().group_by(
+        by=["folderId"],
+        where={
+            "workspaceId": workspace_id,
+            "folderId": {"in": folder_ids},
+            "isDeleted": False,
+        },
+        count=True,
+    )
+    return {
+        row["folderId"]: int((row.get("_count") or {}).get("_all") or 0)
+        for row in rows
+        if row.get("folderId")
+    }
 
 
 async def _get_folder_record(
@@ -65,7 +94,6 @@ async def _get_folder_record(
             "workspaceId": workspace_id,
             "isDeleted": False,
         },
-        include={"Files": {"where": {"isDeleted": False}}},
     )
     if not folder:
         raise NotFoundError(f"Folder #{folder_id} not found")
@@ -77,15 +105,16 @@ async def list_folders(workspace_id: str) -> list[WorkspaceFolder]:
     folders = await UserWorkspaceFolder.prisma().find_many(
         where={"workspaceId": workspace_id, "isDeleted": False},
         order={"name": "asc"},
-        include={"Files": {"where": {"isDeleted": False}}},
     )
-    return [WorkspaceFolder.from_db(f, file_count=_file_count(f)) for f in folders]
+    counts = await _file_counts(workspace_id, [f.id for f in folders])
+    return [WorkspaceFolder.from_db(f, file_count=counts.get(f.id, 0)) for f in folders]
 
 
 async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
     """Get a single folder by ID, scoped to the workspace."""
     folder = await _get_folder_record(folder_id, workspace_id)
-    return WorkspaceFolder.from_db(folder, file_count=_file_count(folder))
+    count = await _file_count(workspace_id, folder_id)
+    return WorkspaceFolder.from_db(folder, file_count=count)
 
 
 async def _root_name_taken(
@@ -178,11 +207,11 @@ async def update_folder(
     # successful update doesn't turn it into a spurious 404.
     refreshed = await UserWorkspaceFolder.prisma().find_first(
         where={"id": folder_id},
-        include={"Files": {"where": {"isDeleted": False}}},
     )
     if refreshed is None:
         raise NotFoundError(f"Folder #{folder_id} not found")
-    return WorkspaceFolder.from_db(refreshed, file_count=_file_count(refreshed))
+    count = await _file_count(workspace_id, folder_id)
+    return WorkspaceFolder.from_db(refreshed, file_count=count)
 
 
 async def delete_folder(folder_id: str, workspace_id: str) -> None:
@@ -228,20 +257,17 @@ async def bulk_move_files_to_folder(
     if not file_ids:
         return []
 
-    await UserWorkspaceFile.prisma().update_many(
-        where={
-            "id": {"in": file_ids},
-            "workspaceId": workspace_id,
-            "isDeleted": False,
-        },
-        data={"folderId": folder_id},
-    )
-
-    files = await UserWorkspaceFile.prisma().find_many(
-        where={
-            "id": {"in": file_ids},
-            "workspaceId": workspace_id,
-            "isDeleted": False,
-        },
-    )
+    # Move and read back in one transaction so the returned list reflects
+    # exactly what this call moved, even under concurrent writes.
+    scope: dict = {
+        "id": {"in": file_ids},
+        "workspaceId": workspace_id,
+        "isDeleted": False,
+    }
+    async with transaction() as tx:
+        await UserWorkspaceFile.prisma(tx).update_many(
+            where=scope,
+            data={"folderId": folder_id},
+        )
+        files = await UserWorkspaceFile.prisma(tx).find_many(where=scope)
     return [WorkspaceFile.from_db(f) for f in files]

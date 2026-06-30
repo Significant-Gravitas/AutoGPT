@@ -403,6 +403,7 @@ async def list_workspace_files(
     ),
     folder_id: str | None = Query(
         default=None,
+        min_length=1,
         description="Only return files in this folder.",
     ),
     root_only: bool = Query(

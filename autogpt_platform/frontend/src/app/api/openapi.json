@@ -11009,7 +11009,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
               "description": "Only return files in this folder.",
               "title": "Folder Id"
             },

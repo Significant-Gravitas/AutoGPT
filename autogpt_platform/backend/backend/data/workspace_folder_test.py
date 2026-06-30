@@ -150,6 +150,12 @@ async def test_bulk_move_validates_target_folder_ownership(mocker):
         wf.UserWorkspaceFile, "prisma", mocker.MagicMock(return_value=file_prisma)
     )
 
+    @asynccontextmanager
+    async def _fake_tx(*args, **kwargs):
+        yield None
+
+    mocker.patch.object(wf, "transaction", _fake_tx)
+
     await wf.bulk_move_files_to_folder("ws-001", ["f1"], "fld-1")
 
     guard.assert_awaited_once_with("fld-1", "ws-001")
@@ -168,6 +174,12 @@ async def test_bulk_move_to_root_skips_folder_lookup(mocker):
     mocker.patch.object(
         wf.UserWorkspaceFile, "prisma", mocker.MagicMock(return_value=file_prisma)
     )
+
+    @asynccontextmanager
+    async def _fake_tx(*args, **kwargs):
+        yield None
+
+    mocker.patch.object(wf, "transaction", _fake_tx)
 
     await wf.bulk_move_files_to_folder("ws-001", ["f1"], None)
 
