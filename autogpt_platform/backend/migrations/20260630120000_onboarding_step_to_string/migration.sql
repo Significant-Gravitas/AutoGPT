@@ -3,9 +3,13 @@
 -- moves to the API layer (Pydantic Literal on backend, OpenAPI-generated union
 -- on frontend). See SECRT-2355.
 --
--- Also renames the wizard-completion step `VISIT_COPILOT` -> `ONBOARDING_COMPLETE`
--- in existing rows so users who already completed onboarding keep their wallet
--- "Complete onboarding $3" tile and don't get re-routed through the wizard.
+-- Also renames two steps in existing rows so users keep their progress/rewards:
+--   * `VISIT_COPILOT`        -> `ONBOARDING_COMPLETE` (wizard-completion signal
+--     backing the wallet's "Complete onboarding $3" tile; avoids re-routing
+--     already-onboarded users through the wizard).
+--   * `MARKETPLACE_RUN_AGENT` -> `LIBRARY_RUN_AGENT` (the step fires on Library
+--     runs and is shown to users as a Library action, so the MARKETPLACE_ prefix
+--     was a misnomer).
 
 -- Drop defaults so the column type cast doesn't trip on the default's enum type.
 ALTER TABLE "UserOnboarding" ALTER COLUMN "completedSteps" DROP DEFAULT;
@@ -32,6 +36,16 @@ SET    "completedSteps" = array_replace("completedSteps", 'VISIT_COPILOT', 'ONBO
 WHERE  'VISIT_COPILOT' = ANY("completedSteps")
    OR  'VISIT_COPILOT' = ANY("notified")
    OR  'VISIT_COPILOT' = ANY("rewardedFor");
+
+-- Rename MARKETPLACE_RUN_AGENT -> LIBRARY_RUN_AGENT in existing rows. array_replace
+-- is a no-op when the value isn't present, so this is safe on every row.
+UPDATE "UserOnboarding"
+SET    "completedSteps" = array_replace("completedSteps", 'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
+       "notified"       = array_replace("notified",       'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
+       "rewardedFor"    = array_replace("rewardedFor",    'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT')
+WHERE  'MARKETPLACE_RUN_AGENT' = ANY("completedSteps")
+   OR  'MARKETPLACE_RUN_AGENT' = ANY("notified")
+   OR  'MARKETPLACE_RUN_AGENT' = ANY("rewardedFor");
 
 -- Drop the now-unused enum type.
 DROP TYPE "OnboardingStep";

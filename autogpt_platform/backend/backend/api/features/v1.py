@@ -1896,7 +1896,7 @@ async def execute_graph(
         record_graph_operation(operation="execute", status="success")
         if source == "library":
             await complete_onboarding_step(
-                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
+                user_id, OnboardingStep.LIBRARY_RUN_AGENT
             )
         elif source == "builder":
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)

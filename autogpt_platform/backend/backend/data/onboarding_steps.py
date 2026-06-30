@@ -32,7 +32,10 @@ class OnboardingStep(StrEnum):
     GET_RESULTS = "GET_RESULTS"
     MARKETPLACE_VISIT = "MARKETPLACE_VISIT"
     MARKETPLACE_ADD_AGENT = "MARKETPLACE_ADD_AGENT"
-    MARKETPLACE_RUN_AGENT = "MARKETPLACE_RUN_AGENT"
+    # Fires on Library runs (source == "library") and is shown to users as a
+    # Library action. Renamed from MARKETPLACE_RUN_AGENT in SECRT-2355 (the
+    # MARKETPLACE_ prefix was a misnomer); existing rows are migrated in-place.
+    LIBRARY_RUN_AGENT = "LIBRARY_RUN_AGENT"
     BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"
     # Consistency Challenge
     RE_RUN_AGENT = "RE_RUN_AGENT"

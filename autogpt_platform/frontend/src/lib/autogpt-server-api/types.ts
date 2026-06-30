@@ -876,7 +876,7 @@ export type OnboardingStep =
   | "GET_RESULTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
-  | "MARKETPLACE_RUN_AGENT"
+  | "LIBRARY_RUN_AGENT"
   | "BUILDER_SAVE_AGENT"
   // Consistency Challenge
   | "RE_RUN_AGENT"
