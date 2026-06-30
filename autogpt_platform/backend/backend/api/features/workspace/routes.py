@@ -425,16 +425,16 @@ async def list_workspace_files(
     ``root_only`` likewise conflict; passing conflicting filters returns a 400
     rather than silently yielding an empty list.
     """
-    workspace = await get_or_create_workspace(user_id)
-
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
     # scoping to one.
     session_id = session_id or None
 
     # Reject conflicting filters instead of silently combining them into an
-    # (almost always) empty result. session_id scopes to one chat session;
-    # folder_id/root_only organize files across the whole workspace.
+    # (almost always) empty result. Validate before touching the DB so an
+    # invalid GET can't create a workspace row for a first-time user.
+    # session_id scopes to one chat session; folder_id/root_only organize
+    # files across the whole workspace.
     if session_id is not None and (folder_id is not None or root_only):
         raise fastapi.HTTPException(
             status_code=400,
@@ -446,6 +446,7 @@ async def list_workspace_files(
             detail="folder_id and root_only are mutually exclusive",
         )
 
+    workspace = await get_or_create_workspace(user_id)
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
 
