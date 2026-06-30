@@ -53,8 +53,22 @@ describe("Tour chat scripted demo", () => {
 
     expect(screen.getByText(/break that down/i)).toBeDefined();
 
+    // The decompose tool card renders its steps (expanded by default).
+    expect(
+      screen.getByText(/Detect changes vs\. the last snapshot/i),
+    ).toBeDefined();
+
     // 3. Second send finishes the script and opens the upsell modal.
     await sendMessage("yes build it");
+
+    // The create_agent preview card renders (accordion title + block count).
+    expect(
+      screen.getAllByText(/Competitor Pricing Watcher/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/4 blocks/i)).toBeDefined();
+
+    // The run_agent card renders a completed execution.
+    expect(screen.getByText(/Execution completed/i)).toBeDefined();
 
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
   });
