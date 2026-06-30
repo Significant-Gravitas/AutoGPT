@@ -39,7 +39,9 @@ export function TourUpsellModal({ open, onClose, onReplay }: Props) {
             </Button>
             <Button
               as="NextLink"
-              href="/pricing"
+              href="https://agpt.co/pricing"
+              target="_blank"
+              rel="noopener noreferrer"
               variant="secondary"
               size="small"
             >
