@@ -837,6 +837,51 @@ def test_list_files_root_only_passed_through(mock_manager_cls, mock_get_workspac
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_session_id_with_folder_id(
+    mock_manager_cls, mock_get_workspace
+):
+    """session_id and folder_id are mutually exclusive axes — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=sess-1&folder_id=fld-1")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_session_id_with_root_only(
+    mock_manager_cls, mock_get_workspace
+):
+    """session_id and root_only are mutually exclusive axes — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=sess-1&root_only=true")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_folder_id_with_root_only(
+    mock_manager_cls, mock_get_workspace
+):
+    """folder_id and root_only contradict each other — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?folder_id=fld-1&root_only=true")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_list_files_includes_folder_id_in_response(
     mock_manager_cls, mock_get_workspace
 ):

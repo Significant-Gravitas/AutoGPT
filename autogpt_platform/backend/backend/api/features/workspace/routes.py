@@ -407,10 +407,7 @@ async def list_workspace_files(
     ),
     root_only: bool = Query(
         default=False,
-        description=(
-            "Only return root-level files (not in any folder). Ignored when "
-            "``folder_id`` is set."
-        ),
+        description="Only return root-level files (not in any folder).",
     ),
 ) -> ListFilesResponse:
     """
@@ -422,6 +419,11 @@ async def list_workspace_files(
 
     The Artifacts page uses ``q`` for name search and ``origin`` to filter
     between Uploaded (user-uploaded) and Generated (agent/block output) files.
+
+    ``session_id`` (a per-session view) and the folder filters (``folder_id`` /
+    ``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and
+    ``root_only`` likewise conflict; passing conflicting filters returns a 400
+    rather than silently yielding an empty list.
     """
     workspace = await get_or_create_workspace(user_id)
 
@@ -429,6 +431,20 @@ async def list_workspace_files(
     # would otherwise silently list files across every session instead of
     # scoping to one.
     session_id = session_id or None
+
+    # Reject conflicting filters instead of silently combining them into an
+    # (almost always) empty result. session_id scopes to one chat session;
+    # folder_id/root_only organize files across the whole workspace.
+    if session_id is not None and (folder_id is not None or root_only):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="session_id cannot be combined with folder_id or root_only",
+        )
+    if folder_id is not None and root_only:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="folder_id and root_only are mutually exclusive",
+        )
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None

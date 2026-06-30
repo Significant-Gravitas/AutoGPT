@@ -427,7 +427,7 @@ app.include_router(
 app.include_router(
     workspace_folder_routes.router,
     tags=["workspace"],
-    prefix="/api/workspace",
+    prefix="/api/workspace/folders",
 )
 app.include_router(
     mcp_routes.router,

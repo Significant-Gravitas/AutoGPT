@@ -37,6 +37,13 @@ export function WorkspaceFolder({
     }
   }
 
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    // Ignore leave events fired while moving onto a child element — only clear
+    // the highlight when the cursor actually exits the folder card.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setIsDragOver(false);
+  }
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragOver(false);
@@ -58,7 +65,7 @@ export function WorkspaceFolder({
         }
       }}
       onDragOver={handleDragOver}
-      onDragLeave={() => setIsDragOver(false)}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`group flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-3 transition-all hover:border-zinc-300 ${
         isDragOver ? `${style.surface} ring-2 ${style.ring}` : ""

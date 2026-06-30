@@ -12,7 +12,9 @@ from backend.data.workspace_folder import WorkspaceFolder
 from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
-app.include_router(router)
+# The /folders prefix is applied at the mount point (see rest_api.py), so apply
+# it here too to exercise the same paths the app serves.
+app.include_router(router, prefix="/folders")
 
 
 @app.exception_handler(FolderAlreadyExistsError)
