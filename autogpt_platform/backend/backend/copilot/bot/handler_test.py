@@ -6,17 +6,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.platform_linking.models import WorkspaceArtifact
+from backend.platform_linking.models import WorkspaceArtifact, WorkspaceUploadResult
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import (
     ChannelType,
+    InboundAttachment,
     MessageContext,
     MessageHistoryEntry,
     ReferencedConversation,
 )
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
+from .handler import (
+    MAX_TURN_FILE_IDS,
+    MessageHandler,
+    TargetState,
+    build_thread_name,
+    clamp_thread_name,
+)
 
 
 def _ctx(
@@ -31,6 +38,8 @@ def _ctx(
     bot_mentioned: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
     referenced_conversations: tuple[ReferencedConversation, ...] = (),
+    attachments: tuple[InboundAttachment, ...] = (),
+    skipped_attachments: tuple[tuple[str, str], ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -44,6 +53,8 @@ def _ctx(
         bot_mentioned=bot_mentioned,
         thread_history=thread_history,
         referenced_conversations=referenced_conversations,
+        attachments=attachments,
+        skipped_attachments=skipped_attachments,
     )
 
 
@@ -74,6 +85,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
         )
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
+    api.upload_workspace_files = AsyncMock(return_value=[])
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -396,7 +408,7 @@ class TestBatching:
 
         stream_calls: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid):
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -417,7 +429,7 @@ class TestBatching:
 
         seen: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid):
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
@@ -921,3 +933,263 @@ class TestMessageTextReferencedConversations:
         assert "earlier point" in out
         # Referenced block precedes the immediate thread context.
         assert out.index("linked content") < out.index("earlier point")
+
+
+class TestAttachments:
+    @staticmethod
+    def _upload_recording_api(results):
+        api = _api()
+        api.upload_workspace_files = AsyncMock(return_value=results)
+        captured: dict = {}
+
+        async def _recording_stream(*args, **kwargs):
+            captured["file_ids"] = kwargs.get("file_ids")
+            captured["message"] = kwargs.get("message")
+            if False:
+                yield ""
+
+        api.stream_chat = _recording_stream
+        return api, captured
+
+    @staticmethod
+    def _dm_ctx(text, files):
+        return _ctx(
+            channel_type="dm",
+            server_id=None,
+            channel_id="dm-1",
+            text=text,
+            attachments=tuple(
+                InboundAttachment(filename=n, mime_type=m, content=b"x")
+                for n, m in files
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_uploads_attachments_and_passes_file_ids(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("look at this", [("a.png", "image/png")]), adapter
+        )
+
+        api.upload_workspace_files.assert_awaited_once()
+        assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_failed_upload_is_reported_and_good_files_still_sent(self):
+        results = [
+            WorkspaceUploadResult(filename="good.png", file_id="f1"),
+            WorkspaceUploadResult(filename="bad.exe", error="virus_detected"),
+        ]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx(
+                "files",
+                [("good.png", "image/png"), ("bad.exe", "application/octet-stream")],
+            ),
+            adapter,
+        )
+
+        # The clean file still reaches the turn.
+        assert captured["file_ids"] == ["f1"]
+        # The rejected one is surfaced to the user.
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "bad.exe" in note
+        assert "virus scan" in note
+
+    @pytest.mark.asyncio
+    async def test_dropped_attachments_surfaced_to_user_and_model(self):
+        # An adapter-stage skip (too large) and an upload-stage rejection
+        # (virus) must both reach the user (a note) AND the model (in the turn
+        # text), while a clean file still flows through.
+        results = [
+            WorkspaceUploadResult(filename="ok.png", file_id="f1"),
+            WorkspaceUploadResult(filename="virus.exe", error="virus_detected"),
+        ]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(
+            channel_type="dm",
+            server_id=None,
+            channel_id="dm-1",
+            text="check these",
+            attachments=(
+                InboundAttachment(
+                    filename="ok.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="virus.exe",
+                    mime_type="application/octet-stream",
+                    content=b"y",
+                ),
+            ),
+            skipped_attachments=(("huge.zip", "too large"),),
+        )
+
+        await handler.handle(ctx, adapter)
+
+        assert captured["file_ids"] == ["f1"]
+        user_note = adapter.send_message.await_args_list[0].args[1]
+        assert "huge.zip" in user_note and "virus.exe" in user_note
+        # The model is told it does NOT have these files.
+        assert "do not claim to have read them" in captured["message"]
+        assert "huge.zip" in captured["message"]
+        assert "virus.exe" in captured["message"]
+
+    @pytest.mark.asyncio
+    async def test_file_only_message_is_processed(self):
+        results = [WorkspaceUploadResult(filename="a.pdf", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        # No text, just a file — must not be dropped as an "empty" message.
+        await handler.handle(self._dm_ctx("", [("a.pdf", "application/pdf")]), adapter)
+
+        api.upload_workspace_files.assert_awaited_once()
+        assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_upload_rpc_failure_keeps_text_turn_and_notifies(self):
+        # The upload path itself blowing up (not a per-file rejection) must not
+        # drop the message — any text still goes through and the user is told.
+        api, captured = self._upload_recording_api([])
+        api.upload_workspace_files = AsyncMock(side_effect=RuntimeError("rpc down"))
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("summarize this", [("a.pdf", "application/pdf")]), adapter
+        )
+
+        assert captured["file_ids"] == []
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "a.pdf" in note
+        assert "couldn't be uploaded" in note.lower()
+
+    @pytest.mark.asyncio
+    async def test_batched_file_ids_capped_to_per_turn_limit(self):
+        # Several file-heavy messages batched together can exceed the
+        # BotChatRequest file_ids limit; the drain must cap, not fail.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        captured: list[list[str] | None] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+            captured.append(file_ids)
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        too_many = [f"f{i}" for i in range(MAX_TURN_FILE_IDS + 5)]
+
+        await handler._enqueue_and_process(
+            _ctx(channel_type="dm", server_id=None, channel_id="dm-1", text="hi"),
+            adapter,
+            "dm-1",
+            "hi",
+            too_many,
+        )
+
+        assert captured and len(captured[0]) == MAX_TURN_FILE_IDS
+
+    @pytest.mark.asyncio
+    async def test_file_only_thread_with_history_all_rejected_does_not_enqueue(self):
+        # First @-into an unowned thread renders its history into the prompt, so
+        # message_text is non-empty. A file-only message whose uploads all fail
+        # must STILL not enqueue a turn (it would answer old context only).
+        api = _api()
+        api.upload_workspace_files = AsyncMock(
+            return_value=[
+                WorkspaceUploadResult(filename="bad.exe", error="virus_detected")
+            ]
+        )
+        enqueued = []
+
+        async def _recording_stream(*args, **kwargs):
+            enqueued.append(kwargs)
+            if False:
+                yield ""
+
+        api.stream_chat = _recording_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(
+            channel_type="thread",
+            bot_mentioned=True,
+            text="",
+            thread_history=(MessageHistoryEntry("Alice", "u1", "old message"),),
+            attachments=(
+                InboundAttachment(
+                    filename="bad.exe",
+                    mime_type="application/octet-stream",
+                    content=b"x",
+                ),
+            ),
+        )
+
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(ctx, adapter)
+
+        assert enqueued == []  # no turn, despite the thread history
+
+    @pytest.mark.asyncio
+    async def test_channel_file_only_all_rejected_unsubscribes_orphan_thread(self):
+        # A channel @mention creates+subscribes a thread; if it's file-only and
+        # every upload fails, we must unsubscribe the thread we just created so
+        # it doesn't linger orphaned-but-subscribed.
+        api = _api()
+        api.upload_workspace_files = AsyncMock(
+            return_value=[
+                WorkspaceUploadResult(filename="bad.exe", error="virus_detected")
+            ]
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()  # create_thread → "thread-new"
+        ctx = _ctx(
+            channel_type="channel",
+            text="",
+            attachments=(
+                InboundAttachment(
+                    filename="bad.exe",
+                    mime_type="application/octet-stream",
+                    content=b"x",
+                ),
+            ),
+        )
+
+        with (
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.handler.threads.unsubscribe", new=AsyncMock()
+            ) as unsub,
+        ):
+            await handler.handle(ctx, adapter)
+
+        unsub.assert_awaited_once_with("discord", "thread-new")
+
+    @pytest.mark.asyncio
+    async def test_file_only_message_with_all_uploads_rejected_does_not_enqueue(self):
+        # Every upload failed → no successful file_ids and no text. The user
+        # already got the rejection note, so we must NOT enqueue a blank turn.
+        results = [WorkspaceUploadResult(filename="bad.exe", error="virus_detected")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(
+            self._dm_ctx("", [("bad.exe", "application/octet-stream")]), adapter
+        )
+
+        # Rejection note sent, but the turn was never started.
+        assert "file_ids" not in captured
+        note = adapter.send_message.await_args_list[0].args[1]
+        assert "bad.exe" in note
