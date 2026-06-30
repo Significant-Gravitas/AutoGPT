@@ -89,7 +89,7 @@ export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
     restoreStatusMessage: null,
     activeStreamStartedAt: null,
     isUserStopping: false,
-    createSession: async () => {},
+    createSession: () => {},
     onEnqueue: () => {},
     queuedMessages: [] as string[],
     isLoadingSession: false,
