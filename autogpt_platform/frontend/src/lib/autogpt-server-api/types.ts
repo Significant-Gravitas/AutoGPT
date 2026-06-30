@@ -874,14 +874,14 @@ export type OnboardingStep =
   // First Wins
   | "ONBOARDING_COMPLETE"
   | "GET_RESULTS"
-  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_VISIT" // deprecated: never set
   | "MARKETPLACE_ADD_AGENT"
   | "LIBRARY_RUN_AGENT"
-  | "BUILDER_SAVE_AGENT"
+  | "BUILDER_SAVE_AGENT" // deprecated: never set
   // Consistency Challenge
-  | "RE_RUN_AGENT"
+  | "RE_RUN_AGENT" // deprecated: never set
   | "SCHEDULE_AGENT"
-  | "RUN_AGENTS"
+  | "RUN_AGENTS" // deprecated: never set
   | "RUN_3_DAYS"
   // The Pro Playground
   | "TRIGGER_WEBHOOK"

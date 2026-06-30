@@ -8,8 +8,14 @@ class OnboardingStep(StrEnum):
     Stored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}
     so adds/renames/retires are code-only. Boundary validation lives on the
     completion endpoint via ``FrontendOnboardingStep`` (a Pydantic ``Literal``).
-    Legacy values that no longer appear here remain readable from existing rows
-    as inert strings.
+
+    Values are never deleted once shipped, even when a step is retired: existing
+    rows may still contain them and the strict ``list[OnboardingStep]`` response
+    model would raise on read otherwise, and the analytics onboarding funnel
+    reports on retired steps. Steps that are no longer set by any code path (no
+    writer and not accepted by the completion endpoint via
+    ``FrontendOnboardingStep``) are marked ``deprecated`` below — keep them, but
+    don't use them in new code.
 
     Lives in its own module (rather than ``onboarding.py``) so the response
     model in ``backend.data.model`` can type its fields with this enum without
@@ -30,17 +36,17 @@ class OnboardingStep(StrEnum):
     # SECRT-2355; existing rows are migrated in-place.
     ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE"
     GET_RESULTS = "GET_RESULTS"
-    MARKETPLACE_VISIT = "MARKETPLACE_VISIT"
+    MARKETPLACE_VISIT = "MARKETPLACE_VISIT"  # deprecated: never set
     MARKETPLACE_ADD_AGENT = "MARKETPLACE_ADD_AGENT"
     # Fires on Library runs (source == "library") and is shown to users as a
     # Library action. Renamed from MARKETPLACE_RUN_AGENT in SECRT-2355 (the
     # MARKETPLACE_ prefix was a misnomer); existing rows are migrated in-place.
     LIBRARY_RUN_AGENT = "LIBRARY_RUN_AGENT"
-    BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"
+    BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"  # deprecated: never set
     # Consistency Challenge
-    RE_RUN_AGENT = "RE_RUN_AGENT"
+    RE_RUN_AGENT = "RE_RUN_AGENT"  # deprecated: never set
     SCHEDULE_AGENT = "SCHEDULE_AGENT"
-    RUN_AGENTS = "RUN_AGENTS"
+    RUN_AGENTS = "RUN_AGENTS"  # deprecated: never set
     RUN_3_DAYS = "RUN_3_DAYS"
     # The Pro Playground
     TRIGGER_WEBHOOK = "TRIGGER_WEBHOOK"
