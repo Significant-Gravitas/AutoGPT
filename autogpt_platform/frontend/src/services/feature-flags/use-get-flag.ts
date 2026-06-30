@@ -49,7 +49,7 @@ const defaultFlags = {
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
-  [Flag.CHAT_PINNING]: true,
+  [Flag.CHAT_PINNING]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
