@@ -283,6 +283,38 @@ class TestConvertRawResponseToDict:
         assert result[0].get("type") == "reasoning"
         assert result[1].get("type") == "function_call"
 
+    def test_responses_api_drops_reasoning_without_encrypted_content(self):
+        """A reasoning item missing ``encrypted_content`` must be dropped, not
+        replayed by id.
+
+        With ``store=False`` an un-encrypted reasoning item can only be
+        re-sent as an ``rs_...`` id reference, which 404s server-side. If the
+        API ever omits the blob, dropping the item degrades gracefully (lost
+        reasoning context) rather than killing the loop with a hard error.
+        See OPEN-3187.
+        """
+        resp = _MockResponse(
+            output=[
+                _MockReasoning(encrypted_content=None),
+                _MockFunctionCall("my_tool", "{}", call_id="call_xyz"),
+            ]
+        )
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        assert all(i.get("type") != "reasoning" for i in result)
+        # The function_call it preceded is still replayed.
+        assert [i for i in result if i.get("type") == "function_call"]
+
+    def test_responses_api_drops_only_reasoning_when_it_is_the_sole_item(self):
+        """If the only output item is an un-replayable reasoning item, the
+        result must still be a valid non-empty input list (falls back to an
+        empty assistant message), never an empty list the API rejects."""
+        resp = _MockResponse(output=[_MockReasoning(encrypted_content=None)])
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].get("role") == "assistant"
+
 
 # ───────────────────────────────────────────────────────────────────────────
 # _get_tool_requests  (lines 61-86)

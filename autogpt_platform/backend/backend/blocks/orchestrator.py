@@ -255,9 +255,23 @@ def _convert_raw_response_to_dict(
         # OpenAI Responses API: extract individual output items.
         # Strip 'status' — it's a response-only field that OpenAI rejects
         # when the item is sent back as input on the next API call.
-        items = [
+        converted = [
             {k: v for k, v in json.to_dict(item).items() if k != "status"}
             for item in raw_response.output
+        ]
+        # A reasoning item (gpt-5*, o3*) is only replayable on the next turn
+        # when it carries encrypted_content (we request it via
+        # include=["reasoning.encrypted_content"] with store=false). If the
+        # blob is ever absent — API edge case or behaviour change — re-sending
+        # the rs_... id triggers a server-side lookup that 404s and kills the
+        # loop. Drop such items: losing prior reasoning context degrades
+        # gracefully, a 404 does not. See OPEN-3187.
+        items = [
+            item
+            for item in converted
+            if not (
+                item.get("type") == "reasoning" and not item.get("encrypted_content")
+            )
         ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
