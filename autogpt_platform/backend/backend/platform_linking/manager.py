@@ -6,7 +6,7 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import list_user_chats, start_chat_turn
+from .chat import list_user_chats, start_chat_turn, upload_workspace_file
 from .models import (
     BotChatRequest,
     BotEventInput,
@@ -20,6 +20,8 @@ from .models import (
     Platform,
     ResolveResponse,
     WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,12 @@ class PlatformLinkingManager(AppService):
     @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
+
+    @expose
+    async def upload_workspace_file(
+        self, request: WorkspaceUploadRequest
+    ) -> WorkspaceUploadResult:
+        return await upload_workspace_file(request)
 
     @expose
     async def refresh_server_link_name(
@@ -144,6 +152,9 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.list_user_server_ids
     )
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
+    upload_workspace_file = endpoint_to_async(
+        PlatformLinkingManager.upload_workspace_file
+    )
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name
     )
