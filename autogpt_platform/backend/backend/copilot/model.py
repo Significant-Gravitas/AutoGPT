@@ -747,15 +747,19 @@ async def upsert_chat_session(
             db_error = e
 
         # Save to cache (best-effort, even if DB failed).
-        # Title updates (update_session_title) run *outside* this lock because
-        # they only touch the title field, not messages.  So a concurrent rename
-        # or auto-title may have written a newer title to Redis while this
-        # upsert was in progress.  Always prefer the cached title to avoid
-        # overwriting it with the stale in-memory copy.
+        # Title (update_session_title) and pin state (update_session_pinned)
+        # are mutated *outside* this lock — they only touch their single field,
+        # not messages — so a concurrent rename, auto-title, or pin/unpin may
+        # have written a newer value to Redis while this upsert was in progress.
+        # Always prefer the cached title/pin to avoid reverting it with the
+        # stale in-memory copy.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
-            if existing_cached and existing_cached.title:
-                session = session.model_copy(update={"title": existing_cached.title})
+            if existing_cached:
+                updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
+                if existing_cached.title:
+                    updates["title"] = existing_cached.title
+                session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
