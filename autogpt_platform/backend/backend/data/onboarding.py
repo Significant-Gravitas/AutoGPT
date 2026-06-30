@@ -157,7 +157,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
+            # step.value: persist a plain str so the stored TEXT[] column never
+            # holds an enum instance (consistent with update_user_onboarding).
+            "rewardedFor": list(set(onboarding.rewardedFor + [step.value])),
         },
     )
 
@@ -171,7 +173,8 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
-                "completedSteps": list(set(onboarding.completedSteps + [step])),
+                # step.value: persist a plain str (see update_user_onboarding).
+                "completedSteps": list(set(onboarding.completedSteps + [step.value])),
             },
         )
         await _reward_user(user_id, onboarding, step)
