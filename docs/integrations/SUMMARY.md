@@ -38,7 +38,6 @@
 * [Ayrshare Post To YouTube](block-integrations/ayrshare/post_to_youtube.md)
 * [Baas Bots](block-integrations/baas/bots.md)
 * [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md)
-* [BGPT Scientific Evidence](block-integrations/bgpt/block.md)
 * [Basic](block-integrations/basic.md)
 * [Compass Triggers](block-integrations/compass/triggers.md)
 * [Data](block-integrations/data.md)
