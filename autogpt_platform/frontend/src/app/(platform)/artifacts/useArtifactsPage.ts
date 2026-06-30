@@ -27,7 +27,9 @@ export function useArtifactsPage() {
   // No folder selected → show only root-level files; a folder is selected →
   // scope the listing to that folder.
   const folderId = selectedFolderId ?? undefined;
-  const rootOnly = selectedFolderId === null;
+  // While searching, span the whole workspace (including files inside folders)
+  // so global search isn't limited to root-level files.
+  const rootOnly = selectedFolderId === null && !q;
 
   const query = useInfiniteQuery({
     queryKey: [
