@@ -120,6 +120,56 @@ describe("useCopilotPendingChips", () => {
     expect(view.result.current.queuedMessages).toEqual(["follow up"]);
   });
 
+  it("does not promote the previous session's chips after a session switch", async () => {
+    let current: Messages = [assistantMessage(0)];
+    const setMessages = vi.fn(
+      (updater: Messages | ((prev: Messages) => Messages)) => {
+        current = typeof updater === "function" ? updater(current) : updater;
+      },
+    );
+
+    const view = renderHook(
+      ({ messages, sessionId }) =>
+        useCopilotPendingChips({
+          sessionId,
+          status: "streaming",
+          messages,
+          setMessages,
+        }),
+      {
+        initialProps: {
+          messages: [assistantMessage(0)],
+          sessionId: "s1" as string,
+        },
+      },
+    );
+
+    act(() => {
+      view.result.current.queueMessage("old session chip");
+    });
+    expect(view.result.current.queuedMessages).toEqual(["old session chip"]);
+
+    // Switch to s2 with a HIGHER drain-hint count than s1's baseline while
+    // the old chip is still queued for this commit.  The drain effect must
+    // re-baseline on the session change and NOT promote the stale chip into
+    // the new chat.
+    await act(async () => {
+      view.rerender({ messages: [assistantMessage(1)], sessionId: "s2" });
+    });
+
+    // The session-switch peek rebases the strip to the new (empty) session.
+    await waitFor(() => {
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+
+    // No mid-turn promotion of the old chip leaked into the new session.
+    expect(
+      current.some((m) =>
+        m.id.startsWith("promoted-midturn-pending-chip-"),
+      ),
+    ).toBe(false);
+  });
+
   it("backstop poll promotes a chip even without an SSE hint", async () => {
     vi.useFakeTimers();
     try {

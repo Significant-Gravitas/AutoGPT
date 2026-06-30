@@ -381,15 +381,24 @@ function useMidTurnDrainPromotion({
   // count unchanged on a stable render, and the GET re-read keeps a
   // replayed hint idempotent regardless.
   const drainHintCount = countPendingDrainedHints(messages);
-  const prevHintCountRef = useRef(drainHintCount);
+  // Baseline is tracked per session: on a session switch the old session's
+  // chips can still be in `queue` for the current commit, so a higher hint
+  // count in the new session must not promote stale chips into the new chat.
+  // Re-baseline (and bail) when sessionId changes before comparing counts.
+  const prevHintStateRef = useRef({ sessionId, count: drainHintCount });
   useEffect(() => {
-    const isActive = status === "streaming" || status === "submitted";
-    if (!sessionId || !isActive || queue.length === 0) {
-      prevHintCountRef.current = drainHintCount;
+    if (prevHintStateRef.current.sessionId !== sessionId) {
+      prevHintStateRef.current = { sessionId, count: drainHintCount };
       return;
     }
-    if (drainHintCount <= prevHintCountRef.current) return;
-    prevHintCountRef.current = drainHintCount;
+
+    const isActive = status === "streaming" || status === "submitted";
+    if (!sessionId || !isActive || queue.length === 0) {
+      prevHintStateRef.current = { sessionId, count: drainHintCount };
+      return;
+    }
+    if (drainHintCount <= prevHintStateRef.current.count) return;
+    prevHintStateRef.current = { sessionId, count: drainHintCount };
 
     const requestSessionId = sessionId;
     const isCurrentSession = () =>
