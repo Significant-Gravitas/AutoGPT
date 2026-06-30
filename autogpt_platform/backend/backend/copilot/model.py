@@ -1233,29 +1233,27 @@ async def update_session_pinned(
         is_pinned: New pin state.
 
     Returns:
-        True if updated successfully, False otherwise (not found or wrong user).
+        True if updated successfully, False only for the real not-found / wrong-user
+        case. Unexpected DB/runtime failures propagate so the route surfaces a 5xx
+        rather than masking them as a 404.
     """
-    try:
-        updated = await chat_db().update_chat_session_pinned(
-            session_id, user_id, is_pinned
-        )
-        if not updated:
-            return False
-
-        try:
-            cached = await _get_session_from_cache(session_id)
-            if cached:
-                cached.is_pinned = is_pinned
-                await cache_chat_session(cached)
-        except Exception as e:
-            logger.warning(
-                f"Cache pin update failed for session {session_id} (non-critical): {e}"
-            )
-
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update pin state for session {session_id}: {e}")
+    updated = await chat_db().update_chat_session_pinned(session_id, user_id, is_pinned)
+    if not updated:
         return False
+
+    # Cache refresh is best-effort — a cache failure must not fail the request,
+    # the DB write already succeeded.
+    try:
+        cached = await _get_session_from_cache(session_id)
+        if cached:
+            cached.is_pinned = is_pinned
+            await cache_chat_session(cached)
+    except Exception as e:
+        logger.warning(
+            f"Cache pin update failed for session {session_id} (non-critical): {e}"
+        )
+
+    return True
 
 
 # ==================== Chat session locks ==================== #

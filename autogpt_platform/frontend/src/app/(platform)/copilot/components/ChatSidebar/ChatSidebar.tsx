@@ -23,6 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   CircleNotch,
@@ -108,10 +109,16 @@ export function ChatSidebar() {
         });
       },
       onError: (error) => {
+        const description =
+          error instanceof ApiError
+            ? ((error.response as { detail?: string } | undefined)?.detail ??
+              error.message)
+            : error instanceof Error
+              ? error.message
+              : "An error occurred";
         toast({
           title: "Failed to update chat",
-          description:
-            error instanceof Error ? error.message : "An error occurred",
+          description,
           variant: "destructive",
         });
       },

@@ -387,7 +387,7 @@ async def list_sessions(
     List chat sessions for the authenticated user.
 
     Returns a paginated list of chat sessions belonging to the current user,
-    ordered by most recently updated.
+    with pinned sessions first and most-recently-updated as the tiebreaker.
 
     Args:
         user_id: The authenticated user's ID.
