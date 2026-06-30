@@ -1,6 +1,6 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { useDebouncedValue } from "@/app/(platform)/settings/integrations/components/hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   type InfiniteData,
   keepPreviousData,

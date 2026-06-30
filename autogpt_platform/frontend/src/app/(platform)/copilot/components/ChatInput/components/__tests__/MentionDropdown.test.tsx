@@ -10,6 +10,7 @@ const FILE: WorkspaceFileItem = {
   path: "/workspace/alpha.txt",
   mime_type: "text/plain",
   size_bytes: 10,
+  origin: "uploaded",
   created_at: "2026-01-01T00:00:00Z",
 };
 

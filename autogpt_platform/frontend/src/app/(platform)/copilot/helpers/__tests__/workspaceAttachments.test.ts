@@ -18,6 +18,7 @@ function makeWorkspaceItem(
     path: "/workspace/report.pdf",
     mime_type: "application/pdf",
     size_bytes: 1024,
+    origin: "uploaded",
     created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
