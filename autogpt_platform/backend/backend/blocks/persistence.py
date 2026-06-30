@@ -52,7 +52,7 @@ class PersistInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="1d055e55-a2b9-4547-8311-907d05b0304d",
-            description=PersistInformationBlock.__doc__,
+            description=PersistInformationBlock.__doc__ or "",
             categories={BlockCategory.DATA},
             input_schema=PersistInformationBlock.Input,
             output_schema=PersistInformationBlock.Output,
@@ -126,7 +126,7 @@ class RetrieveInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="d8710fc9-6e29-481e-a7d5-165eb16f8471",
-            description=RetrieveInformationBlock.__doc__,
+            description=RetrieveInformationBlock.__doc__ or "",
             categories={BlockCategory.DATA},
             input_schema=RetrieveInformationBlock.Input,
             output_schema=RetrieveInformationBlock.Output,
