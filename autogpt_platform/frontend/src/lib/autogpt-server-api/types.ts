@@ -897,7 +897,9 @@ export interface UserOnboarding {
   // `PostV1CompleteOnboardingStepStep` (the generated literal union).
   completedSteps: string[];
   walletShown: boolean;
-  notified: string[];
+  // Typed enum: `notified` is written back via PATCH /onboarding, which now
+  // validates step names against OnboardingStep at the boundary.
+  notified: OnboardingStep[];
   rewardedFor: string[];
   usageReason: string | null;
   integrations: string[];

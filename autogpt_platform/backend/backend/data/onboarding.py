@@ -42,10 +42,11 @@ MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     walletShown: Optional[bool] = None
-    # Plain str list to mirror the storage shape; the API merges this with the
-    # existing column rather than treating it as authoritative, so legacy
-    # values that round-trip from the DB pass through unchanged.
-    notified: Optional[list[str]] = None
+    # Typed enum so the PATCH endpoint validates step names at the boundary
+    # (invalid values get a 422 instead of being stored and then 500-ing reads,
+    # which type `notified` as list[OnboardingStep]). The API merges this with
+    # the existing column rather than treating it as authoritative.
+    notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
     otherIntegrations: Optional[str] = None
@@ -93,7 +94,11 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified + onboarding.notified))
+        # data.notified is list[OnboardingStep]; coerce to plain str so the
+        # merge with the stored str[] column stays list[str] for Prisma.
+        update["notified"] = list(
+            {step.value for step in data.notified} | set(onboarding.notified)
+        )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:

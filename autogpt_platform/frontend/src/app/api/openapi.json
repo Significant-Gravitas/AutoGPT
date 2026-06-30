@@ -22367,7 +22367,10 @@
           },
           "notified": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
+              {
+                "items": { "$ref": "#/components/schemas/OnboardingStep" },
+                "type": "array"
+              },
               { "type": "null" }
             ],
             "title": "Notified"
