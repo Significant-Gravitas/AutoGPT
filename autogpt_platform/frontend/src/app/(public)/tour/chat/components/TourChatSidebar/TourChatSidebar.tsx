@@ -23,7 +23,7 @@ export function TourChatSidebar() {
     <Sidebar
       variant="inset"
       collapsible="icon"
-      className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
+      className="!top-0 !h-[100dvh] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
     >
       <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
         <div className="flex flex-col gap-3 px-3">

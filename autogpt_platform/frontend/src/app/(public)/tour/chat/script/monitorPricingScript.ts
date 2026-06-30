@@ -129,7 +129,7 @@ export const monitorPricingScript: TourScript = [
               status: "COMPLETED",
               outputs: {
                 summary:
-                  "No price change detected yet — you're all set. I'll email you the moment it changes.",
+                  "No price change detected yet. You're all set, and I'll email you the moment it changes.",
               },
             },
           },
@@ -139,7 +139,7 @@ export const monitorPricingScript: TourScript = [
         delayMs: 500,
         part: {
           type: "text",
-          text: "Done — your agent is live and will email you on any change. 🎉",
+          text: "Done! Your agent is live and will email you on any change. 🎉",
           state: "done",
         },
       },

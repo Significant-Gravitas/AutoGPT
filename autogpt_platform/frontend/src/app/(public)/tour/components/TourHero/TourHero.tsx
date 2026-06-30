@@ -9,7 +9,7 @@ export function TourHero() {
         <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-1.5">
           <SparkleIcon className="h-4 w-4 text-violet-600" weight="fill" />
           <Text variant="small-medium" className="text-zinc-600">
-            Live demo — no signup required
+            Live demo, no signup required
           </Text>
         </span>
 
@@ -22,7 +22,7 @@ export function TourHero() {
           className="mt-5 max-w-xl text-balance text-zinc-600"
         >
           Describe a goal in plain English and watch Autopilot build and run a
-          working AutoGPT agent for you — in seconds, right in your browser.
+          working AutoGPT agent for you, in seconds, right in your browser.
         </Text>
 
         <div className="mt-10 flex w-full flex-col items-center justify-center gap-3 sm:w-auto sm:flex-row">
