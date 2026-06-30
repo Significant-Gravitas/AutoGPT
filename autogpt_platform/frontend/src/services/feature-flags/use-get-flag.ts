@@ -43,7 +43,7 @@ const defaultFlags = {
   [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
-  [Flag.AGENT_BRIEFING]: false,
+  [Flag.AGENT_BRIEFING]: true,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
