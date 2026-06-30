@@ -85,7 +85,7 @@ export function RecentChats() {
             <span>{group.label}</span>
             <CaretDownIcon
               weight="bold"
-              className="ml-auto size-3.5 text-zinc-500 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/day:rotate-180 motion-reduce:transition-none"
+              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-3.5 text-zinc-500 transition-transform duration-200 group-data-[state=open]/day:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
           <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">

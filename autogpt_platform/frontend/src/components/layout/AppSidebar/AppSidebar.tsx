@@ -141,7 +141,7 @@ function CollapsibleNavGroup({
             {label}
             <CaretDownIcon
               weight="bold"
-              className="ml-auto size-4 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>

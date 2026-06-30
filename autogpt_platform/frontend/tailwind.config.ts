@@ -244,7 +244,8 @@ const config = {
         // easeOutCubic for a smooth, decelerating settle; asymmetric
         // timing (open a touch slower than close) per Emil Kowalski.
         // Both stay under the 300ms UI budget.
-        "collapsible-down": "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
+        "collapsible-down":
+          "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
         "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
         // 180ms / ease-out keeps the entry inside Emil Kowalski's
