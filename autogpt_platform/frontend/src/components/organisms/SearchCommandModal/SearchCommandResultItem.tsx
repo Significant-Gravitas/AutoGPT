@@ -15,16 +15,7 @@ interface Props {
   highlightedRef?: MutableRefObject<HTMLButtonElement | null>;
   onHighlight: () => void;
   onSelect: () => void;
-  /** Zero-based position used to stagger the enter animation. */
-  enterIndex?: number;
 }
-
-// Per Emil Kowalski's "faster is better" rule: keep the stagger tight
-// so the list never feels like it's *waiting* to render. 35ms × 12
-// items ≈ 420ms total before the last item finishes its own 180ms
-// animation, which stays under the 300ms perceived-snappy budget for
-// the typical first-visible row.
-const ENTER_STAGGER_MS = 35;
 
 export function SearchCommandResultItem({
   item,
@@ -35,7 +26,6 @@ export function SearchCommandResultItem({
   highlightedRef,
   onHighlight,
   onSelect,
-  enterIndex = 0,
 }: Props) {
   const Icon = item.icon;
 
@@ -49,10 +39,8 @@ export function SearchCommandResultItem({
       aria-selected={isHighlighted}
       onMouseEnter={onHighlight}
       onClick={onSelect}
-      style={{ animationDelay: `${enterIndex * ENTER_STAGGER_MS}ms` }}
       className={cn(
         "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        "motion-safe:animate-search-item-in",
         isHighlighted ? "bg-zinc-100 hover:bg-zinc-100" : "hover:bg-zinc-50",
       )}
     >
