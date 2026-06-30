@@ -2,7 +2,7 @@
 
 import { ContextPanelAutoOpen } from "@/app/(platform)/copilot/components/ContextPanel/ContextPanelAutoOpen";
 import { ContextPanelToggle } from "@/app/(platform)/copilot/components/ContextPanel/ContextPanelToggle";
-import { ChatSidebar } from "@/app/(platform)/copilot/components/ChatSidebar/ChatSidebar";
+import { TourChatSidebar } from "./components/TourChatSidebar/TourChatSidebar";
 import { FileDropZone } from "@/app/(platform)/copilot/components/FileDropZone/FileDropZone";
 import { MobileHeader } from "@/app/(platform)/copilot/components/MobileHeader/MobileHeader";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
@@ -41,7 +41,7 @@ export function TourCopilot() {
       style={{ height: "100dvh" }}
       className="min-h-0"
     >
-      {!isMobile && <ChatSidebar />}
+      {!isMobile && <TourChatSidebar />}
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
