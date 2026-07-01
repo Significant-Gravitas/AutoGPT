@@ -353,6 +353,8 @@ class WorkspaceManager:
         path_not_starts_with: Optional[str] = None,
         metadata_equals: Optional[dict] = None,
         metadata_not_equals: Optional[dict] = None,
+        folder_id: Optional[str] = None,
+        root_only: bool = False,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -375,6 +377,8 @@ class WorkspaceManager:
                 exactly (Artifacts "Uploaded" filter).
             metadata_not_equals: Match files whose ``metadata`` does not equal
                 this object (Artifacts "Generated" filter).
+            folder_id: If set, only return files in this folder.
+            root_only: If True, only return root-level files (folderId IS NULL).
 
         Returns:
             List of WorkspaceFile instances
@@ -391,6 +395,8 @@ class WorkspaceManager:
             name_contains=name_contains,
             metadata_equals=metadata_equals,
             metadata_not_equals=metadata_not_equals,
+            folder_id=folder_id,
+            root_only=root_only,
         )
 
     async def delete_file(self, file_id: str) -> bool:
