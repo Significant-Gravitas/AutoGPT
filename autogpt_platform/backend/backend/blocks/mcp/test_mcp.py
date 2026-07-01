@@ -572,7 +572,13 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+        async def mock_call(
+            server_url,
+            tool_name,
+            arguments,
+            auth_token=None,
+            tool_integrity_hash=None,
+        ):
             captured_tokens.append(auth_token)
             return "ok"
 
@@ -605,7 +611,13 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+        async def mock_call(
+            server_url,
+            tool_name,
+            arguments,
+            auth_token=None,
+            tool_integrity_hash=None,
+        ):
             captured_tokens.append(auth_token)
             return "ok"
 
