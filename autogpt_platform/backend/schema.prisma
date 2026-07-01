@@ -177,7 +177,8 @@ model UserWorkspace {
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  Files UserWorkspaceFile[]
+  Files   UserWorkspaceFile[]
+  Folders UserWorkspaceFolder[]
 
   @@index([userId])
 }
@@ -205,10 +206,42 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
+  // User-level organization. Null = root. The folder API soft-deletes
+  // folders and reparents files to root; SetNull is a hard-delete safety net.
+  folderId String?
+  Folder   UserWorkspaceFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
 
   @@unique([workspaceId, path])
+  @@index([workspaceId, isDeleted])
+  @@index([folderId])
+}
+
+// User-created folder for organizing workspace files. Purely a DB-level
+// organizational layer — storage paths are unaffected. Mirrors LibraryFolder.
+model UserWorkspaceFolder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  workspaceId String
+  Workspace   UserWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name String
+  icon String?
+
+  // Forward-compat for nesting; unused by the v1 API (always null).
+  parentId String?
+  Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  Children UserWorkspaceFolder[] @relation("WorkspaceFolderHierarchy")
+
+  isDeleted Boolean @default(false)
+
+  Files UserWorkspaceFile[]
+
+  @@unique([workspaceId, parentId, name])
   @@index([workspaceId, isDeleted])
 }
 
@@ -282,6 +315,11 @@ model ChatSession {
   chatStatus ChatSessionStatus @default(idle)
 
   Messages ChatMessage[]
+
+  // When true, the session is pinned to the top of the user's sidebar
+  // list, surfacing ahead of unpinned sessions regardless of recency.
+  // Mirrors the LibraryAgent.isFavorite pattern.
+  isPinned Boolean @default(false)
 
   // Sharing fields — mirrors AgentGraphExecution sharing
   isShared   Boolean   @default(false)

@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    MAX_INBOUND_ATTACHMENTS,
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
@@ -1406,3 +1407,85 @@ class TestFetchReferencedConversations:
             _incoming(111, 555), "https://discord.com/channels/111/222/333"
         )
         assert result == ()
+
+
+# ── Attachment extraction ──────────────────────────────────────────────
+
+
+def _discord_attachment(
+    filename: str, content_type: str | None, size: int, data: bytes = b"x"
+) -> MagicMock:
+    att = MagicMock()
+    att.filename = filename
+    att.content_type = content_type
+    att.size = size
+    att.read = AsyncMock(return_value=data)
+    return att
+
+
+class TestExtractAttachments:
+    @pytest.mark.asyncio
+    async def test_downloads_attachments_with_mime(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("a.png", "image/png", 10, b"png")]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert skipped == ()
+        assert len(downloaded) == 1
+        assert downloaded[0].filename == "a.png"
+        assert downloaded[0].mime_type == "image/png"
+        assert downloaded[0].content == b"png"
+
+    @pytest.mark.asyncio
+    async def test_skips_oversized_attachment(self):
+        adapter, _ = _bare_adapter()
+        big = adapter.max_attachment_bytes + 1
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("huge.bin", None, big)]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert downloaded == ()
+        assert skipped == (("huge.bin", "too large"),)
+
+    @pytest.mark.asyncio
+    async def test_defaults_missing_mime_to_octet_stream(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("data", None, 5)]
+
+        downloaded, _ = await adapter._extract_attachments(msg)
+
+        assert downloaded[0].mime_type == "application/octet-stream"
+
+    @pytest.mark.asyncio
+    async def test_caps_attachment_count_and_reports_extras(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [
+            _discord_attachment(f"f{i}.txt", "text/plain", 5)
+            for i in range(MAX_INBOUND_ATTACHMENTS + 3)
+        ]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert len(downloaded) == MAX_INBOUND_ATTACHMENTS
+        assert downloaded[0].filename == "f0.txt"
+        # The 3 over the cap are reported as skipped.
+        assert len(skipped) == 3
+        assert all(reason == "too many files attached" for _, reason in skipped)
+
+    @pytest.mark.asyncio
+    async def test_skips_attachment_that_fails_to_download(self):
+        adapter, _ = _bare_adapter()
+        att = _discord_attachment("a.png", "image/png", 10)
+        att.read = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        msg = MagicMock()
+        msg.attachments = [att]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert downloaded == ()
+        assert skipped == (("a.png", "couldn't be downloaded"),)

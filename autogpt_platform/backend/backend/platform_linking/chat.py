@@ -1,8 +1,10 @@
 """Chat-turn orchestration for the platform bot bridge."""
 
 import logging
+import os
 from uuid import uuid4
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_copilot_turn
 from backend.copilot.model import (
@@ -12,8 +14,9 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
 )
-from backend.data.db_accessors import platform_linking_db
+from backend.data.db_accessors import platform_linking_db, workspace_db
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
+from backend.util.workspace import WorkspaceManager
 
 from .models import (
     BotChatRequest,
@@ -21,6 +24,8 @@ from .models import (
     ChatTurnHandle,
     ListUserChatsResponse,
     Platform,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,24 +34,89 @@ CHAT_TOOL_CALL_ID = "chat_stream"
 CHAT_TOOL_NAME = "chat"
 
 
-async def resolve_chat_owner(request: BotChatRequest) -> str:
-    """Return the AutoGPT user ID that owns the platform conversation.
+async def _resolve_owner(
+    platform: str, platform_server_id: str | None, platform_user_id: str
+) -> str:
+    """Resolve the AutoGPT user that owns a platform conversation.
 
     Server context → server owner. DM context → the DM-linked user.
     """
-    platform = request.platform.value
     db = platform_linking_db()
 
-    if request.platform_server_id:
-        owner = await db.find_server_link_owner(platform, request.platform_server_id)
+    if platform_server_id:
+        owner = await db.find_server_link_owner(platform, platform_server_id)
         if owner is None:
             raise NotFoundError("This server is not linked to an AutoGPT account.")
         return owner
 
-    owner = await db.find_user_link_owner(platform, request.platform_user_id)
+    owner = await db.find_user_link_owner(platform, platform_user_id)
     if owner is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
     return owner
+
+
+async def resolve_chat_owner(request: BotChatRequest) -> str:
+    """Return the AutoGPT user ID that owns the platform conversation."""
+    return await _resolve_owner(
+        request.platform.value,
+        request.platform_server_id,
+        request.platform_user_id,
+    )
+
+
+async def upload_workspace_file(
+    request: WorkspaceUploadRequest,
+) -> WorkspaceUploadResult:
+    """Store a user-attached file in the conversation owner's workspace.
+
+    Runs the same machinery as the web upload endpoint
+    (``WorkspaceManager.write_file`` → ClamAV scan → storage), so AutoPilot can
+    read the file during the turn. Failures map to a stable ``error`` code
+    rather than raising, so one bad file doesn't sink the whole message.
+    """
+    owner_user_id = await _resolve_owner(
+        request.platform.value,
+        request.platform_server_id,
+        request.platform_user_id,
+    )
+    # Strip any directory components a (possibly hostile) client put in the
+    # filename so it can't traverse the workspace path or leak ".."/separators
+    # into the storage backend (e.g. GCS blob names). write_file passes the
+    # filename through to storage, so use the sanitized name everywhere.
+    # Basename alone still yields "."/".." for those inputs, which would re-
+    # introduce a special segment into uploads/<uuid>/<name>, so reject them.
+    safe_name = os.path.basename(request.filename.replace("\\", "/"))
+    if safe_name in {"", ".", ".."}:
+        safe_name = "file"
+    try:
+        workspace = await workspace_db().get_or_create_workspace(owner_user_id)
+        manager = WorkspaceManager(owner_user_id, workspace.id)
+        stored = await manager.write_file(
+            content=request.content,
+            filename=safe_name,
+            # Unique sub-path so re-uploading a file with the same name (e.g.
+            # two ``test.txt``) is a fresh file, not a path conflict.
+            path=f"uploads/{uuid4().hex}/{safe_name}",
+            mime_type=request.mime_type,
+            metadata={"origin": "user-upload"},
+        )
+    except VirusDetectedError:
+        return WorkspaceUploadResult(filename=request.filename, error="virus_detected")
+    except VirusScanError:
+        return WorkspaceUploadResult(
+            filename=request.filename, error="scan_unavailable"
+        )
+    except NotFoundError:
+        # NotFoundError subclasses ValueError; let a missing user/workspace
+        # propagate as a linking error instead of being mislabelled "rejected".
+        raise
+    except ValueError:
+        # write_file raises ValueError for size / storage-quota limits.
+        return WorkspaceUploadResult(filename=request.filename, error="rejected")
+    except Exception:
+        logger.exception("Workspace upload failed for %s", request.filename)
+        return WorkspaceUploadResult(filename=request.filename, error="upload_failed")
+    return WorkspaceUploadResult(filename=request.filename, file_id=stored.id)
 
 
 async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
@@ -107,6 +177,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         message=request.message,
         turn_id=turn_id,
         is_user_message=True,
+        file_ids=request.file_ids or None,
     )
 
     logger.info(

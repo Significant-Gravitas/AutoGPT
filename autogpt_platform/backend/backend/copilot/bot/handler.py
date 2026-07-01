@@ -41,6 +41,11 @@ THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+# Cap on file IDs carried into a single turn — must stay <= the
+# ``BotChatRequest.file_ids`` ``max_length``. Batching several file-heavy
+# messages can accumulate more than that; cap so the turn runs (with a log)
+# instead of failing validation.
+MAX_TURN_FILE_IDS = 20
 
 
 @dataclass
@@ -55,6 +60,9 @@ class TargetState:
     processing: bool = False
     pending: list[tuple[str, str, str]] = field(default_factory=list)
     # Each entry: (username, user_id, text)
+    # Workspace file IDs uploaded for messages in `pending`, drained together
+    # with them so a batched turn carries every attached file.
+    pending_file_ids: list[str] = field(default_factory=list)
 
 
 class MessageHandler:
@@ -65,7 +73,7 @@ class MessageHandler:
         self._rename_tasks: set[asyncio.Task[None]] = set()
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        if not ctx.text.strip():
+        if not ctx.text.strip() and not ctx.attachments:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -104,8 +112,64 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        message_text = self._message_text(ctx, include_thread_history)
-        await self._enqueue_and_process(ctx, adapter, target_id, message_text)
+        file_ids, upload_problems = await self._upload_attachments(ctx)
+
+        # Files that didn't make it: adapter-stage (too large / failed download)
+        # plus upload-stage (virus / quota). Tell the user AND, below, the model
+        # — so neither assumes a dropped file was actually read.
+        problems = list(ctx.skipped_attachments) + upload_problems
+        if problems:
+            await adapter.send_message(target_id, _format_attachment_problems(problems))
+
+        # Decide on NEW input only — typed text or a usable upload. Thread
+        # history (folded into the prompt below) is context, not a reason to
+        # respond, so don't let it keep an otherwise-empty turn alive.
+        if not ctx.text.strip() and not file_ids:
+            # The user already got the note. Don't enqueue a blank turn, and
+            # unsubscribe a thread we just created for a channel message so it
+            # doesn't linger orphaned-but-subscribed for 7 days.
+            if ctx.channel_type == "channel" and target_id != ctx.channel_id:
+                await threads.unsubscribe(ctx.platform, target_id)
+            return
+
+        # A file-only message gets a nudge so AutoPilot looks at the uploads
+        # instead of seeing an empty "[Current message]".
+        current_text = ctx.text if ctx.text.strip() else "(see the attached file(s))"
+        message_text = self._message_text(ctx, include_thread_history, current_text)
+        if problems:
+            message_text += "\n\n" + _model_attachment_note(problems)
+        await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
+
+    async def _upload_attachments(
+        self, ctx: MessageContext
+    ) -> tuple[list[str], list[tuple[str, str]]]:
+        """Upload the user's attachments to the workspace.
+
+        Returns ``(file_ids, problems)`` — the IDs that succeeded, and
+        ``(filename, reason)`` for the ones that were rejected — so the caller
+        can attach the successes and surface the failures.
+        """
+        if not ctx.attachments:
+            return [], []
+        try:
+            results = await self._api.upload_workspace_files(
+                platform=ctx.platform,
+                platform_user_id=ctx.user_id,
+                platform_server_id=ctx.server_id,
+                attachments=ctx.attachments,
+            )
+        except Exception:
+            # The upload path itself failed (not a per-file rejection). Don't
+            # drop the message — surface it and let any text still go through.
+            logger.exception("Attachment upload failed for user %s", ctx.user_id)
+            return [], [(a.filename, "couldn't be uploaded") for a in ctx.attachments]
+        file_ids = [r.file_id for r in results if r.file_id]
+        problems = [
+            (r.filename, _UPLOAD_ERROR_TEXT.get(r.error or "", "couldn't be uploaded"))
+            for r in results
+            if not r.file_id
+        ]
+        return file_ids, problems
 
     # -- Target resolution --
 
@@ -131,14 +195,22 @@ class MessageHandler:
 
     # -- Batched streaming --
 
-    def _message_text(self, ctx: MessageContext, include_thread_history: bool) -> str:
+    def _message_text(
+        self,
+        ctx: MessageContext,
+        include_thread_history: bool,
+        current_text: str | None = None,
+    ) -> str:
+        # ``current_text`` overrides ``ctx.text`` as the "current message" body
+        # (e.g. a nudge for a file-only message); defaults to the raw text.
+        text = ctx.text if current_text is None else current_text
         # Referenced conversations (links/@-mentions the user pasted) are always
         # surfaced — that's the whole point of fetching them. Thread history is
         # only included on the first @-into a thread we don't own; a subscribed
         # thread's prior turns already live in the session.
         thread_history = ctx.thread_history if include_thread_history else ()
         if not thread_history and not ctx.referenced_conversations:
-            return ctx.text
+            return text
 
         platform_display = ctx.platform.capitalize()
         lines: list[str] = []
@@ -162,7 +234,7 @@ class MessageHandler:
             lines.append("\n[Recent thread context before this message]")
             for entry in thread_history:
                 lines.append(self._format_history_entry(entry, platform_display))
-        lines.append(f"\n[Current message]\n{ctx.text}")
+        lines.append(f"\n[Current message]\n{text}")
         return "\n".join(lines)
 
     @staticmethod
@@ -180,9 +252,12 @@ class MessageHandler:
         adapter: PlatformAdapter,
         target_id: str,
         message_text: str | None = None,
+        file_ids: list[str] | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
+        if file_ids:
+            state.pending_file_ids.extend(file_ids)
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick
@@ -193,8 +268,19 @@ class MessageHandler:
         try:
             while state.pending:
                 batch = list(state.pending)
+                batch_file_ids = list(state.pending_file_ids)
                 state.pending.clear()
-                await self._stream_batch(batch, ctx, adapter, target_id)
+                state.pending_file_ids.clear()
+                if len(batch_file_ids) > MAX_TURN_FILE_IDS:
+                    logger.warning(
+                        "Dropping %d batched file(s) over the per-turn cap of %d",
+                        len(batch_file_ids) - MAX_TURN_FILE_IDS,
+                        MAX_TURN_FILE_IDS,
+                    )
+                    batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
+                await self._stream_batch(
+                    batch, ctx, adapter, target_id, file_ids=batch_file_ids
+                )
         finally:
             state.processing = False
             # Drop the empty state so the dict doesn't grow unbounded across
@@ -327,6 +413,7 @@ class MessageHandler:
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
+        file_ids: list[str] | None = None,
     ) -> None:
         prefixed = format_batch(batch, ctx.platform)
 
@@ -425,6 +512,7 @@ class MessageHandler:
                 message=prefixed,
                 session_id=active_session_id,
                 platform_server_id=ctx.server_id,
+                file_ids=file_ids,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
@@ -641,6 +729,32 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         raise
     except Exception:
         logger.debug("Typing loop error", exc_info=True)
+
+
+_UPLOAD_ERROR_TEXT: dict[str, str] = {
+    "virus_detected": "failed a virus scan",
+    "scan_unavailable": "couldn't be virus-scanned right now — try again shortly",
+    "rejected": "was too large or would exceed your storage limit",
+    "upload_failed": "couldn't be uploaded",
+}
+
+
+def _format_attachment_problems(problems: list[tuple[str, str]]) -> str:
+    """User-facing note listing attachments that couldn't be attached and why."""
+    lines = ["⚠️ Some files couldn't be attached:"]
+    for filename, reason in problems:
+        lines.append(f"• `{filename}` {reason}")
+    return "\n".join(lines)
+
+
+def _model_attachment_note(problems: list[tuple[str, str]]) -> str:
+    """Note injected into the turn so AutoPilot knows which files it does NOT
+    have, instead of assuming a dropped attachment was read."""
+    listed = ", ".join(f"{filename} ({reason})" for filename, reason in problems)
+    return (
+        f"[Note: the following attachment(s) could NOT be attached and are "
+        f"unavailable to you — do not claim to have read them: {listed}]"
+    )
 
 
 def build_thread_name(text: str, username: str) -> str:

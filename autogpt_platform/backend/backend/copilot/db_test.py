@@ -13,7 +13,9 @@ from prisma.models import ChatSession as PrismaChatSession
 from backend.copilot.db import (
     PaginatedMessages,
     get_chat_messages_paginated,
+    get_user_chat_sessions,
     set_turn_duration,
+    update_chat_session_pinned,
     update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
@@ -62,6 +64,7 @@ def _make_session(
         title=None,
         metadata={},
         chatStatus="idle",
+        isPinned=False,
         # Sharing fields added by the chat-sharing PR — even with
         # ``model_construct`` Pydantic v2 still validates required
         # non-optional columns, so the mock needs them explicitly.
@@ -618,6 +621,53 @@ async def test_update_message_content_by_sequence_sanitizes_content():
     )
 
 
+# ---------- update_chat_session_pinned ----------
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_success():
+    """Returns True and writes isPinned scoped to (session_id, user_id)."""
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", True)
+
+    assert result is True
+    update_many.assert_called_once_with(
+        where={"id": "sess-1", "userId": "user-abc"},
+        data={"isPinned": True},
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_not_found():
+    """Returns False when no row matches (session missing or wrong user)."""
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", False)
+
+    assert result is False
+
+
+# ---------- get_user_chat_sessions ordering ----------
+
+
+@pytest.mark.asyncio
+async def test_get_user_chat_sessions_orders_pinned_first():
+    """Pinned sessions must be ordered ahead of unpinned, then by recency."""
+    find_many = AsyncMock(return_value=[])
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
+    ):
+        await get_user_chat_sessions("user-abc", limit=10, offset=0)
+
+    order = find_many.call_args.kwargs["order"]
+    assert order == [{"isPinned": "desc"}, {"updatedAt": "desc"}]
+
+
 # NOTE: previously this file had a separate suite for ``db.get_chat_session``
 # (windowed eager-load). That function was removed in favour of going through
 # ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
@@ -661,6 +711,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             metadata="{}",
             totalPromptTokens=0,
             totalCompletionTokens=0,
+            isPinned=False,
             isShared=False,
             shareToken=None,
             sharedAt=None,
@@ -678,6 +729,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             metadata="{}",
             totalPromptTokens=0,
             totalCompletionTokens=0,
+            isPinned=False,
             isShared=False,
             shareToken=None,
             sharedAt=None,

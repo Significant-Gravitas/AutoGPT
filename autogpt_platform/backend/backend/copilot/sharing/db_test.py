@@ -55,6 +55,7 @@ def _mock_session(*, auto_share_executions: bool = False) -> PrismaChatSession:
         totalCompletionTokens=0,
         metadata={},
         chatStatus="idle",
+        isPinned=False,
         isShared=True,
         shareToken="token-A",
         sharedAt=now,

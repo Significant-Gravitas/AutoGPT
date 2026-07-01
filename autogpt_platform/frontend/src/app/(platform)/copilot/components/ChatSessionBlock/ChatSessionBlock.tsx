@@ -6,6 +6,7 @@ import {
   CheckCircleIcon,
   CircleNotchIcon,
   HourglassIcon,
+  PushPinIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
@@ -19,6 +20,7 @@ interface Props {
   chatStatus?: string | null;
   showProcessing?: boolean;
   showCompleted?: boolean;
+  showPinned?: boolean;
   className?: string;
 }
 
@@ -56,6 +58,7 @@ export function ChatSessionBlock({
   chatStatus,
   showProcessing = false,
   showCompleted = false,
+  showPinned = false,
   className,
 }: Props) {
   const displayTitle = title || "Untitled chat";
@@ -77,6 +80,14 @@ export function ChatSessionBlock({
           </Text>
         </div>
         <div className="flex items-center gap-1.5">
+          {showPinned ? (
+            <PushPinIcon
+              aria-label="Pinned"
+              data-testid="session-pinned-indicator"
+              className="h-3 w-3 shrink-0 text-neutral-400"
+              weight="fill"
+            />
+          ) : null}
           <Text variant="small" className="text-neutral-400">
             {formatDate(updatedAt)}
           </Text>

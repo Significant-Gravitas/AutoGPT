@@ -34,6 +34,7 @@ from backend.copilot.model import (
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
+    update_session_pinned,
     update_session_title,
 )
 from backend.copilot.pending_message_helpers import (
@@ -42,7 +43,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
 )
-from backend.copilot.pending_messages import peek_pending_messages
+from backend.copilot.pending_messages import (
+    clear_pending_messages_unsafe,
+    peek_pending_messages,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -330,6 +334,7 @@ class SessionSummaryResponse(BaseModel):
     chat_status: str = "idle"
     is_processing: bool
     source_platform: str | None = None
+    is_pinned: bool = False
 
 
 class ListSessionsResponse(BaseModel):
@@ -360,6 +365,12 @@ class UpdateSessionTitleRequest(BaseModel):
         return stripped
 
 
+class UpdateSessionPinnedRequest(BaseModel):
+    """Request model for pinning/unpinning a session."""
+
+    is_pinned: bool
+
+
 # ========== Routes ==========
 
 
@@ -376,7 +387,7 @@ async def list_sessions(
     List chat sessions for the authenticated user.
 
     Returns a paginated list of chat sessions belonging to the current user,
-    ordered by most recently updated.
+    with pinned sessions first and most-recently-updated as the tiebreaker.
 
     Args:
         user_id: The authenticated user's ID.
@@ -423,6 +434,7 @@ async def list_sessions(
                 chat_status=session.chat_status,
                 is_processing=session.session_id in processing_set,
                 source_platform=session.metadata.source_platform,
+                is_pinned=session.is_pinned,
             )
             for session in sessions
         ],
@@ -582,6 +594,44 @@ async def update_session_title_route(
         HTTPException: 404 if session not found or not owned by user.
     """
     success = await update_session_title(session_id, user_id, request.title)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
+
+
+@router.patch(
+    "/sessions/{session_id}/pinned",
+    summary="Update session pinned",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_pinned_route(
+    session_id: str,
+    request: UpdateSessionPinnedRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Pin or unpin a chat session.
+
+    Pinned sessions surface at the top of the user's sidebar list ahead of
+    unpinned ones, regardless of recency.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new pin state.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    success = await update_session_pinned(session_id, user_id, request.is_pinned)
     if not success:
         raise HTTPException(
             status_code=404,
@@ -882,6 +932,22 @@ async def reset_copilot_usage(
     )
 
 
+async def _clear_pending_best_effort(session_id: str) -> None:
+    """Drop the session's pending buffer, swallowing Redis errors.
+
+    Cancel cleanup must never block the cancel itself, so a transient
+    Redis failure is logged and ignored rather than raised.
+    """
+    try:
+        await clear_pending_messages_unsafe(session_id)
+    except Exception:
+        logger.warning(
+            "[CANCEL] Failed to clear pending buffer for session ...%s",
+            session_id[-8:],
+            exc_info=True,
+        )
+
+
 @router.post(
     "/sessions/{session_id}/cancel",
     status_code=200,
@@ -902,6 +968,23 @@ async def cancel_session_task(
       task status flips out of ``running`` or a 5 s timeout is hit.
     """
     await _validate_and_get_session(session_id, user_id)
+
+    # Cancelling discards any follow-ups the user queued for this turn:
+    # Stop means stop.  The pending buffer only exists to feed the
+    # *running* turn (drained at tool boundaries); once that turn is
+    # cancelled there is nothing left to feed it, so leaving entries
+    # behind would silently inject them into the next unrelated turn
+    # (up to the 1h buffer TTL).
+    #
+    # This first clear shrinks the window but doesn't close it: the HTTP
+    # pending-write path CAS-gates on stream meta ``status == "running"``
+    # (``push_pending_message_if_session_running``), so a follow-up queued
+    # after this clear but before the turn actually stops would still land.
+    # The running path below clears again once the turn is confirmed
+    # stopped — at which point the CAS gate rejects every new write, so the
+    # buffer stays empty.  Best-effort throughout: a Redis hiccup must not
+    # block the cancel itself, so we swallow and log.
+    await _clear_pending_best_effort(session_id)
 
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.
@@ -941,12 +1024,19 @@ async def cancel_session_task(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
             )
+            # Re-clear now the turn is no longer running: the CAS gate rejects
+            # any further pending writes, so this drops anything queued during
+            # the cancel window and closes the cross-turn leak for good.
+            await _clear_pending_best_effort(session_id)
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
     )
     await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # Status is now force-flipped out of "running"; re-clear to drop any
+    # follow-up that landed during the poll window.
+    await _clear_pending_best_effort(session_id)
     return CancelSessionResponse(cancelled=True)
 
 
