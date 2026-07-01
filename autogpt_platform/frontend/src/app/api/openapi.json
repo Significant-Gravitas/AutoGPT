@@ -21398,6 +21398,12 @@
             "type": "object",
             "title": "Trigger Config"
           },
+          "constant_inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Constant Inputs",
+            "description": "Regular graph input values"
+          },
           "agent_credentials": {
             "additionalProperties": {
               "$ref": "#/components/schemas/CredentialsMetaInput"

@@ -10,7 +10,6 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { analytics } from "@/services/analytics";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,6 +50,13 @@ export function useAgentRunModal(
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     callbacks?.initialInputCredentials || {},
   );
+  // For triggered agents the form is split in two: `inputValues` holds the
+  // graph's regular inputs (sent as `constant_inputs` when setting up the
+  // trigger), and these hold the trigger node's config (sent as
+  // `trigger_config`).
+  const [triggerConfigValues, setTriggerConfigValues] = useState<
+    Record<string, any>
+  >({});
 
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
@@ -67,6 +73,7 @@ export function useAgentRunModal(
   useEffect(() => {
     setInputValues(callbacks?.initialInputValues || {});
     setInputCredentials(callbacks?.initialInputCredentials || {});
+    setTriggerConfigValues({});
   }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
   const allProviders = useContext(CredentialsProvidersContext);
@@ -206,30 +213,29 @@ export function useAgentRunModal(
     },
   });
 
-  // Input schema validation (use trigger schema for triggered agents)
-  const agentInputSchema = useMemo(() => {
-    if (agent.trigger_setup_info?.config_schema) {
-      return agent.trigger_setup_info.config_schema;
-    }
-    return agent.input_schema || { properties: {}, required: [] };
-  }, [agent.input_schema, agent.trigger_setup_info]);
+  // Primary input fields: the agent's regular graph inputs — consistent for
+  // both triggered and non-triggered agents.
+  const agentInputSchema = useMemo(
+    () => agent.input_schema || { properties: {}, required: [] },
+    [agent.input_schema],
+  );
 
-  const agentInputFields = useMemo(() => {
-    if (
-      !agentInputSchema ||
-      typeof agentInputSchema !== "object" ||
-      !("properties" in agentInputSchema) ||
-      !agentInputSchema.properties
-    ) {
-      return {};
-    }
-    const properties = agentInputSchema.properties as Record<string, any>;
-    return Object.fromEntries(
-      Object.entries(properties).filter(
-        ([_, subSchema]: [string, any]) => !subSchema.hidden,
-      ),
-    );
-  }, [agentInputSchema]);
+  const agentInputFields = useMemo(
+    () => getVisibleInputFields(agentInputSchema),
+    [agentInputSchema],
+  );
+
+  // Triggered agents additionally have the trigger node's config, collected in
+  // its own conditional section and sent as `trigger_config`.
+  const triggerConfigSchema = useMemo(
+    () => agent.trigger_setup_info?.config_schema,
+    [agent.trigger_setup_info],
+  );
+
+  const triggerConfigFields = useMemo(
+    () => getVisibleInputFields(triggerConfigSchema),
+    [triggerConfigSchema],
+  );
 
   const agentCredentialsInputFields = useMemo(() => {
     if (
@@ -245,17 +251,20 @@ export function useAgentRunModal(
 
   // Validation logic
   const [allRequiredInputsAreSetRaw, missingInputs] = useMemo(() => {
-    const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
-    );
-    const requiredInputs = new Set(
-      (agentInputSchema.required as string[]) || [],
-    );
-    const missing = [...requiredInputs].filter(
-      (input) => !nonEmptyInputs.has(input),
-    );
+    const missingFor = (
+      schema: { required?: unknown } | undefined,
+      values: Record<string, any>,
+    ) => {
+      const required = (schema?.required as string[]) || [];
+      return required.filter((field) => !isFilled(values[field]));
+    };
+
+    const missing = [
+      ...missingFor(agentInputSchema, inputValues),
+      ...missingFor(triggerConfigSchema, triggerConfigValues),
+    ];
     return [missing.length === 0, missing];
-  }, [agentInputSchema.required, inputValues]);
+  }, [agentInputSchema, inputValues, triggerConfigSchema, triggerConfigValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const requiredCredentials = new Set(
@@ -328,7 +337,8 @@ export function useAgentRunModal(
           description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
-          trigger_config: inputValues,
+          trigger_config: triggerConfigValues,
+          constant_inputs: inputValues,
           agent_credentials: inputCredentials,
         },
       });
@@ -351,6 +361,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     defaultRunType,
     inputValues,
+    triggerConfigValues,
     inputCredentials,
     agent,
     presetName,
@@ -375,8 +386,11 @@ export function useAgentRunModal(
   }, [agent, inputValues, executeGraphMutation]);
 
   const hasInputFields = useMemo(() => {
-    return Object.keys(agentInputFields).length > 0;
-  }, [agentInputFields]);
+    return (
+      Object.keys(agentInputFields).length > 0 ||
+      Object.keys(triggerConfigFields).length > 0
+    );
+  }, [agentInputFields, triggerConfigFields]);
 
   return {
     isOpen,
@@ -384,6 +398,8 @@ export function useAgentRunModal(
     defaultRunType: defaultRunType as RunVariant,
     inputValues,
     setInputValues,
+    triggerConfigValues,
+    setTriggerConfigValues,
     inputCredentials,
     setInputCredentials,
     presetName,
@@ -393,6 +409,7 @@ export function useAgentRunModal(
     allRequiredInputsAreSet,
     missingInputs,
     agentInputFields,
+    triggerConfigFields,
     agentCredentialsInputFields,
     hasInputFields,
     isExecuting: executeGraphMutation.isPending,
@@ -400,4 +417,32 @@ export function useAgentRunModal(
     handleRun,
     handleSimulate,
   };
+}
+
+// Mirror the backend's `_is_filled`: only null/undefined, "", {}, and [] count
+// as missing — falsy primitives like 0 and false are valid provided values.
+export function isFilled(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+// Pull the non-hidden field schemas out of a JSON schema object, tolerating a
+// missing/malformed schema (returns an empty map).
+function getVisibleInputFields(schema: unknown): Record<string, any> {
+  if (
+    !schema ||
+    typeof schema !== "object" ||
+    !("properties" in schema) ||
+    !schema.properties
+  ) {
+    return {};
+  }
+  const properties = (schema as { properties: Record<string, any> }).properties;
+  return Object.fromEntries(
+    Object.entries(properties).filter(
+      ([_, subSchema]: [string, any]) => !subSchema.hidden,
+    ),
+  );
 }

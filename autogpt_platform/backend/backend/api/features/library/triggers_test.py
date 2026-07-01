@@ -65,6 +65,30 @@ async def test_creates_preset_on_success():
 
 
 @pytest.mark.asyncio
+async def test_wraps_trigger_config_alongside_constant_inputs():
+    """The created preset stores regular inputs plus the trigger config nested
+    under a per-node ``_node_input_mask_{node_id}`` key (node id ``trigger-node``
+    -> ``trigger``)."""
+    p_graph, p_creds, p_webhook, p_create = _patches(graph=_graph())
+    with p_graph, p_creds, p_webhook, p_create as create_mock:
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Trigger",
+            description="",
+            trigger_config={"repo": "owner/repo"},
+            agent_credentials={},
+            constant_inputs={"some_input": "value"},
+        )
+    created_inputs = create_mock.await_args.kwargs["preset"].inputs
+    assert created_inputs == {
+        "some_input": "value",
+        "_node_input_mask_trigger": {"repo": "owner/repo"},
+    }
+
+
+@pytest.mark.asyncio
 async def test_graph_not_found_raises():
     p_graph, p_creds, p_webhook, p_create = _patches(graph=None)
     with p_graph, p_creds, p_webhook, p_create:
@@ -152,7 +176,7 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
     m["setup"].assert_awaited_once()
@@ -167,9 +191,25 @@ async def test_update_reconfigure_webhook_rejected_raises():
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"repo": "x"},
+                inputs={"_node_input_mask_trigger": {"repo": "x"}},
                 credentials={},
             )
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_missing_input_mask_raises():
+    """Reconfiguring a triggered preset without the ``_node_input_mask_{node_id}``
+    key is rejected before any webhook work happens."""
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="Missing trigger configuration"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"some_input": "value"},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
 
 

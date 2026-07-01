@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (here) and webhook execution
+    (``_execute_webhook_preset_trigger``) so all sites agree on the format; the
+    data migration mirrors it in SQL.
+    """
+    return f"_node_input_mask_{node_id.split('-')[0]}"
+
+
 async def setup_triggered_preset(
     *,
     user_id: str,
@@ -35,6 +46,7 @@ async def setup_triggered_preset(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    constant_inputs: dict[str, Any] | None = None,
 ) -> models.LibraryAgentPreset:
     """Create a webhook-triggered ``LibraryAgentPreset`` for the given graph.
 
@@ -43,6 +55,11 @@ async def setup_triggered_preset(
     manual-setup webhooks — then creates a preset linked to that webhook. The
     returned preset has ``.webhook`` populated, so ``preset.webhook.url`` is the
     ingress URL to hand to the user for manual-setup webhooks.
+
+    The preset's ``inputs`` hold the regular graph inputs (``constant_inputs``)
+    plus the trigger config nested under a per-node ``_node_input_mask_{node_id}``
+    key, so a graph can have both input nodes and a trigger node. The executor
+    separates the two again (see ``_execute_webhook_preset_trigger``).
 
     Fetches the graph itself (rather than taking a ``GraphModel``) so it can run
     as an RPC endpoint without serializing the whole graph across the boundary.
@@ -78,6 +95,11 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
+    preset_inputs = dict(constant_inputs or {})
+    preset_inputs[node_input_mask_key(trigger_node.id)] = (
+        trigger_config_with_credentials
+    )
+
     return await db.create_preset(
         user_id=user_id,
         preset=models.LibraryAgentPresetCreatable(
@@ -85,7 +107,7 @@ async def setup_triggered_preset(
             graph_version=graph.version,
             name=name,
             description=description,
-            inputs=trigger_config_with_credentials,
+            inputs=preset_inputs,
             credentials=agent_credentials,
             webhook_id=new_webhook.id,
             is_active=True,
@@ -129,8 +151,15 @@ async def update_triggered_preset(
                 f"Graph #{current.graph_id} is not accessible (anymore)"
             )
         if trigger_node := graph.webhook_input_node:
+            # Trigger config is nested under a per-node key alongside the regular
+            # graph inputs (see setup_triggered_preset).
+            trigger_config = inputs.get(node_input_mask_key(trigger_node.id))
+            if trigger_config is None:
+                raise InvalidInputError(
+                    f"Missing trigger configuration for node {trigger_node.id}"
+                )
             trigger_config_with_credentials = {
-                **inputs,
+                **trigger_config,
                 **(
                     make_node_credentials_input_map(graph, credentials).get(
                         trigger_node.id

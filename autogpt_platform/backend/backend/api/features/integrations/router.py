@@ -19,6 +19,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.triggers import node_input_mask_key
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -725,19 +726,37 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+    # Separate the trigger node's input mask from the regular graph inputs. The
+    # trigger config is nested under a per-node key (see setup_triggered_preset).
+    graph_inputs = preset.inputs.copy()
+    trigger_inputs = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
+    if trigger_inputs is None:
+        # We can't run this, so log a warning and skip
+        logger.warning(
+            f"Preset #{preset.id} is missing trigger parameters for node "
+            f"#{trigger_node.id}"
+        )
+        return
+
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+    # Add webhook payload to trigger inputs
+    trigger_inputs["payload"] = payload
 
     try:
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
+            inputs=graph_inputs,
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
-            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            nodes_input_masks={trigger_node.id: trigger_inputs},
         )
     except GraphNotInLibraryError as e:
         logger.warning(
