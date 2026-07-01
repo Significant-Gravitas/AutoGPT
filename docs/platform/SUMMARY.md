@@ -2,19 +2,33 @@
 
 * [What is the AutoGPT Platform?](what-is-autogpt-platform.md)
 
-## Getting Started
+## Using the Platform
 
-* [Setting Up Auto-GPT (Local Host)](getting-started.md)
+* [Getting Started (Cloud)](getting-started-cloud.md)
+* [AutoPilot](autopilot.md)
+* [Agent Builder Guide](agent-builder-guide.md)
+* [Agent Library](agent-library.md)
+* [Marketplace](marketplace.md)
+* [Scheduling & Triggers](scheduling-and-triggers.md)
+* [Templates](templates.md)
+* [Credits & Billing](credits-and-billing.md)
+* [Integrations & Credentials](integrations-and-credentials.md)
+* [Data Flow & Execution](data-flow-and-execution.md)
+* [Sharing & Exporting Agents](sharing-and-exporting.md)
+
+## Self-Hosting
+
+* [Setting Up AutoGPT (Self-Host)](getting-started.md)
 * [AutoGPT Platform Installer](installer.md)
+* [Advanced Setup](advanced_setup.md)
+
+## Tutorials
+
+* [Create a Basic Agent](create-basic-agent.md)
 * [Edit an Agent](edit-agent.md)
 * [Delete an Agent](delete-agent.md)
 * [Download & Import an Agent](download-agent-from-marketplace-local.md)
-* [Create a Basic Agent](create-basic-agent.md)
 * [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
-
-## Advanced Setup
-
-* [Advanced Setup](advanced_setup.md)
 
 ## Building Blocks
 
@@ -34,3 +48,15 @@
 
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
+
+## Changelog
+
+* [What's New](changelog/README.md)
+  * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)
+  * [Smarter Starts, Faster Feedback](changelog/march-23-april-9-2026.md)
+  * [Import workflows from other platforms and enjoy a polished marketplace](changelog/march-20-march-25-2026.md)
+  * [Explore a new marketplace, track usage, and give instant feedback](changelog/march-13-march-20-2026.md)
+  * [Organize your agents, get notified, and enjoy a cleaner chat](changelog/march-5-march-12-2026.md)
+  * [Connect any app, share files, and let AutoPilot browse for you](changelog/february-26-march-4-2026.md)
+  * [Telegram bots, agent folders, and a rebuilt builder](changelog/february-11-february-26-2026.md)
+  * [Voice input, persistent files, and a smarter AI](changelog/january-29-february-11-2026.md)
