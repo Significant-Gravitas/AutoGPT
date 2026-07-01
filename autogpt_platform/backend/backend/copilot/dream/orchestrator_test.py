@@ -129,6 +129,21 @@ def _stub_batch_flag(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_marker_redis(mocker):
+    """No last-completed marker by default (get → None) so every existing
+    test runs the full pass; the stamp write is a silent success. The
+    no-new-activity tests reconfigure ``get`` on the returned mock."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=redis),
+    )
+    return redis
+
+
 @pytest.mark.asyncio
 async def test_empty_input_returns_skipped(mocker):
     """No episodes AND no facts ⇒ skipped, no LLM calls."""
@@ -695,6 +710,347 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
     assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
     assert charge_spy.await_args.kwargs["phase_usage"].phase == "consolidate"
     apply_mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# No-new-activity skip — the per-user ``dream:last_completed:{user_id}``
+# marker short-circuits the pass before phase 1 when nothing new landed.
+# ---------------------------------------------------------------------------
+
+
+def _input_with_episode_times(*valid_ats: str | None) -> DreamInput:
+    """Bundle with one old active fact + episodes at the given valid_at
+    timestamps — the 'old facts, maybe-stale episodes' nightly shape."""
+    return DreamInput(
+        user_id="u",
+        group_id="g",
+        window_start=datetime(2026, 5, 26, tzinfo=timezone.utc),
+        window_end=datetime(2026, 6, 9, tzinfo=timezone.utc),
+        episodes=[
+            EpisodeRow(
+                uuid=f"e{i}",
+                name=None,
+                content="hello",
+                source_description=None,
+                valid_at=valid_at,
+                created_at=None,
+            )
+            for i, valid_at in enumerate(valid_ats)
+        ],
+        facts=[
+            FactRow(
+                uuid="f0",
+                source="A",
+                target="B",
+                name="likes",
+                fact="A likes B",
+                scope="real:global",
+                confidence=0.7,
+                status="active",
+                created_at="2026-01-01T00:00:00Z",
+            )
+        ],
+        recent_sessions=[],
+        known_fact_uuids={"f0"},
+        known_episode_uuids={f"e{i}" for i in range(len(valid_ats))},
+    )
+
+
+def _stub_three_phases_and_apply(mocker) -> AsyncMock:
+    """Minimal happy-path pipeline: empty phase outputs + a stubbed apply.
+    Returns the apply mock so callers can assert the pass actually ran."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(summary_for_user="ok")),
+            ]
+        ),
+    )
+    return mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s",
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_marker_newer_than_all_episodes_skips_with_no_new_activity(
+    mocker, _stub_marker_redis
+):
+    """Every episode predates the last completed pass ⇒ skip before
+    phase 1: no LLM calls, no apply, no fresh marker stamp."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episode_times(
+                "2026-06-01T00:00:00Z", "2026-06-07T23:59:59Z"
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_completion", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
+    _stub_marker_redis.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_marker_with_old_facts_and_no_episodes_skips(mocker, _stub_marker_redis):
+    """The literal nightly bug shape: old active facts, zero episodes in
+    the window, marker present ⇒ no_new_activity (NOT no_input — facts
+    exist, so the old code would have run all three phases)."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times()),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_completion", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_marker_runs_full_pass(mocker, _stub_marker_redis):
+    """First-ever pass (or expired marker): get → None means there's no
+    baseline to compare against, so the pass runs."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_redis_error_on_marker_read_fails_open_and_runs(
+    mocker, _stub_marker_redis
+):
+    """A Redis blip on the marker read must never block a dream — the
+    marker only exists to save LLM spend."""
+    _stub_marker_redis.get.side_effect = ConnectionError("redis down")
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_corrupt_marker_bytes_fail_open_and_run(mocker, _stub_marker_redis):
+    """A marker holding invalid UTF-8 bytes must fail open like any other
+    unparseable value — never escalate the cost optimization into a pass
+    failure."""
+    _stub_marker_redis.get.return_value = b"\xff\xfe corrupt"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_newer_than_marker_runs_pass(mocker, _stub_marker_redis):
+    """One episode landed after the last completed pass ⇒ there's new
+    material to consolidate, so the pass runs."""
+    _stub_marker_redis.get.return_value = "2026-06-05T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episode_times(
+                "2026-06-01T00:00:00Z", "2026-06-08T12:00:00Z"
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unparseable_episode_timestamp_counts_as_new_and_runs(
+    mocker, _stub_marker_redis
+):
+    """An episode whose valid_at/created_at can't be parsed can't be
+    proven old — fail open and run the pass."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times(None)),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_successful_pass_stamps_last_completed_marker(mocker, _stub_marker_redis):
+    """A non-skipped sync apply stamps ``dream:last_completed:{user_id}``
+    with an ISO timestamp and the ~35-day TTL so the next nightly pass
+    can skip when nothing new landed."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-08T12:00:00Z")),
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    _stub_marker_redis.set.assert_awaited_once()
+    set_args = _stub_marker_redis.set.await_args
+    assert set_args.args[0] == "dream:last_completed:u"
+    # Stamped with the gather-window end (NOT apply-completion time) so
+    # episodes that arrive mid-pass still count as new next time.
+    stamped = datetime.fromisoformat(set_args.args[1])
+    assert stamped == datetime(2026, 6, 9, tzinfo=timezone.utc)
+    assert set_args.kwargs == {"ex": orchestrator_mod.LAST_COMPLETED_TTL_SECONDS}
+
+
+@pytest.mark.asyncio
+async def test_admin_trigger_bypasses_no_new_activity_marker(
+    mocker, _stub_marker_redis
+):
+    """status_id is set only by the admin 'dream now' trigger — the
+    memory-debugging path must run the full pipeline even when the marker
+    is newer than every episode, otherwise a re-run after prompt/flag
+    changes silently no-ops for up to the marker TTL."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", status_id="job-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    # The bypass must not even read the marker — the skip is caller-gated.
+    _stub_marker_redis.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_pass_does_not_stamp_marker(mocker, _stub_marker_redis):
+    """An LLM failure means no apply ran — the marker must NOT advance,
+    otherwise tomorrow's pass would skip material this one never chewed."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-08T12:00:00Z")),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(side_effect=DreamLLMError("boom")),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    _stub_marker_redis.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_empty_apply_stats_leave_dream_session_id_none(mocker):
+    """When apply skips the dream session (empty pass), its stats carry
+    no session_id — the result must surface ``dream_session_id=None``,
+    not an empty string."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(summary_for_user="Nothing new tonight.")),
+            ]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert result.dream_session_id is None
+    assert result.summary_for_user == "Nothing new tonight."
 
 
 _ = MagicMock  # keep import for editor convenience; not directly used

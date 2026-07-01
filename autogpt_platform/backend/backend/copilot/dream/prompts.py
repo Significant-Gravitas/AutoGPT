@@ -193,7 +193,8 @@ SANITIZE_SYSTEM = (
     "code fences. Do NOT use markdown formatting anywhere. Do NOT "
     "explain reasoning before or after the JSON. An empty result is "
     'still JSON: `{"writes": [], "proposals": [], "demotions": [], '
-    '"entity_invalidations": [], "summary_for_user": ""}`.\n\n'
+    '"entity_invalidations": [], "summary_for_user": "Nothing new to '
+    'consolidate tonight — no memory changes made."}`.\n\n'
     "ROLE:\n"
     "You are the sanitizer step of a sleep-time memory pass. You receive "
     "the consolidated facts and the recombination proposals; you decide "
@@ -223,7 +224,10 @@ SANITIZE_SYSTEM = (
     '("I think", "I believe", "In my opinion") — those are not user '
     "memories.\n"
     " * Write a short ``summary_for_user`` (1-3 sentences) describing "
-    "what the pass found.\n\n"
+    "what the pass found.\n"
+    " * ``summary_for_user`` MUST ALWAYS be non-empty — even when there "
+    "are no writes, proposals, demotions, or entity invalidations, say "
+    "in one sentence that nothing changed.\n\n"
     "JSON SCHEMA (your response MUST match this DreamOperations shape):\n"
     '{ "writes": [ConsolidatedFact...], "proposals": [ProposedFinding...], '
     '"demotions": [{"edge_uuid": str, "reason": str, '

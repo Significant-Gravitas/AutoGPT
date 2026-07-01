@@ -191,6 +191,23 @@ def test_sanitize_prompt_emits_no_stale_candidates_placeholder_when_clean():
     assert "(no stale-fact candidates flagged this pass)" in msgs[1]["content"]
 
 
+def test_sanitize_empty_result_example_models_non_empty_summary():
+    """The sanitizer's empty-result example must not show
+    ``"summary_for_user": ""`` — the literal empty string in the example
+    taught the model to emit empty summaries on no-op passes
+    (contradicting the summary rule), which rendered as blank dream
+    chats. The example carries a real sentence and an explicit
+    always-non-empty rule backs it up."""
+    from .prompts import SANITIZE_SYSTEM
+
+    assert '"summary_for_user": ""' not in SANITIZE_SYSTEM
+    assert (
+        '"summary_for_user": "Nothing new to consolidate tonight — '
+        'no memory changes made."' in SANITIZE_SYSTEM
+    )
+    assert "``summary_for_user`` MUST ALWAYS be non-empty" in SANITIZE_SYSTEM
+
+
 def test_prompts_tolerate_empty_inputs():
     """A bundle with no episodes / facts / sessions still produces valid
     prompts — the model should answer with an empty list."""

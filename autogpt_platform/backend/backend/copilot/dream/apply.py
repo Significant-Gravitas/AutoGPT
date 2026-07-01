@@ -13,6 +13,8 @@ A ``ChatSession`` shell (``metadata.kind='dream'`` +
 provenance can reference its id; the assistant message holding
 ``summary_for_user`` is appended LAST, after the ops above, so a partway
 failure leaves an empty dream rather than a narrative with no memory.
+A pass with no operations at all creates neither — see the empty-pass
+guard at the top of ``apply_operations``.
 """
 
 from __future__ import annotations
@@ -328,6 +330,24 @@ async def _create_dream_session(user_id: str, pass_id: str) -> str:
         user_id=user_id,
         metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
     )
+    # ``create_chat_session`` takes no title; set it via the dedicated
+    # accessor so the session doesn't render as "(untitled)" in the chat
+    # list. Best-effort: a cosmetic title failure must never abort apply —
+    # on the batch path the at-most-once apply gate is already claimed by
+    # the time we run, so an exception here would permanently lose the
+    # dream (a retry hits the "duplicate" branch and skips apply).
+    title = f"Dream summary — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
+    try:
+        await chat_db().update_chat_session_title(
+            session_id=session_id, user_id=user_id, title=title
+        )
+    except Exception:
+        logger.warning(
+            "Failed to title dream session %s for user %s",
+            session_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
     return session_id
 
 
@@ -365,6 +385,15 @@ async def apply_operations(
     detailed ``DreamOperationsSnapshot`` payload for consumers that
     need per-operation rollups (eval, admin UI, future P9 SSE event).
 
+    An empty pass — no writes, proposals, demotions, or entity
+    invalidations — returns zero counts and an empty snapshot WITHOUT
+    creating the dream session or writing any message; the
+    ``session_id`` key is absent so ``apply_stats.get("session_id")``
+    reads as ``None`` for both the orchestrator and the batch callback.
+    A pass WITH operations but an empty ``summary_for_user`` still
+    creates the session and writes the fallback narrative (the ops
+    landed; only the narrative is missing).
+
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
     targeting anything outside it are dropped before any Cypher runs
@@ -383,6 +412,31 @@ async def apply_operations(
     try direct Prisma, hit "All connection attempts failed" while
     the engine is still booting).
     """
+    if not (ops.writes or ops.proposals or ops.demotions or ops.entity_invalidations):
+        # Empty pass — nothing landed in memory, so don't manufacture a
+        # user-visible artifact for it. Creating the session shell +
+        # placeholder narrative here is what produced one untitled empty
+        # chat per user per night for users with old facts but no new
+        # activity. ``session_id`` is deliberately absent from the stats:
+        # consumers read it via ``.get("session_id")`` and both the
+        # orchestrator and batch_callbacks treat the missing key as None.
+        logger.info(
+            "Dream pass %s for user %s produced no operations — "
+            "skipping dream session creation",
+            pass_id,
+            user_id[:12],
+        )
+        return {
+            "consolidated_count": 0,
+            "proposal_count": 0,
+            "demotion_count": 0,
+            "demotion_failed_count": 0,
+            "entity_invalidation_count": 0,
+            # Vacuously drained — the pass enqueued nothing.
+            "ingestion_drained": True,
+            "snapshot": DreamOperationsSnapshot(),
+        }
+
     group_id = derive_group_id(user_id)
 
     # Phase A — create the session shell up front so the MemoryEnvelope
