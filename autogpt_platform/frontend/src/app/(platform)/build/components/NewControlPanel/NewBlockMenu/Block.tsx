@@ -1,14 +1,14 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import React, { ButtonHTMLAttributes, useCallback, useState } from "react";
+import React, { ButtonHTMLAttributes, useState } from "react";
 import { highlightText } from "./helpers";
 import { PlusIcon } from "@phosphor-icons/react";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { blockDragPreviewStyle } from "./style";
-import { useReactFlow } from "@xyflow/react";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { useAddBlockToBuilder } from "./hooks/useAddBlockToBuilder";
 import { BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
 import {
   MCPToolDialog,
@@ -37,75 +37,53 @@ export const Block: BlockComponent = ({
   const setBlockMenuOpen = useControlPanelStore(
     (state) => state.setBlockMenuOpen,
   );
-  const { setViewport } = useReactFlow();
-  const { addBlock } = useNodeStore();
+  const { addBlockWithPlacement } = useAddBlockToBuilder();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
 
   const isMCPBlock = blockData.uiType === BlockUIType.MCP_TOOL;
 
-  const addBlockAndCenter = useCallback(
-    (block: BlockInfo, hardcodedValues?: Record<string, any>) => {
-      const customNode = addBlock(block, hardcodedValues);
-      setTimeout(() => {
-        setViewport(
-          {
-            x: -customNode.position.x * 0.8 + window.innerWidth / 2,
-            y: -customNode.position.y * 0.8 + (window.innerHeight - 400) / 2,
-            zoom: 0.8,
-          },
-          { duration: 500 },
-        );
-      }, 50);
-      return customNode;
-    },
-    [addBlock, setViewport],
-  );
-
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
-  const handleMCPToolConfirm = useCallback(
-    (result: MCPToolDialogResult) => {
-      // Derive a display label: prefer server name, fall back to URL hostname.
-      let serverLabel = result.serverName;
-      if (!serverLabel) {
-        try {
-          serverLabel = new URL(result.serverUrl).hostname;
-        } catch {
-          serverLabel = "MCP";
-        }
+  function handleMCPToolConfirm(result: MCPToolDialogResult) {
+    // Derive a display label: prefer server name, fall back to URL hostname.
+    let serverLabel = result.serverName;
+    if (!serverLabel) {
+      try {
+        serverLabel = new URL(result.serverUrl).hostname;
+      } catch {
+        serverLabel = "MCP";
       }
+    }
 
-      const customNode = addBlockAndCenter(blockData, {
-        server_url: result.serverUrl,
-        server_name: serverLabel,
-        selected_tool: result.selectedTool,
-        tool_input_schema: result.toolInputSchema,
-        available_tools: result.availableTools,
-        credentials: result.credentials ?? undefined,
+    const customNode = addBlockWithPlacement(blockData, {
+      server_url: result.serverUrl,
+      server_name: serverLabel,
+      selected_tool: result.selectedTool,
+      tool_input_schema: result.toolInputSchema,
+      available_tools: result.availableTools,
+      credentials: result.credentials ?? undefined,
+    });
+    if (customNode) {
+      const title = result.selectedTool
+        ? `${serverLabel}: ${beautifyString(result.selectedTool)}`
+        : undefined;
+      updateNodeData(customNode.id, {
+        metadata: {
+          ...customNode.data.metadata,
+          credentials_optional: true,
+          ...(title && { customized_name: title }),
+        },
       });
-      if (customNode) {
-        const title = result.selectedTool
-          ? `${serverLabel}: ${beautifyString(result.selectedTool)}`
-          : undefined;
-        updateNodeData(customNode.id, {
-          metadata: {
-            ...customNode.data.metadata,
-            credentials_optional: true,
-            ...(title && { customized_name: title }),
-          },
-        });
-      }
-      setMcpDialogOpen(false);
-    },
-    [addBlockAndCenter, blockData, updateNodeData],
-  );
+    }
+    setMcpDialogOpen(false);
+  }
 
-  const handleClick = () => {
+  function handleClick() {
     if (isMCPBlock) {
       setMcpDialogOpen(true);
       return;
     }
-    const customNode = addBlockAndCenter(blockData);
+    const customNode = addBlockWithPlacement(blockData);
     // Set customized_name for agent blocks so the agent's name persists
     if (customNode && blockData.id === SpecialBlockID.AGENT) {
       updateNodeData(customNode.id, {
@@ -115,7 +93,7 @@ export const Block: BlockComponent = ({
         },
       });
     }
-  };
+  }
 
   const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
     if (isMCPBlock) return;
