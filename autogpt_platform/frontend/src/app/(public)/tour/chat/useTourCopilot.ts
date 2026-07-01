@@ -1,12 +1,10 @@
 "use client";
 
 import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import type { UIMessage } from "ai";
 import { useRef, useState } from "react";
 import { appendPartToLastMessage } from "./helpers";
-import { mockArtifact } from "./script/mockArtifact";
 import type { TourScript } from "./script/types";
 
 type TourStatus = "ready" | "submitted" | "streaming";
@@ -56,9 +54,6 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
       timers.current.push(
         setTimeout(() => {
           commit(appendPartToLastMessage(messagesRef.current, step.part));
-          if (step.part.type === "tool-create_agent") {
-            useCopilotUIStore.getState().openArtifact(mockArtifact);
-          }
         }, elapsed),
       );
     });
@@ -77,15 +72,13 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
     stepIndex.current = 0;
     commit([]);
     setStatus("ready");
-    useCopilotUIStore.getState().resetArtifactPanel();
   }
 
   // Fresh slate when this chat mounts. TourChatHost is keyed by sessionId, so a
-  // sidebar switch remounts this hook — clear any prior snapshot + artifact so
-  // the panels reflect the newly-selected chat.
+  // sidebar switch remounts this hook — clear any prior snapshot so the messages
+  // reflect the newly-selected chat.
   useMountEffect(() => {
     useCopilotStreamStore.getState().setMessageSnapshot(sessionId, []);
-    useCopilotUIStore.getState().resetArtifactPanel();
     return clearTimers;
   });
 

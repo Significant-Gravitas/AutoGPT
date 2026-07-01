@@ -43,6 +43,8 @@ export function TourChatSidebar() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Search chats"
+                disabled
+                aria-disabled="true"
                 className="rounded-full text-zinc-600 hover:bg-zinc-100"
               >
                 <MagnifyingGlassIcon className="!size-5" />
@@ -52,6 +54,8 @@ export function TourChatSidebar() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Files"
+                disabled
+                aria-disabled="true"
                 className="rounded-full text-zinc-600 hover:bg-zinc-100"
               >
                 <FilesIcon className="!size-5" />
@@ -63,6 +67,8 @@ export function TourChatSidebar() {
             variant="primary"
             size="small"
             className="w-full"
+            disabled
+            aria-disabled="true"
             leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
           >
             New Chat

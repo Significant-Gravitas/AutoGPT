@@ -33,24 +33,31 @@ export function TourPromptBar({
     return <TourUpsellCard onReplay={onReplay} />;
   }
 
+  function send() {
+    if (!isStreaming) onSend();
+  }
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter" && !isStreaming) {
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      onSend();
+      send();
     }
   }
 
+  // The bar isn't a text field — it shows a fixed prompt and only sends on
+  // click/Enter — so it's exposed as a button with a "Send: …" label.
   return (
     <div
       ref={ref}
-      role="textbox"
+      role="button"
       tabIndex={0}
-      aria-label="Chat message input"
-      aria-readonly="true"
+      aria-label={prompt ? `Send: ${prompt}` : "Send message"}
+      aria-disabled={isStreaming}
       onKeyDown={handleKeyDown}
+      onClick={send}
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-zinc-300 focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
-        isStreaming && "opacity-60",
+        "flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-zinc-300 focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
+        isStreaming && "cursor-default opacity-60",
       )}
     >
       <span className="flex-1 truncate text-base text-zinc-700">{prompt}</span>
@@ -60,15 +67,15 @@ export function TourPromptBar({
           Enter
         </kbd>
       </span>
-      <button
-        type="button"
-        aria-label="Send message"
-        onClick={onSend}
-        disabled={isStreaming}
-        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-white transition-colors hover:bg-zinc-900 disabled:bg-zinc-200"
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-full text-white transition-colors",
+          isStreaming ? "bg-zinc-200" : "bg-zinc-800",
+        )}
       >
         <ArrowUpIcon className="size-4" weight="bold" />
-      </button>
+      </span>
     </div>
   );
 }

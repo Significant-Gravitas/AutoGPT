@@ -15,13 +15,13 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
 
 import TourChatPage from "../page";
 
-function getChatInput() {
-  return screen.getByRole("textbox", { name: /chat message input/i });
+function getSendBar() {
+  return screen.getByRole("button", { name: /^Send:/i });
 }
 
-// The input is prefilled and locked — the visitor only presses Enter to send.
+// The prompt bar is prefilled and locked — the visitor only presses Enter to send.
 async function pressEnterToSend() {
-  fireEvent.keyDown(getChatInput(), { key: "Enter" });
+  fireEvent.keyDown(getSendBar(), { key: "Enter" });
   // The scripted reveal streams in over real setTimeout delays; advance fake
   // timers past the whole turn (longest turn ~2.9s) so every part is committed.
   await act(async () => {
@@ -43,7 +43,7 @@ describe("Tour chat scripted demo", () => {
     render(<TourChatPage />);
 
     // 1. The prompt bar is prefilled with the first scripted prompt.
-    expect(getChatInput()).toBeDefined();
+    expect(getSendBar()).toBeDefined();
     expect(
       screen.getByText(/Watch a competitor's pricing page/i),
     ).toBeDefined();
@@ -59,7 +59,7 @@ describe("Tour chat scripted demo", () => {
     // The prompt bar now prefills the second turn's prompt.
     expect(screen.getByText(/build and run it for me/i)).toBeDefined();
 
-    // 3. Pressing Enter again finishes the script and opens the upsell modal.
+    // 3. Pressing Enter again finishes the script and shows the inline upsell card.
     await pressEnterToSend();
 
     expect(
