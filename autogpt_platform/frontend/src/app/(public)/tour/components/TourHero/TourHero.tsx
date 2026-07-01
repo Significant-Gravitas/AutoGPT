@@ -1,3 +1,4 @@
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRightIcon, SparkleIcon } from "@phosphor-icons/react/dist/ssr";
@@ -8,14 +9,22 @@ export function TourHero() {
     <section className="relative flex flex-1 flex-col items-center justify-center overflow-hidden border-b border-neutral-100 px-6 py-16">
       <TourBackground />
       <div className="relative z-10 flex w-full max-w-2xl flex-col items-center text-center">
-        <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-1.5">
-          <SparkleIcon className="h-4 w-4 text-violet-600" weight="fill" />
-          <Text variant="small-medium" className="text-zinc-600">
-            Live demo, no signup required
-          </Text>
+        <AutoGPTLogo hideText viewBox="46 0 43 40" className="mb-6 h-20 w-20" />
+
+        <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(99,102,241,0.6),rgba(59,130,246,0.35),rgba(165,180,252,0.6))] p-px shadow-[0_6px_20px_-6px_rgba(59,130,246,0.35)]">
+          <span className="relative inline-flex items-center gap-2 rounded-full bg-white/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+            <SparkleIcon className="h-4 w-4 text-violet-600" weight="fill" />
+            <Text variant="small-medium" className="text-sm text-zinc-700">
+              Live demo, no signup required
+            </Text>
+          </span>
         </span>
 
-        <Text as="h1" variant="h1" className="text-balance">
+        <Text
+          as="h1"
+          variant="h1"
+          className="text-balance text-[4rem] font-[600] leading-[1]"
+        >
           Build AI agents by just chatting
         </Text>
 
@@ -32,8 +41,13 @@ export function TourHero() {
             as="NextLink"
             href="/tour/chat"
             size="large"
-            rightIcon={<ArrowRightIcon className="h-4 w-4" weight="bold" />}
-            className="w-full sm:w-auto"
+            rightIcon={
+              <ArrowRightIcon
+                className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-1"
+                weight="bold"
+              />
+            }
+            className="group w-full sm:w-auto sm:px-8"
           >
             Try the demo
           </Button>

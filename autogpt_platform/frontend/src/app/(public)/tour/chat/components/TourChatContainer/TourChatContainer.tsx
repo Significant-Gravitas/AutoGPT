@@ -11,9 +11,9 @@ interface Props {
 
 export function TourChatContainer({ chat }: Props) {
   return (
-    <CopilotChatActionsProvider onSend={chat.onSend}>
+    <CopilotChatActionsProvider onSend={chat.onSend} chatSurface="builder">
       <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa] pb-12 [&_.bg-card]:mb-6 [&_.bg-stone-50]:rounded-xl [&_.bg-stone-50]:border [&_.bg-stone-50]:border-zinc-200/70 [&_.bg-stone-50]:bg-white [&_.bg-stone-50]:!py-2 [&_.bg-stone-50]:shadow-sm [&_.py-2]:py-0">
           <ChatMessagesContainer
             messages={chat.messages}
             status={chat.status}
@@ -23,8 +23,7 @@ export function TourChatContainer({ chat }: Props) {
             turnStats={chat.turnStats}
             queuedMessages={chat.queuedMessages}
           />
-          <div className="relative px-3 pb-3 pt-2">
-            <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#fafafa]" />
+          <div className="relative px-3 pb-2 pt-2">
             <TourPromptBar
               key={chat.currentUserPrompt ?? "done"}
               prompt={chat.currentUserPrompt}

@@ -56,29 +56,9 @@ export const emailSummaryScript: TourScript = [
       {
         delayMs: 500,
         part: {
-          type: "tool-TodoWrite",
-          toolCallId: "email-call-todo",
-          state: "output-available",
-          input: {
-            todos: [
-              {
-                content: "Read unread emails",
-                status: "completed",
-                activeForm: "Reading unread emails",
-              },
-              {
-                content: "Summarize threads",
-                status: "in_progress",
-                activeForm: "Summarizing threads",
-              },
-              {
-                content: "Send morning digest",
-                status: "pending",
-                activeForm: "Sending morning digest",
-              },
-            ],
-          },
-          output: { ok: true },
+          type: "text",
+          text: "Want me to build the agent right now?",
+          state: "done",
         },
       },
     ],
@@ -101,7 +81,7 @@ export const emailSummaryScript: TourScript = [
           type: "tool-create_agent",
           toolCallId: "email-call-create",
           state: "output-available",
-          input: { name: "Weekly Email Digest" },
+          input: { name: "Morning Email Digest" },
           output: {
             type: "agent_builder_preview",
             message: "Here's the agent I built for you:",
@@ -143,6 +123,21 @@ export const emailSummaryScript: TourScript = [
           type: "text",
           text: "All set! Your morning digest is scheduled and ready to go. 🎉",
           state: "done",
+        },
+      },
+      {
+        delayMs: 500,
+        part: {
+          type: "tool-create_agent",
+          toolCallId: "email-call-saved",
+          state: "output-available",
+          input: { name: "Morning Email Digest" },
+          output: {
+            type: "agent_builder_saved",
+            agent_name: "Morning Email Digest",
+            library_agent_link: "/signup",
+            agent_page_link: "/signup",
+          },
         },
       },
     ],

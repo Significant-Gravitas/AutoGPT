@@ -33,7 +33,7 @@ function Rectangles({ className, style }: RectanglesProps) {
 
 export function TourBackground() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden [perspective:1000px] [transform-style:preserve-3d]">
+    <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden opacity-40 [perspective:1000px] [transform-style:preserve-3d]">
       <Rectangles
         style={{ transform: "rotateX(45deg)" }}
         className="[mask-image:linear-gradient(to_top,white,transparent)]"

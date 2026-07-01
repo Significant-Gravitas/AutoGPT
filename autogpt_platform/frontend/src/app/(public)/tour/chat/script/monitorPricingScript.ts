@@ -57,29 +57,9 @@ export const monitorPricingScript: TourScript = [
       {
         delayMs: 500,
         part: {
-          type: "tool-TodoWrite",
-          toolCallId: "tour-call-todo",
-          state: "output-available",
-          input: {
-            todos: [
-              {
-                content: "Fetch pricing page",
-                status: "completed",
-                activeForm: "Fetching pricing page",
-              },
-              {
-                content: "Detect price changes",
-                status: "in_progress",
-                activeForm: "Detecting price changes",
-              },
-              {
-                content: "Send email alert",
-                status: "pending",
-                activeForm: "Sending email alert",
-              },
-            ],
-          },
-          output: { ok: true },
+          type: "text",
+          text: "Want me to build the agent right now?",
+          state: "done",
         },
       },
     ],
@@ -144,6 +124,21 @@ export const monitorPricingScript: TourScript = [
           type: "text",
           text: "Done! Your agent is live and will email you on any change. 🎉",
           state: "done",
+        },
+      },
+      {
+        delayMs: 500,
+        part: {
+          type: "tool-create_agent",
+          toolCallId: "tour-call-saved",
+          state: "output-available",
+          input: { name: "Competitor Pricing Watcher" },
+          output: {
+            type: "agent_builder_saved",
+            agent_name: "Competitor Pricing Watcher",
+            library_agent_link: "/signup",
+            agent_page_link: "/signup",
+          },
         },
       },
     ],

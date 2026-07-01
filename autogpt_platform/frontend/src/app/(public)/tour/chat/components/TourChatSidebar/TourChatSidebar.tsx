@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatSessionBlock } from "@/app/(platform)/copilot/components/ChatSessionBlock/ChatSessionBlock";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button as ShadcnButton } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function TourChatSidebar() {
     >
       <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
         <div className="flex flex-col gap-3 px-3">
+          <AutoGPTLogo className="mx-auto mb-[10px] h-auto w-24" />
           <div className="flex items-center justify-between">
             <Text variant="h3" size="body-medium">
               Your chats
