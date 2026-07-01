@@ -15,6 +15,7 @@ export function AdminImpersonationPanel() {
   const {
     isImpersonating,
     impersonatedUserId,
+    isStarting,
     startImpersonating,
     stopImpersonating,
   } = useAdminImpersonation();
@@ -26,10 +27,11 @@ export function AdminImpersonationPanel() {
     error: creditsError,
   } = useGetV1GetUserCredits();
 
-  function handleStartImpersonation() {
+  async function handleStartImpersonation() {
     setError("");
 
-    if (!userIdInput.trim()) {
+    const trimmed = userIdInput.trim();
+    if (!trimmed) {
       setError("Please enter a valid user ID");
       return;
     }
@@ -37,19 +39,15 @@ export function AdminImpersonationPanel() {
     // Basic UUID validation
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(userIdInput.trim())) {
+    if (!uuidRegex.test(trimmed)) {
       setError("Please enter a valid UUID format user ID");
       return;
     }
 
-    try {
-      startImpersonating(userIdInput.trim());
-      setUserIdInput("");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to start impersonation",
-      );
-    }
+    // startImpersonating handles its own errors (toast) and gates on the audit
+    // alert. Don't clear the input here: on success the page reloads, and on a
+    // blocked/failed alert we keep the entered ID so the admin can retry.
+    await startImpersonating(trimmed);
   }
 
   function handleStopImpersonation() {
@@ -105,11 +103,11 @@ export function AdminImpersonationPanel() {
 
           <div className="flex space-x-2">
             <Button
-              onClick={handleStartImpersonation}
-              disabled={isImpersonating || !userIdInput.trim()}
+              onClick={() => void handleStartImpersonation()}
+              disabled={isImpersonating || isStarting || !userIdInput.trim()}
               className="min-w-[100px]"
             >
-              {isImpersonating ? "Active" : "Start"}
+              {isImpersonating ? "Active" : isStarting ? "Starting…" : "Start"}
             </Button>
 
             {isImpersonating && (
