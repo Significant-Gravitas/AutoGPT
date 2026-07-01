@@ -44,7 +44,12 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
                 "and contain only alphanumeric characters and underscores."
             )
 
-        importlib.import_module(f".{module}", package=__name__)
+        try:
+            importlib.import_module(f".{module}", package=__name__)
+        except ImportError as e:
+            # Skip modules with missing optional dependencies (e.g., instagrapi)
+            logger.warning(f"Skipping block module {module}: {e}")
+            continue
 
     # Load all Block instances from the available modules
     available_blocks: dict[str, type["AnyBlockSchema"]] = {}
