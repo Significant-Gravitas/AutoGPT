@@ -95,10 +95,17 @@ class DakeraBase:
 
         The server URL comes from the credential (not a graph input) and the
         API key travels as the credential's ``Authorization`` header, so the
-        key is always bound to the host it was issued for.
+        key is always bound to the host it was issued for. A missing host is a
+        misconfiguration (a stored key with no bound server), so fail fast
+        rather than silently sending the key to ``localhost``.
         """
+        if not credentials.host:
+            raise ValueError(
+                "Dakera credential is missing a host — set the server URL "
+                "(e.g. http://localhost:3000) on the credential."
+            )
         return DakeraClient(
-            base_url=credentials.host or DEFAULT_HOST,
+            base_url=credentials.host,
             headers=credentials.get_headers_dict(),
         )
 
