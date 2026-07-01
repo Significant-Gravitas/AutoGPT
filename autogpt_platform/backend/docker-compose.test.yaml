@@ -53,7 +53,7 @@ services:
 
   rabbitmq:
     <<: *agpt-services
-    image: rabbitmq:4.1.4
+    image: rabbitmq:4.1.4-management
     container_name: rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
@@ -65,7 +65,8 @@ services:
       - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
       - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672" # Management UI
   clamav:
     image: clamav/clamav-debian:latest
     ports:
