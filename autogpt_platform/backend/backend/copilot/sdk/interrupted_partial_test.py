@@ -340,3 +340,6 @@ class TestRetryableStreamErrorCodes:
     def test_unknown_codes_are_not_retryable(self):
         assert "sdk_error" not in _RETRYABLE_STREAM_ERROR_CODES
         assert "all_attempts_exhausted" not in _RETRYABLE_STREAM_ERROR_CODES
+
+    def test_budget_below_viable_is_retryable(self):
+        assert "budget_below_viable" in _RETRYABLE_STREAM_ERROR_CODES

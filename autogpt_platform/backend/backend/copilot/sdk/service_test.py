@@ -16,7 +16,6 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
-    _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _hidden_short_names_for_permissions,
@@ -1873,10 +1872,10 @@ class TestResolveDynamicMaxBudgetUsd:
         assert result == 2.5
 
     @pytest.mark.asyncio
-    async def test_clamps_to_floor_when_remaining_is_below(self):
-        # A near-capped user still gets enough headroom to dispatch the
-        # turn (and surface the wrap-up reminder) instead of being
-        # blocked at the SDK level.
+    async def test_returns_zero_when_remaining_below_viable(self):
+        # When the user's actual remaining budget is below the viable
+        # threshold the turn would be doomed — return 0.0 so the caller
+        # can short-circuit with a rate-limit error.
         with (
             patch(
                 "backend.copilot.sdk.service.get_global_rate_limits",
@@ -1892,7 +1891,30 @@ class TestResolveDynamicMaxBudgetUsd:
             ),
         ):
             result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == _MAX_BUDGET_USD_FLOOR
+        assert result == 0.0
+
+    @pytest.mark.asyncio
+    async def test_uses_remaining_when_at_viable_threshold(self):
+        # When remaining is at or above the viable threshold, the resolver
+        # uses the smaller of the static cap and actual remaining budget.
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=1.0),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        # remaining=1.0 is at the viable threshold, so the viable gate does
+        # not fire. The resolver returns min(static_cap, remaining) = 1.0.
+        assert result == 1.0
 
     @pytest.mark.asyncio
     async def test_static_cap_wins_when_smaller_than_remaining(self):

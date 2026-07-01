@@ -20,6 +20,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.budget import MIN_VIABLE_TASK_BUDGET_USD
 from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
@@ -55,6 +56,7 @@ from backend.copilot.rate_limit import (
     enforce_payment_paywall,
     get_daily_reset_count,
     get_global_rate_limits,
+    get_remaining_usd_budget,
     get_usage_status,
     increment_daily_reset_count,
     release_reset_lock,
@@ -1150,6 +1152,27 @@ async def stream_chat_post(
                 daily_cost_limit=daily_limit,
                 weekly_cost_limit=weekly_limit,
             )
+
+            # Budget-viability gate: even when the user hasn't hit their
+            # daily/weekly cap yet, a tiny remaining budget (< $1) means
+            # the turn is doomed before it starts (median task cost ~$5).
+            # Block early and surface the rate-limit / credit-reset UI
+            # instead of dispatching a turn that will die mid-stream.
+            remaining = await get_remaining_usd_budget(
+                user_id=user_id,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
+                floor_usd=0.0,  # faithful signal, no floor
+            )
+            if 0 <= remaining < MIN_VIABLE_TASK_BUDGET_USD:
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        "Your remaining budget is too low for a viable task. "
+                        "Please wait for your usage to reset, or upgrade "
+                        "your plan."
+                    ),
+                )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
         except RateLimitUnavailable as e:
