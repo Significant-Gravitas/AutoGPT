@@ -81,6 +81,7 @@ from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
     apollo_credentials,
+    avian_credentials,
     did_credentials,
     e2b_credentials,
     elevenlabs_credentials,
@@ -184,6 +185,11 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
+    # Avian models
+    LlmModel.AVIAN_DEEPSEEK_V3_2: 1,
+    LlmModel.AVIAN_KIMI_K2_5: 1,
+    LlmModel.AVIAN_GLM_5: 1,
+    LlmModel.AVIAN_MINIMAX_M2_5: 1,
     # Z.ai (Zhipu) models
     LlmModel.ZAI_GLM_4_6: 1,
     LlmModel.ZAI_GLM_4_6V: 1,
@@ -485,6 +491,23 @@ LLM_COST = (
         _tokens_llm_cost(model, v0_credentials)
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "v0"
+    ]
+    # Avian Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": avian_credentials.id,
+                    "provider": avian_credentials.provider,
+                    "type": avian_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "avian"
     ]
     # AI/ML Api Models
     + [

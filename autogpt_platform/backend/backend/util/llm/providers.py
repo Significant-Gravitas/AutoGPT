@@ -89,6 +89,7 @@ ProviderLiteral = Literal[
     "llama_api",
     "aiml_api",
     "v0",
+    "avian",
 ]
 
 ExecutionMode = Literal["sync", "batch", "flex"]
@@ -100,6 +101,13 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # have no flex equivalent — callers asking for flex on them get a
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+
+# Avian model identifiers that differ between the ``LlmModel`` enum
+# value and the actual API model string.
+_AVIAN_MODEL_MAP: dict[str, str] = {
+    "avian/glm-5": "z-ai/glm-5",
+    "avian/kimi-k2.5": "moonshotai/kimi-k2.5",
+}
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -385,6 +393,22 @@ async def _dispatch_sync(
         return await _call_openai_compat(
             base_url="https://api.v0.dev/v1",
             model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
+        )
+    if provider == "avian":
+        # Map enum values that differ from the Avian API model identifier.
+        avian_model = _AVIAN_MODEL_MAP.get(model, model)
+        return await _call_openai_compat(
+            base_url="https://api.avian.io/v1",
+            model=avian_model,
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
