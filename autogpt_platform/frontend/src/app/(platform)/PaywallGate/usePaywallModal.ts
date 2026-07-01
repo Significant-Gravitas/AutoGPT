@@ -10,7 +10,7 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
   type BackendTierKey,
@@ -63,7 +63,7 @@ export function usePaywallModal() {
     query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
   const { mutateAsync: updateTier, isPending } = useUpdateSubscriptionTier();
-  const { validateSession } = useSupabase();
+  const { validateSession } = useAuth();
   const router = useRouter();
 
   // The paywall can outlive the session that mounted it (failed logout,

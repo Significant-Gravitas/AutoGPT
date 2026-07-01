@@ -102,7 +102,7 @@ All handlers are aggregated in `src/mocks/mock-handlers.ts` and the MSW server i
 
 - **`@/tests/integrations/test-utils`** — custom `render()` that wraps components with `QueryClientProvider`, `BackendAPIProvider`, `OnboardingProvider`, `NuqsTestingAdapter`, and `TooltipProvider`, so query-state hooks and tooltips work out of the box in page-level tests
 - **`@/tests/integrations/setup-nextjs-mocks`** — mocks for `next/navigation`, `next/image`, `next/headers`, `next/link`
-- **`@/tests/integrations/mock-supabase-request`** — mocks Supabase auth (returns null user by default)
+- **`@/tests/integrations/mock-auth-request`** — mocks Better Auth (returns null session by default)
 
 ### What to test at page level
 
@@ -129,7 +129,7 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 ### Setup
 
-1. Start the backend + Supabase stack:
+1. Start the backend stack (Postgres, Redis, RabbitMQ, API):
    - From `autogpt_platform`: `docker compose --profile local up deps_backend -d`
 2. Seed rich E2E data (creates `test123@example.com` with library agents):
    - From `autogpt_platform/backend`: `poetry run python test/e2e_test_data.py`

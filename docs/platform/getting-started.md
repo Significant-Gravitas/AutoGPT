@@ -57,28 +57,6 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
-<details>
- <summary>
- Raspberry Pi 5 Specific Notes
- </summary>
-    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
-    </br>
-    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
-    </br>
-    ```ini
-    kernel=kernel8.img
-    ```
-    Then reboot. You can check your page size with:
-    </br>
-    ```bash
-    getconf PAGESIZE
-    ```
-    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
-    After adjusting, <code>docker compose up -d --build</code> should work normally.
-    </br>
-    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
-</details>
-
 ## Quick Setup with Auto Setup Script (Recommended)
 If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
 
@@ -142,7 +120,8 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make start-core`      | Start just the core services (Supabase, Redis, RabbitMQ) in background        |
+| `make init-env`        | Create `.env` files from `.env.default` (root, backend, and frontend)         |
+| `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
@@ -152,10 +131,15 @@ Inside the `autogpt_platform` directory, you can use:
 
 *Example usage:*
 ```sh
+make init-env
 make start-core
 make run-backend
 make run-frontend
 ```
+
+> `make init-env` matters when running the frontend outside Docker: Next.js
+> only reads `.env` (not `.env.default`), and the frontend's embedded auth
+> service needs `DATABASE_URL` and `BETTER_AUTH_SECRET` from it.
 
 You can always check available Makefile recipes by running:
 ```sh
@@ -177,6 +161,33 @@ Frontend UI Server: 3000
 Backend Websocket Server: 8001
 Execution API Rest Server: 8006
 
+### Upgrading an existing (Supabase-based) installation
+
+Older versions of the platform ran authentication on a bundled Supabase
+stack. If you self-hosted before the switch to the built-in auth service,
+three things changed:
+
+1. **Environment files**: refresh your `.env` files against the new
+   `.env.default`s (`make init-env` creates missing ones; merge your secrets
+   back in). The `SUPABASE_*` URL/key variables are gone; the frontend now
+   uses `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+2. **Database location**: the database now lives in a plain Postgres
+   container with its data in `autogpt_platform/volumes/db/data`. Your old
+   data is untouched at `autogpt_platform/db/docker/volumes/db/data` but is
+   no longer mounted. To carry your data over, dump it from the old volume
+   and restore it into the new `db` service before starting the rest of the
+   stack (`pg_dump`/`psql` against a temporary container using the old
+   volume), then run `docker compose run --rm migrate`.
+3. **User accounts**: after restoring, run the one-time auth migration so
+   existing logins keep working:
+   ```sh
+   cd frontend && DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npx tsx scripts/migrate-supabase-auth.ts
+   ```
+   Keep `SUPABASE_JWT_SECRET` set in `frontend/.env` for a while so users
+   with old sessions are signed in automatically on their next visit.
+
+A fresh install (empty database) needs none of this.
+
 ### Additional Notes
 
 You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
@@ -197,7 +208,7 @@ Then, replace the existing key in the `autogpt_platform/backend/.env` file with 
 
 ### 📌 Windows Installation Note
 
-When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
+When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with the platform's containers, leading to the `db` (Postgres) container being marked as **unhealthy**.
 
 #### **Steps to enable WSL 2 for Docker:**
 1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).

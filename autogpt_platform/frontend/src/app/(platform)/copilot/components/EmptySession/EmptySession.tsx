@@ -4,9 +4,9 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
@@ -43,7 +43,7 @@ export function EmptySession({
   droppedFiles,
   onDroppedFilesConsumed,
 }: Props) {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const pulseChips = usePulseChips();

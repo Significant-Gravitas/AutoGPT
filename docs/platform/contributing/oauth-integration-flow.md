@@ -4,10 +4,10 @@
 
 The AutoGPT platform implements OAuth 2.0 in two distinct contexts:
 
-1. **User Authentication (SSO)**: Handled by Supabase for platform login
+1. **User Authentication (SSO)**: Handled by Better Auth, embedded in the Next.js frontend at `/api/auth/*`
 2. **API Integration Credentials**: Custom OAuth implementation for third-party service access
 
-This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `/backend/backend/integrations/providers.py`. For user authentication documentation, see the Supabase auth implementation.
+This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `/backend/backend/integrations/providers.py`. For user authentication documentation, see the Better Auth implementation in `/frontend/src/lib/auth/`.
 
 ## Trust Boundaries
 
@@ -150,7 +150,7 @@ graph TB
     subgraph "OAuth Use Cases"
         subgraph "User SSO Login"
             LP[Login Page]
-            SB[Supabase Auth]
+            SB[Better Auth]
             GO[Google OAuth SSO]
             SC[Session Cookies]
         end
@@ -164,7 +164,7 @@ graph TB
     
     subgraph "Backend API (Trusted)"
         subgraph "Auth Management"
-            SA[Supabase Client]
+            SA["JWT Validation (JWKS)"]
             UM[User Management]
         end
         
@@ -179,7 +179,6 @@ graph TB
     subgraph "Storage"
         RD[(Redis)]
         PG[(PostgreSQL)]
-        SDB[(Supabase DB)]
     end
     
     subgraph "External Providers"
@@ -194,7 +193,7 @@ graph TB
     SB -->|OAuth Request| GO
     GO -->|User Auth| SB
     SB -->|Session| SC
-    SB -->|User Data| SDB
+    SB -->|User Data| PG
     
     %% API Integration Flow
     UI -->|1. Initiate OAuth| IR
@@ -322,13 +321,13 @@ stateDiagram-v2
 
 ## OAuth Types Comparison
 
-### User Authentication (SSO) via Supabase
+### User Authentication (SSO) via Better Auth
 
 - **Purpose**: Authenticate users to access the AutoGPT platform
-- **Provider**: Supabase Auth (currently supports Google SSO)
-- **Flow Path**: `/login` → Supabase OAuth → `/auth/callback`
-- **Session Storage**: Supabase-managed cookies
-- **Token Management**: Automatic by Supabase
+- **Provider**: Better Auth, embedded in the Next.js frontend (supports Google, GitHub, and Discord SSO)
+- **Flow Path**: `/login` → `/api/auth/*` (Better Auth) → provider OAuth → back to the app
+- **Session Storage**: Better Auth-managed cookies
+- **Token Management**: Automatic by Better Auth; the Python backend validates JWTs via the JWKS endpoint (`/api/auth/jwks`)
 - **User Experience**: Single sign-on to the platform
 
 ### API Integration Credentials

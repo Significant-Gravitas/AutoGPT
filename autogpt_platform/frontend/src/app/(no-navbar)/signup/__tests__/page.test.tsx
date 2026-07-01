@@ -8,15 +8,15 @@ import {
 import SignupPage from "../page";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockSignupAction = vi.hoisted(() => vi.fn());
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("../actions", () => ({
@@ -25,8 +25,7 @@ vi.mock("../actions", () => ({
 
 describe("SignupPage", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
-      supabase: {},
+    mockUseAuth.mockReturnValue({
       user: null,
       isUserLoading: false,
       isLoggedIn: false,

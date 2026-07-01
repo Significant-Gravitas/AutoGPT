@@ -1,7 +1,7 @@
 "use client";
 
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
@@ -12,7 +12,7 @@ import { buildLDContext } from "./helpers";
 const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
   const envEnabled = environment.areFeatureFlagsEnabled();
   const clientId = environment.getLaunchDarklyClientId();
 

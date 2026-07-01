@@ -5,7 +5,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import type { ReactNode } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { EmailForm } from "../EmailForm";
 

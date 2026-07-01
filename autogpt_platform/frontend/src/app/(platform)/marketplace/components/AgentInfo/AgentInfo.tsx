@@ -15,7 +15,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { PlusIcon } from "@phosphor-icons/react";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import Link from "next/link";
 import { useAgentInfo } from "./useAgentInfo";
 

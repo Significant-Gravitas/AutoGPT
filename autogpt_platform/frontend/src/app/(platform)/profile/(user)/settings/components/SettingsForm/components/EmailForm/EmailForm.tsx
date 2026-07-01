@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { useEmailForm } from "./useEmailForm";
 
 type EmailFormProps = {

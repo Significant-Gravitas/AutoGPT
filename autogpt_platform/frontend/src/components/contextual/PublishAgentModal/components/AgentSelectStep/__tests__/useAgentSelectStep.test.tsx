@@ -4,8 +4,8 @@ import { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: true }),
 }));
 
 const getMyAgentsMock = vi.fn();

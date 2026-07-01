@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
-  getServerSupabase: vi.fn(),
-}));
-
 vi.mock("@/services/environment", () => ({
   environment: {
     isServerSide: vi.fn(() => true),
@@ -12,7 +8,13 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-import { buildUrlWithQuery, createRequestHeaders } from "../helpers";
+import {
+  buildUrlWithQuery,
+  cacheServerToken,
+  createRequestHeaders,
+  getCachedServerToken,
+  readJwtExpiryMs,
+} from "../helpers";
 import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
@@ -198,5 +200,43 @@ describe("createRequestHeaders — impersonation and API-key forwarding", () => 
 
     expect(headers[API_KEY_HEADER_NAME]).toBe("api-key-value");
     expect(headers["baggage"]).toBe("sentry-environment=local");
+  });
+});
+
+function makeJwt(expSecondsFromNow: number): string {
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }),
+  ).toString("base64url");
+  return `header.${payload}.signature`;
+}
+
+describe("server token cache", () => {
+  it("reads the exp claim from a JWT", () => {
+    const token = makeJwt(3600);
+    const expiry = readJwtExpiryMs(token);
+
+    expect(expiry).toBeGreaterThan(Date.now() + 3500 * 1000);
+    expect(expiry).toBeLessThan(Date.now() + 3700 * 1000);
+  });
+
+  it("falls back to a conservative default for malformed tokens", () => {
+    const expiry = readJwtExpiryMs("not-a-jwt");
+
+    expect(expiry).toBeGreaterThan(Date.now());
+  });
+
+  it("returns a cached token until its expiry margin", () => {
+    const token = makeJwt(3600);
+    cacheServerToken("session-cookie-1", token);
+
+    expect(getCachedServerToken("session-cookie-1")).toBe(token);
+    expect(getCachedServerToken("other-session")).toBeNull();
+  });
+
+  it("does not return tokens that are within the expiry margin", () => {
+    // 60s to expiry is inside the 5-minute refresh margin
+    cacheServerToken("session-cookie-2", makeJwt(60));
+
+    expect(getCachedServerToken("session-cookie-2")).toBeNull();
   });
 });

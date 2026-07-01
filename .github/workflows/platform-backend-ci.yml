@@ -210,10 +210,9 @@ jobs:
           # picks the right published port per shard.
           #
           # Not reusing docker-compose.platform.yml directly because compose
-          # validates the full file even when only some services are ``up``,
-          # and that file references services (db/kong/...) defined in a
-          # sibling compose file — pulling both in would needlessly couple
-          # CI to the full local-dev stack.
+          # validates the full file even when only some services are ``up``
+          # — pulling it in would needlessly couple CI to the full
+          # local-dev stack.
           docker network create redis-cluster-ci
           for i in 0 1 2; do
             port=$((17000 + i))
@@ -259,11 +258,6 @@ jobs:
           echo "Redis Cluster failed to reach ok state" >&2
           docker exec redis-0 redis-cli -p 17000 cluster info >&2 || true
           exit 1
-
-      - name: Setup Supabase
-        uses: supabase/setup-cli@v1
-        with:
-          version: 1.178.1
 
       - id: get_date
         name: Get date
@@ -318,15 +312,28 @@ jobs:
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
 
-      - id: supabase
-        name: Start Supabase
-        working-directory: .
+      - name: Start Postgres
+        working-directory: autogpt_platform
         run: |
-          supabase init
-          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
-          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
-        # outputs:
-        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
+          # Plain pgvector Postgres; the init script creates the legacy
+          # `auth` schema shim that historical migrations reference.
+          docker run -d --name postgres-test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
+            pgvector/pgvector:pg16
+          for _ in $(seq 1 30); do
+            if docker exec postgres-test pg_isready -U postgres >/dev/null 2>&1; then
+              echo "Postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres failed to start" >&2
+          docker logs postgres-test >&2
+          exit 1
 
       - name: Wait for ClamAV to be ready
         run: |
@@ -360,8 +367,8 @@ jobs:
       - name: Run Database Migrations
         run: poetry run prisma migrate deploy
         env:
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       - name: Run pytest with coverage
         run: |
@@ -374,11 +381,9 @@ jobs:
           fi
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
-          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
-          JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters" # DO NOT USE IN PRODUCTION!!
           REDIS_HOST: "localhost"
           REDIS_PORT: "17000"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!

@@ -1,6 +1,6 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { PencilSimpleIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";

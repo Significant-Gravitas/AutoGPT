@@ -1,13 +1,10 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -113,17 +110,12 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient ? ensureSupabaseClient() : await getServerSupabase();
-  }
-
   async isAuthenticated(): Promise<boolean> {
-    const supabaseClient = await this.getSupabaseClient();
-    if (!supabaseClient) return false;
-    const {
-      data: { session },
-    } = await supabaseClient.auth.getSession();
-    return session != null;
+    // getWebSocketToken is a server action, so this works from both the
+    // client (RPC) and the server (direct call); a token is only minted
+    // when a valid session exists.
+    const { token, error } = await getWebSocketToken();
+    return token != null && !error;
   }
 
   createUser(): Promise<User> {
@@ -720,7 +712,7 @@ export default class BackendAPI {
     formData: FormData,
   ): Promise<string> {
     // Dynamic import is required even for client-only functions because helpers.ts
-    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // has server-only imports (like getBackendAuthToken) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
     const { buildClientUrl, handleFetchError } = await import("./helpers");
 
@@ -866,7 +858,7 @@ export default class BackendAPI {
     payload?: Record<string, any>,
   ) {
     // Dynamic import is required even for client-only functions because helpers.ts
-    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // has server-only imports (like getBackendAuthToken) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
     const {
       buildClientUrl,

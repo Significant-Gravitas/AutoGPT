@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import secrets
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -10,6 +11,7 @@ from urllib.parse import quote_plus
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
 from prisma.models import User as PrismaUser
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 
@@ -53,9 +55,67 @@ async def get_or_create_user(user_data: dict) -> User:
                 )
             )
 
+        # Marketplace features (e.g. store submissions) require a Profile.
+        # The legacy Supabase auth.users trigger used to create it; since its
+        # removal this is the only place that does. Also backfills users
+        # created while no auto-creation mechanism was active.
+        await _ensure_default_profile(user_id, user_email)
+
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
+
+
+# Word pools mirror the legacy platform.generate_username() SQL function.
+_USERNAME_ADJECTIVES = [
+    "happy", "clever", "swift", "bright", "wise", "funny",
+    "cool", "awesome", "amazing", "fantastic", "wonderful",
+]  # fmt: skip
+_USERNAME_ANIMALS = [
+    "fox", "wolf", "bear", "eagle", "owl",
+    "tiger", "lion", "elephant", "giraffe", "zebra",
+]  # fmt: skip
+
+
+async def _ensure_default_profile(user_id: str, user_email: str) -> None:
+    if await prisma.profile.find_first(where={"userId": user_id}):
+        return
+
+    # A UniqueViolationError on insert is ambiguous: either a concurrent
+    # request created this user's profile (done), or the generated username
+    # collided with another user's (retry with a fresh one).
+    for _ in range(3):
+        username = await _generate_unique_username()
+        try:
+            await prisma.profile.create(
+                data={
+                    "id": user_id,
+                    "userId": user_id,
+                    "name": user_email.split("@")[0],
+                    "username": username,
+                    "description": "I'm new here",
+                    "links": [],
+                    "avatarUrl": "",
+                }
+            )
+            return
+        except UniqueViolationError:
+            if await prisma.profile.find_first(where={"userId": user_id}):
+                return
+
+    raise DatabaseError(f"Failed to create default profile for user {user_id}")
+
+
+async def _generate_unique_username() -> str:
+    for _ in range(10):
+        candidate = (
+            f"{secrets.choice(_USERNAME_ADJECTIVES)}"
+            f"-{secrets.choice(_USERNAME_ANIMALS)}"
+            f"-{secrets.randbelow(90000) + 10000}"
+        )
+        if not await prisma.profile.find_first(where={"username": candidate}):
+            return candidate
+    raise DatabaseError("Unable to generate a unique profile username")
 
 
 @cache_user_lookup

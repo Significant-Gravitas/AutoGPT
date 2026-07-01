@@ -8,7 +8,7 @@ import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBann
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
@@ -33,7 +33,7 @@ function pickMobileNavIcon(href: string): IconType {
 }
 
 export function Navbar() {
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
+  const { user, isLoggedIn, isUserLoading } = useAuth();
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);

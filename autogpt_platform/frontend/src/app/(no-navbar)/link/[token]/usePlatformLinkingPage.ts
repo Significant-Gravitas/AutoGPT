@@ -6,7 +6,7 @@ import {
 import { ConfirmLinkResponse } from "@/app/api/__generated__/models/confirmLinkResponse";
 import { ConfirmUserLinkResponse } from "@/app/api/__generated__/models/confirmUserLinkResponse";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
@@ -35,7 +35,7 @@ export function usePlatformLinkingPage() {
   const rawToken = (params.token as string | undefined) ?? "";
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
-  const { user, isUserLoading, logOut } = useSupabase();
+  const { user, isUserLoading, logOut } = useAuth();
 
   const {
     data: info,
