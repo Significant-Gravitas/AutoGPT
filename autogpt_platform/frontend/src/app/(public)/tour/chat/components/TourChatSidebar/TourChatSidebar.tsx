@@ -9,7 +9,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
@@ -27,8 +26,8 @@ export function TourChatSidebar() {
   return (
     <Sidebar
       variant="inset"
-      collapsible="icon"
-      className="!top-0 !h-[100dvh] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
+      collapsible="none"
+      className="!top-0 !h-[100dvh] px-0 [--sidebar-width:26rem] [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
     >
       <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
         <div className="flex flex-col gap-3 px-3">
@@ -60,7 +59,6 @@ export function TourChatSidebar() {
               >
                 <FilesIcon className="!size-5" />
               </ShadcnButton>
-              <SidebarTrigger />
             </div>
           </div>
           <Button
