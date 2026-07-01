@@ -181,10 +181,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persist key-value information for the current user |
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
+| [Recall Memory](block-integrations/data.md#recall-memory) | Recall memories from a self-hosted Dakera server |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
+| [Store Memory](block-integrations/data.md#store-memory) | Store a memory in a self-hosted Dakera server |
 
 ## Text Processing
 
