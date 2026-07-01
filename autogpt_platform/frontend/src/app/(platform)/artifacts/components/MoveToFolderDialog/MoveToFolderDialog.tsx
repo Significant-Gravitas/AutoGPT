@@ -23,6 +23,7 @@ export function MoveToFolderDialog({
   setIsOpen,
 }: Props) {
   const { folders, moveFileToFolder } = useArtifactsFolders();
+  const destinationFolders = folders.filter((f) => f.id !== currentFolderId);
 
   function handleMove(folderId: string | null) {
     // Close only on success; the hook toasts on error and we keep the dialog
@@ -54,34 +55,28 @@ export function MoveToFolderDialog({
               <Text variant="small-medium">Files (root)</Text>
             </Button>
           )}
-          {folders.length === 0 && currentFolderId == null ? (
+          {destinationFolders.length === 0 ? (
             <div className="flex h-20 items-center justify-center">
               <Text variant="small" className="text-zinc-400">
-                No folders yet
+                {folders.length === 0 ? "No folders yet" : "No other folders"}
               </Text>
             </div>
           ) : (
-            folders
-              .filter((f) => f.id !== currentFolderId)
-              .map((folder) => {
-                const style = FOLDER_STYLE;
-                return (
-                  <Button
-                    key={folder.id}
-                    variant="ghost"
-                    className="w-full justify-start gap-3 px-3 py-2.5"
-                    onClick={() => handleMove(folder.id)}
-                    data-testid="move-to-folder-option"
-                  >
-                    <FolderIcon
-                      size={18}
-                      weight="fill"
-                      className={style.icon}
-                    />
-                    <Text variant="small-medium">{folder.name}</Text>
-                  </Button>
-                );
-              })
+            destinationFolders.map((folder) => {
+              const style = FOLDER_STYLE;
+              return (
+                <Button
+                  key={folder.id}
+                  variant="ghost"
+                  className="w-full justify-start gap-3 px-3 py-2.5"
+                  onClick={() => handleMove(folder.id)}
+                  data-testid="move-to-folder-option"
+                >
+                  <FolderIcon size={18} weight="fill" className={style.icon} />
+                  <Text variant="small-medium">{folder.name}</Text>
+                </Button>
+              );
+            })
           )}
         </div>
       </Dialog.Content>
