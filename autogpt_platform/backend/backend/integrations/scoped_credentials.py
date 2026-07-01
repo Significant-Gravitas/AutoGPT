@@ -92,18 +92,30 @@ async def get_credential_by_id(
 ) -> Optional[dict]:
     """Get a specific credential by ID if the user has access.
 
-    Access rules:
+    Access rules (enforced HERE, not trusted to callers):
     - USER creds: only the creating user can access
-    - WORKSPACE creds: any workspace member can access (verified by caller)
-    - ORG creds: any org member can access (verified by caller)
+    - TEAM creds: only via the matching active team, or verified team
+      membership when the caller's active context is a different team
+    - ORG creds: any org member (``organization_id`` comes from a
+      membership-verified RequestContext)
     """
     cred = await prisma.integrationcredential.find_unique(where={"id": credential_id})
     if cred is None or cred.organizationId != organization_id:
         return None
 
-    # Access check
     if cred.ownerType == "USER" and cred.createdByUserId != user_id:
         return None
+
+    if cred.ownerType == "TEAM" and cred.ownerId != team_id:
+        # Not the active team — allow only if the user is actually a
+        # member of the owning team. Without this check any org member
+        # could fetch (and with decrypt=True, exfiltrate) another
+        # team's secrets by ID.
+        membership = await prisma.teammember.find_unique(
+            where={"teamId_userId": {"teamId": cred.ownerId, "userId": user_id}}
+        )
+        if membership is None or membership.status != "ACTIVE":
+            return None
 
     result = _cred_to_metadata(cred, scope=cred.ownerType)
     if decrypt:
@@ -146,14 +158,24 @@ async def create_credential(
 
 
 async def delete_credential(
-    credential_id: str, user_id: str, organization_id: str
+    credential_id: str,
+    user_id: str,
+    organization_id: str,
+    is_org_admin: bool = False,
 ) -> None:
-    """Soft-delete a credential by setting status to 'revoked'."""
+    """Soft-delete a credential by setting status to 'revoked'.
+
+    Only the creator may revoke, unless ``is_org_admin`` is set — which
+    callers must derive from a verified RequestContext (owner/admin),
+    never from request input.
+    """
     cred = await prisma.integrationcredential.find_unique(where={"id": credential_id})
     if cred is None or cred.organizationId != organization_id:
         raise ValueError(f"Credential {credential_id} not found")
 
-    # Only the creator or an admin can delete (admin check done at route level)
+    if not is_org_admin and cred.createdByUserId != user_id:
+        raise ValueError(f"Credential {credential_id} not found")
+
     await prisma.integrationcredential.update(
         where={"id": credential_id},
         data={"status": "revoked"},
