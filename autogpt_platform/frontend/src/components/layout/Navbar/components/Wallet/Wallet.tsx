@@ -43,7 +43,11 @@ export interface TaskGroup {
   tasks: Task[];
 }
 
-export function Wallet() {
+interface Props {
+  compact?: boolean;
+}
+
+export function Wallet({ compact = false }: Props) {
   const { state, updateState } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
@@ -266,28 +270,45 @@ export function Wallet() {
         <div className="relative inline-block">
           <button
             ref={walletRef}
-            className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
+            className={cn(
+              "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm",
+              compact
+                ? "rounded-xl border border-zinc-200 bg-zinc-100 py-1 hover:bg-zinc-200"
+                : "bg-zinc-50",
+            )}
             onClick={onWalletOpen}
           >
-            <WalletIcon size={20} className="inline-block xl:hidden" />
+            <WalletIcon
+              size={20}
+              className={cn("inline-block", !compact && "xl:hidden")}
+            />
             <div>
-              <span className="mr-1 hidden xl:inline-block">Earn credits </span>
+              {!compact && (
+                <span className="mr-1 hidden xl:inline-block">
+                  Earn credits{" "}
+                </span>
+              )}
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
-              {completedCount !== null && completedCount < totalCount && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+              {!compact &&
+                completedCount !== null &&
+                completedCount < totalCount && (
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+                )}
+              {!compact && (
+                <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+                  <Text variant="body-medium">
+                    {completedCount} of {totalCount} rewards claimed
+                  </Text>
+                </div>
               )}
-              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
-                <Text variant="body-medium">
-                  {completedCount} of {totalCount} rewards claimed
-                </Text>
-              </div>
             </div>
           </button>
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 rounded-md bg-violet-400 duration-2000 ease-in-out",
+              "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+              compact ? "rounded-xl" : "rounded-md",
               flash ? "opacity-50 duration-0" : "opacity-0",
             )}
           />
