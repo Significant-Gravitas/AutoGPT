@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Slash command dispatch
-        uses: peter-evans/slash-command-dispatch@v5
+        uses: peter-evans/slash-command-dispatch@0683e68ce8b375f2dc24214e065a3ae1ef93040e # v5
         with:
           token: ${{ secrets.BATCH_BOT_TOKEN }}
           issue-type: pull-request
