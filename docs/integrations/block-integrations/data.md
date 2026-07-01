@@ -274,6 +274,44 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 
 ---
 
+## Recall Memory
+
+### What it is
+Recall memories from a self-hosted Dakera server.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block calls the Dakera Python SDK's `recall` on a self-hosted Dakera server (default `http://localhost:3000`). It runs a semantic search over the memories in the `agent_id` namespace (defaulting to the current agent graph) and returns up to `top_k` matches ordered by relevance, each with its importance and similarity score. Use `min_importance` to drop low-value memories and `memory_type` to restrict the search to a single kind of memory.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| query | Semantic query used to recall relevant memories. | str | Yes |
+| top_k | Maximum number of memories to return. | int | No |
+| min_importance | Only recall memories at or above this importance (0.0–1.0). | float | No |
+| memory_type | Optionally restrict recall to a single memory type. | "episodic" \| "semantic" \| "procedural" \| "working" | No |
+| agent_id | Dakera memory namespace. Defaults to this agent's graph; set to recall from a namespace shared across agents. | str | No |
+| host | Base URL of your Dakera server. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| memories | Recalled memories ordered by relevance. | List[Dict[str, Any]] |
+| count | Number of memories recalled. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Context injection**: recall the most relevant past memories for the current task and feed them into an LLM block as grounding context.
+
+**Personalized responses**: pull previously stored user preferences before generating a reply so the agent stays consistent across sessions.
+<!-- END MANUAL -->
+
+---
+
 ## Retrieve Information
 
 ### What it is
@@ -403,6 +441,44 @@ Optional features include blocking ads, cookie banners, and chat widgets for cle
 **Competitive Monitoring**: Regularly screenshot competitor websites to track design and content changes.
 
 **Visual Testing**: Capture page renders for visual regression testing or design verification workflows.
+<!-- END MANUAL -->
+
+---
+
+## Store Memory
+
+### What it is
+Store a memory in a self-hosted Dakera server.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block calls the Dakera Python SDK's `store_memory` on a self-hosted Dakera server (default `http://localhost:3000`). The memory is written to the namespace given by `agent_id`, which defaults to the current agent graph so each agent keeps its own memory; set it explicitly to share a namespace across agents. `importance` (0.0–1.0) seeds Dakera's access-weighted decay so higher-importance memories are retained longer. The block returns the stored memory's ID and full record.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| content | The memory content to store. | str | Yes |
+| importance | Importance score 0.0–1.0. Higher values decay slower. | float | No |
+| memory_type | Kind of memory to store. | "episodic" \| "semantic" \| "procedural" \| "working" | No |
+| tags | Optional tags to attach to the memory. | List[str] | No |
+| agent_id | Dakera memory namespace. Defaults to this agent's graph so each agent keeps its own memory; set to share memory across agents. | str | No |
+| host | Base URL of your Dakera server. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| memory_id | ID of the stored memory. | str |
+| memory | The stored memory record. | Dict[str, Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Persist user preferences**: store facts an agent learns about a user (e.g. "prefers dark mode") so later runs can recall and act on them.
+
+**Cross-run continuity**: capture intermediate results or decisions during a long-running agent so a future run can pick up where it left off.
 <!-- END MANUAL -->
 
 ---
