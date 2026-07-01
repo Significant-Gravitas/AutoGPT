@@ -7,7 +7,7 @@ import {
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useQueryClient } from "@tanstack/react-query";
-import { TOUR_SESSION_ID } from "./script/mockSidebarSessions";
+import { tourSessionIds } from "./script/tourChats";
 
 const emptyFiles: ListFilesResponse = { files: [], offset: 0, has_more: false };
 
@@ -21,15 +21,17 @@ export function useTourBootstrap() {
   const queryClient = useQueryClient();
 
   useMountEffect(() => {
-    const key = getListWorkspaceFilesQueryKey({ session_id: TOUR_SESSION_ID });
-    queryClient.setQueryData(key, emptyWorkspaceFilesResponse);
-    queryClient.setQueryDefaults(key, {
-      staleTime: Infinity,
-      gcTime: Infinity,
-      retry: false,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    });
+    for (const sessionId of tourSessionIds) {
+      const key = getListWorkspaceFilesQueryKey({ session_id: sessionId });
+      queryClient.setQueryData(key, emptyWorkspaceFilesResponse);
+      queryClient.setQueryDefaults(key, {
+        staleTime: Infinity,
+        gcTime: Infinity,
+        retry: false,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      });
+    }
   });
 }

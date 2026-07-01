@@ -1,5 +1,6 @@
 "use client";
 
+import { ChatSessionBlock } from "@/app/(platform)/copilot/components/ChatSessionBlock/ChatSessionBlock";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button as ShadcnButton } from "@/components/ui/button";
@@ -15,10 +16,13 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
 } from "@phosphor-icons/react";
-import { mockSidebarSessions } from "../../script/mockSidebarSessions";
-import { ChatSessionBlock } from "@/app/(platform)/copilot/components/ChatSessionBlock/ChatSessionBlock";
+import { tourChats } from "../../script/tourChats";
+import { useTourStore } from "../../tourStore";
 
 export function TourChatSidebar() {
+  const activeSessionId = useTourStore((s) => s.activeSessionId);
+  const setActiveSession = useTourStore((s) => s.setActiveSession);
+
   return (
     <Sidebar
       variant="inset"
@@ -66,26 +70,26 @@ export function TourChatSidebar() {
 
       <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex flex-col gap-1">
-          {mockSidebarSessions.map((session, index) => {
-            const isActive = index === 0;
+          {tourChats.map((chat) => {
+            const isActive = chat.id === activeSessionId;
             return (
-              <div
-                key={session.id}
+              <button
+                key={chat.id}
+                type="button"
+                onClick={() => setActiveSession(chat.id)}
                 className={cn(
-                  "w-full px-3 py-2.5",
+                  "w-full px-3 py-2.5 text-left transition-colors",
                   isActive
                     ? "rounded-lg bg-zinc-100"
-                    : "border-b border-b-[#8080800f] last:border-b-0",
+                    : "rounded-lg border-b border-b-[#8080800f] last:border-b-0 hover:bg-zinc-50",
                 )}
               >
                 <ChatSessionBlock
-                  title={session.title}
-                  updatedAt={session.updated_at}
-                  sourcePlatform={session.source_platform}
+                  title={chat.title}
+                  updatedAt={chat.updatedAt}
                   isActive={isActive}
-                  chatStatus={session.chat_status}
                 />
-              </div>
+              </button>
             );
           })}
         </div>

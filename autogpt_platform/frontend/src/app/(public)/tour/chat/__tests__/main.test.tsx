@@ -19,12 +19,9 @@ function getChatInput() {
   return screen.getByRole("textbox", { name: /chat message input/i });
 }
 
-async function sendMessage(text: string) {
-  const input = getChatInput();
-  fireEvent.change(input, { target: { value: text } });
-  const form = input.closest("form");
-  if (!form) throw new Error("chat input is not inside a form");
-  fireEvent.submit(form);
+// The input is prefilled and locked — the visitor only presses Enter to send.
+async function pressEnterToSend() {
+  fireEvent.keyDown(getChatInput(), { key: "Enter" });
   // The scripted reveal streams in over real setTimeout delays; advance fake
   // timers past the whole turn (longest turn ~2.9s) so every part is committed.
   await act(async () => {
@@ -42,34 +39,53 @@ describe("Tour chat scripted demo", () => {
     vi.useRealTimers();
   });
 
-  test("plays both scripted turns and opens the upsell modal", async () => {
+  test("prefills the prompt, plays both turns, and opens the upsell", async () => {
     render(<TourChatPage />);
 
-    // 1. Empty chat exposes the input.
+    // 1. The prompt bar is prefilled with the first scripted prompt.
     expect(getChatInput()).toBeDefined();
+    expect(
+      screen.getByText(/Watch a competitor's pricing page/i),
+    ).toBeDefined();
 
-    // 2. First send streams in the scripted assistant turn.
-    await sendMessage("Watch competitor pricing");
+    // 2. Pressing Enter streams in the scripted assistant turn.
+    await pressEnterToSend();
 
     expect(screen.getByText(/break that down/i)).toBeDefined();
-
-    // The decompose tool card renders its steps (expanded by default).
     expect(
       screen.getByText(/Detect changes vs\. the last snapshot/i),
     ).toBeDefined();
 
-    // 3. Second send finishes the script and opens the upsell modal.
-    await sendMessage("yes build it");
+    // The prompt bar now prefills the second turn's prompt.
+    expect(screen.getByText(/build and run it for me/i)).toBeDefined();
 
-    // The create_agent preview card renders (accordion title + block count).
+    // 3. Pressing Enter again finishes the script and opens the upsell modal.
+    await pressEnterToSend();
+
     expect(
       screen.getAllByText(/Competitor Pricing Watcher/i).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText(/4 blocks/i)).toBeDefined();
-
-    // The run_agent card renders a completed execution.
     expect(screen.getByText(/Execution completed/i)).toBeDefined();
-
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
+  });
+
+  test("sidebar navigation switches to the second chat's prompt", async () => {
+    render(<TourChatPage />);
+
+    expect(
+      screen.getByText(/Watch a competitor's pricing page/i),
+    ).toBeDefined();
+
+    // Click the second chat in the sidebar.
+    fireEvent.click(screen.getByText(/Summarize my weekly emails/i));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // The prompt bar now prefills the second chat's opening prompt.
+    expect(
+      screen.getByText(/Summarize my unread emails every morning/i),
+    ).toBeDefined();
   });
 });

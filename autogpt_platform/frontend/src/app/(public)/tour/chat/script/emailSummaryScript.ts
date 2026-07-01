@@ -1,16 +1,15 @@
 import type { TourScript } from "./types";
 
-export const monitorPricingScript: TourScript = [
+export const emailSummaryScript: TourScript = [
   {
-    assistantMessageId: "tour-asst-1",
-    userPrompt:
-      "Watch a competitor's pricing page and email me when the price changes",
+    assistantMessageId: "email-asst-1",
+    userPrompt: "Summarize my unread emails every morning and send me a digest",
     steps: [
       {
         delayMs: 400,
         part: {
           type: "text",
-          text: "Great goal! Let me break that down into steps.",
+          text: "Love it. Here's how I'll set that up.",
           state: "done",
         },
       },
@@ -18,34 +17,34 @@ export const monitorPricingScript: TourScript = [
         delayMs: 700,
         part: {
           type: "tool-decompose_goal",
-          toolCallId: "tour-call-decompose",
+          toolCallId: "email-call-decompose",
           state: "output-available",
           input: {
-            goal: "Watch a competitor's pricing page and email me on change",
+            goal: "Summarize my unread emails every morning and send a digest",
           },
           output: {
             type: "task_decomposition",
             message: "Here's the plan (3 steps):",
-            goal: "Watch a competitor's pricing page and email me on change",
+            goal: "Summarize my unread emails every morning and send a digest",
             step_count: 3,
             steps: [
               {
                 step_id: "step_1",
-                description: "Fetch the competitor pricing page on a schedule",
+                description: "Read unread emails from the last 24 hours",
                 action: "add_block",
-                block_name: "Send Web Request",
+                block_name: "Gmail Read",
                 status: "completed",
               },
               {
                 step_id: "step_2",
-                description: "Detect changes vs. the last snapshot",
+                description: "Summarize each thread into a short digest",
                 action: "add_block",
-                block_name: "Text Compare",
+                block_name: "AI Text Generator",
                 status: "completed",
               },
               {
                 step_id: "step_3",
-                description: "Email me a summary when it changes",
+                description: "Email me the digest every morning at 8am",
                 action: "add_block",
                 block_name: "Send Email",
                 status: "completed",
@@ -58,24 +57,24 @@ export const monitorPricingScript: TourScript = [
         delayMs: 500,
         part: {
           type: "tool-TodoWrite",
-          toolCallId: "tour-call-todo",
+          toolCallId: "email-call-todo",
           state: "output-available",
           input: {
             todos: [
               {
-                content: "Fetch pricing page",
+                content: "Read unread emails",
                 status: "completed",
-                activeForm: "Fetching pricing page",
+                activeForm: "Reading unread emails",
               },
               {
-                content: "Detect price changes",
+                content: "Summarize threads",
                 status: "in_progress",
-                activeForm: "Detecting price changes",
+                activeForm: "Summarizing threads",
               },
               {
-                content: "Send email alert",
+                content: "Send morning digest",
                 status: "pending",
-                activeForm: "Sending email alert",
+                activeForm: "Sending morning digest",
               },
             ],
           },
@@ -85,14 +84,14 @@ export const monitorPricingScript: TourScript = [
     ],
   },
   {
-    assistantMessageId: "tour-asst-2",
-    userPrompt: "Yes, build and run it for me",
+    assistantMessageId: "email-asst-2",
+    userPrompt: "Perfect, set it up",
     steps: [
       {
         delayMs: 500,
         part: {
           type: "text",
-          text: "I'll build that agent for you now.",
+          text: "Building your digest agent now.",
           state: "done",
         },
       },
@@ -100,15 +99,15 @@ export const monitorPricingScript: TourScript = [
         delayMs: 900,
         part: {
           type: "tool-create_agent",
-          toolCallId: "tour-call-create",
+          toolCallId: "email-call-create",
           state: "output-available",
-          input: { name: "Competitor Pricing Watcher" },
+          input: { name: "Weekly Email Digest" },
           output: {
             type: "agent_builder_preview",
             message: "Here's the agent I built for you:",
-            agent_name: "Competitor Pricing Watcher",
+            agent_name: "Morning Email Digest",
             description:
-              "Checks a competitor's pricing page on a schedule and emails you when it changes.",
+              "Reads your unread emails, summarizes them, and emails you a digest every morning.",
             node_count: 4,
             link_count: 3,
             agent_json: { nodes: [], links: [] },
@@ -119,20 +118,20 @@ export const monitorPricingScript: TourScript = [
         delayMs: 700,
         part: {
           type: "tool-run_agent",
-          toolCallId: "tour-call-run",
+          toolCallId: "email-call-run",
           state: "output-available",
-          input: { agent_id: "tour-agent-1" },
+          input: { agent_id: "email-agent-1" },
           output: {
             type: "agent_output",
             message: "Your agent ran successfully.",
-            agent_name: "Competitor Pricing Watcher",
-            agent_id: "tour-agent-1",
+            agent_name: "Morning Email Digest",
+            agent_id: "email-agent-1",
             execution: {
-              execution_id: "tour-exec-1",
+              execution_id: "email-exec-1",
               status: "COMPLETED",
               outputs: {
                 summary:
-                  "No price change detected yet. You're all set, and I'll email you the moment it changes.",
+                  "Digest scheduled. You'll get your first summary tomorrow at 8am.",
               },
             },
           },
@@ -142,7 +141,7 @@ export const monitorPricingScript: TourScript = [
         delayMs: 500,
         part: {
           type: "text",
-          text: "Done! Your agent is live and will email you on any change. 🎉",
+          text: "All set! Your morning digest is scheduled and ready to go. 🎉",
           state: "done",
         },
       },

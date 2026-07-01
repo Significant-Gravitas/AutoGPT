@@ -1,0 +1,87 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { useMountEffect } from "@/hooks/useMountEffect";
+import { cn } from "@/lib/utils";
+import { ArrowCounterClockwiseIcon, ArrowUpIcon } from "@phosphor-icons/react";
+import { useRef } from "react";
+
+interface Props {
+  prompt: string | null;
+  isStreaming: boolean;
+  isExhausted: boolean;
+  onSend: () => void;
+  onReplay: () => void;
+}
+
+export function TourPromptBar({
+  prompt,
+  isStreaming,
+  isExhausted,
+  onSend,
+  onReplay,
+}: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // The parent re-keys this component whenever the prefilled prompt changes, so
+  // focusing on mount keeps the box ready for the visitor to just press Enter.
+  useMountEffect(() => {
+    if (!isStreaming && !isExhausted) ref.current?.focus();
+  });
+
+  if (isExhausted) {
+    return (
+      <div className="flex justify-center py-3">
+        <Button
+          variant="secondary"
+          size="small"
+          leftIcon={<ArrowCounterClockwiseIcon className="h-4 w-4" />}
+          onClick={onReplay}
+        >
+          Replay demo
+        </Button>
+      </div>
+    );
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter" && !isStreaming) {
+      event.preventDefault();
+      onSend();
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      role="textbox"
+      tabIndex={0}
+      aria-label="Chat message input"
+      aria-readonly="true"
+      onKeyDown={handleKeyDown}
+      className={cn(
+        "flex items-center gap-3 rounded-[1.75rem] border border-zinc-200 bg-white px-5 py-3.5 shadow-sm outline-none transition-colors focus-visible:border-zinc-300",
+        isStreaming && "opacity-60",
+      )}
+    >
+      <span className="flex-1 truncate text-[0.95rem] text-zinc-700">
+        {prompt}
+      </span>
+      <span className="hidden shrink-0 items-center gap-1 text-xs text-zinc-400 sm:flex">
+        Press
+        <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
+          Enter
+        </kbd>
+      </span>
+      <button
+        type="button"
+        aria-label="Send message"
+        onClick={onSend}
+        disabled={isStreaming}
+        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-white transition-colors hover:bg-zinc-900 disabled:bg-zinc-200"
+      >
+        <ArrowUpIcon className="size-4" weight="bold" />
+      </button>
+    </div>
+  );
+}

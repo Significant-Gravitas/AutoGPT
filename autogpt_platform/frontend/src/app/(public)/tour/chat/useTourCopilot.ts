@@ -7,12 +7,17 @@ import type { UIMessage } from "ai";
 import { useRef, useState } from "react";
 import { appendPartToLastMessage } from "./helpers";
 import { mockArtifact } from "./script/mockArtifact";
-import { monitorPricingScript } from "./script/monitorPricingScript";
-import { TOUR_SESSION_ID } from "./script/mockSidebarSessions";
+import type { TourScript } from "./script/types";
 
 type TourStatus = "ready" | "submitted" | "streaming";
 
-export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
+interface Args {
+  sessionId: string;
+  script: TourScript;
+  onComplete: () => void;
+}
+
+export function useTourCopilot({ sessionId, script, onComplete }: Args) {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [status, setStatus] = useState<TourStatus>("ready");
   const stepIndex = useRef(0);
@@ -22,7 +27,7 @@ export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
   function commit(next: UIMessage[]) {
     messagesRef.current = next;
     setMessages(next);
-    useCopilotStreamStore.getState().setMessageSnapshot(TOUR_SESSION_ID, next);
+    useCopilotStreamStore.getState().setMessageSnapshot(sessionId, next);
   }
 
   function clearTimers() {
@@ -31,13 +36,13 @@ export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
   }
 
   function onSend(text: string) {
-    const turn = monitorPricingScript[stepIndex.current];
+    const turn = script[stepIndex.current];
     if (status !== "ready" || !turn) return;
 
     commit([
       ...messagesRef.current,
       {
-        id: `tour-user-${stepIndex.current}`,
+        id: `${sessionId}-user-${stepIndex.current}`,
         role: "user",
         parts: [{ type: "text", text, state: "done" }],
       },
@@ -62,7 +67,7 @@ export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
       setTimeout(() => {
         setStatus("ready");
         stepIndex.current += 1;
-        if (stepIndex.current >= monitorPricingScript.length) onComplete();
+        if (stepIndex.current >= script.length) onComplete();
       }, elapsed + 300),
     );
   }
@@ -72,37 +77,31 @@ export function useTourCopilot({ onComplete }: { onComplete: () => void }) {
     stepIndex.current = 0;
     commit([]);
     setStatus("ready");
+    useCopilotUIStore.getState().resetArtifactPanel();
   }
 
-  useMountEffect(() => clearTimers);
+  // Fresh slate when this chat mounts. TourChatHost is keyed by sessionId, so a
+  // sidebar switch remounts this hook — clear any prior snapshot + artifact so
+  // the panels reflect the newly-selected chat.
+  useMountEffect(() => {
+    useCopilotStreamStore.getState().setMessageSnapshot(sessionId, []);
+    useCopilotUIStore.getState().resetArtifactPanel();
+    return clearTimers;
+  });
+
+  const currentTurn = script[stepIndex.current];
 
   return {
-    sessionId: TOUR_SESSION_ID,
+    sessionId,
     messages,
     status,
+    error: undefined as Error | undefined,
+    turnStats: new Map(),
+    queuedMessages: [] as string[],
     onSend,
     reset,
-    error: undefined,
-    stop: () => {},
-    isReconnecting: false,
-    isRestoringActiveSession: false,
-    restoreStatusMessage: null,
-    activeStreamStartedAt: null,
-    isUserStopping: false,
-    createSession: () => {},
-    onEnqueue: () => {},
-    queuedMessages: [] as string[],
-    isLoadingSession: false,
-    isSessionError: false,
-    isCreatingSession: false,
-    isUploadingFiles: false,
-    hasMoreMessages: false,
-    isLoadingMore: false,
-    loadMore: () => {},
-    turnStats: new Map(),
-    rateLimitMessage: null,
-    dismissRateLimit: () => {},
-    sessionDryRun: false,
-    sessionChatStatus: "idle",
+    currentUserPrompt: currentTurn?.userPrompt ?? null,
+    isStreaming: status === "streaming" || status === "submitted",
+    isExhausted: stepIndex.current >= script.length,
   };
 }
