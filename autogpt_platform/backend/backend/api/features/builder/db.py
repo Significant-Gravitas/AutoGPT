@@ -59,6 +59,22 @@ EXCLUDED_BLOCK_IDS = frozenset(
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
 
+# Triggers (webhooks) are the entry point of a triggered agent, so they belong
+# with the regular input blocks in the builder block menu.
+_INPUT_BLOCK_TYPES = frozenset(
+    {BlockType.INPUT, BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL}
+)
+
+
+def _block_menu_type(block_type: BlockType) -> BlockTypeFilter:
+    """Block-menu category a block belongs to; triggers count as input blocks."""
+    if block_type in _INPUT_BLOCK_TYPES:
+        return "input"
+    if block_type == BlockType.OUTPUT:
+        return "output"
+    return "action"
+
+
 @dataclass
 class _ScoredItem:
     item: SearchResultItem
@@ -151,11 +167,7 @@ def get_blocks(
         if category and category not in {c.name.lower() for c in block.categories}:
             continue
         # Skip blocks that don't match the type
-        if (
-            (type == "input" and block.block_type.value != "Input")
-            or (type == "output" and block.block_type.value != "Output")
-            or (type == "action" and block.block_type.value in ("Input", "Output"))
-        ):
+        if type and type != "all" and _block_menu_type(block.block_type) != type:
             continue
         # Skip blocks that don't match the provider
         if provider:
@@ -639,9 +651,10 @@ async def _get_static_counts():
 
         all_blocks += 1
 
-        if block.block_type.value == "Input":
+        menu_type = _block_menu_type(block.block_type)
+        if menu_type == "input":
             input_blocks += 1
-        elif block.block_type.value == "Output":
+        elif menu_type == "output":
             output_blocks += 1
         else:
             action_blocks += 1
