@@ -2254,3 +2254,219 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+
+
+# ============================================================================
+# Tests for import template fixes (AutoGPT #7785)
+# ============================================================================
+
+
+def test_composite_error_for_invalid_block_ids():
+    """
+    When multiple nodes have unresolvable block IDs,
+    _validate_graph_get_errors should raise a composite ValueError
+    listing all invalid blocks instead of failing on the first one.
+
+    Regression: previously each invalid block raised its own ValueError
+    immediately, hiding subsequent failures from the user.
+    """
+    from unittest.mock import patch
+
+    valid_block_id = StoreValueBlock().id
+    invalid_id_1 = "00000000-0000-0000-0000-0000000000aa"
+    invalid_id_2 = "00000000-0000-0000-0000-0000000000bb"
+
+    def mock_get_block(block_id: str):
+        if block_id == valid_block_id:
+            return StoreValueBlock()
+        return None
+
+    graph = Graph(
+        id="test-graph-composite",
+        name="CompositeErrorTest",
+        description="Test graph with two invalid block IDs",
+        nodes=[
+            Node(id="node-1", block_id=valid_block_id, input_default={}),
+            Node(
+                id="node-2",
+                block_id=invalid_id_1,
+                input_default={"value": 1},
+            ),
+            Node(
+                id="node-3",
+                block_id=invalid_id_2,
+                input_default={"value": 2},
+            ),
+        ],
+        links=[],  # No links, so structure validation passes
+    )
+
+    with patch("backend.data.graph.get_block", side_effect=mock_get_block):
+        with pytest.raises(ValueError) as excinfo:
+            GraphModel._validate_graph_get_errors(graph)
+
+    error_msg = str(excinfo.value)
+    assert invalid_id_1 in error_msg, f"Expected {invalid_id_1} in error: {error_msg}"
+    assert invalid_id_2 in error_msg, f"Expected {invalid_id_2} in error: {error_msg}"
+    assert "Invalid block IDs found" in error_msg
+
+
+def test_agent_executor_block_link_validation_uses_schema():
+    """
+    AgentExecutorBlock link validation should use block.input_schema
+    and block.output_schema instead of reading from input_default.
+
+    Regression: previously it read from node.input_default which could
+    be empty or structured differently depending on export version,
+    causing "Allowed fields: dict_keys([])" rejections.
+
+    Also verifies that known schema fields validate correctly
+    while dynamic (non-schema) fields are permitted for AGENT blocks.
+    """
+    from backend.blocks.agent import AgentExecutorBlock
+
+    agent_block = AgentExecutorBlock()
+    source_node = Node(
+        id="source-1",
+        block_id=StoreValueBlock().id,
+        input_default={"value": "hello"},
+    )
+    agent_node = Node(
+        id="agent-1",
+        block_id=agent_block.id,
+        input_default={},  # empty — was causing issues before
+    )
+
+    # Verify the schema field we will connect to exists
+    assert (
+        "inputs" in AgentExecutorBlock.Input.get_fields()
+    ), "Test setup failed: 'inputs' must be a known AgentExecutorBlock.Input field"
+
+    # Link to a known schema field — should pass validation
+    link_schema_field = Link(
+        source_id="source-1",
+        sink_id="agent-1",
+        source_name="output",
+        sink_name="inputs",  # known AgentExecutorBlock.Input field
+    )
+
+    graph = Graph(
+        id="test-graph-agent-link",
+        name="AgentLinkTest",
+        description="Test",
+        nodes=[source_node, agent_node],
+        links=[link_schema_field],
+    )
+
+    # Should not raise ValueError — schema-based validation
+    errors = GraphModel._validate_graph_get_errors(graph)
+    assert isinstance(errors, dict)
+
+    # Also verify: dynamic (non-schema) AGENT pins are permitted
+    link_dynamic_field = Link(
+        source_id="source-1",
+        sink_id="agent-1",
+        source_name="output",
+        sink_name="input_1",  # dynamic sub-graph pin, not in static schema
+    )
+
+    graph2 = Graph(
+        id="test-graph-dynamic-link",
+        name="AgentDynamicLinkTest",
+        description="Test",
+        nodes=[source_node, agent_node],
+        links=[link_dynamic_field],
+    )
+
+    # Should not raise ValueError — AGENT block permissive mode
+    errors2 = GraphModel._validate_graph_get_errors(graph2)
+    assert isinstance(errors2, dict)
+
+
+def test_agent_executor_block_empty_schema_allows_any_link_pin_name():
+    """
+    AgentExecutorBlock with no schema fields should accept any link pin name
+    (dynamic sub-graph schemas). Previously the code used fields=['*'] which
+    didn't work as a wildcard since 'some_field' not in ['*'] is True.
+    """
+    from backend.blocks.agent import AgentExecutorBlock
+
+    # Mock the schema so get_fields() returns empty — simulating a dynamic
+    # sub-graph schema whose fields aren't known until runtime.
+    with (
+        patch.object(
+            AgentExecutorBlock.Input,
+            "get_fields",
+            return_value=[],
+        ),
+        patch.object(
+            AgentExecutorBlock.Output,
+            "get_fields",
+            return_value=[],
+        ),
+    ):
+        agent_block = AgentExecutorBlock()
+        agent_node = Node(
+            id="agent-1",
+            block_id=agent_block.id,
+            input_default={},
+        )
+        source_node = Node(
+            id="source-1",
+            block_id=StoreValueBlock().id,
+            input_default={"value": "hello"},
+        )
+        link = Link(
+            source_id="source-1",
+            sink_id="agent-1",
+            source_name="output",
+            sink_name="some_runtime_field",  # arbitrary name, not in schema
+        )
+        graph = Graph(
+            id="test-graph-agent-empty-schema",
+            name="AgentEmptySchema",
+            description="Test",
+            nodes=[source_node, agent_node],
+            links=[link],
+        )
+        # Should NOT raise ValueError — allow_any_field should permit any name
+        errors = GraphModel._validate_graph_get_errors(graph)
+        assert isinstance(errors, dict)
+        # Link errors should not contain our link
+        for val in errors.values():
+            assert "some_runtime_field" not in str(
+                val
+            ), f"Dynamic field 'some_runtime_field' should be permitted: {val}"
+
+
+def test_non_agent_block_unknown_field_still_rejected():
+    """
+    Non-AGENT blocks with unknown link pin names must still be rejected.
+    This tests that allow_dynamic_agent_pin only applies to AGENT blocks.
+    """
+    store_block = StoreValueBlock()
+    output_node = Node(
+        id="out-1",
+        block_id=store_block.id,
+        input_default={"value": "hello"},
+    )
+    sink_node = Node(
+        id="sink-1",
+        block_id=store_block.id,
+        input_default={"value": "world"},
+    )
+    link = Link(
+        source_id="out-1",
+        sink_id="sink-1",
+        source_name="output",
+        sink_name="nonexistent_field",
+    )
+    graph = Graph(
+        id="test-non-agent-reject",
+        name="NonAgentRejectTest",
+        description="Test",
+        nodes=[output_node, sink_node],
+        links=[link],
+    )
+    with pytest.raises(ValueError, match="nonexistent_field"):
+        GraphModel._validate_graph_get_errors(graph)
