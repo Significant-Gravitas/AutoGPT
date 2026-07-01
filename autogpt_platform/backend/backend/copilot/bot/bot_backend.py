@@ -321,18 +321,41 @@ class BotBackend:
             for s in resp.sessions
         ]
 
+    async def ensure_session(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> str:
+        """Resolve (or create) the copilot session for this conversation.
+
+        Called before uploading attachments so they land in the session folder
+        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        UI uploads into an already-open session.
+        """
+        return await self._client.ensure_chat_session(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
+            session_id=session_id,
+        )
+
     async def upload_workspace_files(
         self,
         platform: str,
         platform_user_id: str,
         platform_server_id: str | None,
         attachments: tuple[InboundAttachment, ...],
+        session_id: str | None = None,
     ) -> list[WorkspaceUploadResult]:
         """Upload each attachment into the conversation owner's workspace.
 
-        Returns one result per file (with a ``file_id`` on success or an
-        ``error`` code) so the caller can attach the successes to the turn and
-        tell the user about any that were rejected.
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them, matching the web upload. Returns one result per file (with a
+        ``file_id`` on success or an ``error`` code) so the caller can attach
+        the successes to the turn and tell the user about any that were
+        rejected.
         """
         platform_enum = Platform(platform.upper())
         results: list[WorkspaceUploadResult] = []
@@ -349,6 +372,7 @@ class BotBackend:
                             filename=attachment.filename,
                             mime_type=attachment.mime_type,
                             content=attachment.content,
+                            session_id=session_id,
                         )
                     )
                 )

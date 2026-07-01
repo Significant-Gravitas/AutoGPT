@@ -112,7 +112,28 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        file_ids, upload_problems = await self._upload_attachments(ctx)
+        # Attachments must be written into the turn's session folder so
+        # AutoPilot can read them (same as a web upload). The session is
+        # normally resolved when the turn starts; resolve/create it up front
+        # here and cache it so both the upload and the turn use the same one.
+        session_id: str | None = None
+        if ctx.attachments:
+            try:
+                session_id = await self._api.ensure_session(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    platform_server_id=ctx.server_id,
+                    session_id=await sessions.get_session(ctx.platform, target_id),
+                )
+                await sessions.set_session(ctx.platform, target_id, session_id)
+            except Exception:
+                # Degrade gracefully: without a session the file uploads but
+                # won't be session-scoped. Better than dropping the message.
+                logger.exception(
+                    "Failed to resolve session for uploads (user %s)", ctx.user_id
+                )
+
+        file_ids, upload_problems = await self._upload_attachments(ctx, session_id)
 
         # Files that didn't make it: adapter-stage (too large / failed download)
         # plus upload-stage (virus / quota). Tell the user AND, below, the model
@@ -141,13 +162,14 @@ class MessageHandler:
         await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
 
     async def _upload_attachments(
-        self, ctx: MessageContext
+        self, ctx: MessageContext, session_id: str | None = None
     ) -> tuple[list[str], list[tuple[str, str]]]:
         """Upload the user's attachments to the workspace.
 
-        Returns ``(file_ids, problems)`` — the IDs that succeeded, and
-        ``(filename, reason)`` for the ones that were rejected — so the caller
-        can attach the successes and surface the failures.
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them. Returns ``(file_ids, problems)`` — the IDs that succeeded,
+        and ``(filename, reason)`` for the ones that were rejected — so the
+        caller can attach the successes and surface the failures.
         """
         if not ctx.attachments:
             return [], []
@@ -157,6 +179,7 @@ class MessageHandler:
                 platform_user_id=ctx.user_id,
                 platform_server_id=ctx.server_id,
                 attachments=ctx.attachments,
+                session_id=session_id,
             )
         except Exception:
             # The upload path itself failed (not a per-file rejection). Don't

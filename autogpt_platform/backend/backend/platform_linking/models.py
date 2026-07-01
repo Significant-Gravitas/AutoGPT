@@ -132,6 +132,10 @@ class WorkspaceUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(min_length=1, max_length=255)
     content: bytes
+    # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
+    # file during the turn, same as a web upload. Resolved by the caller before
+    # uploading (see ``ensure_chat_session``).
+    session_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 # ── Response Models ────────────────────────────────────────────────────

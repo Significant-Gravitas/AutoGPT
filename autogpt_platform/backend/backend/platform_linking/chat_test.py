@@ -8,7 +8,12 @@ import pytest
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .chat import list_user_chats, start_chat_turn, upload_workspace_file
+from .chat import (
+    ensure_chat_session,
+    list_user_chats,
+    start_chat_turn,
+    upload_workspace_file,
+)
 from .models import BotChatRequest, Platform, WorkspaceUploadRequest
 
 
@@ -292,30 +297,39 @@ class TestUploadWorkspaceFile:
         assert result.error == "upload_failed"
 
     @pytest.mark.asyncio
-    async def test_filename_path_components_are_stripped_from_storage_path(self):
+    async def test_writes_into_session_scoped_manager(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3 as mock_wm:
+            await upload_workspace_file(self._req(session_id="sess-1"))
+        # Session-scoped manager (like the web upload) plus a flat filename —
+        # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
+        # reads it. No explicit uploads/<uuid> path.
+        mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
+        kwargs = write.await_args.kwargs
+        assert kwargs["filename"] == "a.png"
+        assert "path" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_filename_path_components_are_stripped(self):
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
             await upload_workspace_file(self._req(filename="../../etc/passwd"))
-        # Neither the storage path nor the filename passed to the storage
-        # backend may carry traversal segments — only the sanitized basename.
+        # Only the sanitized basename reaches the storage backend.
         kwargs = write.await_args.kwargs
-        assert ".." not in kwargs["path"]
-        assert kwargs["path"].endswith("/passwd")
         assert kwargs["filename"] == "passwd"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("name", [".", "..", "dir/..", "/"])
     async def test_dot_filenames_fall_back_to_safe_name(self, name: str):
-        # Basename of "."/".." is still "."/"..", which would re-introduce a
-        # special segment into uploads/<uuid>/<name>; they must become "file".
+        # "."/".." survive basename stripping and would be a special path
+        # segment, so they must become "file".
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
         with p1, p2, p3:
             await upload_workspace_file(self._req(filename=name))
-        kwargs = write.await_args.kwargs
-        assert kwargs["filename"] == "file"
-        assert kwargs["path"].endswith("/file")
+        assert write.await_args.kwargs["filename"] == "file"
 
     @pytest.mark.asyncio
     async def test_unlinked_user_raises_not_found(self):
@@ -336,3 +350,50 @@ class TestUploadWorkspaceFile:
         with p1, p2, p3:
             with pytest.raises(NotFoundError):
                 await upload_workspace_file(self._req())
+
+
+class TestEnsureChatSession:
+    @pytest.mark.asyncio
+    async def test_reuses_valid_cached_session(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="cached")),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
+            ) as mock_create,
+        ):
+            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, "cached")
+
+        assert sid == "cached"
+        mock_create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_creates_session_when_none_cached(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="fresh")),
+            ) as mock_create,
+        ):
+            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+        assert sid == "fresh"
+        assert mock_create.await_args.kwargs["source_platform"] == "discord"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_dm_raises_not_found(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value=None)
+        with patch(
+            "backend.platform_linking.chat.platform_linking_db", return_value=db
+        ):
+            with pytest.raises(NotFoundError):
+                await ensure_chat_session(Platform.DISCORD, "pu1", None, None)

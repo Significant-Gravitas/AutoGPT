@@ -86,6 +86,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
     api.upload_workspace_files = AsyncMock(return_value=[])
+    api.ensure_session = AsyncMock(return_value="session-ensured")
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -936,6 +937,26 @@ class TestMessageTextReferencedConversations:
 
 
 class TestAttachments:
+    @pytest.fixture(autouse=True)
+    def _mock_redis(self):
+        # These tests drive handle() end-to-end, which touches Redis: the
+        # upload path resolves the session cache, and _stream_batch reads the
+        # per-target session key. Mock both so the tests stay hermetic.
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.bot.handler.sessions.get_session",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.bot.handler.sessions.set_session", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+        ):
+            yield
+
     @staticmethod
     def _upload_recording_api(results):
         api = _api()
@@ -977,6 +998,23 @@ class TestAttachments:
 
         api.upload_workspace_files.assert_awaited_once()
         assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_uploads_are_session_scoped_via_ensure_session(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, _ = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # The session is resolved up front and threaded into the upload so the
+        # file lands in /sessions/<id>/ where AutoPilot reads it.
+        api.ensure_session.assert_awaited_once()
+        assert (
+            api.upload_workspace_files.await_args.kwargs["session_id"]
+            == "session-ensured"
+        )
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
