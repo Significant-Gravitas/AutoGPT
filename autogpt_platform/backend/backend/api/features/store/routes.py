@@ -360,11 +360,15 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
         submission_id=submission_id,
+        organization_id=getattr(ctx, "org_id", None),
     )
     return result
 
@@ -468,11 +472,15 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
+        organization_id=getattr(ctx, "org_id", None),
         name=submission_request.name,
         video_url=submission_request.video_url,
         agent_output_demo_url=submission_request.agent_output_demo_url,

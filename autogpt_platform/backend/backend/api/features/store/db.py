@@ -743,6 +743,7 @@ async def get_store_submissions(
 async def delete_store_submission(
     user_id: str,
     submission_id: str,
+    organization_id: str | None = None,
 ) -> bool:
     """
     Delete a store submission version as the submitting user.
@@ -750,6 +751,9 @@ async def delete_store_submission(
     Args:
         user_id: ID of the authenticated user
         submission_id: StoreListingVersion ID to delete
+        organization_id: Caller's active org. When set, the listing must
+            belong to that org (or be tenant-less and personally owned) —
+            mirrors ``edit_store_submission``.
 
     Returns:
         bool: True if successfully deleted
@@ -760,11 +764,17 @@ async def delete_store_submission(
             where={"id": submission_id}, include={"StoreListing": True}
         )
 
-        if (
-            not version
-            or not version.StoreListing
-            or version.StoreListing.owningUserId != user_id
-        ):
+        if not version or not version.StoreListing:
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+        listing = version.StoreListing
+        if organization_id is not None:
+            allowed = listing.owningOrgId == organization_id or (
+                listing.owningOrgId is None and listing.owningUserId == user_id
+            )
+        else:
+            allowed = listing.owningUserId == user_id
+        if not allowed:
             raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
         # Prevent deletion of approved submissions
@@ -1050,20 +1060,21 @@ async def edit_store_submission(
                 f"Store listing version not found: {store_listing_version_id}"
             )
 
-        # Verify the user owns this listing (submission)
-        # When organization_id is provided, check the listing's org ownership
-        if organization_id and current_version.StoreListing:
-            if (
-                not hasattr(current_version.StoreListing, "owningOrgId")
-                or current_version.StoreListing.owningOrgId != organization_id
-            ):
-                raise store_exceptions.UnauthorizedError(
-                    f"Listing does not belong to organization {organization_id}"
-                )
-        elif (
-            not current_version.StoreListing
-            or current_version.StoreListing.owningUserId != user_id
-        ):
+        # Verify ownership. With an active org: the listing must belong to
+        # that org, or be a tenant-less (pre-backfill) listing the caller
+        # owns personally. Without org context: personal ownership only.
+        listing = current_version.StoreListing
+        if not listing:
+            raise store_exceptions.UnauthorizedError(
+                f"User {user_id} does not own submission {store_listing_version_id}"
+            )
+        if organization_id is not None:
+            allowed = listing.owningOrgId == organization_id or (
+                listing.owningOrgId is None and listing.owningUserId == user_id
+            )
+        else:
+            allowed = listing.owningUserId == user_id
+        if not allowed:
             raise store_exceptions.UnauthorizedError(
                 f"User {user_id} does not own submission {store_listing_version_id}"
             )

@@ -2291,3 +2291,25 @@ def test_graph_meta_from_db_carries_org_team():
     exported = GraphModel.from_db(row, for_export=True)
     assert exported.organization_id is None
     assert exported.team_id is None
+
+
+@pytest.mark.asyncio
+async def test_delete_graph_scopes_to_active_org(mocker):
+    """Regression: ``delete_graph`` accepted ``organization_id`` but silently
+    dropped it from the where clause — an org-scoped delete request executed
+    tenant-blind. Tenant-less (pre-backfill) rows must remain deletable."""
+    from backend.data.graph import delete_graph
+
+    mock_client = AsyncMock()
+    mock_client.delete_many.return_value = 1
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=mock_client)
+
+    await delete_graph("g-1", user_id="u-1", organization_id="org-A")
+    where = mock_client.delete_many.call_args.kwargs["where"]
+    assert where["id"] == "g-1"
+    assert where["userId"] == "u-1"
+    assert where["OR"] == [{"organizationId": "org-A"}, {"organizationId": None}]
+
+    await delete_graph("g-1", user_id="u-1")
+    where = mock_client.delete_many.call_args.kwargs["where"]
+    assert "OR" not in where

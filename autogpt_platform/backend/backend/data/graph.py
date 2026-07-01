@@ -1505,9 +1505,17 @@ async def get_graph_all_versions(
 async def delete_graph(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int:
-    entries_count = await AgentGraph.prisma().delete_many(
-        where={"id": graph_id, "userId": user_id}
-    )
+    where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
+    if organization_id is not None:
+        # Scope the delete to the caller's active org. Tenant-less rows
+        # (created before org tagging, not yet backfilled) stay deletable
+        # by their owner — only rows tagged with a DIFFERENT org are
+        # protected from cross-org deletion.
+        where["OR"] = [
+            {"organizationId": organization_id},
+            {"organizationId": None},
+        ]
+    entries_count = await AgentGraph.prisma().delete_many(where=where)
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count

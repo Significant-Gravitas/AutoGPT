@@ -1714,7 +1714,11 @@ async def delete_graph(
     ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
-    return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
+    return {
+        "version_counts": await graph_db.delete_graph(
+            graph_id, user_id=user_id, organization_id=ctx.org_id
+        )
+    }
 
 
 @v1_router.put(
