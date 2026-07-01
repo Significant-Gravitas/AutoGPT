@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Awaitable, Optional
@@ -42,6 +43,39 @@ CONNECTION_ATTEMPTS = 5
 # Use case: Faster reconnection for long-running executions that need to resume quickly
 RETRY_DELAY = 1
 
+# DEFAULT_HEARTBEAT (300s = 5 min)
+# AMQP application-level heartbeat. Server drops the connection if no heartbeat
+# is seen within ~2x this interval. Consumers that sit in CLOSE_WAIT because
+# pika's IO loop was starved (e.g. laptop sleep, blocking main thread) recover
+# faster with a lower value. See `create_copilot_queue_config` for a case that
+# overrides this.
+DEFAULT_HEARTBEAT = 300
+
+
+def _tcp_keepalive_options() -> dict[str, int]:
+    """Platform-aware TCP keepalive socket options for pika.
+
+    pika enables ``SO_KEEPALIVE`` on every socket by default; this dict tunes
+    how quickly the kernel declares a silent peer dead. Without these knobs,
+    the OS default on Linux is ~2 hours of idle before the first probe — long
+    enough for a half-closed socket to sit in CLOSE_WAIT forever while the
+    consumer thread is blocked inside ``start_consuming()``.
+
+    pika passes each key through ``getattr(socket, key)`` at ``IPPROTO_TCP``
+    level, so names must exist on the current platform. Linux has
+    ``TCP_KEEPIDLE``; macOS uses ``TCP_KEEPALIVE`` for the equivalent knob.
+    """
+    opts: dict[str, int] = {}
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        opts["TCP_KEEPIDLE"] = 60
+    elif hasattr(socket, "TCP_KEEPALIVE"):
+        opts["TCP_KEEPALIVE"] = 60
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        opts["TCP_KEEPINTVL"] = 20
+    if hasattr(socket, "TCP_KEEPCNT"):
+        opts["TCP_KEEPCNT"] = 3
+    return opts
+
 
 class ExchangeType(str, Enum):
     DIRECT = "direct"
@@ -73,6 +107,8 @@ class RabbitMQConfig(BaseModel):
     vhost: str = "/"
     exchanges: list[Exchange]
     queues: list[Queue]
+    heartbeat: int = DEFAULT_HEARTBEAT
+    tcp_keepalive: bool = False
 
 
 class RabbitMQBase(ABC):
@@ -141,7 +177,8 @@ class SyncRabbitMQ(RabbitMQBase):
             socket_timeout=SOCKET_TIMEOUT,
             connection_attempts=CONNECTION_ATTEMPTS,
             retry_delay=RETRY_DELAY,
-            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
+            heartbeat=self.config.heartbeat,
+            tcp_options=_tcp_keepalive_options() if self.config.tcp_keepalive else None,
         )
 
         self._connection = pika.BlockingConnection(parameters)
@@ -260,7 +297,7 @@ class AsyncRabbitMQ(RabbitMQBase):
             password=self.password,
             virtualhost=self.config.vhost.lstrip("/"),
             blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT,
-            heartbeat=300,  # 5 minute timeout (heartbeats sent every 2.5 min)
+            heartbeat=self.config.heartbeat,
         )
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)

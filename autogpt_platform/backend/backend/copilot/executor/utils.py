@@ -166,6 +166,15 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         vhost="/",
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
         queues=[run_queue, cancel_queue],
+        # The consumer threads sit in pika's blocking ``start_consuming()`` for
+        # the full lifetime of the process. If the TCP connection is dropped
+        # (server restart, NAT timeout, laptop sleep) while pika's IO thread is
+        # starved, the socket rots in CLOSE_WAIT and no message is ever
+        # consumed — see zombie-consumer incident notes. A short heartbeat plus
+        # kernel-level TCP keepalive makes both the app and the OS notice a
+        # dead peer within a couple of minutes instead of hours.
+        heartbeat=60,
+        tcp_keepalive=True,
     )
 
 
