@@ -89,6 +89,8 @@
 * [Jina Embeddings](block-integrations/jina/embeddings.md)
 * [Jina Fact Checker](block-integrations/jina/fact_checker.md)
 * [Jina Search](block-integrations/jina/search.md)
+* [Joy Discovery](block-integrations/joy/discovery.md)
+* [Joy Trust](block-integrations/joy/trust.md)
 * [Linear Comment](block-integrations/linear/comment.md)
 * [Linear Issues](block-integrations/linear/issues.md)
 * [Linear Projects](block-integrations/linear/projects.md)

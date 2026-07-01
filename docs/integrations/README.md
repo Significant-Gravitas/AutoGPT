@@ -636,6 +636,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Joy Discover Agents](block-integrations/joy/discovery.md#joy-discover-agents) | Discover agents by capability or search query |
+| [Joy Get Trust Score](block-integrations/joy/trust.md#joy-get-trust-score) | Get detailed trust profile for an agent including score, verification status, and capabilities |
+| [Joy Verify Trust](block-integrations/joy/trust.md#joy-verify-trust) | Verify if an agent meets minimum trust threshold before delegating tasks |
 | [Nvidia Deepfake Detect](block-integrations/nvidia/deepfake.md#nvidia-deepfake-detect) | Detects potential deepfakes in images using Nvidia's AI API |
 
 ## Issue Tracking
