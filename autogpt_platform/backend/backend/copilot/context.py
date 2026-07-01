@@ -108,6 +108,34 @@ E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
 E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
 
 
+def get_workdir(sandbox: "AsyncSandbox | None") -> str:
+    """Return the active executor's working directory.
+
+    LocalPCShim advertises its `allowed_root` in HELLO; E2B uses the fixed
+    `/home/user`. Falls back to `E2B_WORKDIR` when no sandbox is set so
+    legacy callsites keep their prior behavior.
+    """
+    from backend.copilot.tools.local_pc_shim import LocalPCShim
+
+    if isinstance(sandbox, LocalPCShim) and sandbox.allowed_root:
+        return sandbox.allowed_root
+    return E2B_WORKDIR
+
+
+def get_allowed_dirs(sandbox: "AsyncSandbox | None") -> tuple[str, ...]:
+    """Return the active executor's allowed directories.
+
+    E2B exposes both `/home/user` and `/tmp`. LocalPCShim exposes only
+    the advertised `allowed_root` — no implicit `/tmp` access for the local
+    machine.
+    """
+    from backend.copilot.tools.local_pc_shim import LocalPCShim
+
+    if isinstance(sandbox, LocalPCShim) and sandbox.allowed_root:
+        return (sandbox.allowed_root,)
+    return E2B_ALLOWED_DIRS
+
+
 def is_within_allowed_dirs(path: str) -> bool:
     """Return True if *path* is within one of the allowed sandbox directories."""
     for allowed in E2B_ALLOWED_DIRS:
@@ -154,6 +182,32 @@ def is_sdk_tool_path(path: str) -> bool:
         len(parts) >= 3
         and _UUID_RE.match(parts[0]) is not None
         and parts[1] in ("tool-results", "tool-outputs")
+    )
+
+
+def resolve_executor_path(path: str, sandbox: "AsyncSandbox | None") -> str:
+    """Normalise *path* against the active executor's workdir + allowed dirs.
+
+    For LocalPCShim: resolves relative paths against `shim.allowed_root` and
+    validates against `(shim.allowed_root,)`. Note this is the platform-side
+    lexical check only — the shim itself enforces the real path jail per
+    CROSS_PLATFORM.md (realpath + case-fold per FS + reserved-name + ADS
+    rejection). Platform-side validation here is best-effort and catches
+    obvious-bad inputs before a wire roundtrip.
+
+    For E2B: equivalent to :func:`resolve_sandbox_path`.
+
+    Raises :class:`ValueError` on a lexical jail-escape.
+    """
+    workdir = get_workdir(sandbox)
+    allowed = get_allowed_dirs(sandbox)
+    candidate = path if os.path.isabs(path) else os.path.join(workdir, path)
+    normalized = os.path.normpath(candidate)
+    for root in allowed:
+        if normalized == root or normalized.startswith(root + os.sep):
+            return normalized
+    raise ValueError(
+        f"Path must be within {' or '.join(allowed)}: {os.path.basename(path)}"
     )
 
 

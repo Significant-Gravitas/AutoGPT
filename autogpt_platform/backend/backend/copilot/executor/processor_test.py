@@ -480,9 +480,12 @@ class TestExecuteSafetyNet:
         mock_mark = AsyncMock()
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(proc, "_execute"), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=mock_mark,
+        with (
+            patch.object(proc, "_execute"),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=mock_mark,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 
@@ -497,13 +500,16 @@ class TestExecuteSafetyNet:
         mock_mark = AsyncMock()
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(
-            proc,
-            "_execute",
-            side_effect=concurrent.futures.TimeoutError("grace expired"),
-        ), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=mock_mark,
+        with (
+            patch.object(
+                proc,
+                "_execute",
+                side_effect=concurrent.futures.TimeoutError("grace expired"),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=mock_mark,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 
@@ -529,9 +535,12 @@ class TestExecuteSafetyNet:
 
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(proc, "_execute", side_effect=_broken_execute), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=_ok,
+        with (
+            patch.object(proc, "_execute", side_effect=_broken_execute),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=_ok,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 

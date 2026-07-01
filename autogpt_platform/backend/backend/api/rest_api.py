@@ -33,6 +33,7 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.local_executor.routes as local_executor_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
@@ -449,6 +450,10 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
+app.include_router(
+    local_executor_routes.router,
+    tags=["experimental", "local-executor"],
+)
 app.mount("/external-api", external_api)
 
 

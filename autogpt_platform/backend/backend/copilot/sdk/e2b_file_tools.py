@@ -32,7 +32,13 @@ from backend.copilot.context import (
     is_allowed_local_path,
     is_sdk_tool_path,
     is_within_allowed_dirs,
+    resolve_executor_path,
     resolve_sandbox_path,
+)
+from backend.copilot.sdk.local_pc_file_tools import (
+    is_local_pc,
+    list_via_shim,
+    stat_via_shim,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,17 +171,33 @@ async def _check_sandbox_symlink_escape(
 ) -> str | None:
     """Resolve the canonical parent path inside the sandbox to detect symlink escapes.
 
-    ``normpath`` (used by ``resolve_sandbox_path``) only normalises the string;
-    ``readlink -f`` follows actual symlinks on the sandbox filesystem.
+    For E2B: ``readlink -f`` follows symlinks on the POSIX sandbox FS.
+    For LocalPCShim: FILE_STAT(follow_symlinks=True) returns the canonical
+    path per the shim's per-OS realpath (handles junctions on Windows,
+    firmlinks on macOS — see CROSS_PLATFORM.md Path Jail Strategy).
 
     Returns the canonical parent path, or ``None`` if the path escapes
-    the allowed sandbox directories.
+    the executor's allowed dirs.
 
     Note: There is an inherent TOCTOU window between this check and the
-    subsequent ``sandbox.files.write()``.  A symlink could theoretically be
-    replaced between the two operations.  This is acceptable in the E2B
-    sandbox model since the sandbox is single-user and ephemeral.
+    subsequent ``sandbox.files.write()`` — a symlink could be replaced
+    between the two ops. Acceptable for E2B (single-user, ephemeral) and
+    for the shim (single-user with per-op shim-side jail re-check).
     """
+    if is_local_pc(sandbox):
+        try:
+            stat = await stat_via_shim(
+                sandbox, parent or sandbox.allowed_root, follow_symlinks=True
+            )
+        except (OSError, ValueError):
+            return None
+        if not stat.get("exists"):
+            return None
+        # Shim jail-check already passed; return the input parent so the
+        # caller's `os.path.join(parent, basename)` produces a path the
+        # next FILE_WRITE will re-validate against the same jail.
+        return parent or sandbox.allowed_root
+
     canonical_res = await sandbox.commands.run(
         f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
         cwd=E2B_WORKDIR,
@@ -208,12 +230,17 @@ def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:
 def _get_sandbox_and_path(
     file_path: str,
 ) -> tuple[Any, str] | dict[str, Any]:
-    """Common preamble: get sandbox + resolve path, or return MCP error."""
+    """Common preamble: get sandbox + resolve path, or return MCP error.
+
+    Path resolution is executor-aware: E2B paths resolve under `/home/user`
+    + `/tmp`, LocalPCShim paths resolve under the shim's `allowed_root`
+    advertised in HELLO.
+    """
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
     try:
-        remote = resolve_sandbox_path(file_path)
+        remote = resolve_executor_path(file_path, sandbox)
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return sandbox, remote
@@ -237,6 +264,12 @@ async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
     are handled correctly: text is encoded to bytes for the base64 shell
     pipe, and raw bytes are passed through without any encoding.
     """
+    # LocalPCShim runs FILE and COMMAND ops as the same OS user, so the
+    # E2B sticky-bit/`/tmp` workaround below doesn't apply — just write.
+    if is_local_pc(sandbox):
+        await sandbox.files.write(path, content)
+        return
+
     if path == "/tmp" or path.startswith("/tmp/"):
         raw = content.encode() if isinstance(content, str) else content
         encoded = base64.b64encode(raw).decode()
@@ -607,12 +640,27 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
 
     try:
-        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
+        search_dir = (
+            resolve_executor_path(path, sandbox)
+            if path
+            else (sandbox.allowed_root if is_local_pc(sandbox) else E2B_WORKDIR)
+        )
     except ValueError as exc:
         return _mcp(str(exc), error=True)
+
+    # LocalPCShim: use the wire FILE_LIST op (per-OS portable, no POSIX shell).
+    if is_local_pc(sandbox):
+        try:
+            resp = await list_via_shim(
+                sandbox, search_dir, glob=pattern, recursive=True, max_entries=500
+            )
+        except OSError as exc:
+            return _mcp(f"Glob failed: {exc}", error=True)
+        files = [e.get("path", "") for e in resp.get("entries", []) if e.get("is_file")]
+        return _mcp(json.dumps(files, indent=2))
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
@@ -642,10 +690,14 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
 
     try:
-        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
+        search_dir = (
+            resolve_executor_path(path, sandbox)
+            if path
+            else (sandbox.allowed_root if is_local_pc(sandbox) else E2B_WORKDIR)
+        )
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -653,12 +705,23 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if include:
         parts.extend(["--include", include])
     parts.extend([pattern, search_dir])
-    cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
-    try:
-        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=15)
-    except Exception as exc:
-        return _mcp(f"Grep failed: {exc}", error=True)
+    # LocalPCShim: send the pre-built argv so the shim's per-OS subprocess
+    # path handles quoting. Falls through with SHELL_NOT_AVAILABLE on
+    # Windows-without-Git-Bash; the LLM can retry via bash_exec.
+    if is_local_pc(sandbox):
+        try:
+            result = await sandbox.commands.run(
+                argv=parts, cwd=sandbox.allowed_root, timeout=15
+            )
+        except Exception as exc:
+            return _mcp(f"Grep failed: {exc}", error=True)
+    else:
+        cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
+        try:
+            result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=15)
+        except Exception as exc:
+            return _mcp(f"Grep failed: {exc}", error=True)
 
     output = (result.stdout or "").strip()
     return _mcp(output if output else "No matches found.")
@@ -787,14 +850,16 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the cloud sandbox (/home/user or /tmp). "
-        "Use offset and limit for large files.",
+        "Read a file from the execution workspace. "
+        "Use offset and limit for large files. "
+        "Paths may be relative (resolved against the workspace root) or "
+        "absolute under an allowed directory.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to read. Relative paths resolve against the workspace root.",
                 },
                 "offset": {
                     "type": "integer",
@@ -810,16 +875,16 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "write_file",
-        "Write or create a file in the cloud sandbox (/home/user or /tmp). "
+        "Write or create a file in the execution workspace. "
         "Parent directories are created automatically. "
-        "To copy a workspace file into the sandbox, use "
+        "To copy a user workspace file into the executor, use "
         "read_workspace_file with save_to_path instead.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to write. Relative paths resolve against the workspace root.",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -828,14 +893,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "edit_file",
-        "Targeted text replacement in a sandbox file. "
+        "Targeted text replacement in a workspace file. "
         "old_string must appear in the file and is replaced with new_string.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to edit. Relative paths resolve against the workspace root.",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},
@@ -849,7 +914,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "glob",
-        "Search for files by name pattern in the cloud sandbox.",
+        "Search for files by name pattern in the execution workspace.",
         {
             "type": "object",
             "properties": {
@@ -859,7 +924,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory to search. Default: /home/user.",
+                    "description": "Directory to search. Defaults to the workspace root.",
                 },
             },
         },
@@ -867,14 +932,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "grep",
-        "Search file contents by regex in the cloud sandbox.",
+        "Search file contents by regex in the execution workspace.",
         {
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "Regex pattern."},
                 "path": {
                     "type": "string",
-                    "description": "File or directory. Default: /home/user.",
+                    "description": "File or directory. Defaults to the workspace root.",
                 },
                 "include": {
                     "type": "string",

@@ -101,6 +101,11 @@ class OAuthApplicationInfo(BaseModel):
     scopes: list[APIPermission]
     owner_id: str
     is_active: bool
+    # Public clients (PKCE-only desktop / mobile / SPA apps) skip the
+    # client_secret check. See `validate_client_credentials` for the
+    # security-critical short-circuit and the OAuthApplication.isPublic
+    # comment in schema.prisma for context.
+    is_public: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -117,6 +122,7 @@ class OAuthApplicationInfo(BaseModel):
             scopes=[APIPermission(s) for s in app.scopes],
             owner_id=app.ownerId,
             is_active=app.isActive,
+            is_public=getattr(app, "isPublic", False),
             created_at=app.createdAt,
             updated_at=app.updatedAt,
         )
@@ -296,13 +302,25 @@ async def get_oauth_application_with_secret(
 
 
 async def validate_client_credentials(
-    client_id: str, client_secret: str
+    client_id: str,
+    client_secret: str,
+    *,
+    code_verifier: str | None = None,
 ) -> OAuthApplicationInfo:
     """
     Validate client credentials and return application info.
 
+    Confidential clients (the default) require a valid `client_secret`.
+    Public clients (`isPublic=true` on the OAuthApplication row) skip the
+    secret check **iff** a PKCE `code_verifier` is supplied — PKCE is the
+    only legitimate credential for a public client per RFC 7636 / RFC 8252.
+    Public clients without a code_verifier are rejected: no credential at
+    all means anyone with the public client_id could mint tokens.
+
     Raises:
-        InvalidClientError: If client_id or client_secret is invalid, or app is inactive
+        InvalidClientError: If client_id is invalid, app is inactive, or
+            the appropriate credential check (secret for confidential,
+            code_verifier presence for public) fails.
     """
     app = await get_oauth_application_with_secret(client_id)
     if not app:
@@ -311,9 +329,21 @@ async def validate_client_credentials(
     if not app.is_active:
         raise InvalidClientError("Application is not active")
 
-    # Verify client secret
-    if not app.verify_secret(client_secret):
-        raise InvalidClientError("Invalid client_secret")
+    if app.is_public:
+        # Public client: PKCE is the credential. The actual PKCE
+        # challenge/verifier check happens later in
+        # `consume_authorization_code` (it has the stored code_challenge);
+        # here we just refuse to mint a token without ANY credential at
+        # all. Confidential clients still get the secret check below.
+        if not code_verifier:
+            raise InvalidClientError(
+                "Public client requires PKCE code_verifier; client_secret is "
+                "not accepted for public clients"
+            )
+    else:
+        # Confidential client: verify the secret.
+        if not app.verify_secret(client_secret):
+            raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash
     return OAuthApplicationInfo(**app.model_dump(exclude={"client_secret_hash"}))

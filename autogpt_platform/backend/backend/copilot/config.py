@@ -639,6 +639,34 @@ class ChatConfig(BaseSettings):
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
 
+    # --- Local PC executor ---
+    use_local_pc_executor: bool = Field(
+        default=False,
+        description=(
+            "Route copilot execution to the user's local machine via the "
+            "autogpt-local-executor shim. When True, LocalPCShim is used instead of E2B."
+        ),
+    )
+    allow_computer_use: bool = Field(
+        default=False,
+        description="Allow Claude computer-use beta tools when the local PC shim is active.",
+    )
+    local_pc_executor_ws_path: str = Field(
+        default="/ws/local-executor",
+        description="WebSocket path prefix for the local executor shim endpoint.",
+    )
+    local_llm_policy: Literal["never", "prefer_for_fast", "always"] = Field(
+        default="never",
+        description=(
+            "When the local PC shim advertises local_llm + a non-empty "
+            "local_llm_models list AND the LD flag LOCAL_LLM_ROUTING is on "
+            "for the user, this field sets routing aggression: 'never' "
+            "disables, 'prefer_for_fast' routes fast-mode only, 'always' "
+            "routes any mode that has a tier-matched model. See "
+            "experimental/local-pc-executor/docs/LOCAL_LLM.md."
+        ),
+    )
+
     @property
     def openrouter_active(self) -> bool:
         """True when OpenRouter config is shape-valid (flag + credentials).

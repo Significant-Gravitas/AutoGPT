@@ -63,6 +63,33 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    # Local PC Executor — route copilot execution to a user's local machine
+    # via the autogpt-local-executor shim. EXPERIMENTAL; gated as
+    # `config.use_local_pc_executor AND ld(LOCAL_PC_EXECUTOR, user)` so the
+    # config controls deploy-level kill-switch and the LD flag controls
+    # per-user opt-in / staged rollout. Default off.
+    LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Workflow recording — record a task the user performs on their machine
+    # and generalize it into a reusable skill (record_workflow /
+    # generate_skill_from_recording / dry_run_skill MCP tools). Gated as
+    # `config.use_local_pc_executor AND shim advertises `recording` AND
+    # ld(WORKFLOW_RECORDING, user)` — same shape as LOCAL_PC_EXECUTOR.
+    # See `experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md` and
+    # `copilot/tools/recording_skill.py`. Default off; per-user rollout.
+    WORKFLOW_RECORDING = "workflow-recording"
+    # Local LLM routing — when on AND the user's shim advertises
+    # `local_llm` + a non-empty `local_llm_models`, copilot turns that
+    # match the (mode, tier) policy get routed through the shim's
+    # LOCAL_LLM_COMPLETION wire op instead of Anthropic/OpenRouter. See
+    # `experimental/local-pc-executor/docs/LOCAL_LLM.md` and
+    # `copilot/tools/local_llm_router.py`. Default off; per-user rollout.
+    LOCAL_LLM_ROUTING = "local-llm-routing"
+    # Per-tier preferred local-model lists used by LocalLLMRouter. JSON
+    # value, shape:
+    #   {"fast": ["llama3.2:3b", "llama3.2:1b"], "default": [...], "thinking": []}
+    # Missing tier → empty list → never route that tier locally. See
+    # `local_llm_router.py` for defaults.
+    LOCAL_LLM_TIER_PREFERENCES = "local-llm-tier-preferences"
 
     # Gates the per-user weekly community rebuild registered by
     # ``add_community_rebuild_schedule``. Off by default; opt-in canary

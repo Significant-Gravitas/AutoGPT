@@ -14,6 +14,10 @@ import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAuto
 import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
+import { LocalPCBadge } from "./components/LocalPCBadge/LocalPCBadge";
+import { LocalPCComputerUseConsent } from "./components/LocalPCComputerUseConsent/LocalPCComputerUseConsent";
+import { LocalPCWarning } from "./components/LocalPCWarning/LocalPCWarning";
+import { RecordWorkflow } from "./components/RecordWorkflow/RecordWorkflow";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
@@ -41,6 +45,7 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -81,6 +86,8 @@ export function CopilotPage() {
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
+      {isLocalPCEnabled && <LocalPCWarning />}
+      {isLocalPCEnabled && <LocalPCComputerUseConsent />}
     </SidebarProvider>
   );
 }
@@ -101,6 +108,8 @@ function MainArea({
   setDroppedFiles,
 }: MainAreaProps) {
   const hasSession = !!sessionId;
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const isRecordingEnabled = useGetFlag(Flag.WORKFLOW_RECORDING);
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
       <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
@@ -122,6 +131,12 @@ function MainArea({
             <LowCreditBanner />
             <NotificationBanner />
           </div>
+          {isLocalPCEnabled && (
+            <div className="flex items-center gap-2 px-4 pt-1.5">
+              <LocalPCBadge />
+              {isRecordingEnabled && <RecordWorkflow />}
+            </div>
+          )}
           <CopilotChatHost
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}

@@ -206,12 +206,27 @@ class BashExecTool(BaseTool):
                 envs.update(git_identity)
 
         try:
-            result = await sandbox.commands.run(
-                f"bash -c {shlex.quote(command)}",
-                cwd=E2B_WORKDIR,
-                timeout=timeout,
-                envs=envs,
-            )
+            from backend.copilot.context import get_workdir
+            from backend.copilot.tools.local_pc_shim import LocalPCShim
+
+            if isinstance(sandbox, LocalPCShim):
+                # LocalPCShim: don't assume bash exists. shell="auto" picks
+                # bash on POSIX, cmd.exe on Windows; shim returns
+                # SHELL_NOT_AVAILABLE if no compatible shell is installed.
+                result = await sandbox.commands.run(
+                    command,
+                    shell="auto",
+                    cwd=get_workdir(sandbox),
+                    timeout=timeout,
+                    envs=envs,
+                )
+            else:
+                result = await sandbox.commands.run(
+                    f"bash -c {shlex.quote(command)}",
+                    cwd=E2B_WORKDIR,
+                    timeout=timeout,
+                    envs=envs,
+                )
             return _build_completion_response(
                 result.stdout,
                 result.stderr,

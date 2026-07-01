@@ -130,6 +130,7 @@ from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
+from ..tools.local_pc_shim import LocalPCShim, get_shim_manager
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context
@@ -3949,7 +3950,46 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
         async def _setup_e2b():
-            """Set up E2B sandbox if configured, return sandbox or None."""
+            """Set up the per-turn executor (E2B sandbox or LocalPCShim).
+
+            LocalPC route is gated by BOTH the deploy-level config bool AND
+            per-user LaunchDarkly opt-in. Both must be true to route a user's
+            turn through their local machine. The config is the deploy
+            kill-switch; the LD flag controls staged rollout.
+            """
+            if config.use_local_pc_executor:
+                from backend.util.feature_flag import Flag, is_feature_enabled
+
+                local_pc_enabled = await is_feature_enabled(
+                    Flag.LOCAL_PC_EXECUTOR,
+                    user_id or "anonymous",
+                    default=False,
+                )
+                if local_pc_enabled:
+                    try:
+                        shim = await LocalPCShim.for_session(
+                            session_id, manager=get_shim_manager(), connect_timeout=30.0
+                        )
+                        logger.info(
+                            "[LocalPC] [%s] routed to shim (platform=%s arch=%s)",
+                            session_id[:12],
+                            shim.platform or "?",
+                            shim.arch or "?",
+                        )
+                        return shim
+                    except Exception as shim_err:
+                        logger.error(
+                            "[LocalPC] [%s] Shim connection failed: %s",
+                            session_id[:12],
+                            shim_err,
+                        )
+                        return None
+                else:
+                    logger.debug(
+                        "[LocalPC] [%s] config enabled but LD flag off for user %s",
+                        session_id[:12],
+                        (user_id or "anonymous")[:12],
+                    )
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -4041,6 +4081,39 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
+        # Compute the computer-use gate once — reused for both the MCP-tool
+        # registration (below) and the CLI beta env var (further down).
+        # Conditions: deploy flag + per-session allow + the active executor
+        # is a LocalPCShim that advertised the ``computer_use`` capability
+        # in HELLO. If any check fails, the LLM still sees no local_pc_*
+        # tools registered, and the CLI subprocess gets the OpenRouter-safe
+        # default env (CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1).
+        use_local_pc_computer = bool(
+            config.use_local_pc_executor
+            and config.allow_computer_use
+            and isinstance(e2b_sandbox, LocalPCShim)
+            and "computer_use" in (e2b_sandbox.capabilities or [])
+        )
+
+        # Workflow-recording gate — same shape as the computer-use gate, but
+        # additionally behind the WORKFLOW_RECORDING LaunchDarkly flag
+        # (default off, per-user rollout). Requires the deploy-level LocalPC
+        # config, the shim, and the shim's `recording` capability. Handler-
+        # level gating in recording_tools fails closed if this is wrong.
+        use_recording = bool(
+            config.use_local_pc_executor
+            and isinstance(e2b_sandbox, LocalPCShim)
+            and "recording" in (e2b_sandbox.capabilities or [])
+        )
+        if use_recording:
+            from backend.util.feature_flag import Flag, is_feature_enabled
+
+            use_recording = await is_feature_enabled(
+                Flag.WORKFLOW_RECORDING,
+                user_id or "anonymous",
+                default=False,
+            )
+
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
@@ -4055,7 +4128,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions
         ) | tool_names_in_groups(disabled_tool_groups)
         mcp_server = create_copilot_mcp_server(
-            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+            use_e2b=use_e2b,
+            hidden_tool_names=hidden_tools,
+            use_local_pc_computer=use_local_pc_computer,
+            use_recording=use_recording,
         )
 
         # Resolve model (request tier → LD per-user override → config default).
@@ -4064,6 +4140,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
         fallback_model = _resolve_fallback_model()
 
+        # Opt the CLI subprocess into the Anthropic ``computer-use-2025-11-24``
+        # beta (via ANTHROPIC_BETAS) under the same gate that exposes the
+        # local_pc_* MCP tools. build_sdk_env applies the final
+        # OpenRouter-compatibility guard internally — OpenRouter rejects
+        # Anthropic beta headers, so OpenRouter mode keeps the strip flag
+        # regardless of what we pass here.
+        if use_local_pc_computer:
+            logger.info(
+                "[LocalPC] [%s] computer-use beta enabled for CLI subprocess",
+                session_id[:12],
+            )
+
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
         sdk_env = build_sdk_env(
@@ -4071,6 +4159,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            enable_computer_use_beta=use_local_pc_computer,
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -4087,9 +4176,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed, disallowed = apply_tool_permissions(
                 permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
+            # apply_tool_permissions doesn't know about local_pc_* tools yet
+            # (capability-permission model TBD); append them here so the
+            # tools registered in create_copilot_mcp_server are also on the
+            # CLI's allow-list. Otherwise the CLI silently rejects them.
+            if use_local_pc_computer:
+                from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+                from .tool_adapter import MCP_TOOL_PREFIX
+
+                allowed = [
+                    *allowed,
+                    *[
+                        f"{MCP_TOOL_PREFIX}{name}"
+                        for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+                    ],
+                ]
+            if use_recording:
+                from .recording_tools import RECORDING_TOOL_NAMES
+                from .tool_adapter import MCP_TOOL_PREFIX
+
+                allowed = [
+                    *allowed,
+                    *[f"{MCP_TOOL_PREFIX}{name}" for name in RECORDING_TOOL_NAMES],
+                ]
         else:
             allowed = get_copilot_tool_names(
-                use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                use_local_pc_computer=use_local_pc_computer,
+                use_recording=use_recording,
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
@@ -5108,7 +5223,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # _background_tasks to prevent garbage collection.
         # Use pause_sandbox_direct to skip the Redis lookup and reconnect
         # round-trip — e2b_sandbox is the live object from this turn.
-        if e2b_sandbox is not None:
+        if e2b_sandbox is not None and not isinstance(e2b_sandbox, LocalPCShim):
             task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
