@@ -230,23 +230,23 @@ for a service that we already have OAuth2 support for.
 Implementing the block itself is relatively simple. On top of the instructions above,
 you're going to add a `credentials` parameter to the `Input` model and the `run` method:
 
-```python
-from backend.data.model import (
-    APIKeyCredentials,
-    OAuth2Credentials,
-    Credentials,
-)
+!!! note "Credentials type hints are required"
+    For `CredentialsMetaInput`, include explicit type parameters to avoid type errors:
+    - First type parameter: provider name (`Literal[ProviderName.<PROVIDER>]`)
+    - Second type parameter: supported credential type(s) (`Literal["api_key"]`, `Literal["oauth2"]`, or both)
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
-from backend.data.model import CredentialsField
+#### API key auth
+
+```python
+from typing import Literal
+
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
 from backend.integrations.providers import ProviderName
 
 
-# API Key auth:
 class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["api_key"]
         ] = CredentialsField(
@@ -264,12 +264,20 @@ class BlockWithAPIKeyAuth(Block):
         **kwargs,
     ) -> BlockOutput:
         ...
+```
 
-# OAuth:
+#### OAuth
+
+```python
+from typing import Literal
+
+from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
+from backend.integrations.providers import ProviderName
+
+
 class BlockWithOAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["oauth2"]
         ] = CredentialsField(
@@ -287,12 +295,20 @@ class BlockWithOAuth(Block):
         **kwargs,
     ) -> BlockOutput:
         ...
+```
 
-# API Key auth + OAuth:
+#### API key auth + OAuth
+
+```python
+from typing import Literal
+
+from backend.data.model import Credentials, CredentialsField, CredentialsMetaInput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
+from backend.integrations.providers import ProviderName
+
+
 class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["api_key", "oauth2"]
         ] = CredentialsField(
@@ -312,6 +328,7 @@ class BlockWithAPIKeyAndOAuth(Block):
     ) -> BlockOutput:
         ...
 ```
+
 
 The credentials will be automagically injected by the executor in the back end.
 
