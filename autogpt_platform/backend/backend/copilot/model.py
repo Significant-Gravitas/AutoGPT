@@ -198,6 +198,11 @@ class ChatSessionInfo(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
     chat_status: str = "idle"
+    # Org/team tenancy anchor for the whole session: agent runs, block
+    # executions, and sub-sessions launched from this chat attribute to
+    # THIS org/team, not the user's default org at tool-call time.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -247,6 +252,8 @@ class ChatSessionInfo(BaseModel):
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
             chat_status=prisma_session.chatStatus,
+            organization_id=prisma_session.organizationId,
+            team_id=prisma_session.teamId,
         )
 
 
@@ -279,6 +286,8 @@ class ChatSession(ChatSessionInfo):
         dry_run: bool,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -294,6 +303,8 @@ class ChatSession(ChatSessionInfo):
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
             ),
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     @classmethod
@@ -799,6 +810,8 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 metadata=session.metadata,
             )
             existing_message_count = 0
@@ -995,6 +1008,8 @@ async def create_chat_session(
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     # Create in database first - fail fast if this fails

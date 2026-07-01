@@ -198,8 +198,13 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
 async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_none():
     """Sentinel: when ``session_id`` is ``None`` the executor creates a brand-
     new chat at fire-time and routes the turn into it.  This is the path that
-    powers ``schedule_followup`` calls with no explicit session_id."""
-    args = _args(session_id=None)
+    powers ``schedule_followup`` calls with no explicit session_id.
+
+    The fresh session must land in the org/team captured at schedule time —
+    not the user's default org — so an org chat's followups stay in-tenant."""
+    args = _args(
+        session_id=None, organization_id="org-sched", team_id="team-sched"
+    )
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
     new_session = MagicMock(session_id="new-session-uuid")
@@ -214,12 +219,19 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_create_session.assert_awaited_once_with("user-1", dry_run=False)
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id="org-sched",
+        team_id="team-sched",
+    )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
     call_kwargs = mock_schedule_turn.call_args.kwargs
     assert call_kwargs["session_id"] == "new-session-uuid"
     assert call_kwargs["message"] == "check CI"
+    assert call_kwargs["organization_id"] == "org-sched"
+    assert call_kwargs["team_id"] == "team-sched"
 
 
 @pytest.mark.asyncio

@@ -223,7 +223,12 @@ async def _execute_copilot_turn(**kwargs):
         # otherwise — orphan turns into a missing session would never
         # surface in any UI.
         if args.session_id is None:
-            new_session = await create_chat_session(args.user_id, dry_run=False)
+            new_session = await create_chat_session(
+                args.user_id,
+                dry_run=False,
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+            )
             target_session_id = new_session.session_id
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
@@ -252,6 +257,8 @@ async def _execute_copilot_turn(**kwargs):
             message=args.message,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
+            organization_id=args.organization_id,
+            team_id=args.team_id,
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
@@ -320,6 +327,10 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
+            # Same for tenancy — dropping these would re-home a fresh-session
+            # turn to the user's default org after a cap retry.
+            organization_id=args.organization_id,
+            team_id=args.team_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1073,6 +1084,11 @@ class CopilotTurnJobArgs(BaseModel):
     # the user originally requested. Optional for backward compat with rows
     # persisted before this field was added.
     user_timezone: str | None = None
+    # Org/team captured at schedule time so a fresh session minted at
+    # fire time lands in the same tenant as the chat that scheduled it.
+    # Optional for backward compat with rows persisted before org tagging.
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1605,6 +1621,8 @@ class Scheduler(AppService):
         name: Optional[str] = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -1627,6 +1645,8 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
             user_timezone=user_timezone,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
