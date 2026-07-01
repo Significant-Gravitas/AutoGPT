@@ -210,6 +210,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [AI Ad Maker Video Creator](block-integrations/llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
+| [AI Agent Evaluator](block-integrations/llm.md#ai-agent-evaluator) | Uses an LLM as a strong judge to evaluate an agent's output against a rubric, expected answers, and design, returning scores and improvement suggestions |
 | [AI Condition](block-integrations/llm.md#ai-condition) | Uses AI to evaluate natural language conditions and provide conditional outputs |
 | [AI Conversation](block-integrations/llm.md#ai-conversation) | A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges |
 | [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana models from Gemini |
