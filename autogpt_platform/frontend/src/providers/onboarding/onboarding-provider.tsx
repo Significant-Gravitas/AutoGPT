@@ -115,6 +115,10 @@ export default function OnboardingProvider({
   }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+  // The public `/tour` demo is for unauthenticated prospects and must never
+  // trigger onboarding init/redirects (which would bounce a logged-in user with
+  // incomplete onboarding out of the tour).
+  const isOnPublicTour = pathname.startsWith("/tour");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
@@ -151,7 +155,7 @@ export default function OnboardingProvider({
 
   useEffect(() => {
     // Prevent multiple initializations
-    if (hasInitialized.current || !isLoggedIn) {
+    if (hasInitialized.current || !isLoggedIn || isOnPublicTour) {
       return;
     }
 
@@ -216,6 +220,7 @@ export default function OnboardingProvider({
     router,
     isLoggedIn,
     pathname,
+    isOnPublicTour,
   ]);
 
   const handleOnboardingNotification = useCallback(
