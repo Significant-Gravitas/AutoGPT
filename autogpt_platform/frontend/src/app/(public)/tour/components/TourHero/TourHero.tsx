@@ -1,11 +1,13 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRightIcon, SparkleIcon } from "@phosphor-icons/react/dist/ssr";
+import { TourBackground } from "./TourBackground";
 
 export function TourHero() {
   return (
-    <section className="flex flex-1 items-center justify-center px-6 py-16">
-      <div className="flex w-full max-w-2xl flex-col items-center text-center">
+    <section className="relative flex flex-1 flex-col items-center justify-center overflow-hidden border-b border-neutral-100 px-6 py-16">
+      <TourBackground />
+      <div className="relative z-10 flex w-full max-w-2xl flex-col items-center text-center">
         <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-1.5">
           <SparkleIcon className="h-4 w-4 text-violet-600" weight="fill" />
           <Text variant="small-medium" className="text-zinc-600">
