@@ -83,6 +83,7 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.generate_data import get_user_execution_summary_data
+from backend.data.llm_provider_settings import get_llm_provider_settings
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -453,6 +454,7 @@ class DatabaseManager(AppService):
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
     add_chat_message = _(chat_db.add_chat_message)
+    get_llm_provider_settings = _(get_llm_provider_settings)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -507,6 +509,8 @@ class DatabaseManagerClient(AppServiceClient):
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
 
+    get_llm_provider_settings = _(d.get_llm_provider_settings)
+
     # Block Descriptions
     get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
     update_block_optimized_description = _(d.update_block_optimized_description)
@@ -549,6 +553,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_llm_provider_settings = d.get_llm_provider_settings
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution

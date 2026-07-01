@@ -48,3 +48,27 @@ async def test_diagnostic_never_returns_api_key_in_error() -> None:
 
     assert result.success is False
     assert "secret" not in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_uses_reasoning_when_content_is_empty() -> None:
+    with patch(
+        "backend.util.llm.diagnostics.call_provider",
+        new=AsyncMock(
+            return_value=ProviderResponse(
+                content="",
+                reasoning="ok",
+                prompt_tokens=1,
+                completion_tokens=1,
+            )
+        ),
+    ):
+        result = await diagnose_chat_provider(
+            {
+                "CHAT_PROVIDER": "deepseek",
+                "CHAT_API_KEY": "secret",
+            }
+        )
+
+    assert result.success is True
+    assert result.response == "ok"

@@ -11,6 +11,15 @@ from backend.api.features.search import embeddings
 
 
 @pytest.fixture(autouse=True)
+def mock_effective_embedding_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        embeddings,
+        "resolve_effective_embedding_model",
+        AsyncMock(return_value="text-embedding-3-small"),
+    )
+
+
+@pytest.fixture(autouse=True)
 async def setup_prisma():
     """Setup Prisma client for tests."""
     try:

@@ -95,6 +95,7 @@ from ..rate_limit import (
     get_remaining_usd_budget,
     get_user_tier,
 )
+from ..runtime_config import apply_runtime_chat_config
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -151,6 +152,7 @@ from ..transcript import (
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
 from .compaction import CompactionTracker, filter_compaction_messages
+from . import env as sdk_env_module
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
@@ -169,6 +171,11 @@ from .tool_adapter import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def configure_runtime_chat_config(source: ChatConfig) -> None:
+    apply_runtime_chat_config(config, source)
+    apply_runtime_chat_config(sdk_env_module.config, source)
 
 
 class _SystemPromptPreset(SystemPromptPreset, total=False):

@@ -117,6 +117,8 @@ def build_sdk_env(
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "CLAUDE_CODE_REFRESH_TOKEN": "",
         }
+        if config.provider == "anthropic" and config.api_key:
+            env["ANTHROPIC_API_KEY"] = config.api_key
 
     # --- Mode 3: OpenRouter proxy ---
     else:

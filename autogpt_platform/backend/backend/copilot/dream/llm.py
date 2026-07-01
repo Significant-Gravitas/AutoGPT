@@ -35,12 +35,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
-from backend.util.llm.config import resolve_request_policy
+from backend.util.llm.runtime_config import resolve_effective_llm_config
 from backend.util.llm.providers import (
     ProviderLiteral,
     ProviderResponse,
@@ -99,30 +99,42 @@ async def structured_completion(
     phase failed" — the orchestrator either skips downstream phases
     or returns a partial result.
     """
-    routing = routing_kwargs_for_chat_transport()
-    if not routing.api_key and routing.provider != "ollama":
-        raise DreamLLMError(_missing_api_key_message(routing.provider))
+    effective = await resolve_effective_llm_config()
+    if effective.source == "db":
+        provider = cast(ProviderLiteral, effective.dispatch_provider)
+        api_key = (
+            effective.api_key.get_secret_value()
+            if effective.api_key is not None
+            else ""
+        )
+        base_url = effective.base_url
+    else:
+        routing = routing_kwargs_for_chat_transport()
+        provider = routing.provider
+        api_key = routing.api_key
+        base_url = routing.base_url
+    if not api_key and provider != "ollama":
+        raise DreamLLMError(_missing_api_key_message(provider))
 
-    request_timeout_s, max_retries = resolve_request_policy()
     try:
         response = await call_provider(
-            provider=routing.provider,
+            provider=provider,
             model=model,
-            api_key=routing.api_key,
+            api_key=api_key,
             messages=messages,
             max_tokens=max_output_tokens,
             temperature=temperature,
             force_json_output=True,
-            base_url=routing.base_url,
-            timeout_seconds=request_timeout_s,
-            max_retries=max_retries,
+            base_url=base_url,
+            timeout_seconds=effective.request_timeout_s,
+            max_retries=effective.max_retries,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
             # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``
             # for local installs (e.g. ``http://localhost:11434/v1``);
             # strip the OpenAI-compat ``/v1`` suffix because
             # ``ollama.AsyncClient`` wants the raw host:port.
-            ollama_host=_normalize_ollama_host(routing.base_url),
+            ollama_host=_normalize_ollama_host(base_url),
         )
     except DreamLLMError:
         raise

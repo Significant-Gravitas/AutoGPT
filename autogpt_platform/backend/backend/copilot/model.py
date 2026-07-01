@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -29,10 +30,7 @@ from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
-from .config import ChatConfig
-
 logger = logging.getLogger(__name__)
-config = ChatConfig()
 
 
 # Redis cache key prefix for chat sessions
@@ -549,7 +547,11 @@ async def cache_chat_session(session: ChatSession) -> None:
     """Cache a chat session in Redis (without persisting to the database)."""
     redis_key = _get_session_cache_key(session.session_id)
     async_redis = await get_redis_async()
-    await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
+    await async_redis.setex(
+        redis_key,
+        int(os.getenv("CHAT_SESSION_TTL", "43200")),
+        session.model_dump_json(),
+    )
 
 
 async def invalidate_session_cache(session_id: str) -> None:

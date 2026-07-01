@@ -45,6 +45,23 @@ The optional model-role overrides are `CHAT_FAST_STANDARD_MODEL`,
 general default. `CHAT_REQUEST_TIMEOUT_S` is a per-attempt timeout and
 `CHAT_MAX_RETRIES` bounds transient retries with logged backoff.
 
+## Persisted admin settings
+
+The backend admin API can persist one platform-wide LLM configuration at
+`/api/admin/llm/settings`. When its `enabled` flag is true, persisted values
+override chat environment variables; disabling or deleting no row leaves the
+existing environment configuration unchanged. API keys are encrypted with the
+backend `ENCRYPTION_KEY` and are returned only as masked availability state.
+
+`CHAT_LOCAL_REQUEST_TIMEOUT_S` is validated as at least 60 seconds only when
+the selected provider is `local`. Cloud providers continue to use
+`CHAT_REQUEST_TIMEOUT_S`, whose supported range is 5–300 seconds.
+
+The provider registry marks direct DeepSeek pricing as unknown because this
+repository has no authoritative rate card for `deepseek-v4-flash` or
+`deepseek-v4-pro`. Token usage is still recorded; cost remains unknown unless
+the provider response supplies it.
+
 > **Important**: This page covers the **AutoPilot chat path** — the
 > conversational agent on `/copilot`. For the *block-layer* AI Text
 > Generator block (used inside agent graphs you build yourself), see

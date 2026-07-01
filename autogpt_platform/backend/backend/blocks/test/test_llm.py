@@ -1466,8 +1466,12 @@ class TestLLMRequestTimeout:
     @pytest.mark.asyncio
     async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
         """A hanging provider call must not park the caller indefinitely."""
+
         # Force a tiny timeout so the test runs quickly.
-        monkeypatch.setattr(llm, "resolve_request_policy", lambda: (0.2, 0))
+        async def request_policy():
+            return 0.2, 0
+
+        monkeypatch.setattr(llm, "resolve_effective_request_policy", request_policy)
 
         async def hang_forever(*args, **kwargs):
             await asyncio.sleep(60)
@@ -1521,7 +1525,11 @@ class TestLLMRequestTimeout:
         self, monkeypatch
     ):
         """A timeout uses transport retries, not the block validation retry."""
-        monkeypatch.setattr(llm, "resolve_request_policy", lambda: (0.05, 1))
+
+        async def request_policy():
+            return 0.05, 1
+
+        monkeypatch.setattr(llm, "resolve_effective_request_policy", request_policy)
 
         call_count = {"n": 0}
 

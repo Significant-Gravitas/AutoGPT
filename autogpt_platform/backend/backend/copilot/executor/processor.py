@@ -14,7 +14,8 @@ import time
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.config import ChatConfig, CopilotMode
+from backend.copilot.config import CopilotMode
+from backend.copilot.service import refresh_runtime_llm_config
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -501,13 +502,14 @@ class CoPilotProcessor:
         try:
             # Choose service based on LaunchDarkly flag.
             # Claude Code subscription forces SDK mode (CLI subprocess auth).
-            config = ChatConfig()
+            config = await refresh_runtime_llm_config()
 
             if config.test_mode:
                 stream_fn = stream_chat_completion_dummy
                 log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
                 effective_mode = None
             else:
+                sdk_service.configure_runtime_chat_config(config)
                 # Enforce server-side feature-flag gate so unauthorised
                 # users cannot force a mode by crafting the request.
                 effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)

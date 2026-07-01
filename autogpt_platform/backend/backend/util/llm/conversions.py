@@ -129,10 +129,10 @@ def extract_openai_reasoning(response: Any) -> str | None:
         return str(getattr(choice, "reasoning"))
     if hasattr(response, "reasoning") and getattr(response, "reasoning", None):
         return str(getattr(response, "reasoning"))
-    if hasattr(choice.message, "reasoning") and getattr(
-        choice.message, "reasoning", None
-    ):
-        return str(getattr(choice.message, "reasoning"))
+    for attribute in ("reasoning", "reasoning_content"):
+        value = getattr(choice.message, attribute, None)
+        if value:
+            return str(value)
     return None
 
 

@@ -178,8 +178,8 @@ def _is_retryable_error(exc: Exception) -> bool:
 def _validate_request_policy(timeout_seconds: float, max_retries: int) -> None:
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be greater than zero")
-    if not 0 <= max_retries <= 10:
-        raise ValueError("max_retries must be between 0 and 10")
+    if not 0 <= max_retries <= 5:
+        raise ValueError("max_retries must be between 0 and 5")
 
 
 # Anthropic deprecated ``temperature`` on its newest model generation —

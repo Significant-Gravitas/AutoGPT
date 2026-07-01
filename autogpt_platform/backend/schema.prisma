@@ -996,6 +996,29 @@ model PlatformCostLog {
   @@index([provider, trackingType])
 }
 
+model LlmProviderSettings {
+  id String @id @default("default")
+
+  enabled                       Boolean  @default(false)
+  provider                      String
+  useLocal                      Boolean  @default(false)
+  baseUrl                       String?
+  encryptedApiKey               String?
+  model                         String
+  titleModel                    String
+  fastStandardModel             String
+  fastAdvancedModel             String
+  thinkingStandardModel         String
+  thinkingAdvancedModel         String
+  claudeAgentFallbackModel      String
+  requestTimeoutS               Float    @default(20)
+  maxRetries                    Int      @default(1)
+  localRequestTimeoutS          Float    @default(1800)
+  storeEmbeddingModel           String   @default("text-embedding-3-small")
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+}
+
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 //////////////   Store TABLES    ///////////////////////////

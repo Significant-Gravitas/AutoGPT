@@ -629,7 +629,7 @@ class ChatConfig(BaseSettings):
     )
     local_request_timeout_s: float = Field(
         default=1800.0,
-        ge=60.0,
+        gt=0,
         description="HTTP request timeout (seconds) for the OpenAI-compatible "
         "client when ``use_local`` is True. The OpenAI Python client defaults "
         "to 600 s — tighter than what an 8 B model running on a CPU-only host "
@@ -642,13 +642,14 @@ class ChatConfig(BaseSettings):
     )
     request_timeout_s: float = Field(
         default=DEFAULT_REQUEST_TIMEOUT_SECONDS,
-        gt=0,
+        ge=5,
+        le=300,
         description="Per-attempt timeout for chat and OpenAI-compatible LLM requests.",
     )
     max_retries: int = Field(
         default=DEFAULT_MAX_RETRIES,
         ge=0,
-        le=10,
+        le=5,
         description="Maximum retries for transient LLM transport errors.",
     )
     use_local: bool = Field(
@@ -1086,6 +1087,7 @@ class ChatConfig(BaseSettings):
         if (
             self.provider is None
             and not self.use_local
+            and not self.use_claude_code_subscription
             and not legacy_direct_anthropic
             and "base_url" in self.model_fields_set
         ):
@@ -1117,6 +1119,10 @@ class ChatConfig(BaseSettings):
         """
         if self.transport.name != "local":
             return self
+        if self.local_request_timeout_s < 60:
+            raise ValueError(
+                "CHAT_LOCAL_REQUEST_TIMEOUT_S must be at least 60 when local mode is enabled"
+            )
         if not self.base_url or self.base_url.rstrip("/") == OPENROUTER_BASE_URL.rstrip(
             "/"
         ):

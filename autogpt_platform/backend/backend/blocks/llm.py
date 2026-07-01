@@ -41,8 +41,8 @@ from backend.util import json
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
 from backend.util.llm.config import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
-    resolve_request_policy,
 )
+from backend.util.llm.runtime_config import resolve_effective_request_policy
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
@@ -952,7 +952,7 @@ async def _llm_call(
     # shape (caller), ``NodeExecutionStats`` (caller).
     from backend.util.llm.providers import ProviderResponse, call_provider
 
-    request_timeout_s, max_retries = resolve_request_policy()
+    request_timeout_s, max_retries = await resolve_effective_request_policy()
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,

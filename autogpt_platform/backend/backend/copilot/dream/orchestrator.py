@@ -22,6 +22,7 @@ import uuid as uuidlib
 from datetime import datetime, timezone
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.runtime_config import resolve_runtime_chat_config
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations
@@ -272,7 +273,8 @@ async def _execute_dream_pass_async(
     config: ChatConfig | None = None,
     status_id: str | None = None,
 ) -> DreamPassResult:
-    config = config or ChatConfig()
+    if config is None:
+        config, _ = await resolve_runtime_chat_config()
     pass_id = str(uuidlib.uuid4())
     started_at = datetime.now(timezone.utc)
     monotonic_start = asyncio.get_event_loop().time()

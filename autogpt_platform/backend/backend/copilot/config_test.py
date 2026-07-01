@@ -22,6 +22,7 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_PROVIDER",
     "CHAT_REQUEST_TIMEOUT_S",
     "CHAT_MAX_RETRIES",
+    "CHAT_LOCAL_REQUEST_TIMEOUT_S",
     "CHAT_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -112,6 +113,31 @@ class TestProviderConfig:
 
         assert cfg.effective_request_timeout_s == 12.5
         assert cfg.max_retries == 2
+
+    def test_short_local_timeout_is_ignored_for_non_local_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_PROVIDER", "deepseek")
+        monkeypatch.setenv("CHAT_API_KEY", "deepseek-key")
+        monkeypatch.setenv("CHAT_LOCAL_REQUEST_TIMEOUT_S", "20")
+
+        cfg = ChatConfig()
+
+        assert cfg.effective_transport == "deepseek"
+        assert cfg.local_request_timeout_s == 20
+        assert cfg.effective_request_timeout_s == 20
+
+    def test_short_local_timeout_is_rejected_for_local_provider(self) -> None:
+        with pytest.raises(Exception, match="must be at least 60"):
+            ChatConfig(
+                provider="local",
+                use_local=True,
+                api_key="ollama",
+                base_url="http://localhost:11434/v1",
+                fast_standard_model="qwen3:8b",
+                thinking_standard_model="qwen3:8b",
+                local_request_timeout_s=20,
+            )
 
 
 class TestOpenrouterActive:

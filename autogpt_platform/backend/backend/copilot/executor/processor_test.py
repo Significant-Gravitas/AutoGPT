@@ -278,8 +278,13 @@ class TestExecuteAsyncAclose:
         touches so the aclose path is the only behaviour under test."""
         return [
             patch(
-                "backend.copilot.executor.processor.ChatConfig",
-                return_value=MagicMock(test_mode=True, use_claude_agent_sdk=True),
+                "backend.copilot.executor.processor.refresh_runtime_llm_config",
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        test_mode=True,
+                        use_claude_agent_sdk=True,
+                    )
+                ),
             ),
             patch(
                 "backend.copilot.executor.processor.stream_chat_completion_dummy",
@@ -480,9 +485,12 @@ class TestExecuteSafetyNet:
         mock_mark = AsyncMock()
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(proc, "_execute"), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=mock_mark,
+        with (
+            patch.object(proc, "_execute"),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=mock_mark,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 
@@ -497,13 +505,16 @@ class TestExecuteSafetyNet:
         mock_mark = AsyncMock()
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(
-            proc,
-            "_execute",
-            side_effect=concurrent.futures.TimeoutError("grace expired"),
-        ), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=mock_mark,
+        with (
+            patch.object(
+                proc,
+                "_execute",
+                side_effect=concurrent.futures.TimeoutError("grace expired"),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=mock_mark,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 
@@ -529,17 +540,20 @@ class TestExecuteSafetyNet:
 
         proc = CoPilotProcessor()
         self._attach_exec_loop(proc, exec_loop)
-        with patch.object(proc, "_execute", side_effect=_broken_execute), patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=_ok,
+        with (
+            patch.object(proc, "_execute", side_effect=_broken_execute),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=_ok,
+            ),
         ):
             self._run_execute_in_thread(proc, threading.Event())
 
         # The sync safety net must have fired despite the async path
         # blowing up — this is the core guarantee of the PR.
-        assert call_log == [
-            "sync-ok"
-        ], f"expected sync_fail_close_session to run once, got {call_log!r}"
+        assert call_log == ["sync-ok"], (
+            f"expected sync_fail_close_session to run once, got {call_log!r}"
+        )
 
     def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
         """A cancel request must not let ``_execute`` return while the

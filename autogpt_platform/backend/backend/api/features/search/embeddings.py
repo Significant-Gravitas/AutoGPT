@@ -14,6 +14,7 @@ Feature-specific wrappers live next to the feature they belong to:
 import asyncio
 import logging
 import time
+from functools import lru_cache
 from typing import Any
 
 import prisma
@@ -25,6 +26,7 @@ from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_embedding_client
 from backend.util.json import dumps
 from backend.util.llm.embedding_config import resolve_embedding_config
+from backend.util.llm.runtime_config import resolve_effective_embedding_model
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -110,12 +112,14 @@ def build_searchable_text(
 # back to ``cl100k_base`` (the OpenAI ada/embedding-3 tokenizer) when
 # the configured model name is unknown to tiktoken — e.g. Ollama tags
 # like ``nomic-embed-text``.
-try:
-    _ENCODER = encoding_for_model(EMBEDDING_MODEL)
-except KeyError:
-    from tiktoken import get_encoding
+@lru_cache(maxsize=8)
+def _encoder_for_model(model: str):
+    try:
+        return encoding_for_model(model)
+    except KeyError:
+        from tiktoken import get_encoding
 
-    _ENCODER = get_encoding("cl100k_base")
+        return get_encoding("cl100k_base")
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -135,13 +139,16 @@ async def generate_embedding(text: str) -> list[float]:
             "Chat provider credentials are intentionally not used."
         )
 
+    embedding_model = await resolve_effective_embedding_model()
+    encoder = _encoder_for_model(embedding_model)
+
     # Truncate text to token limit using tiktoken
     # Character-based truncation is insufficient because token ratios vary by content type
-    tokens = _ENCODER.encode(text)
+    tokens = encoder.encode(text)
     original_token_count = len(tokens)
     if original_token_count > EMBEDDING_MAX_TOKENS:
         tokens = tokens[:EMBEDDING_MAX_TOKENS]
-        truncated_text = _ENCODER.decode(tokens)
+        truncated_text = encoder.decode(tokens)
         logger.info(
             f"Truncated text from {original_token_count} to {len(tokens)} tokens"
         )
@@ -150,15 +157,15 @@ async def generate_embedding(text: str) -> list[float]:
 
     start_time = time.time()
     response = await client.embeddings.create(
-        model=EMBEDDING_MODEL,
+        model=embedding_model,
         input=truncated_text,
     )
     latency_ms = (time.time() - start_time) * 1000
 
     embedding = response.data[0].embedding
     logger.info(
-        f"Generated embedding: {len(embedding)} dims, "
-        f"{len(tokens)} tokens, {latency_ms:.0f}ms"
+        f"Generated embedding with OpenAI model {embedding_model}: "
+        f"{len(embedding)} dims, {len(tokens)} tokens, {latency_ms:.0f}ms"
     )
     return embedding
 

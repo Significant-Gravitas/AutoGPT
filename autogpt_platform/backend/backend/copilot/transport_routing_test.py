@@ -22,12 +22,22 @@ from backend.copilot.transport_routing import (
 # ``*_API_KEY`` env vars in the developer or CI environment would flip
 # transport resolution and break these tests deterministically.
 _ENV_VARS_TO_CLEAR = (
+    "CHAT_PROVIDER",
     "CHAT_USE_OPENROUTER",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_USE_LOCAL",
     "CHAT_API_KEY",
     "CHAT_BASE_URL",
     "CHAT_DIRECT_ANTHROPIC_API_KEY",
+    "CHAT_MODEL",
+    "CHAT_FAST_STANDARD_MODEL",
+    "CHAT_FAST_MODEL",
+    "CHAT_FAST_ADVANCED_MODEL",
+    "CHAT_THINKING_STANDARD_MODEL",
+    "CHAT_THINKING_ADVANCED_MODEL",
+    "CHAT_ADVANCED_MODEL",
+    "CHAT_TITLE_MODEL",
+    "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",

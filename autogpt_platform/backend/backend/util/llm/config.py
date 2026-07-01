@@ -32,6 +32,8 @@ ProviderDispatch = Literal[
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 20.0
 DEFAULT_MAX_RETRIES = 1
+DEFAULT_LOCAL_REQUEST_TIMEOUT_SECONDS = 1800.0
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 class LLMProviderProfile(BaseModel):
@@ -50,6 +52,7 @@ class LLMProviderProfile(BaseModel):
     supports_streaming: bool = True
     supports_tool_calling: bool = True
     supports_agent_sdk: bool = False
+    pricing_status: Literal["known", "unknown", "provider_reported"] = "unknown"
 
 
 class ResolvedLLMConfig(BaseModel):
@@ -67,8 +70,12 @@ class ResolvedLLMConfig(BaseModel):
     thinking_advanced_model: str
     title_model: str
     fallback_model: str
-    request_timeout_s: float = Field(gt=0)
-    max_retries: int = Field(ge=0, le=10)
+    request_timeout_s: float = Field(ge=5, le=300)
+    max_retries: int = Field(ge=0, le=5)
+    use_local: bool = False
+    local_request_timeout_s: float = Field(gt=0)
+    embedding_provider: str = "openai"
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     supports_streaming: bool
     supports_tool_calling: bool
     supports_agent_sdk: bool
@@ -90,6 +97,7 @@ _PROVIDER_PROFILES: dict[ChatProvider, LLMProviderProfile] = {
         title_model="deepseek-v4-flash",
         fallback_model="deepseek-v4-pro",
         openai_compatible=True,
+        pricing_status="unknown",
     ),
     "openai": LLMProviderProfile(
         provider="openai",
@@ -102,6 +110,7 @@ _PROVIDER_PROFILES: dict[ChatProvider, LLMProviderProfile] = {
         title_model="gpt-4o-mini",
         fallback_model="gpt-4o-mini",
         openai_compatible=True,
+        pricing_status="known",
     ),
     "openrouter": LLMProviderProfile(
         provider="openrouter",
@@ -115,6 +124,7 @@ _PROVIDER_PROFILES: dict[ChatProvider, LLMProviderProfile] = {
         fallback_model="",
         openai_compatible=True,
         supports_agent_sdk=True,
+        pricing_status="provider_reported",
     ),
     "anthropic": LLMProviderProfile(
         provider="anthropic",
@@ -128,6 +138,7 @@ _PROVIDER_PROFILES: dict[ChatProvider, LLMProviderProfile] = {
         fallback_model="",
         openai_compatible=False,
         supports_agent_sdk=True,
+        pricing_status="known",
     ),
     "local": LLMProviderProfile(
         provider="local",
@@ -159,8 +170,12 @@ _PROVIDER_PROFILES: dict[ChatProvider, LLMProviderProfile] = {
 
 
 def get_provider_profile(provider: str) -> LLMProviderProfile:
-    normalized = _normalize_provider(provider)
+    normalized = normalize_chat_provider(provider)
     return _PROVIDER_PROFILES[normalized]
+
+
+def list_provider_profiles() -> list[LLMProviderProfile]:
+    return list(_PROVIDER_PROFILES.values())
 
 
 def infer_chat_provider(
@@ -197,7 +212,7 @@ def resolve_chat_config(
     use_local = _parse_bool(env.get("CHAT_USE_LOCAL"), default=False)
     use_openrouter = _parse_optional_bool(env.get("CHAT_USE_OPENROUTER"))
     provider = (
-        _normalize_provider(explicit_provider)
+        normalize_chat_provider(explicit_provider)
         if explicit_provider
         else infer_chat_provider(
             base_url_override,
@@ -236,6 +251,38 @@ def resolve_chat_config(
             f"CHAT_MODEL or CHAT_FAST_STANDARD_MODEL is required for provider={provider!r}"
         )
 
+    local_request_timeout_s = _parse_positive_float(
+        env.get("CHAT_LOCAL_REQUEST_TIMEOUT_S"),
+        DEFAULT_LOCAL_REQUEST_TIMEOUT_SECONDS,
+        name="CHAT_LOCAL_REQUEST_TIMEOUT_S",
+    )
+    use_local = provider == "local" or (not explicit_provider and use_local)
+    validate_llm_provider_config(
+        provider=provider,
+        base_url=base_url,
+        models=(
+            model,
+            fast_standard or model,
+            fast_advanced or model,
+            thinking_standard or model,
+            thinking_advanced or model,
+            title_model or model,
+            fallback_model,
+        ),
+        request_timeout_s=_parse_bounded_float(
+            env.get("CHAT_REQUEST_TIMEOUT_S"),
+            DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            name="CHAT_REQUEST_TIMEOUT_S",
+            minimum=5,
+            maximum=300,
+        ),
+        max_retries=_parse_retry_count(
+            env.get("CHAT_MAX_RETRIES"), DEFAULT_MAX_RETRIES
+        ),
+        use_local=use_local,
+        local_request_timeout_s=local_request_timeout_s,
+    )
+
     return ResolvedLLMConfig(
         provider=provider,
         dispatch_provider=profile.dispatch_provider,
@@ -249,8 +296,12 @@ def resolve_chat_config(
         thinking_advanced_model=thinking_advanced or model,
         title_model=title_model or model,
         fallback_model=fallback_model,
-        request_timeout_s=_parse_positive_float(
-            env.get("CHAT_REQUEST_TIMEOUT_S"), DEFAULT_REQUEST_TIMEOUT_SECONDS
+        request_timeout_s=_parse_bounded_float(
+            env.get("CHAT_REQUEST_TIMEOUT_S"),
+            DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            name="CHAT_REQUEST_TIMEOUT_S",
+            minimum=5,
+            maximum=300,
         ),
         max_retries=_parse_retry_count(
             env.get("CHAT_MAX_RETRIES"), DEFAULT_MAX_RETRIES
@@ -258,6 +309,11 @@ def resolve_chat_config(
         supports_streaming=profile.supports_streaming,
         supports_tool_calling=profile.supports_tool_calling,
         supports_agent_sdk=profile.supports_agent_sdk,
+        use_local=use_local,
+        local_request_timeout_s=local_request_timeout_s,
+        embedding_model=(
+            env.get("STORE_EMBEDDING_MODEL", "").strip() or DEFAULT_EMBEDDING_MODEL
+        ),
     )
 
 
@@ -295,6 +351,8 @@ def resolve_llm_request_config(
         supports_streaming=profile.supports_streaming,
         supports_tool_calling=profile.supports_tool_calling,
         supports_agent_sdk=profile.supports_agent_sdk,
+        use_local=profile.provider == "local",
+        local_request_timeout_s=DEFAULT_LOCAL_REQUEST_TIMEOUT_SECONDS,
     )
 
 
@@ -303,14 +361,18 @@ def resolve_request_policy(
 ) -> tuple[float, int]:
     env = environment if environment is not None else os.environ
     return (
-        _parse_positive_float(
-            env.get("CHAT_REQUEST_TIMEOUT_S"), DEFAULT_REQUEST_TIMEOUT_SECONDS
+        _parse_bounded_float(
+            env.get("CHAT_REQUEST_TIMEOUT_S"),
+            DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            name="CHAT_REQUEST_TIMEOUT_S",
+            minimum=5,
+            maximum=300,
         ),
         _parse_retry_count(env.get("CHAT_MAX_RETRIES"), DEFAULT_MAX_RETRIES),
     )
 
 
-def _normalize_provider(provider: str) -> ChatProvider:
+def normalize_chat_provider(provider: str) -> ChatProvider:
     normalized = provider.strip().lower().replace("-", "_")
     aliases = {"open_router": "openrouter"}
     normalized = aliases.get(normalized, normalized)
@@ -362,15 +424,60 @@ def _parse_optional_bool(value: str | None) -> bool | None:
     raise ValueError(f"Invalid boolean value: {value!r}")
 
 
-def _parse_positive_float(value: str | None, default: float) -> float:
+def _parse_positive_float(value: str | None, default: float, *, name: str) -> float:
     parsed = float(value) if value and value.strip() else default
     if parsed <= 0:
-        raise ValueError("CHAT_REQUEST_TIMEOUT_S must be greater than zero")
+        raise ValueError(f"{name} must be greater than zero")
+    return parsed
+
+
+def _parse_bounded_float(
+    value: str | None,
+    default: float,
+    *,
+    name: str,
+    minimum: float,
+    maximum: float,
+) -> float:
+    parsed = float(value) if value and value.strip() else default
+    if not minimum <= parsed <= maximum:
+        raise ValueError(f"{name} must be between {minimum:g} and {maximum:g}")
     return parsed
 
 
 def _parse_retry_count(value: str | None, default: int) -> int:
     parsed = int(value) if value and value.strip() else default
-    if not 0 <= parsed <= 10:
-        raise ValueError("CHAT_MAX_RETRIES must be between 0 and 10")
+    if not 0 <= parsed <= 5:
+        raise ValueError("CHAT_MAX_RETRIES must be between 0 and 5")
     return parsed
+
+
+def validate_llm_provider_config(
+    *,
+    provider: ChatProvider,
+    base_url: str,
+    models: tuple[str, ...],
+    request_timeout_s: float,
+    max_retries: int,
+    use_local: bool,
+    local_request_timeout_s: float,
+) -> None:
+    parsed_url = urlparse(base_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+        raise ValueError("base_url must be an absolute HTTP(S) URL")
+    if not 5 <= request_timeout_s <= 300:
+        raise ValueError("request_timeout_s must be between 5 and 300")
+    if not 0 <= max_retries <= 5:
+        raise ValueError("max_retries must be between 0 and 5")
+    if (provider == "local" or use_local) and local_request_timeout_s < 60:
+        raise ValueError(
+            "local_request_timeout_s must be at least 60 when local mode is enabled"
+        )
+    if use_local and provider != "local":
+        raise ValueError("use_local=true requires provider='local'")
+    if provider == "deepseek":
+        prefixed = [model for model in models if model and "/" in model]
+        if prefixed:
+            raise ValueError(
+                "Direct DeepSeek uses bare model IDs, not provider-prefixed IDs"
+            )

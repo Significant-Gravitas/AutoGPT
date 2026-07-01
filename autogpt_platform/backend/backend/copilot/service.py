@@ -30,6 +30,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLlmModel
+from .runtime_config import apply_runtime_chat_config, resolve_runtime_chat_config
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -68,6 +69,26 @@ def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
 _main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
+
+
+async def refresh_runtime_llm_config() -> ChatConfig:
+    global _main_client, _aux_client
+    resolved, effective = await resolve_runtime_chat_config(base=config)
+    if apply_runtime_chat_config(config, resolved):
+        _main_client = None
+        _aux_client = None
+        logger.info(
+            "CoPilot LLM clients refreshed from runtime settings",
+            extra={
+                "json_fields": {
+                    "provider": effective.provider,
+                    "model": effective.fast_standard_model,
+                    "config_source": effective.source,
+                    "base_url_host": effective.base_url_host,
+                }
+            },
+        )
+    return config
 
 
 def _get_main_client() -> LangfuseAsyncOpenAI:
