@@ -8,6 +8,7 @@ combining the storage backend and database layer.
 import asyncio
 import logging
 import mimetypes
+import os
 import uuid
 from typing import Optional
 
@@ -164,6 +165,41 @@ class WorkspaceManager:
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
+
+    async def attach_file_to_session(self, file_id: str) -> Optional[WorkspaceFile]:
+        """Re-home an existing file into this manager's session folder.
+
+        Session-scoped readers (the copilot executor) only see files under
+        ``/sessions/{session_id}/``. Bot uploads arrive session-less because
+        the session isn't resolved until the turn starts, so the turn calls
+        this to move each attached file into the session — the same place a
+        web upload writes it, so AutoPilot reads it identically. Storage is
+        untouched (only the virtual path changes).
+
+        No-op (returns the file unchanged) when the manager has no session or
+        the file is already under it. Picks a collision-free name because
+        ``path`` is unique per workspace.
+        """
+        if not self.session_id:
+            return None
+
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is None:
+            return None
+        if file.path.startswith(f"{self.session_path}/"):
+            return file
+
+        stem, ext = os.path.splitext(file.name)
+        candidate = f"{self.session_path}/{file.name}"
+        idx = 1
+        while await db.get_workspace_file_by_path(self.workspace_id, candidate):
+            candidate = f"{self.session_path}/{stem}_{idx}{ext}"
+            idx += 1
+
+        return await db.relink_workspace_file_path(
+            file_id, self.workspace_id, candidate
+        )
 
     async def write_file(
         self,

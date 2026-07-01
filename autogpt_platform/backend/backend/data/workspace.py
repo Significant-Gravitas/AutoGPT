@@ -404,6 +404,36 @@ async def soft_delete_workspace_file(
     return WorkspaceFile.from_db(updated) if updated else None
 
 
+async def relink_workspace_file_path(
+    file_id: str,
+    workspace_id: str,
+    new_path: str,
+) -> Optional[WorkspaceFile]:
+    """Update a file's virtual path, leaving its storage untouched.
+
+    Used to re-home an existing file (e.g. move a session-less upload into a
+    session folder). The caller must ensure ``new_path`` is free — ``path`` is
+    unique per workspace (``@@unique([workspaceId, path])``).
+
+    Args:
+        file_id: The file ID.
+        workspace_id: Workspace ID for scoping (required).
+        new_path: The new virtual path.
+
+    Returns:
+        Updated WorkspaceFile instance, or None if not found.
+    """
+    file = await get_workspace_file(file_id, workspace_id)
+    if file is None:
+        return None
+
+    updated = await UserWorkspaceFile.prisma().update(
+        where={"id": file_id},
+        data={"path": new_path},
+    )
+    return WorkspaceFile.from_db(updated) if updated else None
+
+
 async def resolve_workspace_files(
     user_id: str,
     file_ids: list[str],

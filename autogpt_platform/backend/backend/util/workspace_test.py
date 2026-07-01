@@ -290,3 +290,67 @@ async def test_write_file_storage_check_routes_through_workspace_db_accessor(
         await manager.write_file(filename="test.txt", content=b"hello")
 
     mock_db.get_workspace_total_size.assert_awaited_once_with("ws-123")
+
+
+def _stored_file(name: str, path: str) -> MagicMock:
+    # `name` is a reserved MagicMock kwarg, so set it explicitly.
+    f = MagicMock()
+    f.name = name
+    f.path = path
+    return f
+
+
+@pytest.mark.asyncio
+async def test_attach_file_to_session_noop_without_session(mock_db):
+    mgr = WorkspaceManager(user_id="u", workspace_id="ws")
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        result = await mgr.attach_file_to_session("f1")
+
+    assert result is None
+    mock_db.get_workspace_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_attach_file_to_session_rehomes_to_session_path(mock_db):
+    mgr = WorkspaceManager(user_id="u", workspace_id="ws", session_id="sess-1")
+    mock_db.get_workspace_file = AsyncMock(
+        return_value=_stored_file("test.txt", "/uploads/abc/test.txt")
+    )
+    mock_db.get_workspace_file_by_path = AsyncMock(return_value=None)  # no collision
+    mock_db.relink_workspace_file_path = AsyncMock()
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        await mgr.attach_file_to_session("f1")
+
+    mock_db.relink_workspace_file_path.assert_awaited_once_with(
+        "f1", "ws", "/sessions/sess-1/test.txt"
+    )
+
+
+@pytest.mark.asyncio
+async def test_attach_file_to_session_noop_when_already_scoped(mock_db):
+    already = _stored_file("test.txt", "/sessions/sess-1/test.txt")
+    mgr = WorkspaceManager(user_id="u", workspace_id="ws", session_id="sess-1")
+    mock_db.get_workspace_file = AsyncMock(return_value=already)
+    mock_db.relink_workspace_file_path = AsyncMock()
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        result = await mgr.attach_file_to_session("f1")
+
+    assert result is already
+    mock_db.relink_workspace_file_path.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_attach_file_to_session_suffixes_on_collision(mock_db):
+    mgr = WorkspaceManager(user_id="u", workspace_id="ws", session_id="sess-1")
+    mock_db.get_workspace_file = AsyncMock(
+        return_value=_stored_file("test.txt", "/uploads/abc/test.txt")
+    )
+    # First candidate is taken, second is free.
+    mock_db.get_workspace_file_by_path = AsyncMock(side_effect=[MagicMock(), None])
+    mock_db.relink_workspace_file_path = AsyncMock()
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        await mgr.attach_file_to_session("f1")
+
+    mock_db.relink_workspace_file_path.assert_awaited_once_with(
+        "f1", "ws", "/sessions/sess-1/test_1.txt"
+    )

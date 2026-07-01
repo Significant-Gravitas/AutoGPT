@@ -113,6 +113,52 @@ class TestStartChatTurn:
         mock_enqueue.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_attached_files_are_rehomed_into_the_session(self):
+        # Bot uploads arrive session-less; the turn must re-home each attached
+        # file into the resolved session so AutoPilot reads it like a web
+        # upload. Without this the file stays at uploads/<uuid>/ and the model
+        # can't find it under /sessions/<id>/.
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        session = MagicMock(session_id="sess-new")
+        ws_manager = MagicMock()
+        ws_manager.attach_file_to_session = AsyncMock()
+        ws_db = MagicMock()
+        ws_db.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.platform_linking.chat.stream_registry") as mock_streams,
+            patch(
+                "backend.platform_linking.chat.enqueue_copilot_turn", new=AsyncMock()
+            ),
+            patch("backend.platform_linking.chat.workspace_db", return_value=ws_db),
+            patch(
+                "backend.platform_linking.chat.WorkspaceManager",
+                return_value=ws_manager,
+            ) as mock_wm,
+        ):
+            mock_streams.create_session = AsyncMock()
+            await start_chat_turn(_request(file_ids=["f1", "f2"]))
+
+        # Session-scoped manager, and every attachment re-homed into it.
+        mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-new")
+        assert ws_manager.attach_file_to_session.await_count == 2
+        ws_manager.attach_file_to_session.assert_any_await("f1")
+        ws_manager.attach_file_to_session.assert_any_await("f2")
+
+    @pytest.mark.asyncio
     async def test_stale_session_id_falls_back_to_fresh_session(self):
         # The bot caches session IDs across turns; a cached session can be
         # deleted from the web app in between. start_chat_turn must recover

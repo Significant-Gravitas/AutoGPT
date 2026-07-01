@@ -142,6 +142,21 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         )
     session_id = session.session_id
 
+    # Bot uploads land session-less (the session isn't resolved until here),
+    # so re-home each attachment into the session folder now — the same place
+    # a web upload writes it, so AutoPilot reads it identically. Best-effort:
+    # a re-home failure shouldn't sink the turn.
+    if request.file_ids:
+        workspace = await workspace_db().get_or_create_workspace(owner_user_id)
+        manager = WorkspaceManager(owner_user_id, workspace.id, session_id)
+        for fid in request.file_ids:
+            try:
+                await manager.attach_file_to_session(fid)
+            except Exception:
+                logger.exception(
+                    "Failed to attach file %s to session %s", fid[:12], session_id
+                )
+
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
     is_duplicate = (

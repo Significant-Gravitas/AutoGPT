@@ -141,6 +141,7 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     get_workspace_total_size,
     list_workspace_files,
+    relink_workspace_file_path,
     soft_delete_workspace_file,
 )
 from backend.platform_linking import db as platform_linking_db
@@ -369,6 +370,7 @@ class DatabaseManager(AppService):
     get_workspace_file_by_path = _(get_workspace_file_by_path)
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
+    relink_workspace_file_path = _(relink_workspace_file_path)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
 
     # ============ Understanding ============ #
@@ -637,6 +639,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_workspace_file_by_path = d.get_workspace_file_by_path
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
+    relink_workspace_file_path = d.relink_workspace_file_path
     soft_delete_workspace_file = d.soft_delete_workspace_file
 
     # ============ Credits ============ #
