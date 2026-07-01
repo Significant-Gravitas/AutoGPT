@@ -42,7 +42,7 @@ Before proceeding with the installation, ensure your system meets the following 
   - Docker Engine (20.10.0 or newer)
   - Docker Compose (2.0.0 or newer)
   - Git (2.30 or newer)
-  - Node.js (16.x or newer)
+  - Node.js (22.x)
   - npm (8.x or newer)
   - VSCode (1.60 or newer) or any modern code editor
 
