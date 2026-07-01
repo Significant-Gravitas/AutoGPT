@@ -6,7 +6,7 @@ Handles conversion between user timezones and UTC for scheduler operations.
 import logging
 from datetime import datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
@@ -70,11 +70,15 @@ def convert_cron_to_utc(cron_expr: str, user_timezone: str) -> str:
         )
         return utc_cron
 
-    except Exception as e:
+    except KeyError as e:
+        raise ValueError(
+            f"Invalid cron expression '{cron_expr}': missing field {e}"
+        ) from e
+    except (ValueError, TypeError) as e:
         logger.error(
             f"Failed to convert cron expression '{cron_expr}' from {user_timezone} to UTC: {e}"
         )
-        raise ValueError(f"Invalid cron expression or timezone: {e}")
+        raise ValueError(f"Invalid cron expression or timezone: {e}") from e
 
 
 def convert_utc_time_to_user_timezone(utc_time_str: str, user_timezone: str) -> str:
@@ -105,7 +109,7 @@ def convert_utc_time_to_user_timezone(utc_time_str: str, user_timezone: str) -> 
         user_time = parsed_time.astimezone(user_tz)
         return user_time.isoformat()
 
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.error(
             f"Failed to convert UTC time '{utc_time_str}' to {user_timezone}: {e}"
         )
@@ -126,7 +130,7 @@ def validate_timezone(timezone: str) -> bool:
     try:
         ZoneInfo(timezone)
         return True
-    except Exception:
+    except (KeyError, ValueError, ZoneInfoNotFoundError):
         return False
 
 
