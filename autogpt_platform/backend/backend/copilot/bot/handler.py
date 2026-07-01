@@ -63,14 +63,29 @@ class TargetState:
     # Workspace file IDs uploaded for messages in `pending`, drained together
     # with them so a batched turn carries every attached file.
     pending_file_ids: list[str] = field(default_factory=list)
+    # Session the pending attachments were uploaded to, carried straight to the
+    # turn so it uses the same session (not a separate Redis read that could
+    # diverge). None for text-only batches, which resolve the session normally.
+    session_id: str | None = None
 
 
 class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
+        # Per-target lock serialising session resolution, so two attachment
+        # messages racing on a fresh target converge on ONE session instead of
+        # each creating its own and splitting the files across them.
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # Strong-ref set so the GC doesn't drop fire-and-forget rename tasks.
         self._rename_tasks: set[asyncio.Task[None]] = set()
+
+    def _session_lock(self, target_id: str) -> asyncio.Lock:
+        lock = self._session_locks.get(target_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[target_id] = lock
+        return lock
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip() and not ctx.attachments:
@@ -115,24 +130,32 @@ class MessageHandler:
         # Attachments must be written into the turn's session folder so
         # AutoPilot can read them (same as a web upload). The session is
         # normally resolved when the turn starts; resolve/create it up front
-        # here and cache it so both the upload and the turn use the same one.
+        # here (under a per-target lock so concurrent uploads share one session)
+        # and thread it to the turn so both use the same one.
+        session_id: str | None = None
+        file_ids: list[str]
+        upload_problems: list[tuple[str, str]]
         if ctx.attachments:
-            try:
-                session_id = await self._api.ensure_session(
-                    platform=ctx.platform,
-                    platform_user_id=ctx.user_id,
-                    platform_server_id=ctx.server_id,
-                    session_id=await sessions.get_session(ctx.platform, target_id),
-                )
-                await sessions.set_session(ctx.platform, target_id, session_id)
-            except Exception:
+            async with self._session_lock(target_id):
+                try:
+                    session_id = await self._api.ensure_session(
+                        platform=ctx.platform,
+                        platform_user_id=ctx.user_id,
+                        platform_server_id=ctx.server_id,
+                        session_id=await sessions.get_session(ctx.platform, target_id),
+                    )
+                    await sessions.set_session(ctx.platform, target_id, session_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to resolve session for uploads (user %s)", ctx.user_id
+                    )
+                    session_id = None
+
+            if session_id is None:
                 # Without a session the files can't be made readable to
                 # AutoPilot, so report them as failed rather than uploading
                 # them somewhere it can't see.
-                logger.exception(
-                    "Failed to resolve session for uploads (user %s)", ctx.user_id
-                )
-                file_ids: list[str] = []
+                file_ids = []
                 upload_problems = [
                     (a.filename, "couldn't be uploaded") for a in ctx.attachments
                 ]
@@ -167,7 +190,9 @@ class MessageHandler:
         message_text = self._message_text(ctx, include_thread_history, current_text)
         if problems:
             message_text += "\n\n" + _model_attachment_note(problems)
-        await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
+        await self._enqueue_and_process(
+            ctx, adapter, target_id, message_text, file_ids, session_id
+        )
 
     async def _upload_attachments(
         self, ctx: MessageContext, session_id: str | None = None
@@ -284,11 +309,16 @@ class MessageHandler:
         target_id: str,
         message_text: str | None = None,
         file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
         if file_ids:
             state.pending_file_ids.extend(file_ids)
+        # First attachment message in a batch pins the session; later ones
+        # resolved the same session (serialised by _session_lock), so keep it.
+        if session_id and state.session_id is None:
+            state.session_id = session_id
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick
@@ -300,8 +330,10 @@ class MessageHandler:
             while state.pending:
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
+                batch_session_id = state.session_id
                 state.pending.clear()
                 state.pending_file_ids.clear()
+                state.session_id = None
                 if len(batch_file_ids) > MAX_TURN_FILE_IDS:
                     logger.warning(
                         "Dropping %d batched file(s) over the per-turn cap of %d",
@@ -310,7 +342,12 @@ class MessageHandler:
                     )
                     batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
                 await self._stream_batch(
-                    batch, ctx, adapter, target_id, file_ids=batch_file_ids
+                    batch,
+                    ctx,
+                    adapter,
+                    target_id,
+                    file_ids=batch_file_ids,
+                    session_id=batch_session_id,
                 )
         finally:
             state.processing = False
@@ -445,17 +482,23 @@ class MessageHandler:
         adapter: PlatformAdapter,
         target_id: str,
         file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
-        cached_session_id = await redis.get(cache_key)
-        active_session_id = (
-            cached_session_id.decode()
-            if isinstance(cached_session_id, bytes)
-            else cached_session_id
-        )
+        if session_id is not None:
+            # Attachments were already uploaded to this session — use it
+            # directly so the turn can't diverge from where the files went.
+            active_session_id: str | None = session_id
+        else:
+            cached_session_id = await redis.get(cache_key)
+            active_session_id = (
+                cached_session_id.decode()
+                if isinstance(cached_session_id, bytes)
+                else cached_session_id
+            )
 
         async def _on_session_id(sid: str) -> None:
             nonlocal active_session_id

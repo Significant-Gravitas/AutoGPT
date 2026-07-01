@@ -409,7 +409,9 @@ class TestBatching:
 
         stream_calls: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -430,7 +432,9 @@ class TestBatching:
 
         seen: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
@@ -966,6 +970,7 @@ class TestAttachments:
         async def _recording_stream(*args, **kwargs):
             captured["file_ids"] = kwargs.get("file_ids")
             captured["message"] = kwargs.get("message")
+            captured["session_id"] = kwargs.get("session_id")
             if False:
                 yield ""
 
@@ -1002,19 +1007,21 @@ class TestAttachments:
     @pytest.mark.asyncio
     async def test_uploads_are_session_scoped_via_ensure_session(self):
         results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
-        api, _ = self._upload_recording_api(results)
+        api, captured = self._upload_recording_api(results)
         handler = MessageHandler(api)
         adapter = _adapter()
 
         await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
 
-        # The session is resolved up front and threaded into the upload so the
-        # file lands in /sessions/<id>/ where AutoPilot reads it.
+        # The session is resolved up front and threaded into BOTH the upload
+        # and the turn — the turn uses the exact session the file went to, not a
+        # separate Redis read that could diverge.
         api.ensure_session.assert_awaited_once()
         assert (
             api.upload_workspace_files.await_args.kwargs["session_id"]
             == "session-ensured"
         )
+        assert captured["session_id"] == "session-ensured"
 
     @pytest.mark.asyncio
     async def test_session_resolution_failure_reports_files_as_failed(self):
@@ -1032,6 +1039,14 @@ class TestAttachments:
         api.upload_workspace_files.assert_not_awaited()
         assert "a.png" in adapter.send_message.await_args_list[0].args[1]
         assert captured["file_ids"] == []
+
+    def test_session_lock_is_stable_per_target(self):
+        # Concurrent attachment messages on the same target serialise on one
+        # lock (so they converge on one session); different targets don't block.
+        handler = MessageHandler(_api())
+        lock = handler._session_lock("t-1")
+        assert handler._session_lock("t-1") is lock
+        assert handler._session_lock("t-2") is not lock
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
@@ -1137,7 +1152,9 @@ class TestAttachments:
         adapter = _adapter()
         captured: list[list[str] | None] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             captured.append(file_ids)
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
