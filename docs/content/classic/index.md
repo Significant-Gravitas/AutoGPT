@@ -32,12 +32,11 @@ disciplines, as long as it can be done on a computer.
 
 Welcome to the AutoGPT Classic Documentation.
 
-The AutoGPT Classic project consists of four main components:
+The AutoGPT Classic project consists of three main components:
 
 - The [Agent](#agent) &ndash; also known as just "AutoGPT Classic"
-- The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
+- The [Benchmark](#benchmark) &ndash; `direct_benchmark`
 - The [Forge](#forge)
-- The [Frontend](#frontend)
 
 To tie these together, we also have a [CLI] at the root of the project.
 
@@ -65,15 +64,9 @@ If you'd like to see what's next, check out the [AutoGPT Platform](../index.md).
 
 ## 🎯 Benchmark
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/direct_benchmark/README.md)**
 
-Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT Classic and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
-
-<!-- TODO: insert visual demonstrating the benchmark -->
-
-- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
-
-- 🔌 **Agent Protocol Standardization** - AutoGPT Classic uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
+Measure your agent's performance! The `direct_benchmark` harness tests agents directly with support for multiple prompt strategies (one_shot, reflexion, plan_execute, tree_of_thoughts, etc.) and model configurations. It supports parallel execution and detailed reporting.
 
 ---
 
@@ -91,42 +84,23 @@ Forge your own agent! The Forge is a ready-to-go template for your agent applica
 
 ---
 
-## 💻 Frontend
-
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md)**
-
-An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
-
-- 🎮 **User-Friendly Interface** - Manage your agents effortlessly.
-
-- 🔄 **Seamless Integration** - Smooth connectivity between your agent and our benchmarking system.
-
----
-
 ## 🔧 CLI
 [CLI]: #cli
 
-The project CLI makes it easy to use all of the components of AutoGPT Classic in the repo, separately or
-together. To install its dependencies, simply run `./run setup`, and you're ready to go!
+AutoGPT Classic is run via [Poetry](https://python-poetry.org/) from the `classic/` directory. Install its dependencies with `poetry install`, and you're ready to go:
 
 ```shell
-$ ./run
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  agent      Commands to create, start and stop agents
-  benchmark  Commands to start the benchmark and list tests and categories
-  setup      Installs dependencies needed for your system.
+cd classic
+poetry install
 ```
 
 Common commands:
 
-* `./run agent start autogpt` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT Classic agent
-* `./run agent create <name>` &ndash; creates a new Forge-based agent project at `agents/<name>`
-* `./run benchmark start <agent>` &ndash; benchmarks the specified agent
+* `poetry run autogpt` &ndash; runs the AutoGPT Classic agent in interactive CLI mode
+* `poetry run serve --debug` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the agent in Agent Protocol server mode
+* `poetry run direct-benchmark run` &ndash; benchmarks the agent (run with `--help` to list options)
+
+See the [classic README](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic) for full setup instructions.
 
 ---
 

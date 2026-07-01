@@ -17,7 +17,7 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 - 🔌 Agent Protocol ([docs](https://agentprotocol.ai))
 - 💻 Easy to use UI
 - 🌐 Internet access for searches and information gathering
-- 🧠 Powered by a mix of GPT-4 and GPT-3.5 Turbo
+- 🧠 Powered by GPT-5.4, Claude Opus 4.6, and other modern LLMs
 - 🔗 Access to popular websites and platforms
 - 🗃️ File generation and editing capabilities
 - 🔌 Extensibility with Plugins

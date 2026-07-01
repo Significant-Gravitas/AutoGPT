@@ -24,8 +24,7 @@ classic/
 ├── poetry.lock             # Single lock file
 ├── forge/                  # Core autonomous agent framework
 ├── original_autogpt/       # Original implementation
-├── direct_benchmark/       # Benchmark harness
-└── benchmark/              # Challenge definitions (data)
+└── direct_benchmark/       # Benchmark harness + challenge definitions
 ```
 
 ## Getting Started
