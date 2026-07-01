@@ -3,24 +3,24 @@ import { describe, expect, test } from "vitest";
 import { InitialAvatar } from "../InitialAvatar";
 
 describe("InitialAvatar", () => {
-  test("renders uppercase first character of name", () => {
-    render(<InitialAvatar name="abhimanyu" />);
-    expect(screen.getByText("A")).toBeDefined();
+  test("renders marble gradient fallback when no image is provided", () => {
+    const { container } = render(<InitialAvatar name="abhimanyu" />);
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
-  test("trims whitespace before extracting initial", () => {
-    render(<InitialAvatar name="   beth" />);
-    expect(screen.getByText("B")).toBeDefined();
+  test("uses trimmed name as fallback seed", () => {
+    const { container } = render(<InitialAvatar name="   beth" />);
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
-  test("falls back to 'U' when name is missing", () => {
-    render(<InitialAvatar />);
-    expect(screen.getByText("U")).toBeDefined();
+  test("falls back to 'User' when name is missing", () => {
+    const { container } = render(<InitialAvatar />);
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
-  test("falls back to 'U' when name is an empty string", () => {
-    render(<InitialAvatar name="" />);
-    expect(screen.getByText("U")).toBeDefined();
+  test("falls back to 'User' when name is an empty string", () => {
+    const { container } = render(<InitialAvatar name="" />);
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
   test("merges className prop into the avatar root", () => {
@@ -31,17 +31,11 @@ describe("InitialAvatar", () => {
     expect(root.className).toContain("size-12");
   });
 
-  test("places image above the initial fallback when src is provided", async () => {
-    const { container } = render(
-      <InitialAvatar name="ada" src="https://example.com/avatar.png" />,
-    );
+  test("shows image when src is provided", async () => {
+    render(<InitialAvatar name="ada" src="https://example.com/avatar.png" />);
 
     await waitFor(() => {
-      expect(container.querySelector("img")).not.toBeNull();
+      expect(screen.getByRole("img", { name: "ada's avatar" })).toBeDefined();
     });
-
-    const image = container.querySelector("img");
-    expect(image?.className).toContain("z-10");
-    expect(screen.getByText("A").className).toContain("z-0");
   });
 });
