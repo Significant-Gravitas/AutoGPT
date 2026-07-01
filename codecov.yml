@@ -1,6 +1,9 @@
 codecov:
   require_ci_to_pass: true
 
+ignore:
+  - "autogpt_platform/backend/test/**"
+
 coverage:
   status:
     project:
