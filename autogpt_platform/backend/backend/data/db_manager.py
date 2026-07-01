@@ -120,10 +120,12 @@ from backend.data.understanding import (
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_by_id,
+    get_user_credentials,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    set_user_credentials,
     update_user_integrations,
 )
 from backend.data.workspace import (
@@ -290,6 +292,8 @@ class DatabaseManager(AppService):
     get_user_by_id = _(get_user_by_id)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_user_credentials = _(get_user_credentials)
+    set_user_credentials = _(set_user_credentials)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -559,6 +563,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_user_credentials = d.get_user_credentials
+    set_user_credentials = d.set_user_credentials
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
