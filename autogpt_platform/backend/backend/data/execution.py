@@ -191,6 +191,11 @@ class GraphExecutionMeta(BaseDbModel):
     is_shared: bool = False
     share_token: Optional[str] = None
     is_dry_run: bool = False
+    # Org/team tenancy. Surfaced from the DB row so the runtime
+    # ExecutionContext (and billing) can recover org/team on resume/requeue
+    # paths where the caller doesn't re-supply them.
+    organization_id: Optional[str] = None
+    team_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -320,6 +325,8 @@ class GraphExecutionMeta(BaseDbModel):
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
             is_dry_run=stats.is_dry_run if stats else False,
+            organization_id=_graph_exec.organizationId,
+            team_id=_graph_exec.teamId,
         )
 
 

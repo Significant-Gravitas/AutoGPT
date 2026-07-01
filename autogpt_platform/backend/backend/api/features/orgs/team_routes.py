@@ -119,6 +119,12 @@ async def delete_team(
         Security(requires_org_permission(OrgAction.MANAGE_WORKSPACES)),
     ],
 ) -> None:
+    # MANAGE_WORKSPACES only proves the caller administers their *active*
+    # org (ctx.org_id); without this guard an admin of org A could delete
+    # a workspace in org B (the permission passes, and get_team only checks
+    # the workspace is in the path org). Mirror every sibling route.
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
     await team_db.get_team(ws_id, expected_org_id=org_id)
     await team_db.delete_team(ws_id)
 

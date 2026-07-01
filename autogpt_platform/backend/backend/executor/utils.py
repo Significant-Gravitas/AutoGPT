@@ -1328,6 +1328,23 @@ async def add_graph_execution(
             # workspace:// file resolution in blocks. Distinct from the
             # org/team tenancy ``team_id`` field on ExecutionContext.
             workspace_id=workspace.id,
+            # Org/team tenancy — the runtime context is what billing and
+            # nested sub-graph runs read. On the create path the explicit
+            # params are authoritative; on resume/requeue (params unset)
+            # recover them from the persisted execution row so the run
+            # doesn't silently fall back to user-only scope.
+            organization_id=organization_id or graph_exec.organization_id,
+            team_id=team_id or graph_exec.team_id,
+        )
+    elif execution_context.organization_id is None and graph_exec.organization_id:
+        # A caller-supplied context (e.g. review-resume, admin-requeue) may
+        # be built before org/team are known. Backfill from the persisted
+        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        execution_context = execution_context.model_copy(
+            update={
+                "organization_id": graph_exec.organization_id,
+                "team_id": graph_exec.team_id,
+            }
         )
 
     try:

@@ -1088,6 +1088,24 @@ class TestWorkspaceRoutes:
 
         assert exc_info.value.status_code == 403
 
+    def test_delete_team_wrong_org_returns_403(self):
+        """delete_team must reject when the caller's active org differs from
+        the path org. Regression: the route previously lacked this guard, so
+        an owner/admin of org A could delete a workspace in org B — the
+        MANAGE_WORKSPACES permission only proves admin of the *active* org."""
+        from backend.api.features.orgs.team_routes import delete_team
+
+        ctx = _member_ctx(org_id="org-A")
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            import asyncio
+
+            asyncio.get_event_loop().run_until_complete(
+                delete_team(org_id="org-B", ws_id=WS_ID, ctx=ctx)
+            )
+
+        assert exc_info.value.status_code == 403
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. INVITATION (invitation_routes.py)
