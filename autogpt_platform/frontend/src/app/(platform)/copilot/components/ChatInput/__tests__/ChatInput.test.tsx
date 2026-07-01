@@ -471,7 +471,7 @@ describe("ChatInput submit behavior", () => {
     const form = textarea.closest("form")!;
     fireEvent.submit(form);
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("hello", undefined);
+      expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
     });
     await waitFor(() => {
       expect(textarea.value).toBe("");
@@ -534,7 +534,7 @@ describe("ChatInput submit behavior", () => {
       await waitFor(() => {
         expect(onSend).toHaveBeenCalledTimes(2);
       });
-      expect(onSend).toHaveBeenLastCalledWith("retry", undefined);
+      expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
     } finally {
       window.removeEventListener("unhandledrejection", swallowWindow);
       process.off("unhandledRejection", swallowProcess);

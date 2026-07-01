@@ -18,13 +18,18 @@ import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
 
 interface Props {
   inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
