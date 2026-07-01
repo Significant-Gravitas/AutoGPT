@@ -121,43 +121,6 @@
   }
 }
 
-@layer utilities {
-  /* TODO: 1. remove unused utility classes */
-  /* TODO: 2. fix naming of numbered dimensions so that the number is 4*dimension */
-  /* TODO: 3. move to tailwind.config.ts spacing config */
-  .h-7\.5 {
-    height: 1.1875rem;
-  }
-  .h-18 {
-    height: 4.5rem;
-  }
-  .h-238 {
-    height: 14.875rem;
-  }
-  .top-158 {
-    top: 9.875rem;
-  }
-  .top-254 {
-    top: 15.875rem;
-  }
-  .top-284 {
-    top: 17.75rem;
-  }
-  .top-360 {
-    top: 22.5rem;
-  }
-  .left-297 {
-    left: 18.5625rem;
-  }
-  .left-34 {
-    left: 2.125rem;
-  }
-
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
