@@ -95,6 +95,7 @@ from backend.integrations.credentials_store import (
     ollama_credentials,
     open_router_credentials,
     openai_credentials,
+    orca_router_credentials,
     replicate_credentials,
     revid_credentials,
     screenshotone_credentials,
@@ -196,6 +197,15 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.V0_1_5_MD: 1,
     LlmModel.V0_1_5_LG: 2,
     LlmModel.V0_1_0_MD: 1,
+    # OrcaRouter models (flat per-call tier; TOKEN_COST below does the
+    # real per-token billing).
+    LlmModel.ORCAROUTER_GPT_5_5: 6,
+    LlmModel.ORCAROUTER_CLAUDE_OPUS_4_8: 14,
+    LlmModel.ORCAROUTER_GEMINI_3_5_FLASH: 2,
+    LlmModel.ORCAROUTER_GROK_4_3: 3,
+    LlmModel.ORCAROUTER_DEEPSEEK_V4_PRO: 1,
+    LlmModel.ORCAROUTER_MINIMAX_M2_7: 1,
+    LlmModel.ORCAROUTER_QWEN3_7_MAX: 2,
 }
 
 for model in LlmModel:
@@ -313,6 +323,16 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.META_LLAMA_4_MAVERICK: TokenRate(input=75, output=116),
     LlmModel.OPENAI_GPT_OSS_120B: TokenRate(input=23, output=90),
     LlmModel.OPENAI_GPT_OSS_20B: TokenRate(input=11, output=45),
+    # OrcaRouter — rates derived from https://www.orcarouter.ai/api/pricing
+    # (input = model_ratio*2, output = model_ratio*completion_ratio*2 USD/1M),
+    # then *150 for the 1.5x credit margin (1 credit ≈ $0.01).
+    LlmModel.ORCAROUTER_GPT_5_5: TokenRate(input=750, output=4500),
+    LlmModel.ORCAROUTER_CLAUDE_OPUS_4_8: TokenRate(input=750, output=3750),
+    LlmModel.ORCAROUTER_GEMINI_3_5_FLASH: TokenRate(input=225, output=1350),
+    LlmModel.ORCAROUTER_GROK_4_3: TokenRate(input=188, output=375),
+    LlmModel.ORCAROUTER_DEEPSEEK_V4_PRO: TokenRate(input=65, output=131),
+    LlmModel.ORCAROUTER_MINIMAX_M2_7: TokenRate(input=45, output=180),
+    LlmModel.ORCAROUTER_QWEN3_7_MAX: TokenRate(input=188, output=563),
 }
 
 
@@ -473,6 +493,14 @@ LLM_COST = (
         _open_router_llm_cost(model)
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "open_router"
+    ]
+    # OrcaRouter Models: OpenAI-compatible meta-router billed deterministically
+    # from the TOKEN_COST rate table (same as the llama_api / v0 gateways),
+    # rather than OpenRouter's x-total-cost settlement.
+    + [
+        _tokens_llm_cost(model, orca_router_credentials)
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "orca_router"
     ]
     # Llama API Models
     + [

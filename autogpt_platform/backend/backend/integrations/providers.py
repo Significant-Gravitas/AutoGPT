@@ -40,6 +40,7 @@ class ProviderName(str, Enum):
     OPENAI = "openai"
     OPENWEATHERMAP = "openweathermap"
     OPEN_ROUTER = "open_router"
+    ORCA_ROUTER = "orca_router"
     PINECONE = "pinecone"
     REDDIT = "reddit"
     REPLICATE = "replicate"
