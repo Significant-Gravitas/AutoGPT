@@ -93,6 +93,7 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
     queuedMessages: [] as string[],
     onSend,
     reset,
+    turnIndex: stepIndex.current,
     currentUserPrompt: currentTurn?.userPrompt ?? null,
     isStreaming: status === "streaming" || status === "submitted",
     isExhausted: stepIndex.current >= script.length,
