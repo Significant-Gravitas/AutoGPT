@@ -10,6 +10,7 @@ import {
   CalculatorIcon,
   Brain,
   RobotIcon,
+  Database,
 } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -71,6 +72,11 @@ const sidebarLinkGroups = [
         text: "Admin User Management",
         href: "/admin/settings",
         icon: <IconSliders className="h-6 w-6" />,
+      },
+      {
+        text: "Test Data",
+        href: "/admin/test-data",
+        icon: <Database className="h-6 w-6" />,
       },
     ],
   },

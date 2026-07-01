@@ -25,6 +25,7 @@ import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.test_data_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -383,6 +384,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.memory_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.test_data_routes.router,
     tags=["v2", "admin"],
     prefix="/api",
 )
