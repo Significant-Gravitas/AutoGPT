@@ -55,6 +55,19 @@ async def resolve_graph_for_library(
     return graph_model
 
 
+async def _get_marketplace_image_url(store_listing_version_id: str) -> str | None:
+    """Get the first image URL from the marketplace listing version.
+
+    Returns the first image URL if available, None otherwise.
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
+    )
+    if slv and slv.imageUrls:
+        return slv.imageUrls[0]
+    return None
+
+
 async def add_graph_to_library(
     store_listing_version_id: str,
     graph_model: GraphModel,
@@ -72,26 +85,40 @@ async def add_graph_to_library(
         user_id, include_nodes=False, include_executions=False
     )
 
+    # Fetch marketplace image URL from the StoreListingVersion
+    image_url = await _get_marketplace_image_url(store_listing_version_id)
+
     try:
-        added_agent = await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "User": {"connect": {"id": user_id}},
-                "AgentGraph": {
-                    "connect": {
-                        "graphVersionId": {
-                            "id": graph_model.id,
-                            "version": graph_model.version,
-                        }
+        create_data = {
+            "User": {"connect": {"id": user_id}},
+            "AgentGraph": {
+                "connect": {
+                    "graphVersionId": {
+                        "id": graph_model.id,
+                        "version": graph_model.version,
                     }
-                },
-                "isCreatedByUser": False,
-                "useGraphIsActiveVersion": False,
-                "settings": settings_json,
+                }
             },
+            "isCreatedByUser": False,
+            "useGraphIsActiveVersion": False,
+            "settings": settings_json,
+        }
+        if image_url:
+            create_data["imageUrl"] = image_url
+
+        added_agent = await prisma.models.LibraryAgent.prisma().create(
+            data=create_data,
             include=_include,
         )
     except prisma.errors.UniqueViolationError:
         # Already exists — update to restore if previously soft-deleted/archived
+        update_data: dict = {
+            "isDeleted": False,
+            "isArchived": False,
+            "settings": settings_json,
+            "imageUrl": image_url,
+        }
+
         added_agent = await prisma.models.LibraryAgent.prisma().update(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
@@ -100,11 +127,7 @@ async def add_graph_to_library(
                     "agentGraphVersion": graph_model.version,
                 }
             },
-            data={
-                "isDeleted": False,
-                "isArchived": False,
-                "settings": settings_json,
-            },
+            data=update_data,
             include=_include,
         )
         if added_agent is None:

@@ -366,6 +366,22 @@ class StoreListingsWithVersionsAdminViewResponse(pydantic.BaseModel):
     pagination: Pagination
 
 
+class DownloadedAgentData(pydantic.BaseModel):
+    """Model for downloaded agent data that includes marketplace metadata."""
+
+    # Marketplace metadata from StoreListingVersion
+    marketplace_name: str
+    marketplace_description: str
+    marketplace_sub_heading: str
+    marketplace_image_urls: list[str]
+    marketplace_categories: list[str]
+    marketplace_instructions: str | None = None
+
+    # The actual graph data (serialized separately in the response)
+    # This is kept as a dict to allow flexible serialization of GraphModel
+    graph_data: dict
+
+
 class StoreReview(pydantic.BaseModel):
     score: int
     comments: str | None = None

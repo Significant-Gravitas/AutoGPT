@@ -1326,6 +1326,75 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
     return graph
 
 
+async def get_agent_with_marketplace_data(
+    store_listing_version_id: str,
+) -> tuple[GraphModel, store_model.StoreAgentDetails]:
+    """Get agent graph data along with marketplace metadata.
+
+    Returns a tuple of (GraphModel, StoreAgentDetails) where the
+    StoreAgentDetails contains the marketplace-published name, images,
+    description, etc.
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            "isAvailable": True,
+            "isDeleted": False,
+        }
+    )
+
+    if not slv:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version_id} not found"
+        )
+
+    graph = await get_graph(
+        graph_id=slv.agentGraphId,
+        version=slv.agentGraphVersion,
+        user_id=None,
+        for_export=True,
+    )
+    if not graph:
+        raise NotFoundError(
+            f"Graph {slv.agentGraphId} v{slv.agentGraphVersion} not found"
+        )
+
+    # Get marketplace details from StoreAgent view
+    agent = await prisma.models.StoreAgent.prisma().find_first(
+        where={"listing_version_id": store_listing_version_id}
+    )
+
+    if agent:
+        marketplace_details = store_model.StoreAgentDetails.from_db(agent)
+    else:
+        # Fallback: construct minimal details from StoreListingVersion directly
+        marketplace_details = store_model.StoreAgentDetails(
+            store_listing_version_id=slv.id,
+            slug="",
+            agent_name=slv.name,
+            agent_video=slv.videoUrl or "",
+            agent_output_demo=slv.agentOutputDemoUrl or "",
+            agent_image=slv.imageUrls,
+            creator="",
+            creator_avatar="",
+            sub_heading=slv.subHeading,
+            description=slv.description,
+            instructions=slv.instructions,
+            categories=slv.categories,
+            runs=0,
+            rating=0.0,
+            versions=[str(slv.version)],
+            graph_id=slv.agentGraphId,
+            graph_versions=[str(slv.agentGraphVersion)],
+            last_updated=slv.updatedAt,
+            recommended_schedule_cron=slv.recommendedScheduleCron,
+            active_version_id=slv.id,
+            has_approved_version=True,
+        )
+
+    return graph, marketplace_details
+
+
 #####################################################
 ################## ADMIN FUNCTIONS ##################
 #####################################################
