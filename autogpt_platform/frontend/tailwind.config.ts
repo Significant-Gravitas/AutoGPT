@@ -151,6 +151,36 @@ const config = {
             height: "0",
           },
         },
+        // Bridge the height change with an opacity fade so the content
+        // doesn't clip in/out abruptly (Emil Kowalski: fade to soften
+        // state transitions). Opacity resolves over the first/last ~60%
+        // so text is fully legible before the height finishes settling.
+        "collapsible-down": {
+          from: {
+            height: "0",
+            opacity: "0",
+          },
+          "60%": {
+            opacity: "1",
+          },
+          to: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+        },
+        "collapsible-up": {
+          from: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+          "40%": {
+            opacity: "0",
+          },
+          to: {
+            height: "0",
+            opacity: "0",
+          },
+        },
         "fade-in": {
           "0%": {
             opacity: "0",
@@ -198,6 +228,12 @@ const config = {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // easeOutCubic for a smooth, decelerating settle; asymmetric
+        // timing (open a touch slower than close) per Emil Kowalski.
+        // Both stay under the 300ms UI budget.
+        "collapsible-down":
+          "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
+        "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",

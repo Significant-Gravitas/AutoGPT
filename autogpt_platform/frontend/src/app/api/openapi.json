@@ -3294,7 +3294,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3659,6 +3659,59 @@
           "429": { "description": "Call-frequency cap exceeded" },
           "503": {
             "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/pinned": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session pinned",
+        "description": "Pin or unpin a chat session.\n\nPinned sessions surface at the top of the user's sidebar list ahead of\nunpinned ones, regardless of recency.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new pin state.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session pinned",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionPinnedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Pinned"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -10943,7 +10996,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -11003,6 +11056,32 @@
               "title": "Origin"
             },
             "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set."
+          },
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files in this folder.",
+              "title": "Folder Id"
+            },
+            "description": "Only return files in this folder."
+          },
+          {
+            "name": "root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return root-level files (not in any folder).",
+              "default": false,
+              "title": "Root Only"
+            },
+            "description": "Only return root-level files (not in any folder)."
           }
         ],
         "responses": {
@@ -11210,6 +11289,186 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/folders": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace folders",
+        "operationId": "listWorkspaceFolders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFolderListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Create workspace folder",
+        "operationId": "createWorkspaceFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFolderCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "A folder with this name already exists" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/workspace/folders/files/bulk-move": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Move workspace files to a folder",
+        "operationId": "bulkMoveWorkspaceFiles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkMoveFilesRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/WorkspaceFile" },
+                  "type": "array",
+                  "title": "Response Bulkmoveworkspacefiles"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/workspace/folders/{folder_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete workspace folder",
+        "operationId": "deleteWorkspaceFolder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Update workspace folder",
+        "operationId": "updateWorkspaceFolder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFolderUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -12802,6 +13061,22 @@
         "required": ["agent_ids"],
         "title": "BulkMoveAgentsRequest",
         "description": "Request model for moving multiple agents to a folder."
+      },
+      "BulkMoveFilesRequest": {
+        "properties": {
+          "file_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "File Ids"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Folder Id"
+          }
+        },
+        "type": "object",
+        "required": ["file_ids"],
+        "title": "BulkMoveFilesRequest"
       },
       "CancelSessionResponse": {
         "properties": {
@@ -19284,6 +19559,11 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
           }
         },
         "type": "object",
@@ -21512,6 +21792,15 @@
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
+      "UpdateSessionPinnedRequest": {
+        "properties": {
+          "is_pinned": { "type": "boolean", "title": "Is Pinned" }
+        },
+        "type": "object",
+        "required": ["is_pinned"],
+        "title": "UpdateSessionPinnedRequest",
+        "description": "Request model for pinning/unpinning a session."
+      },
       "UpdateSessionTitleRequest": {
         "properties": { "title": { "type": "string", "title": "Title" } },
         "type": "object",
@@ -22701,6 +22990,66 @@
         ],
         "title": "Webhook"
       },
+      "WorkspaceFile": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "workspace_id": { "type": "string", "title": "Workspace Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "storage_path": { "type": "string", "title": "Storage Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "checksum": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checksum"
+          },
+          "is_deleted": {
+            "type": "boolean",
+            "title": "Is Deleted",
+            "default": false
+          },
+          "deleted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Deleted At"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "created_at",
+          "updated_at",
+          "name",
+          "path",
+          "storage_path",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "WorkspaceFile",
+        "description": "Pydantic model for UserWorkspaceFile, safe for RPC transport."
+      },
       "WorkspaceFileItem": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -22708,6 +23057,10 @@
           "path": { "type": "string", "title": "Path" },
           "mime_type": { "type": "string", "title": "Mime Type" },
           "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
@@ -22731,6 +23084,82 @@
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "WorkspaceFolder": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "workspace_id": { "type": "string", "title": "Workspace Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "workspace_id", "name", "created_at", "updated_at"],
+        "title": "WorkspaceFolder",
+        "description": "Pydantic model for UserWorkspaceFolder, safe for RPC transport."
+      },
+      "WorkspaceFolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "WorkspaceFolderCreateRequest"
+      },
+      "WorkspaceFolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFolder" },
+            "type": "array",
+            "title": "Folders"
+          }
+        },
+        "type": "object",
+        "required": ["folders"],
+        "title": "WorkspaceFolderListResponse"
+      },
+      "WorkspaceFolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          }
+        },
+        "type": "object",
+        "title": "WorkspaceFolderUpdateRequest"
       },
       "WriteSummary": {
         "properties": {

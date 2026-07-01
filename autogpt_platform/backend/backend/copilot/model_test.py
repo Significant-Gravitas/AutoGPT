@@ -79,6 +79,29 @@ async def test_chatsession_redis_storage(setup_test_user, test_user_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_preserves_pinned_set_concurrently(setup_test_user, test_user_id):
+    """A pin written out-of-band (update_session_pinned) must survive a later
+    upsert that carries a stale in-memory is_pinned=False (e.g. end-of-stream
+    save), mirroring how the cached title is preserved."""
+    from .model import update_session_pinned
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+
+    # Pin out-of-band (writes both DB and cache), as the PATCH route does.
+    assert await update_session_pinned(s.session_id, test_user_id, True) is True
+
+    # End-of-stream upsert with a stale in-memory copy that never saw the pin.
+    s.is_pinned = False
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.is_pinned is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage_user_id_mismatch(
     setup_test_user, test_user_id
 ):

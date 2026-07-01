@@ -329,6 +329,29 @@ async def update_chat_session_title(
     return result > 0
 
 
+async def update_chat_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Always filters by (session_id, user_id) so callers cannot mutate another
+    user's session even when they know the session_id. Does not bump
+    ``updatedAt`` — pinning is not an activity event and should not reorder
+    the session within its pin bucket.
+
+    Returns True if a row was updated, False otherwise (session not found or
+    wrong user).
+    """
+    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
+    result = await PrismaChatSession.prisma().update_many(
+        where=where,
+        data={"isPinned": is_pinned},
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,
@@ -539,7 +562,7 @@ async def get_user_chat_sessions(
         where["title"] = {"contains": title_contains, "mode": "insensitive"}
     prisma_sessions = await PrismaChatSession.prisma().find_many(
         where=where,
-        order={"updatedAt": "desc"},
+        order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
         take=limit,
         skip=offset,
     )
