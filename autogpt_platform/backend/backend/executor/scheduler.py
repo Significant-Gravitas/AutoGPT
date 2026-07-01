@@ -1705,7 +1705,11 @@ class Scheduler(AppService):
 
     @expose
     def get_graph_execution_schedules(
-        self, graph_id: str | None = None, user_id: str | None = None
+        self,
+        graph_id: str | None = None,
+        user_id: str | None = None,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> list[GraphExecutionJobInfo]:
         """Return graph-kind schedules only (typed for legacy callers).
 
@@ -1717,7 +1721,11 @@ class Scheduler(AppService):
         return [
             info
             for info in self.get_execution_schedules(
-                graph_id=graph_id, user_id=user_id, kind="graph"
+                graph_id=graph_id,
+                user_id=user_id,
+                kind="graph",
+                organization_id=organization_id,
+                team_ids=team_ids,
             )
             if isinstance(info, GraphExecutionJobInfo)
         ]
@@ -1780,12 +1788,19 @@ class Scheduler(AppService):
         user_id: str | None = None,
         session_id: str | None = None,
         kind: str | None = None,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
         """Return schedules of both kinds, filtered by the given fields.
 
         *kind* may be ``"graph"``, ``"copilot_turn"``, or ``None`` for all.
         Graph-only filters (*graph_id*) silently skip copilot-turn rows;
         copilot-only filters (*session_id*) silently skip graph rows.
+
+        With *organization_id* (from a membership-verified RequestContext)
+        the org/team visibility rules apply instead of strict ownership:
+        own schedules + org-home schedules + schedules of teams in
+        *team_ids* (resolved by the caller, who has async DB access).
         """
         jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
@@ -1795,7 +1810,17 @@ class Scheduler(AppService):
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if user_id is not None and info.user_id != user_id:
+            if organization_id is not None:
+                # GraphExecutionJobArgs defaults organization_id to "" —
+                # normalise so untagged rows never match an org clause.
+                info_org = info.organization_id or None
+                owned = user_id is not None and info.user_id == user_id
+                in_org = info_org == organization_id and (
+                    info.team_id is None or info.team_id in (team_ids or [])
+                )
+                if not (owned or in_org):
+                    continue
+            elif user_id is not None and info.user_id != user_id:
                 continue
             if graph_id is not None and (
                 not isinstance(info, GraphExecutionJobInfo) or info.graph_id != graph_id

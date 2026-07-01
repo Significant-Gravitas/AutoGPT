@@ -381,6 +381,9 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
@@ -392,6 +395,7 @@ async def get_submissions(
     parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
+        organization_id=getattr(ctx, "org_id", None),
         page=page,
         page_size=page_size,
         search_query=search_query,

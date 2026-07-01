@@ -1238,10 +1238,15 @@ async def get_graph(
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
     team_id: str | None = None,
+    organization_id: str | None = None,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
+
+    With ``organization_id`` (from a membership-verified RequestContext),
+    org/team visibility rules apply — a member can open any graph the
+    list endpoints show them (own + org-home + member-team graphs).
 
     See also: `get_graph_as_admin()` which bypasses ownership and marketplace
     checks for admin-only routes.
@@ -1257,12 +1262,18 @@ async def get_graph(
         }
         if version is not None:
             graph_where_clause["version"] = version
-        # Scope to the caller's identity. Until the org-cutover migration
-        # makes organizationId NOT NULL on every graph (deferred), we
-        # filter by userId — the canonical creator/owner column. teamId
-        # is a separate FK and only adds to the predicate when set.
+        # Scope to the caller's identity. teamId is a separate FK and only
+        # adds to the predicate when set.
         if not skip_access_check:
-            if user_id is not None:
+            if organization_id is not None and user_id is not None:
+                team_ids = await get_user_team_ids(user_id, organization_id)
+                graph_where_clause["AND"] = [
+                    cast(
+                        AgentGraphWhereInput,
+                        visibility_filter(user_id, organization_id, team_ids),
+                    )
+                ]
+            elif user_id is not None:
                 graph_where_clause["userId"] = user_id
             if team_id is not None:
                 graph_where_clause["teamId"] = team_id
@@ -1496,7 +1507,16 @@ async def get_graph_all_versions(
 ) -> list[GraphModel]:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
     if organization_id is not None:
-        where_clause["organizationId"] = organization_id
+        # Same membership predicate as get_graph/list_graphs — NOT a raw
+        # org match, which would expose other teams' versions to every
+        # org member.
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause["AND"] = [
+            cast(
+                AgentGraphWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
     elif team_id is not None:
         where_clause["teamId"] = team_id
     else:

@@ -112,6 +112,7 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
+from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
@@ -1649,6 +1650,7 @@ async def get_graph(
         user_id=user_id,
         for_export=for_export,
         include_subgraphs=True,  # needed to construct full credentials input schema
+        organization_id=ctx.org_id,
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -1666,7 +1668,9 @@ async def get_graph_all_versions(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphModel]:
-    graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
+    graphs = await graph_db.get_graph_all_versions(
+        graph_id, user_id=user_id, organization_id=ctx.org_id
+    )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
     return graphs
@@ -2128,6 +2132,7 @@ async def get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
+        organization_id=ctx.org_id,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
@@ -2138,6 +2143,7 @@ async def get_graph_execution(
         graph_id=result.graph_id,
         version=result.graph_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
     ):
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
@@ -2426,9 +2432,12 @@ async def list_graph_execution_schedules(
     ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
     return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
+        organization_id=ctx.org_id,
+        team_ids=team_ids,
     )
 
 
@@ -2442,7 +2451,12 @@ async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    return await get_scheduler_client().get_graph_execution_schedules(
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_ids=team_ids,
+    )
 
 
 @v1_router.get(
@@ -2678,8 +2692,9 @@ async def get_api_keys(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
     return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None
+        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
     )
 
 

@@ -238,14 +238,19 @@ async def get_sorted_search_results(
     search_query: str | None,
     filters: Sequence[FilterType],
     by_creator: Sequence[str] | None = None,
+    organization_id: str | None = None,
 ) -> _SearchCacheEntry:
     normalized_filters: tuple[FilterType, ...] = tuple(sorted(set(filters or [])))
     normalized_creators: tuple[str, ...] = tuple(sorted(set(by_creator or [])))
+    # organization_id participates in the cache key: my_agents results are
+    # org-scoped, so a user switching orgs must not see cached results
+    # from another org context.
     return await _build_cached_search_results(
         user_id=user_id,
         search_query=search_query or "",
         filters=normalized_filters,
         by_creator=normalized_creators,
+        organization_id=organization_id,
     )
 
 
@@ -255,6 +260,7 @@ async def _build_cached_search_results(
     search_query: str,
     filters: tuple[FilterType, ...],
     by_creator: tuple[str, ...],
+    organization_id: str | None = None,
 ) -> _SearchCacheEntry:
     normalized_query = (search_query or "").strip().lower()
 
@@ -300,6 +306,7 @@ async def _build_cached_search_results(
             # Hide trigger agents — they're parent-coupled, not
             # generally reusable as a sub-agent block.
             is_hidden=False,
+            organization_id=organization_id,
         )
         total_items["my_agents"] = library_response.pagination.total_items
         scored_items.extend(
@@ -547,14 +554,17 @@ def get_providers(
     )
 
 
-async def get_counts(user_id: str) -> CountResponse:
-    my_agents = await prisma.models.LibraryAgent.prisma().count(
-        where={
-            "userId": user_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-    )
+async def get_counts(user_id: str, organization_id: str | None = None) -> CountResponse:
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+    }
+    if organization_id is not None:
+        where["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
+    my_agents = await prisma.models.LibraryAgent.prisma().count(where=where)
     counts = await _get_static_counts()
     return CountResponse(
         my_agents=my_agents,

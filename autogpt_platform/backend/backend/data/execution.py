@@ -760,11 +760,22 @@ async def get_graph_executions_paginated(
 
 
 async def get_graph_execution_meta(
-    user_id: str, execution_id: str
+    user_id: str,
+    execution_id: str,
+    organization_id: str | None = None,
 ) -> GraphExecutionMeta | None:
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id}
-    )
+    where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where["userId"] = user_id
+    execution = await AgentGraphExecution.prisma().find_first(where=where)
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
@@ -773,6 +784,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: Literal[True],
+    organization_id: str | None = None,
 ) -> GraphExecutionWithNodes | None: ...
 
 
@@ -781,6 +793,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: Literal[False] = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | None: ...
 
 
@@ -789,6 +802,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: bool = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | GraphExecutionWithNodes | None: ...
 
 
@@ -796,9 +810,21 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: bool = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | GraphExecutionWithNodes | None:
+    where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id},
+        where=where,
         include=(
             GRAPH_EXECUTION_INCLUDE_WITH_NODES
             if include_node_executions

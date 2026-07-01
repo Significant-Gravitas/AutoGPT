@@ -662,8 +662,14 @@ async def get_store_submissions(
     statuses: list[prisma.enums.SubmissionStatus] | None = None,
     sort_key: str | None = None,
     sort_dir: str = "desc",
+    organization_id: str | None = None,
 ) -> store_model.StoreSubmissionsResponse:
-    """Get store submissions for the authenticated user -- not an admin"""
+    """Get store submissions for the authenticated user -- not an admin.
+
+    With ``organization_id`` (membership-verified RequestContext), the
+    org's submissions are visible to every member; tenant-less rows stay
+    visible to their submitting user.
+    """
     logger.debug(
         (
             "Getting store submissions for user %s, page=%s, search_query=%r, "
@@ -681,9 +687,20 @@ async def get_store_submissions(
         skip = (page - 1) * page_size
 
         where: prisma.types.StoreSubmissionWhereInput = {
-            "user_id": user_id,
             "is_deleted": False,
         }
+        if organization_id is not None:
+            # Nested under AND so it can't collide with the search OR below.
+            where["AND"] = [
+                {
+                    "OR": [
+                        {"organization_id": organization_id},
+                        {"user_id": user_id, "organization_id": None},
+                    ]
+                }
+            ]
+        else:
+            where["user_id"] = user_id
 
         normalized_query = (search_query or "").strip()
         if normalized_query:

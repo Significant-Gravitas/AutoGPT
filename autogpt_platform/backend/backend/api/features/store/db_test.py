@@ -983,3 +983,48 @@ async def test_edit_store_submission_blocks_cross_org(mocker):
             organization_id="org-A",
         )
     mock_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_org_visibility(mocker):
+    """Org members see the org's submissions; tenant-less rows stay visible
+    to their submitting user; the search OR-clause is not clobbered."""
+    mock_client = AsyncMock()
+    mock_client.find_many.return_value = []
+    mock_client.count.return_value = 0
+    mocker.patch.object(
+        prisma.models.StoreSubmission, "prisma", return_value=mock_client
+    )
+
+    await db.get_store_submissions(
+        user_id="user-1", organization_id="org-A", search_query="tool"
+    )
+
+    where = mock_client.find_many.call_args.kwargs["where"]
+    assert where["AND"] == [
+        {
+            "OR": [
+                {"organization_id": "org-A"},
+                {"user_id": "user-1", "organization_id": None},
+            ]
+        }
+    ]
+    assert "user_id" not in where
+    # search OR survives alongside the visibility AND
+    assert any("name" in clause for clause in where["OR"])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_without_org_strict_ownership(mocker):
+    mock_client = AsyncMock()
+    mock_client.find_many.return_value = []
+    mock_client.count.return_value = 0
+    mocker.patch.object(
+        prisma.models.StoreSubmission, "prisma", return_value=mock_client
+    )
+
+    await db.get_store_submissions(user_id="user-1")
+
+    where = mock_client.find_many.call_args.kwargs["where"]
+    assert where["user_id"] == "user-1"
+    assert "AND" not in where

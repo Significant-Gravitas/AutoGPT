@@ -539,7 +539,7 @@ class AgentServer(backend.util.service.AppProcess):
         # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
-            org_id="test-org",
+            org_id=f"test-org-{user_id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,
@@ -572,7 +572,7 @@ class AgentServer(backend.util.service.AppProcess):
         # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
-            org_id="test-org",
+            org_id=f"test-org-{user_id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,
@@ -598,7 +598,7 @@ class AgentServer(backend.util.service.AppProcess):
         # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
-            org_id="test-org",
+            org_id=f"test-org-{user_id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,
@@ -636,7 +636,7 @@ class AgentServer(backend.util.service.AppProcess):
         # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
-            org_id="test-org",
+            org_id=f"test-org-{user_id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,
@@ -694,7 +694,7 @@ class AgentServer(backend.util.service.AppProcess):
 
         ctx = RequestContext(
             user_id=user_id,
-            org_id="test-org",
+            org_id=f"test-org-{user_id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,

@@ -190,6 +190,7 @@ async def search(
         search_query=search_query,
         filters=filters,
         by_creator=by_creator,
+        organization_id=ctx.org_id,
     )
 
     # Paginate results
@@ -232,8 +233,9 @@ async def search(
 )
 async def get_counts(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
 ) -> builder_model.CountResponse:
     """
     Get item counts for the menu categories in the Blocks Menu.
     """
-    return await builder_db.get_counts(user_id)
+    return await builder_db.get_counts(user_id, organization_id=ctx.org_id)

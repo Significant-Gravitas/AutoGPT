@@ -484,3 +484,105 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=12)
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+class TestScheduleOrgVisibility:
+    """Org/team visibility filtering in get_execution_schedules."""
+
+    def _scheduler_with_jobs(self, infos):
+        from unittest.mock import MagicMock
+
+        from backend.executor.scheduler import Scheduler
+
+        sched = Scheduler.__new__(Scheduler)
+        jobs = []
+        for info in infos:
+            job = MagicMock()
+            job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+            jobs.append((job, info))
+
+        def fake_job_to_info(job):
+            for j, i in jobs:
+                if j is job:
+                    return i
+            return None
+
+        return sched, [j for j, _ in jobs], fake_job_to_info
+
+    def _graph_info(self, *, user_id, organization_id="", team_id=None, sid="s1"):
+        return GraphExecutionJobInfo(
+            id=sid,
+            name="n",
+            next_run_time="2026-05-22T10:00:00+00:00",
+            schedule_id=sid,
+            user_id=user_id,
+            graph_id="g1",
+            graph_version=1,
+            cron="* * * * *",
+            input_data={},
+            input_credentials={},
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
+    def _run(self, infos, **kwargs):
+        from unittest.mock import patch
+
+        sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
+        with (
+            patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            patch(
+                "backend.executor.scheduler._job_to_info",
+                side_effect=fake_job_to_info,
+            ),
+        ):
+            return sched.get_execution_schedules(**kwargs)
+
+    def test_own_schedules_always_visible_in_org_mode(self):
+        infos = [self._graph_info(user_id="me", organization_id="", sid="mine")]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["mine"]
+
+    def test_org_home_schedule_visible_to_member(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate", organization_id="org-1", sid="org-home"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["org-home"]
+
+    def test_team_schedule_only_visible_to_team_members(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate",
+                organization_id="org-1",
+                team_id="team-x",
+                sid="team-x-job",
+            )
+        ]
+        visible = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-x"]
+        )
+        hidden = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-y"]
+        )
+        assert [r.schedule_id for r in visible] == ["team-x-job"]
+        assert hidden == []
+
+    def test_other_org_schedule_hidden(self):
+        infos = [
+            self._graph_info(
+                user_id="stranger", organization_id="org-OTHER", sid="foreign"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert result == []
+
+    def test_no_org_mode_is_strict_ownership(self):
+        infos = [
+            self._graph_info(user_id="me", sid="mine"),
+            self._graph_info(user_id="other", organization_id="org-1", sid="theirs"),
+        ]
+        result = self._run(infos, user_id="me")
+        assert [r.schedule_id for r in result] == ["mine"]

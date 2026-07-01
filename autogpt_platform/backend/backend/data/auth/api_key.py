@@ -200,10 +200,37 @@ async def list_user_api_keys(
     user_id: str,
     limit: int = MAX_USER_API_KEYS_FETCH,
     organization_id: str | None = None,
+    team_ids: list[str] | None = None,
 ) -> list[APIKeyInfo]:
+    """List keys visible to the user.
+
+    Without org context: the user's own keys. With an active org (from a
+    membership-verified RequestContext): own keys (including untagged
+    pre-backfill rows) plus the org's ORG-owned keys — org-wide ones and
+    those pinned to a team in ``team_ids``. Key material itself is never
+    returned (only head/tail).
+    """
     where: dict = {"userId": user_id}
     if organization_id is not None:
-        where["organizationId"] = organization_id
+        where = {
+            "OR": [
+                {
+                    "userId": user_id,
+                    "OR": [
+                        {"organizationId": organization_id},
+                        {"organizationId": None},
+                    ],
+                },
+                {
+                    "organizationId": organization_id,
+                    "ownerType": "ORG",
+                    "OR": [
+                        {"teamId": None},
+                        *([{"teamId": {"in": team_ids}}] if team_ids else []),
+                    ],
+                },
+            ]
+        }
 
     api_keys = await PrismaAPIKey.prisma().find_many(
         where=where,
