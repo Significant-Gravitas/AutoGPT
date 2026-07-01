@@ -192,7 +192,11 @@ def test_known_offenders_use_posix_separators():
 
     Ensure the key construction normalises to forward slashes.
     """
-    for entry in _KNOWN_OFFENDERS | _DATACLASS_KNOWN_OFFENDERS:
+    for entry in (
+        _KNOWN_OFFENDERS
+        | _DATACLASS_KNOWN_OFFENDERS
+        | _PRISMA_ISOLATION_KNOWN_OFFENDERS
+    ):
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
             f"known-offenders entry uses backslash: {entry!r}. "
@@ -232,4 +236,189 @@ def test_no_process_cached_loop_bound_clients():
         "Fix: construct the client per-call, or introduce a per-loop factory "
         "keyed on id(asyncio.get_running_loop()). See "
         "backend/util/clients.py::get_openai_client for context."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule: Prisma-less processes route DB access through ``db_accessors``
+# ---------------------------------------------------------------------------
+#
+# Motivation: only the REST server, WS server, and DatabaseManager call
+# ``db.connect()`` — the scheduler, copilot-executor, and batch-executor
+# processes never connect a local Prisma client. Code under
+# ``backend/copilot/**`` and ``backend/executor/**`` therefore must not
+# perform Prisma operations directly NOR import a prisma-direct function
+# by name; the sanctioned route is ``backend.data.db_accessors``, which
+# falls back to the DatabaseManager RPC in Prisma-less processes.
+#
+# Two production incidents motivated this rule (June 2026):
+#   * ``dream/scheduling.py`` called ``User.prisma().find_unique`` for the
+#     timezone lookup — ``ClientNotConnectedError`` on every invocation in
+#     the copilot-executor, silently preventing dream crons from EVER
+#     registering for any user.
+#   * ``copilot/rate_limit.py`` imported ``reconcile_stripe_tier_for_user``
+#     from ``backend.data.credit`` — the Stripe tier self-heal was
+#     permanently dead in both worker processes, stack-tracing nightly.
+#
+# Detection is two-layered:
+#   A) syntactic: ``X.prisma()`` model-accessor calls or calls rooted at
+#      the global ``prisma`` client instance;
+#   B) symbol-level: ``from backend.x import f`` where ``f``'s body
+#      performs Prisma operations (module-level imports of mixed modules
+#      are fine — most data modules also export pure types/helpers).
+#
+# Modules imported by ``backend/data/db_manager.py`` are the sanctioned
+# implementations (they execute inside the DatabaseManager process or
+# behind ``db.is_connected()`` checks) and are exempt.
+
+_PRISMA_LESS_PACKAGES = ("copilot", "executor")
+
+# Burn this list down; do not add to it. Each entry is a latent instance
+# of the incident class above — the import works only in Prisma-connected
+# processes and will raise ``ClientNotConnectedError`` if the call path
+# is ever reached from the copilot-executor / scheduler / batch-executor.
+_PRISMA_ISOLATION_KNOWN_OFFENDERS = frozenset(
+    {
+        # Fixed in PR #13339 (route via credit_db()); remove once merged.
+        "copilot/rate_limit.py:A direct prisma-client call",
+        "copilot/rate_limit.py:B backend.data.credit.reconcile_stripe_tier_for_user",
+        # get_user_by_id at module level — used on paths that today only
+        # run in Prisma-connected processes; migrate to user_db().
+        "copilot/rate_limit.py:B backend.data.user.get_user_by_id",
+        # Workspace file resolution from the copilot-executor — migrate
+        # to workspace_db().
+        "copilot/pending_message_helpers.py:B backend.data.workspace.resolve_workspace_files",
+        # Copilot tools calling library-db implementations directly —
+        # migrate to library_db().
+        "copilot/tools/list_agent_triggers.py:B backend.api.features.library.db.get_library_agent",
+        "copilot/tools/list_agent_triggers.py:B backend.api.features.library.db.list_presets",
+        "copilot/tools/list_agent_triggers.py:B backend.api.features.library.db.list_trigger_agents",
+        "copilot/tools/manage_schedules.py:B backend.api.features.library.db.get_library_agent",
+        # Test-data seeder — only ever run against a connected dev DB.
+        "copilot/tools/_test_data.py:A direct prisma-client call",
+        "copilot/tools/_test_data.py:B backend.data.user.get_or_create_user",
+    }
+)
+
+
+def _non_type_checking_nodes(tree: ast.AST):
+    """All nodes except those inside ``if TYPE_CHECKING:`` blocks."""
+    skip: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            test = node.test
+            name = (
+                test.id
+                if isinstance(test, ast.Name)
+                else test.attr if isinstance(test, ast.Attribute) else None
+            )
+            if name == "TYPE_CHECKING":
+                for child in node.body:
+                    for sub in ast.walk(child):
+                        skip.add(id(sub))
+    for node in ast.walk(tree):
+        if id(node) not in skip:
+            yield node
+
+
+def _is_prisma_call(node: ast.AST) -> bool:
+    """``X.prisma()`` model accessor or a call rooted at the global
+    ``prisma`` client instance (``prisma.user.find_unique(...)``)."""
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr == "prisma":
+        return True
+    root: ast.expr = node.func.value
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    return (
+        isinstance(root, ast.Name)
+        and root.id == "prisma"
+        and isinstance(node.func.value, ast.Attribute)
+    )
+
+
+def _parse_backend_tree() -> dict[pathlib.Path, ast.AST]:
+    trees: dict[pathlib.Path, ast.AST] = {}
+    for py in _iter_backend_py_files():
+        if py.name.endswith("_test.py") or py.name == "conftest.py":
+            continue
+        try:
+            trees[py] = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except SyntaxError:
+            continue
+    return trees
+
+
+def _module_name(path: pathlib.Path) -> str:
+    rel = path.relative_to(BACKEND_ROOT.parent)
+    return ".".join(rel.with_suffix("").parts)
+
+
+def test_prisma_less_processes_route_db_access_via_accessors():
+    trees = _parse_backend_tree()
+    all_modules = {_module_name(p) for p in trees}
+
+    # Which FUNCTIONS in each module perform Prisma operations.
+    prisma_fns: dict[str, set[str]] = {}
+    for py, tree in trees.items():
+        fns = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and any(_is_prisma_call(sub) for sub in ast.walk(node))
+        }
+        if fns:
+            prisma_fns[_module_name(py)] = fns
+
+    # Sanctioned implementation modules = whatever the DatabaseManager RPC
+    # service imports (resolving ``from pkg import module`` style too).
+    impl: set[str] = set()
+    dbm_tree = trees[BACKEND_ROOT / "data" / "db_manager.py"]
+    for node in ast.walk(dbm_tree):
+        if isinstance(node, ast.Import):
+            impl.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            impl.add(node.module)
+            for alias in node.names:
+                candidate = f"{node.module}.{alias.name}"
+                if candidate in all_modules:
+                    impl.add(candidate)
+
+    offenders: list[str] = []
+    for py, tree in trees.items():
+        rel = py.relative_to(BACKEND_ROOT)
+        if rel.parts[0] not in _PRISMA_LESS_PACKAGES:
+            continue
+        if _module_name(py) in impl:
+            continue
+        for node in _non_type_checking_nodes(tree):
+            if _is_prisma_call(node):
+                key = f"{rel.as_posix()}:A direct prisma-client call"
+                if key not in _PRISMA_ISOLATION_KNOWN_OFFENDERS:
+                    offenders.append(
+                        f"  backend/{rel}:{node.lineno} performs a direct "
+                        "Prisma operation"
+                    )
+            if isinstance(node, ast.ImportFrom) and node.module:
+                direct = prisma_fns.get(node.module, set())
+                for alias in node.names:
+                    if alias.name not in direct:
+                        continue
+                    key = f"{rel.as_posix()}:B {node.module}.{alias.name}"
+                    if key not in _PRISMA_ISOLATION_KNOWN_OFFENDERS:
+                        offenders.append(
+                            f"  backend/{rel}:{node.lineno} imports prisma-"
+                            f"direct function `{node.module}.{alias.name}`"
+                        )
+
+    assert not offenders, (
+        "Code under backend/copilot/** and backend/executor/** executes in "
+        "processes that never connect a local Prisma client (only REST, WS, "
+        "and the DatabaseManager call db.connect()). Direct Prisma "
+        "operations there raise ClientNotConnectedError at runtime — this "
+        "silently disabled dream-cron registration and the Stripe tier "
+        "self-heal in production. Route through backend.data.db_accessors "
+        "(falls back to the DatabaseManager RPC) instead.\n\n"
+        "Offenders:\n" + "\n".join(sorted(offenders))
     )
