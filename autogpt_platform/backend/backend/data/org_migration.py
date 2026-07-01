@@ -343,6 +343,17 @@ async def assign_resources_to_teams() -> dict[str, int]:
         """
     )
 
+    results["UserNotificationBatch"] = await _assign_team_tenancy(
+        """
+        UPDATE "UserNotificationBatch" t
+        SET "organizationId" = o."id", "teamId" = w."id"
+        FROM "OrgMember" om
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
+        WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
+        """
+    )
+
     # --- Tables needing only organizationId ---
 
     results["BuilderSearchHistory"] = await prisma.execute_raw(

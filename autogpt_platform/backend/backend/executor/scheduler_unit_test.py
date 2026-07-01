@@ -202,9 +202,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 
     The fresh session must land in the org/team captured at schedule time —
     not the user's default org — so an org chat's followups stay in-tenant."""
-    args = _args(
-        session_id=None, organization_id="org-sched", team_id="team-sched"
-    )
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
     new_session = MagicMock(session_id="new-session-uuid")

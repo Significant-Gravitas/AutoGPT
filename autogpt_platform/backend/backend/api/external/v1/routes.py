@@ -188,13 +188,13 @@ async def execute_graph(
 
     # Attribute the execution to the API key's org when the key is org-scoped,
     # so a key issued for org A doesn't get billed/attributed to the user's
-    # default (personal) org. team_id stays org-home (None) until key-level
-    # team scoping lands (see APIKey.teamId work). Only fall back to the
+    # default (personal) org. A team-restricted key pins the execution to
+    # that team; otherwise team stays org-home (None). Only fall back to the
     # user's default org/team when the key carries no org.
     org_id: str | None
     team_id: str | None
     if auth.organization_id:
-        org_id, team_id = auth.organization_id, None
+        org_id, team_id = auth.organization_id, auth.team_id_restriction
     else:
         # Best-effort: a DB hiccup here must not collapse a subsequent
         # UserPaywalledError into 400 via the broad except below.

@@ -57,6 +57,8 @@ def _make_graph_row(
     m.forkedFromVersion = forkedFromVersion
     m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
     m.Nodes = []
+    m.organizationId = None
+    m.teamId = None
     return m
 
 
@@ -87,6 +89,8 @@ def _make_execution_row(
     m.parentGraphExecutionId = None
     m.isShared = False
     m.shareToken = None
+    m.organizationId = None
+    m.teamId = None
     return m
 
 
@@ -145,6 +149,8 @@ def _make_chat_session_row(
     m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
     m.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
     m.Messages = []
+    m.organizationId = None
+    m.teamId = None
     return m
 
 
@@ -1636,7 +1642,9 @@ class TestPR10WebhookTenancy:
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
         """RunAgentTool._run_agent resolves org/team via get_user_default_team
-        and passes them to execution_utils.add_graph_execution."""
+        for a session with no org tag (the session's own org, when present,
+        is authoritative — covered in run_agent_test.py) and passes them to
+        execution_utils.add_graph_execution."""
         from backend.copilot.tools.run_agent import RunAgentTool
 
         tool = RunAgentTool.__new__(RunAgentTool)
@@ -1648,6 +1656,8 @@ class TestPR10WebhookTenancy:
         mock_session = MagicMock()
         mock_session.session_id = SESSION_ID
         mock_session.successful_agent_runs = {}
+        mock_session.organization_id = None
+        mock_session.team_id = None
 
         mock_lib_agent = MagicMock()
         mock_lib_agent.id = "lib-1"

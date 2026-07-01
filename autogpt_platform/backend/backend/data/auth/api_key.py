@@ -29,9 +29,7 @@ class APIKeyInfo(APIAuthorizationInfo):
     )
     status: APIKeyStatus
     description: Optional[str] = None
-    organization_id: Optional[str] = None
     owner_type: Optional[str] = None
-    team_id_restriction: Optional[str] = None
 
     type: Literal["api_key"] = "api_key"  # type: ignore
 

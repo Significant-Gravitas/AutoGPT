@@ -45,6 +45,21 @@ async def create_invitation(
     ],
 ) -> InvitationCreateResponse:
     _verify_org_path(ctx, org_id)
+
+    # Reject team IDs outside this org at create time. The accept path's
+    # add_team_member re-validates (and silently skips failures), so
+    # without this check a poisoned invitation would fail silently at
+    # accept instead of loudly at create.
+    if request.team_ids:
+        teams = await prisma.team.find_many(where={"id": {"in": request.team_ids}})
+        valid_ids = {t.id for t in teams if t.orgId == org_id}
+        invalid = [t for t in request.team_ids if t not in valid_ids]
+        if invalid:
+            raise HTTPException(
+                400,
+                detail=f"Teams not found in this organization: {invalid}",
+            )
+
     expires_at = datetime.now(timezone.utc) + timedelta(days=INVITATION_TTL_DAYS)
 
     invitation = await prisma.orginvitation.create(

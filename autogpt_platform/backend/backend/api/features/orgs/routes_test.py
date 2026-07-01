@@ -2584,3 +2584,76 @@ class TestPRReviewBugsRound2:
 
         with pytest.raises(ValueError, match="does not belong"):
             await add_team_member(ws_id=WS_ID, user_id=OTHER_USER_ID, org_id="org-A")
+
+
+class TestInvitationSeeding:
+    """Create-time validation of invitation team seeding."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
+
+    @pytest.mark.asyncio
+    async def test_create_invitation_rejects_foreign_team_ids(self):
+        """An invitation must not be seedable with team IDs from another
+        org — otherwise accept-time seeding silently no-ops and the
+        inviter never learns the invite was poisoned/wrong."""
+        from backend.api.features.orgs.invitation_routes import create_invitation
+        from backend.api.features.orgs.model import CreateInvitationRequest
+
+        foreign_team = MagicMock()
+        foreign_team.id = "team-foreign"
+        foreign_team.orgId = "org-OTHER"
+        self.prisma.team.find_many = AsyncMock(return_value=[foreign_team])
+        self.prisma.orginvitation.create = AsyncMock()
+
+        with pytest.raises(fastapi.HTTPException) as exc:
+            await create_invitation(
+                org_id=ORG_ID,
+                request=CreateInvitationRequest(
+                    email="new@example.com",
+                    team_ids=["team-foreign"],
+                ),
+                ctx=_member_ctx(org_id=ORG_ID),
+            )
+
+        assert exc.value.status_code == 400
+        self.prisma.orginvitation.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_invitation_accepts_own_org_teams(self):
+        from backend.api.features.orgs.invitation_routes import create_invitation
+        from backend.api.features.orgs.model import CreateInvitationRequest
+
+        own_team = MagicMock()
+        own_team.id = "team-own"
+        own_team.orgId = ORG_ID
+        self.prisma.team.find_many = AsyncMock(return_value=[own_team])
+
+        created = MagicMock()
+        created.id = "inv-2"
+        created.token = "tok-xyz"
+        created.email = "new@example.com"
+        created.orgId = ORG_ID
+        created.isAdmin = False
+        created.isBillingManager = False
+        created.expiresAt = datetime.now(timezone.utc) + timedelta(days=3)
+        created.createdAt = FIXED_NOW
+        created.invitedByUserId = USER_ID
+        created.teamIds = ["team-own"]
+        created.acceptedAt = None
+        created.revokedAt = None
+        self.prisma.orginvitation.create = AsyncMock(return_value=created)
+
+        result = await create_invitation(
+            org_id=ORG_ID,
+            request=CreateInvitationRequest(
+                email="new@example.com",
+                team_ids=["team-own"],
+            ),
+            ctx=_member_ctx(org_id=ORG_ID),
+        )
+
+        assert result is not None
+        self.prisma.orginvitation.create.assert_called_once()

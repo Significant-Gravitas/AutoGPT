@@ -282,6 +282,43 @@ def test_execute_graph_uses_key_org_not_user_default(
     default_team.assert_not_called()
 
 
+def test_execute_graph_honors_key_team_restriction(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    """A team-restricted API key must pin the execution to that team —
+    previously ``teamIdRestriction`` was stored but never consumed."""
+
+    async def fake_require_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-from-key",
+            team_id_restriction="team-from-key",
+        )
+
+    app.dependency_overrides[require_auth] = fake_require_auth
+
+    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    captured: dict = {}
+
+    async def fake_add(**kwargs):
+        captured.update(kwargs)
+        return MagicMock(id="exec-1")
+
+    monkeypatch.setattr(routes_mod, "add_graph_execution", fake_add)
+
+    response = client.post(
+        "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
+        json={"node_input": {}},
+    )
+
+    assert response.status_code == 200
+    assert captured["organization_id"] == "org-from-key"
+    assert captured["team_id"] == "team-from-key"
+
+
 def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch):
     """``execute_graph_block`` must let ``UserPaywalledError`` propagate
     out so the external app's 402 handler fires. There's no surrounding
