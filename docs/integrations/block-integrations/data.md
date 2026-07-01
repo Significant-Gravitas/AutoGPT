@@ -281,7 +281,9 @@ Recall memories from a self-hosted Dakera server.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls the Dakera Python SDK's `recall` on a self-hosted Dakera server (default `http://localhost:3000`). It runs a semantic search over the memories in the `agent_id` namespace (defaulting to the current agent graph) and returns up to `top_k` matches ordered by relevance, each with its importance and similarity score. Use `min_importance` to drop low-value memories and `memory_type` to restrict the search to a single kind of memory.
+This block calls the Dakera Python SDK's `recall` on the server pinned by your host-scoped credential (for example `host=http://localhost:3000`), so the API key is bound to that host and cannot be redirected elsewhere. It runs a semantic search over the memories in the `agent_id` namespace — which defaults to the current agent graph — and returns up to `top_k` matches ordered by relevance, each with its importance and similarity score.
+
+Processing and edge cases: `query` is required and validated by the block schema; `top_k` is clamped to 1–100 and `min_importance` to 0.0–1.0, so out-of-range values are rejected before the request is sent. `memory_type` optionally restricts the search to one kind of memory. An empty namespace simply yields an empty list, so `count` is `0` and downstream blocks should handle the no-result case. If the server is unreachable or the key is rejected, the SDK raises (e.g. `client.recall(...)` surfaces an authorization or connection error) and the block routes it to the standard `error` output rather than returning partial data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -293,7 +295,6 @@ This block calls the Dakera Python SDK's `recall` on a self-hosted Dakera server
 | min_importance | Only recall memories at or above this importance (0.0–1.0). | float | No |
 | memory_type | Optionally restrict recall to a single memory type. | "episodic" \| "semantic" \| "procedural" \| "working" | No |
 | agent_id | Dakera memory namespace. Defaults to this agent's graph; set to recall from a namespace shared across agents. | str | No |
-| host | Base URL of your Dakera server. | str | No |
 
 ### Outputs
 
@@ -308,6 +309,8 @@ This block calls the Dakera Python SDK's `recall` on a self-hosted Dakera server
 **Context injection**: recall the most relevant past memories for the current task and feed them into an LLM block as grounding context.
 
 **Personalized responses**: pull previously stored user preferences before generating a reply so the agent stays consistent across sessions.
+
+**Semantic search over history**: query a shared `agent_id` namespace to surface relevant decisions or facts a whole team of agents recorded earlier.
 <!-- END MANUAL -->
 
 ---
@@ -452,7 +455,9 @@ Store a memory in a self-hosted Dakera server.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls the Dakera Python SDK's `store_memory` on a self-hosted Dakera server (default `http://localhost:3000`). The memory is written to the namespace given by `agent_id`, which defaults to the current agent graph so each agent keeps its own memory; set it explicitly to share a namespace across agents. `importance` (0.0–1.0) seeds Dakera's access-weighted decay so higher-importance memories are retained longer. The block returns the stored memory's ID and full record.
+This block calls the Dakera Python SDK's `store_memory` on the server pinned by your host-scoped credential (for example `host=http://localhost:3000`), so the API key is bound to that host and cannot be redirected elsewhere. The memory is written to the namespace given by `agent_id`, which defaults to the current agent graph so each agent keeps its own memory; set it explicitly to share a namespace across agents. `importance` (0.0–1.0) seeds Dakera's access-weighted decay so higher-importance memories are retained longer.
+
+Processing and edge cases: `content` is required and `importance` is validated to the 0.0–1.0 range by the block schema, so an invalid `importance` is rejected before the request is sent. Empty `tags` are omitted rather than stored as an empty list, and the block passes the graph execution id as the memory's `session_id` for provenance. On success it yields the stored memory's `memory_id` and full `memory` record; if the server is unreachable or the key is rejected, the SDK raises (e.g. `client.store_memory(...)` surfaces an authorization or connection error) and the block routes it to the standard `error` output.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -464,7 +469,6 @@ This block calls the Dakera Python SDK's `store_memory` on a self-hosted Dakera 
 | memory_type | Kind of memory to store. | "episodic" \| "semantic" \| "procedural" \| "working" | No |
 | tags | Optional tags to attach to the memory. | List[str] | No |
 | agent_id | Dakera memory namespace. Defaults to this agent's graph so each agent keeps its own memory; set to share memory across agents. | str | No |
-| host | Base URL of your Dakera server. | str | No |
 
 ### Outputs
 
@@ -479,6 +483,8 @@ This block calls the Dakera Python SDK's `store_memory` on a self-hosted Dakera 
 **Persist user preferences**: store facts an agent learns about a user (e.g. "prefers dark mode") so later runs can recall and act on them.
 
 **Cross-run continuity**: capture intermediate results or decisions during a long-running agent so a future run can pick up where it left off.
+
+**Shared team knowledge base**: write to an explicit shared `agent_id` so a fleet of agents contributes to and draws from one pool of memories.
 <!-- END MANUAL -->
 
 ---

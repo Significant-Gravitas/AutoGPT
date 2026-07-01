@@ -2,8 +2,10 @@
 
 `Dakera <https://dakera.ai>`_ is a self-hosted memory server that stores agent
 memories with access-weighted importance decay and retrieves them by semantic
-recall. Because Dakera is self-hosted, each block takes the server ``host`` URL
-(default ``http://localhost:3000``) alongside an API key credential.
+recall. Because Dakera is self-hosted, the server URL varies per user, so these
+blocks use **host-scoped credentials**: the server ``host`` (e.g.
+``http://localhost:3000``) is stored together with the API key. Binding the key
+to its host means a graph cannot redirect a stored key to an arbitrary server.
 
 Quick start (self-host with the public docker-compose, which also provisions the
 object store)::
@@ -12,6 +14,10 @@ object store)::
     cd dakera-deploy && docker compose up -d   # server on :3000 + MinIO
 
     pip install dakera
+
+Then add a Dakera credential in AutoGPT with ``host`` set to your server URL and
+an ``Authorization`` header of ``Bearer dk-...`` (how the Dakera SDK
+authenticates).
 
 The blocks below wrap the ``dakera`` Python SDK's ``store_memory`` and ``recall``
 methods. Memories are namespaced per AutoGPT agent graph by default so each
@@ -33,35 +39,43 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    HostScopedCredentials,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
 
-# Default self-hosted Dakera server endpoint (Dakera listens on port 3000).
+# Reference self-hosted Dakera server endpoint (Dakera listens on port 3000).
 DEFAULT_HOST = "http://localhost:3000"
 
 MemoryType = Literal["episodic", "semantic", "procedural", "working"]
 
-DakeraCredentials = APIKeyCredentials
+# Dakera is self-hosted, so the server URL is user-specific. Host-scoped
+# credentials bind the API key to a host so it cannot be sent elsewhere.
+DakeraCredentials = HostScopedCredentials
 DakeraCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.DAKERA], Literal["api_key"]
+    Literal[ProviderName.DAKERA], Literal["host_scoped"]
 ]
 
 
 def DakeraCredentialsField() -> DakeraCredentialsInput:
-    """Create a Dakera API key credentials input field."""
-    return CredentialsField(description="Dakera API key (looks like ``dk-...``)")
+    """Create a Dakera host-scoped credentials input field."""
+    return CredentialsField(
+        description=(
+            "Dakera server host plus API key. Set ``host`` to your server URL "
+            "(e.g. ``http://localhost:3000``) and add an ``Authorization`` "
+            "header of ``Bearer dk-...``."
+        )
+    )
 
 
-TEST_CREDENTIALS = APIKeyCredentials(
+TEST_CREDENTIALS = HostScopedCredentials(
     id="0f9d81b5-a145-4c23-b87f-01d6bf37b678",
     provider="dakera",
-    api_key=SecretStr("dk-mock-dakera-api-key"),
-    title="Mock Dakera API key",
-    expires_at=None,
+    host=DEFAULT_HOST,
+    headers={"Authorization": SecretStr("Bearer dk-mock-dakera-api-key")},
+    title="Mock Dakera credentials",
 )
 
 TEST_CREDENTIALS_INPUT = {
@@ -76,11 +90,16 @@ class DakeraBase:
     """Base class with shared utilities for Dakera blocks."""
 
     @staticmethod
-    def _get_client(credentials: APIKeyCredentials, host: str) -> DakeraClient:
-        """Get an initialized Dakera client for a self-hosted server."""
+    def _get_client(credentials: HostScopedCredentials) -> DakeraClient:
+        """Get an initialized Dakera client for the credential's host.
+
+        The server URL comes from the credential (not a graph input) and the
+        API key travels as the credential's ``Authorization`` header, so the
+        key is always bound to the host it was issued for.
+        """
         return DakeraClient(
-            base_url=host or DEFAULT_HOST,
-            api_key=credentials.api_key.get_secret_value(),
+            base_url=credentials.host or DEFAULT_HOST,
+            headers=credentials.get_headers_dict(),
         )
 
     @staticmethod
@@ -127,11 +146,6 @@ class StoreMemoryBlock(Block, DakeraBase):
             default="",
             advanced=True,
         )
-        host: str = SchemaField(
-            description="Base URL of your Dakera server.",
-            default=DEFAULT_HOST,
-            advanced=True,
-        )
 
     class Output(BlockSchemaOutput):
         memory_id: str = SchemaField(description="ID of the stored memory.")
@@ -162,7 +176,7 @@ class StoreMemoryBlock(Block, DakeraBase):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={
-                "_get_client": lambda credentials, host: MockDakeraClient(),
+                "_get_client": lambda credentials: MockDakeraClient(),
             },
         )
 
@@ -170,28 +184,25 @@ class StoreMemoryBlock(Block, DakeraBase):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: HostScopedCredentials,
         graph_id: str,
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            client = self._get_client(credentials, input_data.host)
-            agent_id = self._resolve_agent_id(input_data.agent_id, graph_id)
+        client = self._get_client(credentials)
+        agent_id = self._resolve_agent_id(input_data.agent_id, graph_id)
 
-            memory = client.store_memory(
-                agent_id=agent_id,
-                content=input_data.content,
-                memory_type=input_data.memory_type,
-                importance=input_data.importance,
-                tags=input_data.tags or None,
-                session_id=graph_exec_id,
-            )
+        memory = client.store_memory(
+            agent_id=agent_id,
+            content=input_data.content,
+            memory_type=input_data.memory_type,
+            importance=input_data.importance,
+            tags=input_data.tags or None,
+            session_id=graph_exec_id,
+        )
 
-            yield "memory_id", memory.get("id", "")
-            yield "memory", memory
-        except Exception as e:
-            yield "error", str(e)
+        yield "memory_id", memory.get("id", "")
+        yield "memory", memory
 
 
 class RecallMemoryBlock(Block, DakeraBase):
@@ -226,11 +237,6 @@ class RecallMemoryBlock(Block, DakeraBase):
                 "to recall from a namespace shared across agents."
             ),
             default="",
-            advanced=True,
-        )
-        host: str = SchemaField(
-            description="Base URL of your Dakera server.",
-            default=DEFAULT_HOST,
             advanced=True,
         )
 
@@ -269,7 +275,7 @@ class RecallMemoryBlock(Block, DakeraBase):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={
-                "_get_client": lambda credentials, host: MockDakeraClient(),
+                "_get_client": lambda credentials: MockDakeraClient(),
             },
         )
 
@@ -277,38 +283,35 @@ class RecallMemoryBlock(Block, DakeraBase):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: HostScopedCredentials,
         graph_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            client = self._get_client(credentials, input_data.host)
-            agent_id = self._resolve_agent_id(input_data.agent_id, graph_id)
+        client = self._get_client(credentials)
+        agent_id = self._resolve_agent_id(input_data.agent_id, graph_id)
 
-            response: RecallResponse = client.recall(
-                agent_id=agent_id,
-                query=input_data.query,
-                top_k=input_data.top_k,
-                min_importance=input_data.min_importance,
-                memory_type=input_data.memory_type,
-            )
+        response: RecallResponse = client.recall(
+            agent_id=agent_id,
+            query=input_data.query,
+            top_k=input_data.top_k,
+            min_importance=input_data.min_importance,
+            memory_type=input_data.memory_type,
+        )
 
-            memories = [
-                {
-                    "id": m.id,
-                    "content": m.content,
-                    "memory_type": m.memory_type,
-                    "importance": m.importance,
-                    "score": m.score,
-                    "created_at": m.created_at,
-                }
-                for m in response.memories
-            ]
+        memories = [
+            {
+                "id": m.id,
+                "content": m.content,
+                "memory_type": m.memory_type,
+                "importance": m.importance,
+                "score": m.score,
+                "created_at": m.created_at,
+            }
+            for m in response.memories
+        ]
 
-            yield "memories", memories
-            yield "count", len(memories)
-        except Exception as e:
-            yield "error", str(e)
+        yield "memories", memories
+        yield "count", len(memories)
 
 
 class MockDakeraClient:

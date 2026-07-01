@@ -31,7 +31,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "v0": ("AI-generated UI components", ("api_key",)),
     # Single-file providers (one provider per standalone blocks/*.py file)
     "d_id": ("AI avatar and video generation", ("api_key",)),
-    "dakera": ("Decay-weighted persistent memory for agents", ("api_key",)),
+    "dakera": ("Decay-weighted persistent memory for agents", ("host_scoped",)),
     "e2b": ("Sandboxed code execution", ("api_key",)),
     "google_maps": ("Places, directions, geocoding", ("api_key",)),
     "http": ("Generic HTTP requests", ("api_key", "host_scoped")),
