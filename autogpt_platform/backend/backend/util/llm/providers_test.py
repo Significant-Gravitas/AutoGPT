@@ -355,6 +355,60 @@ class TestOpenAIResponses:
         assert kwargs["max_output_tokens"] == 100
         assert kwargs["store"] is False
 
+    @pytest.mark.asyncio
+    async def test_requests_encrypted_reasoning_content_with_store_false(self):
+        """Reasoning models (gpt-5*, o3*) emit ``reasoning`` items that the
+        orchestrator re-inlines verbatim on the next turn. With ``store=False``
+        those items are not persisted on OpenAI's servers, so re-sending them
+        by id 404s ("Item with id 'rs_...' not found"). The fix keeps
+        ``store=False`` but asks OpenAI to return the reasoning items'
+        ``encrypted_content`` so they can be replayed inline on the next call.
+
+        See OPEN-3187.
+        """
+        fake_response = SimpleNamespace()  # extractors are also mocked
+
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="hello world",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(11, 22),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="gpt-5-2025-08-07",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        # store must stay False — state is replayed client-side, never
+        # persisted on OpenAI's servers.
+        assert kwargs["store"] is False
+        # The encrypted blob is what lets a store=false reasoning item be
+        # replayed inline on the next turn instead of looked up by id.
+        assert "reasoning.encrypted_content" in kwargs["include"]
+
 
 # ---------------------------------------------------------------------------
 # Anthropic Messages API
