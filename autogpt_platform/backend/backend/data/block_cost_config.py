@@ -108,17 +108,33 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 MODEL_COST: dict[LlmModel, int] = {
+    LlmModel.O4_MINI: 2,
+    LlmModel.O4_MINI_DEEP_RESEARCH: 5,
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,
+    LlmModel.O3_PRO: 30,
+    LlmModel.O3_DEEP_RESEARCH: 15,
+    LlmModel.O1: 16,
+    LlmModel.O1_MINI: 4,
     # GPT-5 models
+    LlmModel.GPT5_4: 5,
+    LlmModel.GPT5_4_MINI: 2,
+    LlmModel.GPT5_4_NANO: 1,
+    LlmModel.GPT5_4_PRO: 60,
+    LlmModel.GPT5_3: 5,
+    LlmModel.GPT5_3_CODEX: 5,
     LlmModel.GPT5_2: 6,
+    LlmModel.GPT5_2_PRO: 60,
     LlmModel.GPT5_1: 5,
+    LlmModel.GPT5_1_CODEX: 5,
     LlmModel.GPT5: 2,
     LlmModel.GPT5_MINI: 1,
     LlmModel.GPT5_NANO: 1,
+    LlmModel.GPT5_PRO: 60,
     LlmModel.GPT5_CHAT: 5,
     LlmModel.GPT41: 2,
     LlmModel.GPT41_MINI: 1,
+    LlmModel.GPT41_NANO: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.CLAUDE_4_6_OPUS: 14,
@@ -246,18 +262,34 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
         input=150, output=750, cache_read=15, cache_creation=188
     ),
     # OpenAI
+    LlmModel.GPT5_4: TokenRate(input=300, output=1200),
+    LlmModel.GPT5_4_MINI: TokenRate(input=60, output=240),
+    LlmModel.GPT5_4_NANO: TokenRate(input=15, output=60),
+    LlmModel.GPT5_4_PRO: TokenRate(input=2250, output=15000),
+    LlmModel.GPT5_3: TokenRate(input=263, output=2100),
+    LlmModel.GPT5_3_CODEX: TokenRate(input=263, output=2100),
     LlmModel.GPT5_2: TokenRate(input=263, output=2100),
+    LlmModel.GPT5_2_PRO: TokenRate(input=2250, output=15000),
     LlmModel.GPT5_1: TokenRate(input=188, output=1500),
+    LlmModel.GPT5_1_CODEX: TokenRate(input=188, output=1500),
     LlmModel.GPT5: TokenRate(input=188, output=1500),
     LlmModel.GPT5_MINI: TokenRate(input=38, output=300),
     LlmModel.GPT5_NANO: TokenRate(input=8, output=60),
+    LlmModel.GPT5_PRO: TokenRate(input=2250, output=15000),
     LlmModel.GPT5_CHAT: TokenRate(input=188, output=1500),
     LlmModel.GPT4O: TokenRate(input=375, output=1500),
     LlmModel.GPT4O_MINI: TokenRate(input=23, output=90),
     LlmModel.GPT41: TokenRate(input=300, output=1200),
     LlmModel.GPT41_MINI: TokenRate(input=60, output=240),
+    LlmModel.GPT41_NANO: TokenRate(input=15, output=60),
+    LlmModel.O4_MINI: TokenRate(input=165, output=660),
+    LlmModel.O4_MINI_DEEP_RESEARCH: TokenRate(input=165, output=660),
     LlmModel.O3: TokenRate(input=300, output=1200),
     LlmModel.O3_MINI: TokenRate(input=165, output=660),
+    LlmModel.O3_PRO: TokenRate(input=3000, output=12000),
+    LlmModel.O3_DEEP_RESEARCH: TokenRate(input=300, output=1200),
+    LlmModel.O1: TokenRate(input=2250, output=9000),
+    LlmModel.O1_MINI: TokenRate(input=450, output=1800),
     # Google Gemini (uses <=200k context tier pricing).
     LlmModel.GEMINI_2_5_PRO: TokenRate(input=188, output=1500),
     LlmModel.GEMINI_2_5_FLASH: TokenRate(input=45, output=375),
@@ -545,6 +577,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     # cr/$ matches the TOKEN_COST margin — a 30K-token generation
     # (~25K in + 5K out) ≈ $0.081 → 13 cr, vs the prior flat 5 cr.
     CodeGenerationBlock: [
+        BlockCost(
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
+                "model": CodexModel.GPT5_3_CODEX,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=150,
+        ),
         BlockCost(
             cost_type=BlockCostType.COST_USD,
             cost_filter={

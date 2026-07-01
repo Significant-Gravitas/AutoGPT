@@ -35,6 +35,7 @@ class CodexCallResult:
 class CodexModel(str, Enum):
     """Codex-capable OpenAI models."""
 
+    GPT5_3_CODEX = "gpt-5.3-codex"
     GPT5_1_CODEX = "gpt-5.1-codex"
 
 
@@ -91,7 +92,7 @@ class CodeGenerationBlock(Block):
         )
         model: CodexModel = SchemaField(
             title="Codex Model",
-            default=CodexModel.GPT5_1_CODEX,
+            default=CodexModel.GPT5_3_CODEX,
             description="Codex-optimized model served via the Responses API.",
             advanced=False,
         )
