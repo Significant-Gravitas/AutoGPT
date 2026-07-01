@@ -1,0 +1,98 @@
+
+services:
+
+  copilot_executor:
+
+    security_opt:
+
+      - seccomp=unconfined
+
+    cap_add:
+
+      - SYS_ADMIN
+
+    volumes:
+
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+    environment:
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+
+
+
+  executor:
+
+    security_opt:
+
+      - seccomp=unconfined
+
+    cap_add:
+
+      - SYS_ADMIN
+
+    volumes:
+
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+    environment:
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+
+
+
+  rest_server:
+
+    volumes:
+
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+    environment:
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+
+
+
+  scheduler_server:
+
+    volumes:
+
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+    environment:
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+
+
+
+  database_manager:
+
+    volumes:
+
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+    environment:
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+
+      CHAT_API_KEY: ""
+
+      CHAT_BASE_URL: ""
+
+      OPEN_ROUTER_API_KEY: ""
+
+  db:
+
+    ports:
+
+      - "127.0.0.1:15432:5432"
+
+    volumes:
+
+      - autogpt_deepseek_db_data:/var/lib/postgresql/data
+
+
+
+volumes:
+
+  autogpt_deepseek_db_data:

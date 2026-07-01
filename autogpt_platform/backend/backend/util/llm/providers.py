@@ -34,8 +34,11 @@ import asyncio
 import functools
 import json as json_module
 import logging
+import time
 from datetime import datetime, timezone
-from typing import Any, Literal, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, TypeAlias, cast
+from urllib.parse import urlparse
 
 import anthropic
 import ollama
@@ -46,6 +49,11 @@ from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.llm.config import (
+    ProviderDispatch,
+    get_provider_profile,
+    resolve_request_policy,
+)
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -69,27 +77,10 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-# Hard cap on a single provider HTTP request. Mirrors
-# ``backend/blocks/llm.py::LLM_REQUEST_TIMEOUT_SECONDS``. Healthy
-# non-streaming Messages / Responses calls finish in seconds; anything
-# past 120s is almost certainly a stalled socket and retries-on-timeout
-# would compound into multi-hour worst cases. Batch and flex paths
-# override this where appropriate.
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 120
-
 # Provider names accepted by ``call_provider``. Kept as a string Literal
 # (not an enum) so the helper stays provider-name-agnostic — callers
 # pass whatever string their model metadata reports.
-ProviderLiteral = Literal[
-    "openai",
-    "anthropic",
-    "groq",
-    "ollama",
-    "open_router",
-    "llama_api",
-    "aiml_api",
-    "v0",
-]
+ProviderLiteral: TypeAlias = ProviderDispatch
 
 ExecutionMode = Literal["sync", "batch", "flex"]
 
@@ -100,6 +91,96 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # have no flex equivalent — callers asking for flex on them get a
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+
+
+def _default_base_url(provider: ProviderLiteral, ollama_host: str) -> str:
+    if provider == "open_router":
+        return OPENROUTER_BASE_URL
+    if provider in ("openai", "deepseek", "anthropic", "custom"):
+        return get_provider_profile(provider).default_base_url or ""
+    if provider == "ollama":
+        return ollama_host
+    if provider == "llama_api":
+        return "https://api.llama.com/compat/v1/"
+    if provider == "aiml_api":
+        return "https://api.aimlapi.com/v2"
+    if provider == "v0":
+        return "https://api.v0.dev/v1"
+    return ""
+
+
+def _request_log_fields(
+    *,
+    provider: str,
+    model: str,
+    base_url: str,
+    stream: bool,
+    timeout_seconds: float,
+    max_retries: int,
+    attempt: int,
+    tool_calling: bool,
+) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "model": model,
+        "base_url_host": urlparse(base_url).hostname or "",
+        "stream": stream,
+        "tool_calling": tool_calling,
+        "timeout_s": timeout_seconds,
+        "max_retries": max_retries,
+        "retry_attempt": attempt,
+    }
+
+
+def _provider_label_from_url(base_url: str) -> str:
+    host = (urlparse(base_url).hostname or "").lower()
+    if host == "api.deepseek.com":
+        return "deepseek"
+    if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
+        return "open_router"
+    if host == "api.openai.com":
+        return "openai"
+    if host == "api.anthropic.com":
+        return "anthropic"
+    return "custom"
+
+
+def _http_status(exc: Exception) -> int | None:
+    status_code = getattr(exc, "status_code", None)
+    return status_code if isinstance(status_code, int) else None
+
+
+def _retry_reason(exc: Exception) -> str:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return "timeout"
+    if status_code := _http_status(exc):
+        return f"http_{status_code}"
+    return type(exc).__name__
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    if isinstance(
+        exc,
+        (
+            asyncio.TimeoutError,
+            TimeoutError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+        ),
+    ):
+        return True
+    status_code = _http_status(exc)
+    return bool(status_code and (status_code in {408, 409, 429} or status_code >= 500))
+
+
+def _validate_request_policy(timeout_seconds: float, max_retries: int) -> None:
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be greater than zero")
+    if not 0 <= max_retries <= 10:
+        raise ValueError("max_retries must be between 0 and 10")
+
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -187,7 +268,9 @@ async def call_provider(
     parallel_tool_calls: bool | openai.Omit = openai.omit,
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    base_url: str | None = None,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
 
@@ -238,31 +321,90 @@ async def call_provider(
             )
 
     sanitize_messages_for_utf8(messages)
+    default_timeout, default_retries = resolve_request_policy()
+    effective_timeout = (
+        timeout_seconds if timeout_seconds is not None else default_timeout
+    )
+    effective_retries = default_retries if max_retries is None else max_retries
+    _validate_request_policy(effective_timeout, effective_retries)
+    resolved_base_url = base_url or _default_base_url(provider, ollama_host)
+    if provider == "custom" and not resolved_base_url:
+        raise ValueError("base_url is required for provider='custom'")
 
-    try:
-        return await asyncio.wait_for(
-            _dispatch_sync(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                tools=tools,
-                tool_choice=tool_choice,
-                force_json_output=force_json_output,
-                parallel_tool_calls=parallel_tool_calls,
-                ollama_host=ollama_host,
-                timeout_seconds=timeout_seconds,
-                service_tier=service_tier,
-            ),
-            timeout=timeout_seconds,
+    for attempt in range(effective_retries + 1):
+        started_at = time.monotonic()
+        fields = _request_log_fields(
+            provider=provider,
+            model=model,
+            base_url=resolved_base_url,
+            stream=False,
+            timeout_seconds=effective_timeout,
+            max_retries=effective_retries,
+            attempt=attempt,
+            tool_calling=bool(tools),
         )
-    except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"LLM request to {provider}/{model} exceeded "
-            f"{timeout_seconds}s and was cancelled."
-        ) from exc
+        logger.info("LLM request started", extra={"json_fields": fields})
+        try:
+            response = await asyncio.wait_for(
+                _dispatch_sync(
+                    provider=provider,
+                    model=model,
+                    api_key=api_key,
+                    base_url=resolved_base_url,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    force_json_output=force_json_output,
+                    parallel_tool_calls=parallel_tool_calls,
+                    ollama_host=ollama_host,
+                    timeout_seconds=effective_timeout,
+                    service_tier=service_tier,
+                ),
+                timeout=effective_timeout,
+            )
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            error_fields = {
+                **fields,
+                "duration_ms": duration_ms,
+                "error_class": type(exc).__name__,
+                "http_status": _http_status(exc),
+                "retry_reason": _retry_reason(exc),
+            }
+            if attempt < effective_retries and _is_retryable_error(exc):
+                backoff_seconds = min(0.5 * (2**attempt), 2.0)
+                logger.warning(
+                    "LLM request failed; retrying",
+                    extra={
+                        "json_fields": {
+                            **error_fields,
+                            "retry_backoff_s": backoff_seconds,
+                        }
+                    },
+                )
+                await asyncio.sleep(backoff_seconds)
+                continue
+            logger.error("LLM request failed", extra={"json_fields": error_fields})
+            if isinstance(exc, asyncio.TimeoutError):
+                raise TimeoutError(
+                    f"LLM request to {provider}/{model} exceeded "
+                    f"{effective_timeout}s and was cancelled."
+                ) from exc
+            raise
+        logger.info(
+            "LLM request completed",
+            extra={
+                "json_fields": {
+                    **fields,
+                    "duration_ms": int((time.monotonic() - started_at) * 1000),
+                }
+            },
+        )
+        return response
+
+    raise RuntimeError("LLM retry loop exited without a response")
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +417,7 @@ async def _dispatch_sync(
     provider: ProviderLiteral,
     model: str,
     api_key: str,
+    base_url: str,
     messages: list[dict],
     max_tokens: int,
     temperature: float | None,
@@ -290,6 +433,7 @@ async def _dispatch_sync(
         return await _call_openai_responses(
             model=model,
             api_key=api_key,
+            base_url=base_url,
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -334,7 +478,7 @@ async def _dispatch_sync(
         )
     if provider == "open_router":
         return await _call_openai_compat(
-            base_url=OPENROUTER_BASE_URL,
+            base_url=base_url,
             model=model,
             api_key=api_key,
             messages=messages,
@@ -345,6 +489,21 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=True,
+            service_tier=service_tier,
+        )
+    if provider in ("deepseek", "custom"):
+        return await _call_openai_compat(
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
             service_tier=service_tier,
         )
     if provider == "llama_api":
@@ -408,6 +567,7 @@ async def _call_openai_responses(
     *,
     model: str,
     api_key: str,
+    base_url: str,
     messages: list[dict],
     max_tokens: int,
     temperature: float | None,
@@ -417,7 +577,12 @@ async def _call_openai_responses(
     timeout_seconds: float,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    client = openai.AsyncOpenAI(api_key=api_key)
+    client = openai.AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout_seconds,
+        max_retries=0,
+    )
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
@@ -519,7 +684,11 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = anthropic.AsyncAnthropic(
+        api_key=api_key,
+        timeout=timeout_seconds,
+        max_retries=0,
+    )
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -783,7 +952,12 @@ async def _call_openai_compat(
     default_headers: dict[str, str] | None = None,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    client_kwargs: dict[str, Any] = {"base_url": base_url, "api_key": api_key}
+    client_kwargs: dict[str, Any] = {
+        "base_url": base_url,
+        "api_key": api_key,
+        "timeout": timeout_seconds,
+        "max_retries": 0,
+    }
     if default_headers:
         client_kwargs["default_headers"] = default_headers
     client = openai.AsyncOpenAI(**client_kwargs)
@@ -907,6 +1081,59 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
 StreamResponse = Any
 
 
+async def _execute_openai_compat_request(
+    request: Callable[[], Awaitable[Any]],
+    *,
+    fields: dict[str, Any],
+    timeout_seconds: float,
+    max_retries: int,
+) -> Any:
+    for attempt in range(max_retries + 1):
+        attempt_fields = {**fields, "retry_attempt": attempt}
+        started_at = time.monotonic()
+        logger.info("LLM request started", extra={"json_fields": attempt_fields})
+        try:
+            response = await asyncio.wait_for(request(), timeout=timeout_seconds)
+        except Exception as exc:
+            error_fields = {
+                **attempt_fields,
+                "duration_ms": int((time.monotonic() - started_at) * 1000),
+                "error_class": type(exc).__name__,
+                "http_status": _http_status(exc),
+                "retry_reason": _retry_reason(exc),
+            }
+            if attempt < max_retries and _is_retryable_error(exc):
+                backoff_seconds = min(0.5 * (2**attempt), 2.0)
+                logger.warning(
+                    "LLM request failed; retrying",
+                    extra={
+                        "json_fields": {
+                            **error_fields,
+                            "retry_backoff_s": backoff_seconds,
+                        }
+                    },
+                )
+                await asyncio.sleep(backoff_seconds)
+                continue
+            logger.error("LLM request failed", extra={"json_fields": error_fields})
+            if isinstance(exc, asyncio.TimeoutError):
+                raise TimeoutError(
+                    f"LLM request exceeded {timeout_seconds}s and was cancelled."
+                ) from exc
+            raise
+        logger.info(
+            "LLM request completed",
+            extra={
+                "json_fields": {
+                    **attempt_fields,
+                    "duration_ms": int((time.monotonic() - started_at) * 1000),
+                }
+            },
+        )
+        return response
+    raise RuntimeError("LLM retry loop exited without a response")
+
+
 async def call_provider_stream(
     *,
     model: str,
@@ -920,6 +1147,8 @@ async def call_provider_stream(
     tools: list[dict] | None = None,
     max_tokens: int | openai.Omit = openai.omit,
     timeout: float | openai.Omit = openai.omit,
+    max_retries: int | None = None,
+    provider: str | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> StreamResponse:
     """Open an OpenAI-compatible streaming chat completion and return
@@ -938,30 +1167,35 @@ async def call_provider_stream(
     client. Default factory is ``openai.AsyncOpenAI`` — callers
     needing Langfuse spans pass the wrapped subclass.
 
-    Does NOT wrap the call in ``asyncio.wait_for`` and defaults
-    ``timeout`` to ``openai.omit`` so the SDK / client's own per-request
-    default applies. A streaming chat request can legitimately run
-    minutes (long reasoning, large tool-call payloads) and the
-    streaming protocol already exposes keepalive failures via chunk
-    timeouts; the caller's outer cancel scope is the right place to
-    bound total time. Pass an explicit ``timeout`` only when you
-    really mean per-request inter-chunk read timeout.
+    The shared timeout and retry policy applies while opening the
+    stream. Once returned, the caller owns cancellation while iterating
+    the stream; SDK read timeouts continue to apply between chunks.
     """
     sanitize_messages_for_utf8(messages)
+    default_timeout, default_retries = resolve_request_policy()
+    effective_timeout = (
+        timeout if isinstance(timeout, (int, float)) else default_timeout
+    )
+    effective_retries = default_retries if max_retries is None else max_retries
+    _validate_request_policy(effective_timeout, effective_retries)
     if client is None:
         if base_url is None or api_key is None:
             raise ValueError(
                 "call_provider_stream: pass either `client` or both "
                 "`base_url` and `api_key`."
             )
-        client = client_factory(base_url=base_url, api_key=api_key)
+        client = client_factory(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=effective_timeout,
+            max_retries=0,
+        )
     create_kwargs: dict[str, Any] = {
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "stream": True,
     }
-    if not isinstance(timeout, openai.Omit):
-        create_kwargs["timeout"] = timeout
+    create_kwargs["timeout"] = effective_timeout
     # Only set ``max_tokens`` when the caller passed a real value. Some
     # transports (OpenRouter on thinking routes) inject their own
     # default and 400 on a redundant client-side limit, so the chat
@@ -977,7 +1211,23 @@ async def call_provider_stream(
         create_kwargs["stream_options"] = stream_options
     if tools:
         create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
-    return await client.chat.completions.create(**create_kwargs)
+    client_base_url = base_url or str(getattr(client, "base_url", ""))
+    fields = _request_log_fields(
+        provider=provider or _provider_label_from_url(client_base_url),
+        model=model,
+        base_url=client_base_url,
+        stream=True,
+        timeout_seconds=effective_timeout,
+        max_retries=effective_retries,
+        attempt=0,
+        tool_calling=bool(tools),
+    )
+    return await _execute_openai_compat_request(
+        lambda: client.chat.completions.create(**create_kwargs),
+        fields=fields,
+        timeout_seconds=effective_timeout,
+        max_retries=effective_retries,
+    )
 
 
 async def call_provider_openai_compat_sync(
@@ -990,7 +1240,9 @@ async def call_provider_openai_compat_sync(
     api_key: str | None = None,
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
+    provider: str | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1007,24 +1259,51 @@ async def call_provider_openai_compat_sync(
     for rationale.
     """
     sanitize_messages_for_utf8(messages)
+    default_timeout, default_retries = resolve_request_policy()
+    effective_timeout = (
+        timeout_seconds if timeout_seconds is not None else default_timeout
+    )
+    effective_retries = default_retries if max_retries is None else max_retries
+    _validate_request_policy(effective_timeout, effective_retries)
     if client is None:
         if base_url is None or api_key is None:
             raise ValueError(
                 "call_provider_openai_compat_sync: pass either `client` "
                 "or both `base_url` and `api_key`."
             )
-        client = client_factory(base_url=base_url, api_key=api_key)
+        client = client_factory(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=effective_timeout,
+            max_retries=0,
+        )
     create_kwargs: dict[str, Any] = {
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "max_tokens": max_tokens,
-        "timeout": timeout_seconds,
+        "timeout": effective_timeout,
     }
     if extra_body:
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
         create_kwargs["extra_headers"] = extra_headers
-    return await client.chat.completions.create(**create_kwargs)
+    client_base_url = base_url or str(getattr(client, "base_url", ""))
+    fields = _request_log_fields(
+        provider=provider or _provider_label_from_url(client_base_url),
+        model=model,
+        base_url=client_base_url,
+        stream=False,
+        timeout_seconds=effective_timeout,
+        max_retries=effective_retries,
+        attempt=0,
+        tool_calling=False,
+    )
+    return await _execute_openai_compat_request(
+        lambda: client.chat.completions.create(**create_kwargs),
+        fields=fields,
+        timeout_seconds=effective_timeout,
+        max_retries=effective_retries,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1239,8 +1518,7 @@ async def poll_batch(
     """
     if provider != "anthropic":
         raise NotImplementedError(
-            f"poll_batch only supports provider='anthropic' today; "
-            f"got {provider!r}."
+            f"poll_batch only supports provider='anthropic' today; got {provider!r}."
         )
     client = anthropic.AsyncAnthropic(api_key=api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)

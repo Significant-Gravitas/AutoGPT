@@ -95,9 +95,13 @@ def routing_kwargs_for_chat_transport() -> ProviderRoutingKwargs:
     if transport.name == "local":
         api_key = chat_cfg.api_key or ""
         base_url = chat_cfg.base_url
+    elif transport.name in ("deepseek", "openai", "custom"):
+        api_key = chat_cfg.api_key or ""
+        base_url = chat_cfg.base_url
     elif transport.name in ("subscription", "direct_anthropic"):
         api_key = (
             chat_cfg.direct_anthropic_api_key
+            or chat_cfg.api_key
             or settings.secrets.anthropic_api_key
             or ""
         )

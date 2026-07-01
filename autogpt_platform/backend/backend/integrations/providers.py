@@ -18,6 +18,7 @@ class ProviderName(str, Enum):
     DATABASE = "database"
     DISCORD = "discord"
     D_ID = "d_id"
+    DEEPSEEK = "deepseek"
     E2B = "e2b"
     ELEVENLABS = "elevenlabs"
     FAL = "fal"

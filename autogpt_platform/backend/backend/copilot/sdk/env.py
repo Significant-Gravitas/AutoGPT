@@ -8,7 +8,10 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import logging
+import os
 import re
+from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.moonshot import is_moonshot_model
@@ -18,6 +21,42 @@ from backend.copilot.sdk.subscription import validate_subscription
 # A singleton would require importing service.py which causes the circular dep
 # this module was created to avoid.
 config = ChatConfig()
+logger = logging.getLogger(__name__)
+
+
+def _chat_credential_source() -> str:
+    if os.getenv("CHAT_API_KEY"):
+        return "CHAT_API_KEY"
+    if config.transport.name == "direct_anthropic" and (
+        os.getenv("CHAT_DIRECT_ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+    ):
+        return (
+            "CHAT_DIRECT_ANTHROPIC_API_KEY"
+            if os.getenv("CHAT_DIRECT_ANTHROPIC_API_KEY")
+            else "ANTHROPIC_API_KEY"
+        )
+    for env_name in config.transport.api_key_fallback_envs:
+        if os.getenv(env_name):
+            return env_name
+    return "none"
+
+
+logger.info(
+    "Chat LLM configuration selected",
+    extra={
+        "json_fields": {
+            "provider": config.baseline_provider,
+            "model": config.fast_standard_model,
+            "base_url_host": urlparse(config.main_client_credentials[1] or "").hostname
+            or "",
+            "credential_source": _chat_credential_source(),
+            "credential_present": bool(config.main_client_credentials[0]),
+            "timeout_s": config.effective_request_timeout_s,
+            "max_retries": config.max_retries,
+            "fallback_model": config.claude_agent_fallback_model,
+        }
+    },
+)
 
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")

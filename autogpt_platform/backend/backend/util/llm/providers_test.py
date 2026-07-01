@@ -16,11 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import pytest
 
-from backend.util.llm.providers import (
-    DEFAULT_REQUEST_TIMEOUT_SECONDS,
-    ProviderResponse,
-    call_provider,
-)
+from backend.util.llm.config import DEFAULT_REQUEST_TIMEOUT_SECONDS
+from backend.util.llm.providers import ProviderResponse, call_provider
 
 
 def _msg(role: str, content: str) -> dict:
@@ -101,24 +98,29 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.responses = _StubResponses()
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers.extract_responses_content",
-            return_value="",
-        ), patch(
-            "backend.util.llm.providers.extract_responses_tool_calls",
-            return_value=[],
-        ), patch(
-            "backend.util.llm.providers.extract_responses_usage",
-            return_value=(1, 1),
-        ), patch(
-            "backend.util.llm.providers.extract_responses_reasoning",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=[],
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
         ):
             await _call_openai_responses(
                 model="gpt-4o",
                 api_key="sk-test",
+                base_url="https://api.openai.com/v1",
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
                 temperature=None,
@@ -156,24 +158,29 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.responses = _StubResponses()
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers.extract_responses_content",
-            return_value="",
-        ), patch(
-            "backend.util.llm.providers.extract_responses_tool_calls",
-            return_value=[],
-        ), patch(
-            "backend.util.llm.providers.extract_responses_usage",
-            return_value=(1, 1),
-        ), patch(
-            "backend.util.llm.providers.extract_responses_reasoning",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=[],
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
         ):
             await _call_openai_responses(
                 model="gpt-4o",
                 api_key="sk-test",
+                base_url="https://api.openai.com/v1",
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
                 temperature=None,
@@ -214,20 +221,24 @@ class TestExecutionModeStubs:
             def __init__(self, *args, **kwargs):
                 self.chat = SimpleNamespace(completions=_StubCompletions())
 
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
-        ), patch(
-            "backend.util.llm.providers._extract_openai_compat_cache_tokens",
-            return_value=(0, 0),
-        ), patch(
-            "backend.util.llm.providers.extract_openai_tool_calls",
-            return_value=None,
-        ), patch(
-            "backend.util.llm.providers.extract_openai_reasoning",
-            return_value=None,
-        ), patch(
-            "backend.util.llm.providers.extract_openrouter_cost",
-            return_value=None,
+        with (
+            patch("backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient),
+            patch(
+                "backend.util.llm.providers._extract_openai_compat_cache_tokens",
+                return_value=(0, 0),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost",
+                return_value=None,
+            ),
         ):
             await _call_openai_compat(
                 base_url="https://openrouter.ai/api/v1",
@@ -265,9 +276,10 @@ class TestExecutionModeStubs:
                 completion_tokens=1,
             )
         )
-        with patch(
-            "backend.util.llm.providers._dispatch_sync", new=sync_mock
-        ), caplog.at_level("WARNING"):
+        with (
+            patch("backend.util.llm.providers._dispatch_sync", new=sync_mock),
+            caplog.at_level("WARNING"),
+        ):
             await call_provider(
                 provider="anthropic",
                 model="claude-sonnet-4-6",
@@ -1271,6 +1283,35 @@ class TestTemperatureThreading:
 
 class TestTimeoutWrapping:
     @pytest.mark.asyncio
+    async def test_deepseek_dispatches_to_direct_chat_completions(self):
+        response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None))
+            ],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        )
+        fake_client = MagicMock()
+        fake_client.chat.completions.create = AsyncMock(return_value=response)
+
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI",
+            return_value=fake_client,
+        ) as client_factory:
+            result = await call_provider(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                api_key="secret",
+                messages=[_msg("user", "Reply with ok.")],
+                max_tokens=8,
+            )
+
+        assert result.content == "ok"
+        assert client_factory.call_args.kwargs["base_url"] == "https://api.deepseek.com"
+        assert fake_client.chat.completions.create.call_args.kwargs["model"] == (
+            "deepseek-v4-flash"
+        )
+
+    @pytest.mark.asyncio
     async def test_timeout_raises_TimeoutError_with_provider_name(self):
         async def hang(*args, **kwargs):
             import asyncio as a
@@ -1346,10 +1387,8 @@ class TestUtf8Sanitization:
 
 
 class TestDefaults:
-    def test_default_timeout_is_120_seconds(self):
-        # Pin the SLA — anything bigger and a stalled provider can park
-        # an executor thread for too long.
-        assert DEFAULT_REQUEST_TIMEOUT_SECONDS == 120
+    def test_default_timeout_is_20_seconds(self):
+        assert DEFAULT_REQUEST_TIMEOUT_SECONDS == 20
 
 
 # ---------------------------------------------------------------------------
@@ -1735,9 +1774,18 @@ class TestCallProviderStream:
         captured: dict[str, object] = {}
 
         class _StubClient:
-            def __init__(self, *, base_url: str, api_key: str):
+            def __init__(
+                self,
+                *,
+                base_url: str,
+                api_key: str,
+                timeout: float,
+                max_retries: int,
+            ):
                 captured["base_url"] = base_url
                 captured["api_key"] = api_key
+                captured["timeout"] = timeout
+                captured["max_retries"] = max_retries
                 self.chat = SimpleNamespace(completions=SimpleNamespace())
                 self.chat.completions.create = AsyncMock(return_value="stream")
 
@@ -1753,6 +1801,8 @@ class TestCallProviderStream:
         assert captured == {
             "base_url": "https://api.test/v1",
             "api_key": "sk-test",
+            "timeout": 20,
+            "max_retries": 0,
         }
 
     @pytest.mark.asyncio

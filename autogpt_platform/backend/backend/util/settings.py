@@ -236,11 +236,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     store_embedding_model: str = Field(
         default="text-embedding-3-small",
         description=(
-            "Embedding model used by the unified content embeddings service. "
-            "Overridable so deployments with a compatible backend (vLLM, "
-            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
-            "OpenAI, ...) can swap models without code changes. Model MUST "
-            "emit 1536-dim vectors to match the hardcoded pgvector column."
+            "Direct OpenAI model used by the unified content embeddings "
+            "service. It uses OPENAI_INTERNAL_API_KEY independently of chat "
+            "provider configuration and must emit 1536-dimensional vectors."
         ),
     )
 

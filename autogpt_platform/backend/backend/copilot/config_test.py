@@ -19,6 +19,9 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_USE_CLAUDE_AGENT_SDK",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_USE_LOCAL",
+    "CHAT_PROVIDER",
+    "CHAT_REQUEST_TIMEOUT_S",
+    "CHAT_MAX_RETRIES",
     "CHAT_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -71,6 +74,44 @@ def _make_direct_safe_config(**kwargs) -> ChatConfig:
     }
     defaults.update(kwargs)
     return ChatConfig(**defaults)
+
+
+class TestProviderConfig:
+    def test_deepseek_env_uses_direct_defaults(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_PROVIDER", "deepseek")
+        monkeypatch.setenv("CHAT_API_KEY", "deepseek-key")
+
+        cfg = ChatConfig()
+
+        assert cfg.effective_transport == "deepseek"
+        assert cfg.base_url == "https://api.deepseek.com"
+        assert cfg.fast_standard_model == "deepseek-v4-flash"
+        assert cfg.fast_advanced_model == "deepseek-v4-pro"
+        assert cfg.claude_agent_fallback_model == "deepseek-v4-pro"
+
+    def test_known_base_url_infers_deepseek(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_BASE_URL", "https://api.deepseek.com")
+        monkeypatch.setenv("CHAT_API_KEY", "deepseek-key")
+
+        cfg = ChatConfig()
+
+        assert cfg.provider == "deepseek"
+        assert cfg.effective_transport == "deepseek"
+
+    def test_timeout_policy_comes_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_REQUEST_TIMEOUT_S", "12.5")
+        monkeypatch.setenv("CHAT_MAX_RETRIES", "2")
+
+        cfg = ChatConfig()
+
+        assert cfg.effective_request_timeout_s == 12.5
+        assert cfg.max_retries == 2
 
 
 class TestOpenrouterActive:

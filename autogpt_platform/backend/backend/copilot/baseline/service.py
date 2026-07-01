@@ -816,7 +816,7 @@ async def _baseline_llm_caller(
             )
             if reasoning_param:
                 extra_body.update(reasoning_param)
-        else:
+        elif baseline_provider == "anthropic":
             # Direct mode (non-OR, non-local): use native Anthropic thinking param.
             thinking_param = anthropic_thinking_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
@@ -849,6 +849,9 @@ async def _baseline_llm_caller(
             ),
             tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
             max_tokens=max_tokens_arg,
+            timeout=config.effective_request_timeout_s,
+            max_retries=config.max_retries,
+            provider=baseline_provider,
         )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 

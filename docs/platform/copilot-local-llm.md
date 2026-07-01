@@ -1,5 +1,50 @@
 # Running AutoPilot on a self-hosted LLM
 
+## Chat provider configuration
+
+The backend supports direct DeepSeek, OpenAI, OpenRouter, Anthropic, local,
+and custom OpenAI-compatible chat transports. Explicit `CHAT_PROVIDER` takes
+precedence; otherwise known `CHAT_BASE_URL` hosts are inferred.
+
+Direct DeepSeek uses bare model IDs:
+
+```env
+CHAT_PROVIDER=deepseek
+CHAT_BASE_URL=https://api.deepseek.com
+CHAT_API_KEY=<deepseek-key>
+CHAT_MODEL=deepseek-v4-flash
+CHAT_FAST_ADVANCED_MODEL=deepseek-v4-pro
+CHAT_REQUEST_TIMEOUT_S=20
+CHAT_MAX_RETRIES=1
+```
+
+OpenRouter continues to use provider-prefixed model IDs:
+
+```env
+CHAT_PROVIDER=openrouter
+CHAT_BASE_URL=https://openrouter.ai/api/v1
+CHAT_API_KEY=<openrouter-key>
+CHAT_MODEL=deepseek/deepseek-v4-flash
+```
+
+From `autogpt_platform/backend`, test the selected provider without printing
+its API key:
+
+```shell
+poetry run python scripts/diagnose_llm_provider.py
+```
+
+Database-backed search embeddings are separate from chat. They use only
+`OPENAI_INTERNAL_API_KEY` and default to
+`STORE_EMBEDDING_MODEL=text-embedding-3-small`.
+
+The optional model-role overrides are `CHAT_FAST_STANDARD_MODEL`,
+`CHAT_FAST_ADVANCED_MODEL`, `CHAT_THINKING_STANDARD_MODEL`,
+`CHAT_THINKING_ADVANCED_MODEL`, `CHAT_TITLE_MODEL`, and
+`CHAT_CLAUDE_AGENT_FALLBACK_MODEL`. `CHAT_MODEL` is the backward-compatible
+general default. `CHAT_REQUEST_TIMEOUT_S` is a per-attempt timeout and
+`CHAT_MAX_RETRIES` bounds transient retries with logged backoff.
+
 > **Important**: This page covers the **AutoPilot chat path** — the
 > conversational agent on `/copilot`. For the *block-layer* AI Text
 > Generator block (used inside agent graphs you build yourself), see

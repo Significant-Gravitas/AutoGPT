@@ -40,8 +40,8 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
+from backend.util.llm.config import resolve_request_policy
 from backend.util.llm.providers import (
-    DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderLiteral,
     ProviderResponse,
     call_provider,
@@ -103,6 +103,7 @@ async def structured_completion(
     if not routing.api_key and routing.provider != "ollama":
         raise DreamLLMError(_missing_api_key_message(routing.provider))
 
+    request_timeout_s, max_retries = resolve_request_policy()
     try:
         response = await call_provider(
             provider=routing.provider,
@@ -112,7 +113,9 @@ async def structured_completion(
             max_tokens=max_output_tokens,
             temperature=temperature,
             force_json_output=True,
-            timeout_seconds=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            base_url=routing.base_url,
+            timeout_seconds=request_timeout_s,
+            max_retries=max_retries,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
             # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``

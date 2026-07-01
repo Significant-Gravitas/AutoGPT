@@ -4123,6 +4123,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
+        # Claude Agent SDK owns subprocess transport timeouts and cannot use
+        # the OpenAI-compatible CHAT_REQUEST_TIMEOUT_S policy directly.
+        logger.info(
+            "Claude Agent SDK request configuration selected",
+            extra={
+                "json_fields": {
+                    "provider": "anthropic_sdk",
+                    "model": sdk_model or "subscription-default",
+                    "stream": True,
+                    "timeout_s": None,
+                    "max_retries": config.claude_agent_max_transient_retries,
+                    "timeout_policy": "sdk_managed",
+                }
+            },
+        )
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},

@@ -22,8 +22,9 @@ from tiktoken import encoding_for_model
 
 from backend.api.features.search.content_handlers import CONTENT_HANDLERS
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
-from backend.util.clients import get_openai_client
+from backend.util.clients import get_embedding_client
 from backend.util.json import dumps
+from backend.util.llm.embedding_config import resolve_embedding_config
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -31,16 +32,31 @@ logger = logging.getLogger(__name__)
 _settings = Settings()
 
 # Embedding model — overridable via STORE_EMBEDDING_MODEL so deployments
-# with a compatible backend (vLLM, LiteLLM proxy, Ollama with an
-# embedding model pulled, Azure OpenAI, ...) can swap models without a
-# code change. Default keeps the historical OpenAI
+# with direct OpenAI can swap models without a code change. Default keeps
+# the historical OpenAI
 # ``text-embedding-3-small`` so existing pgvector columns still match.
 EMBEDDING_MODEL = _settings.config.store_embedding_model
+EMBEDDING_CONFIG = resolve_embedding_config(
+    openai_internal_api_key=_settings.secrets.openai_internal_api_key,
+    model=EMBEDDING_MODEL,
+)
 # Embedding dimension for the model above
 # text-embedding-3-small: 1536, text-embedding-3-large: 3072
 EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
+
+logger.info(
+    "Embedding configuration selected",
+    extra={
+        "json_fields": {
+            "provider": EMBEDDING_CONFIG.provider,
+            "model": EMBEDDING_CONFIG.model,
+            "api_key_source": EMBEDDING_CONFIG.api_key_source,
+            "api_key_present": EMBEDDING_CONFIG.key_present,
+        }
+    },
+)
 
 # Single source of truth for the content types the maintenance jobs
 # (backfill + orphan cleanup) walk. BLOCK is first so foundational content
@@ -108,22 +124,15 @@ async def generate_embedding(text: str) -> list[float]:
 
     Raises exceptions on failure - caller should handle.
     """
-    client = get_openai_client()
+    client = get_embedding_client()
     if not client:
-        # ``get_openai_client`` already honors ``CHAT_USE_LOCAL`` first, so
-        # reaching None here means *no* embedding backend is configured at
-        # all. Hybrid search wraps this in try/except and degrades to
+        # Hybrid search wraps this in try/except and degrades to
         # lexical-only — the raise is still useful so direct callers
         # (uploads, reindex jobs) get a clear "wire something up" signal
         # instead of a silent ``None`` cascade.
         raise RuntimeError(
-            "No embedding-capable LLM client configured. Set ONE of: "
-            "OPENAI_INTERNAL_API_KEY, OPEN_ROUTER_API_KEY, or "
-            "CHAT_USE_LOCAL=true with a CHAT_BASE_URL that exposes "
-            "/v1/embeddings (vLLM / LiteLLM proxy / Azure OpenAI / "
-            "Ollama with an embedding model pulled). Override the model "
-            "via STORE_EMBEDDING_MODEL (must emit 1536-dim vectors to "
-            "match the pgvector column)."
+            "Database embeddings require OPENAI_INTERNAL_API_KEY. "
+            "Chat provider credentials are intentionally not used."
         )
 
     # Truncate text to token limit using tiktoken

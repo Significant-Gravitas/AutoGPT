@@ -50,7 +50,13 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     # OpenRouter accepts ``vendor/model`` for any vendor; the local
     # transport (Ollama, vLLM, …) speaks raw operator-chosen slugs and
     # must never have them rewritten — both pass through unchanged.
-    if config.effective_transport in ("openrouter", "local"):
+    if config.effective_transport in (
+        "openrouter",
+        "local",
+        "deepseek",
+        "openai",
+        "custom",
+    ):
         return raw_model
     model = raw_model
     if "/" in model:

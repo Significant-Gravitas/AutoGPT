@@ -207,7 +207,8 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     return AsyncOpenAI(
         api_key=chat_cfg.api_key,
         base_url=chat_cfg.base_url,
-        timeout=chat_cfg.local_request_timeout_s,
+        timeout=chat_cfg.effective_request_timeout_s,
+        max_retries=chat_cfg.max_retries,
     )
 
 
@@ -252,17 +253,45 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 
     openai_key = settings.secrets.openai_internal_api_key
     openrouter_key = settings.secrets.open_router_api_key
+    client_options = {
+        "timeout": chat_cfg.effective_request_timeout_s,
+        "max_retries": chat_cfg.max_retries,
+    }
 
     if prefer_openrouter:
         if openrouter_key:
-            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+            return AsyncOpenAI(
+                api_key=openrouter_key,
+                base_url=OPENROUTER_BASE_URL,
+                **client_options,
+            )
         return None
     else:
         if openai_key:
-            return AsyncOpenAI(api_key=openai_key)
+            return AsyncOpenAI(api_key=openai_key, **client_options)
         if openrouter_key:
-            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+            return AsyncOpenAI(
+                api_key=openrouter_key,
+                base_url=OPENROUTER_BASE_URL,
+                **client_options,
+            )
     return None
+
+
+@cached(ttl_seconds=3600)
+def get_embedding_client() -> "AsyncOpenAI | None":
+    """Return the OpenAI-only client used by database-backed embeddings."""
+    from openai import AsyncOpenAI
+
+    from backend.util.llm.embedding_config import resolve_embedding_config
+
+    config = resolve_embedding_config(
+        openai_internal_api_key=settings.secrets.openai_internal_api_key,
+        model=settings.config.store_embedding_model,
+    )
+    if not config.api_key:
+        return None
+    return AsyncOpenAI(api_key=config.api_key.get_secret_value())
 
 
 # ============ Anthropic Client ============ #

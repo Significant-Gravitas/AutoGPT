@@ -55,7 +55,7 @@ async def test_generate_embedding_success():
     mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
     with patch(
-        "backend.api.features.search.embeddings.get_openai_client"
+        "backend.api.features.search.embeddings.get_embedding_client"
     ) as mock_get_client:
         mock_get_client.return_value = mock_client
 
@@ -74,14 +74,33 @@ async def test_generate_embedding_success():
 async def test_generate_embedding_no_api_key():
     """Test embedding generation without API key."""
     with patch(
-        "backend.api.features.search.embeddings.get_openai_client"
+        "backend.api.features.search.embeddings.get_embedding_client"
     ) as mock_get_client:
         mock_get_client.return_value = None
 
-        with pytest.raises(
-            RuntimeError, match="No embedding-capable LLM client configured"
-        ):
+        with pytest.raises(RuntimeError, match="require OPENAI_INTERNAL_API_KEY"):
             await embeddings.generate_embedding("test text")
+
+
+def test_embedding_client_uses_only_openai_internal_key():
+    from backend.util.clients import get_embedding_client
+
+    get_embedding_client.cache_clear()
+    secrets = MagicMock()
+    secrets.openai_internal_api_key = "embedding-key"
+    secrets.open_router_api_key = "openrouter-key"
+
+    with (
+        patch("backend.util.clients.settings") as mock_settings,
+        patch("openai.AsyncOpenAI") as client_factory,
+    ):
+        mock_settings.secrets = secrets
+        mock_settings.config.store_embedding_model = "text-embedding-3-small"
+        client_factory.return_value = MagicMock()
+        get_embedding_client()
+
+    assert client_factory.call_args.kwargs == {"api_key": "embedding-key"}
+    get_embedding_client.cache_clear()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -91,7 +110,7 @@ async def test_generate_embedding_api_error():
     mock_client.embeddings.create = AsyncMock(side_effect=Exception("API Error"))
 
     with patch(
-        "backend.api.features.search.embeddings.get_openai_client"
+        "backend.api.features.search.embeddings.get_embedding_client"
     ) as mock_get_client:
         mock_get_client.return_value = mock_client
 
@@ -112,7 +131,7 @@ async def test_generate_embedding_text_truncation():
     mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
     with patch(
-        "backend.api.features.search.embeddings.get_openai_client"
+        "backend.api.features.search.embeddings.get_embedding_client"
     ) as mock_get_client:
         mock_get_client.return_value = mock_client
 

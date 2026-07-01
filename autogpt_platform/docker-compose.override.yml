@@ -1,0 +1,86 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - autogpt_deepseek_db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PORT: "5432"
+
+  rest_server:
+    environment: &chat_env
+      CHAT_PROVIDER: ${CHAT_PROVIDER}
+      CHAT_USE_LOCAL: ${CHAT_USE_LOCAL}
+      CHAT_BASE_URL: ${CHAT_BASE_URL}
+      CHAT_API_KEY: ${CHAT_API_KEY}
+
+      CHAT_MODEL: ${CHAT_MODEL}
+      CHAT_TITLE_MODEL: ${CHAT_TITLE_MODEL}
+      CHAT_FAST_STANDARD_MODEL: ${CHAT_FAST_STANDARD_MODEL}
+      CHAT_FAST_ADVANCED_MODEL: ${CHAT_FAST_ADVANCED_MODEL}
+      CHAT_THINKING_STANDARD_MODEL: ${CHAT_THINKING_STANDARD_MODEL}
+      CHAT_THINKING_ADVANCED_MODEL: ${CHAT_THINKING_ADVANCED_MODEL}
+      CHAT_CLAUDE_AGENT_FALLBACK_MODEL: ${CHAT_CLAUDE_AGENT_FALLBACK_MODEL}
+
+      CHAT_REQUEST_TIMEOUT_S: ${CHAT_REQUEST_TIMEOUT_S}
+      CHAT_MAX_RETRIES: ${CHAT_MAX_RETRIES}
+      CHAT_LOCAL_REQUEST_TIMEOUT_S: ${CHAT_LOCAL_REQUEST_TIMEOUT_S}
+
+      OPENAI_INTERNAL_API_KEY: ${OPENAI_INTERNAL_API_KEY}
+      STORE_EMBEDDING_MODEL: ${STORE_EMBEDDING_MODEL}
+
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
+
+      TIKTOKEN_CACHE_DIR: /app/autogpt_platform/backend/tiktoken_cache
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  copilot_executor:
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  executor:
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  scheduler_server:
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  database_manager:
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  websocket_server:
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+  notification_server:
+    environment:
+      <<: *chat_env
+    volumes:
+      - ./backend/tiktoken_cache:/app/autogpt_platform/backend/tiktoken_cache
+
+volumes:
+  autogpt_deepseek_db_data:

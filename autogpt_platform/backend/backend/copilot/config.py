@@ -16,7 +16,14 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
-from backend.util.llm.providers import ProviderLiteral
+from backend.util.llm.config import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    ChatProvider,
+    ProviderDispatch,
+    get_provider_profile,
+    infer_chat_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +62,15 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4.7"
 
-TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
+TransportName = Literal[
+    "subscription",
+    "openrouter",
+    "direct_anthropic",
+    "deepseek",
+    "openai",
+    "local",
+    "custom",
+]
 
 
 class TransportProfile(BaseModel):
@@ -111,7 +126,7 @@ class TransportProfile(BaseModel):
     # Read by ``backend.copilot.transport_routing`` to build the actual
     # provider kwargs; kept on the profile so adding a new transport row
     # automatically tells dream + graphiti where to dispatch.
-    dispatch_provider: ProviderLiteral
+    dispatch_provider: ProviderDispatch
     # Whether OpenAI's ``service_tier="flex"`` flows end-to-end on this
     # transport. True only for ``openrouter`` today: OpenRouter forwards
     # ``extra_body.service_tier`` to OpenAI-backed upstreams and gets the
@@ -155,6 +170,26 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         dispatch_provider="anthropic",
         supports_flex_tier=False,
     ),
+    "deepseek": TransportProfile(
+        name="deepseek",
+        supports_sdk=False,
+        sdk_model_vendor_constraint=None,
+        api_key_fallback_envs=(),
+        inherit_fast_model_for_aux=False,
+        cost_log_provider="deepseek",
+        dispatch_provider="deepseek",
+        supports_flex_tier=False,
+    ),
+    "openai": TransportProfile(
+        name="openai",
+        supports_sdk=False,
+        sdk_model_vendor_constraint=None,
+        api_key_fallback_envs=("OPENAI_API_KEY",),
+        inherit_fast_model_for_aux=False,
+        cost_log_provider="openai",
+        dispatch_provider="openai",
+        supports_flex_tier=True,
+    ),
     "local": TransportProfile(
         name="local",
         supports_sdk=False,
@@ -163,6 +198,16 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         inherit_fast_model_for_aux=True,
         cost_log_provider="ollama",
         dispatch_provider="ollama",
+        supports_flex_tier=False,
+    ),
+    "custom": TransportProfile(
+        name="custom",
+        supports_sdk=False,
+        sdk_model_vendor_constraint=None,
+        api_key_fallback_envs=(),
+        inherit_fast_model_for_aux=False,
+        cost_log_provider="custom",
+        dispatch_provider="custom",
         supports_flex_tier=False,
     ),
 }
@@ -201,11 +246,16 @@ class ChatConfig(BaseSettings):
     # Historical env var names (``CHAT_MODEL`` / ``CHAT_ADVANCED_MODEL`` /
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
+    provider: ChatProvider | None = Field(
+        default=None,
+        description="Explicit chat provider. When unset, legacy URL and mode inference applies.",
+    )
     fast_standard_model: str = Field(
         default="anthropic/claude-sonnet-4-6",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
+            "CHAT_MODEL",
         ),
         description="Baseline path, 'standard' / ``None`` tier.  Per-user "
         "overrides flow through ``copilot-model-routing[fast][standard]`` "
@@ -590,6 +640,17 @@ class ChatConfig(BaseSettings):
         "have a GPU and want fast-fail on hangs. Ignored under cloud "
         "transports — those keep the OpenAI client default.",
     )
+    request_timeout_s: float = Field(
+        default=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        gt=0,
+        description="Per-attempt timeout for chat and OpenAI-compatible LLM requests.",
+    )
+    max_retries: int = Field(
+        default=DEFAULT_MAX_RETRIES,
+        ge=0,
+        le=10,
+        description="Maximum retries for transient LLM transport errors.",
+    )
     use_local: bool = Field(
         default=False,
         description="Route chat through a self-hosted, OpenAI-compatible LLM "
@@ -653,6 +714,8 @@ class ChatConfig(BaseSettings):
         callers asking "will the SDK actually route through OpenRouter
         for this turn?" should use ``effective_transport`` instead.
         """
+        if self.provider is not None and self.provider != "openrouter":
+            return False
         if not self.use_openrouter:
             return False
         base = (self.base_url or "").rstrip("/")
@@ -683,6 +746,10 @@ class ChatConfig(BaseSettings):
         api_key fallback chain, …) read ``self.transport`` instead of
         branching on this string at every call site.
         """
+        if self.provider is not None:
+            if self.provider == "anthropic":
+                return "direct_anthropic"
+            return self.provider
         if self.use_local:
             return "local"
         if self.use_claude_code_subscription:
@@ -714,7 +781,16 @@ class ChatConfig(BaseSettings):
         return self.transport.supports_sdk
 
     @property
-    def baseline_provider(self) -> Literal["local", "openrouter", "anthropic"]:
+    def effective_request_timeout_s(self) -> float:
+        if (
+            self.transport.name == "local"
+            and "local_request_timeout_s" in self.model_fields_set
+        ):
+            return self.local_request_timeout_s
+        return self.request_timeout_s
+
+    @property
+    def baseline_provider(self) -> str:
         """Endpoint + wire dialect the baseline OpenAI-compat client speaks.
 
         The single source of truth that ``main_client_credentials`` (which
@@ -737,6 +813,8 @@ class ChatConfig(BaseSettings):
         """
         if self.transport.name == "local":
             return "local"
+        if self.transport.name in ("deepseek", "openai", "custom"):
+            return self.transport.name
         if self.openrouter_active:
             return "openrouter"
         return "anthropic"
@@ -761,9 +839,18 @@ class ChatConfig(BaseSettings):
           so the baseline OpenAI-compat client talks straight to
           api.anthropic.com.
         """
-        if self.baseline_provider in ("local", "openrouter"):
+        if self.baseline_provider in (
+            "local",
+            "openrouter",
+            "deepseek",
+            "openai",
+            "custom",
+        ):
             return self.api_key, self.base_url
-        return self.direct_anthropic_api_key, ANTHROPIC_OPENAI_COMPAT_BASE_URL
+        return (
+            self.direct_anthropic_api_key or self.api_key,
+            ANTHROPIC_OPENAI_COMPAT_BASE_URL,
+        )
 
     @property
     def aux_client_credentials(self) -> tuple[str | None, str | None]:
@@ -840,7 +927,16 @@ class ChatConfig(BaseSettings):
             return "open_router"
         if _host_matches(base_url, "anthropic.com"):
             return "anthropic"
+        if _host_matches(base_url, "api.deepseek.com"):
+            return "deepseek"
         return "openai"
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def normalize_provider(cls, value):
+        if value == "open_router":
+            return "openrouter"
+        return value
 
     @property
     def e2b_active(self) -> bool:
@@ -983,6 +1079,24 @@ class ChatConfig(BaseSettings):
         return v
 
     @model_validator(mode="after")
+    def _infer_provider_from_explicit_base_url(self) -> "ChatConfig":
+        legacy_direct_anthropic = not self.use_openrouter and (
+            self.base_url or ""
+        ).rstrip("/") == OPENROUTER_BASE_URL.rstrip("/")
+        if (
+            self.provider is None
+            and not self.use_local
+            and not legacy_direct_anthropic
+            and "base_url" in self.model_fields_set
+        ):
+            object.__setattr__(
+                self,
+                "provider",
+                infer_chat_provider(self.base_url, use_openrouter=self.use_openrouter),
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_local_transport_requirements(self) -> "ChatConfig":
         """Fail fast at config load when ``use_local`` lacks an explicit
         endpoint or auth token.
@@ -1020,6 +1134,27 @@ class ChatConfig(BaseSettings):
                 "(e.g. 'ollama') is fine. See "
                 "docs/platform/copilot-local-llm.md."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _apply_explicit_provider_defaults(self) -> "ChatConfig":
+        if self.provider is None:
+            return self
+        profile = get_provider_profile(self.provider)
+        fields_set = self.model_fields_set
+        if "base_url" not in fields_set and profile.default_base_url:
+            object.__setattr__(self, "base_url", profile.default_base_url)
+        defaults = {
+            "fast_standard_model": profile.fast_model,
+            "fast_advanced_model": profile.advanced_model,
+            "thinking_standard_model": profile.thinking_model,
+            "thinking_advanced_model": profile.advanced_model,
+            "title_model": profile.title_model,
+            "claude_agent_fallback_model": profile.fallback_model,
+        }
+        for field_name, value in defaults.items():
+            if field_name not in fields_set and value:
+                object.__setattr__(self, field_name, value)
         return self
 
     @model_validator(mode="after")
@@ -1294,6 +1429,9 @@ class ChatConfig(BaseSettings):
         # Fast-path: aux's resolved transport is OpenRouter — OR serves
         # any vendor prefix so the title-model check doesn't apply.
         if self.aux_uses_openrouter:
+            return self
+        _, aux_base_url = self.aux_client_credentials
+        if not _host_matches(aux_base_url, "anthropic.com"):
             return self
         # Subscription mode trap: SDK uses OAuth so direct creds are
         # optional for it, but the aux client still runs the baseline

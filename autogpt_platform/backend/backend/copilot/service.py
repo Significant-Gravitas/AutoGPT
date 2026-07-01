@@ -82,14 +82,12 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
     global _main_client
     if _main_client is None:
         api_key, base_url = config.main_client_credentials
-        kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against AutoPilot's heavy system
-        # prompt. The OpenAI client default (600 s) is too short for that
-        # case — extend it under the local transport. Cloud transports
-        # keep the SDK default so genuine hangs still surface promptly.
-        if config.transport.name == "local":
-            kwargs["timeout"] = config.local_request_timeout_s
+        kwargs: dict = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": config.effective_request_timeout_s,
+            "max_retries": 0,
+        }
         _main_client = LangfuseAsyncOpenAI(**kwargs)
     return _main_client
 
@@ -106,13 +104,12 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     global _aux_client
     if _aux_client is None:
         api_key, base_url = config.aux_client_credentials
-        kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local transport routes aux through the same self-hosted backend
-        # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
-        # client timeout to match ``_get_main_client`` so title generation
-        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
-        if config.transport.name == "local":
-            kwargs["timeout"] = config.local_request_timeout_s
+        kwargs: dict = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": config.effective_request_timeout_s,
+            "max_retries": 0,
+        }
         _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
 
@@ -810,6 +807,9 @@ async def _generate_session_title(
             ],
             max_tokens=20,
             extra_body=extra_body or None,
+            timeout_seconds=config.effective_request_timeout_s,
+            max_retries=config.max_retries,
+            provider=config.aux_provider_label,
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")

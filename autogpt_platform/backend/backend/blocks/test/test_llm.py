@@ -1048,9 +1048,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -1079,9 +1079,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -1109,9 +1109,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
@@ -1345,9 +1345,9 @@ class TestAnthropicCacheControl:
         an_tools = captured_kwargs.get("tools")
         assert isinstance(an_tools, list)
         assert len(an_tools) == 2
-        assert (
-            an_tools[0].get("cache_control") is None
-        ), "Only last tool gets cache_control"
+        assert an_tools[0].get("cache_control") is None, (
+            "Only last tool gets cache_control"
+        )
         assert an_tools[-1].get("cache_control") == {"type": "ephemeral"}
 
     @pytest.mark.asyncio
@@ -1383,9 +1383,9 @@ class TestAnthropicCacheControl:
         import anthropic
 
         tools_arg = captured_kwargs.get("tools")
-        assert (
-            tools_arg is anthropic.NOT_GIVEN
-        ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        assert tools_arg is anthropic.NOT_GIVEN, (
+            "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_system_prompt_omits_system_key(self):
@@ -1417,9 +1417,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        )
 
     @pytest.mark.asyncio
     async def test_whitespace_only_system_prompt_omits_system_key(self):
@@ -1455,9 +1455,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        )
 
 
 class TestLLMRequestTimeout:
@@ -1467,7 +1467,7 @@ class TestLLMRequestTimeout:
     async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
         """A hanging provider call must not park the caller indefinitely."""
         # Force a tiny timeout so the test runs quickly.
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+        monkeypatch.setattr(llm, "resolve_request_policy", lambda: (0.2, 0))
 
         async def hang_forever(*args, **kwargs):
             await asyncio.sleep(60)
@@ -1517,10 +1517,11 @@ class TestLLMRequestTimeout:
         assert captured_kwargs.get("timeout") == llm.LLM_REQUEST_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
-    async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):
-        """A timed-out llm_call must not be retried — retrying a hung request
-        wastes another full timeout window per attempt."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.05)
+    async def test_structured_block_uses_configured_transport_retries(
+        self, monkeypatch
+    ):
+        """A timeout uses transport retries, not the block validation retry."""
+        monkeypatch.setattr(llm, "resolve_request_policy", lambda: (0.05, 1))
 
         call_count = {"n": 0}
 
@@ -1539,16 +1540,14 @@ class TestLLMRequestTimeout:
                 expected_format={"key": "value"},
                 model=llm.DEFAULT_LLM_MODEL,
                 credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-                retry=5,  # would be 5 attempts × timeout if retry kicked in
+                retry=5,
             )
 
             with pytest.raises(RuntimeError):
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count["n"] == 1
-        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        assert call_count["n"] == 2
 
 
 class TestLlmModelMissingHandler:

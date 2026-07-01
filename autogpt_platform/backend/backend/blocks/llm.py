@@ -1,6 +1,5 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
-import asyncio
 import logging
 import math
 import re
@@ -40,6 +39,10 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.config import (
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    resolve_request_policy,
+)
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
@@ -52,17 +55,12 @@ fmt = TextFormatter(autoescape=False)
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
-# Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
-# Messages calls finish in seconds; anything past this is almost certainly a
-# stalled socket (server keeping connection alive but starving response bytes,
-# which the SDK's read-timeout doesn't reliably detect on its own). Lower than
-# the SDK defaults (typically 600s) so retries-on-timeout don't compound into
-# multi-hour worst cases when a block makes many sequential calls.
-LLM_REQUEST_TIMEOUT_SECONDS = 120
+LLM_REQUEST_TIMEOUT_SECONDS = DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
+    ProviderName.DEEPSEEK,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
@@ -862,28 +860,18 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
-    """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
-    so that no single request can park an executor thread indefinitely."""
-    try:
-        return await asyncio.wait_for(
-            _llm_call(
-                credentials=credentials,
-                llm_model=llm_model,
-                prompt=prompt,
-                max_tokens=max_tokens,
-                force_json_output=force_json_output,
-                tools=tools,
-                ollama_host=ollama_host,
-                parallel_tool_calls=parallel_tool_calls,
-                compress_prompt_to_fit=compress_prompt_to_fit,
-            ),
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError as e:
-        raise TimeoutError(
-            f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
-            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled."
-        ) from e
+    """Public LLM-call entry point using the shared transport timeout policy."""
+    return await _llm_call(
+        credentials=credentials,
+        llm_model=llm_model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        force_json_output=force_json_output,
+        tools=tools,
+        ollama_host=ollama_host,
+        parallel_tool_calls=parallel_tool_calls,
+        compress_prompt_to_fit=compress_prompt_to_fit,
+    )
 
 
 async def _llm_call(
@@ -964,6 +952,7 @@ async def _llm_call(
     # shape (caller), ``NodeExecutionStats`` (caller).
     from backend.util.llm.providers import ProviderResponse, call_provider
 
+    request_timeout_s, max_retries = resolve_request_policy()
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
@@ -976,7 +965,8 @@ async def _llm_call(
             llm_model, parallel_tool_calls
         ),
         ollama_host=ollama_host,
-        timeout_seconds=LLM_REQUEST_TIMEOUT_SECONDS,
+        timeout_seconds=request_timeout_s,
+        max_retries=max_retries,
     )
     # Block layer never opts into batch mode (that lives on the
     # orchestrator side for the dream pass and any future async
