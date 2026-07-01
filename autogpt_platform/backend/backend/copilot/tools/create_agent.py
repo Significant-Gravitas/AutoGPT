@@ -8,6 +8,11 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_or_error,
+)
 from .base import BaseTool
 from .helpers import require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
@@ -39,10 +44,8 @@ class CreateAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": "object",
-                    "description": "Agent graph with 'nodes' and 'links' arrays.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -73,7 +76,7 @@ class CreateAgentTool(BaseTool):
                     "default": False,
                 },
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
@@ -81,6 +84,7 @@ class CreateAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_json: dict[str, Any] | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
@@ -105,15 +109,21 @@ class CreateAgentTool(BaseTool):
                 user_id=user_id, session_id=session_id, outcome="bypassed_ack"
             )
 
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide agent_json with the complete agent graph. "
-                    "Use find_block to discover blocks, then generate the JSON."
-                ),
-                error="missing_agent_json",
-                session_id=session_id,
-            )
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide agent_json with the complete agent graph, or "
+                "agent_json_ref pointing at the workspace agent file. "
+                "Use find_block to discover blocks, then generate the JSON."
+            ),
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         if library_agent_ids is None:
             library_agent_ids = []
