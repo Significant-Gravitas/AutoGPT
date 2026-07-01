@@ -872,16 +872,16 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   // First Wins
-  | "VISIT_COPILOT"
+  | "ONBOARDING_COMPLETE"
   | "GET_RESULTS"
-  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_VISIT" // deprecated: never set
   | "MARKETPLACE_ADD_AGENT"
-  | "MARKETPLACE_RUN_AGENT"
-  | "BUILDER_SAVE_AGENT"
+  | "LIBRARY_RUN_AGENT"
+  | "BUILDER_SAVE_AGENT" // deprecated: never set
   // Consistency Challenge
-  | "RE_RUN_AGENT"
+  | "RE_RUN_AGENT" // deprecated: never set
   | "SCHEDULE_AGENT"
-  | "RUN_AGENTS"
+  | "RUN_AGENTS" // deprecated: never set
   | "RUN_3_DAYS"
   // The Pro Playground
   | "TRIGGER_WEBHOOK"
@@ -892,10 +892,15 @@ export type OnboardingStep =
   | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
-  completedSteps: OnboardingStep[];
+  // Plain string[] so legacy step names from existing rows pass through.
+  // Validation against the active set lives on the completion endpoint via
+  // `PostV1CompleteOnboardingStepStep` (the generated literal union).
+  completedSteps: string[];
   walletShown: boolean;
+  // Typed enum: `notified` is written back via PATCH /onboarding, which now
+  // validates step names against OnboardingStep at the boundary.
   notified: OnboardingStep[];
-  rewardedFor: OnboardingStep[];
+  rewardedFor: string[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
@@ -910,6 +915,9 @@ export interface UserOnboarding {
 export interface OnboardingNotificationPayload {
   type: "onboarding";
   event: "step_completed" | "increment_runs";
+  // Typed enum: notifications only fire on fresh completions, so `step` is
+  // always a current OnboardingStep (or null for `increment_runs`). Legacy step
+  // names live only in stored rows, never in emitted notifications.
   step: OnboardingStep | null;
 }
 

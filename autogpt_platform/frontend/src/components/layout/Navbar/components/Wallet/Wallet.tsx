@@ -54,7 +54,7 @@ export function Wallet() {
         details: "Kickstart your journey with quick wins.",
         tasks: [
           {
-            id: "VISIT_COPILOT",
+            id: "ONBOARDING_COMPLETE",
             name: "Complete onboarding",
             amount: 3,
             details: "",
@@ -68,7 +68,7 @@ export function Wallet() {
             video: "/onboarding/marketplace-add.mp4",
           },
           {
-            id: "MARKETPLACE_RUN_AGENT",
+            id: "LIBRARY_RUN_AGENT",
             name: "Open the Library page and run an agent",
             amount: 1,
             details: "Go to the Library, open an agent you want, and run it",

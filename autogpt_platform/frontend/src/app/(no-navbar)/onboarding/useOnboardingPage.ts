@@ -23,9 +23,10 @@ import {
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
 // SessionStorage ceiling for the wizard. The backend's `completedSteps`
-// only records VISIT_COPILOT at the very end (the 5 in-wizard steps aren't
-// tracked individually), so resume / fast-forward guardrails are enforced
-// client-side: the user can only land on a step they've previously reached.
+// only records ONBOARDING_COMPLETE at the very end (the 5 in-wizard steps
+// aren't tracked individually), so resume / fast-forward guardrails are
+// enforced client-side: the user can only land on a step they've previously
+// reached.
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 
 function parseStepParam(value: string | null, maxStep: number): Step | null {
@@ -167,7 +168,7 @@ export function useOnboardingPage() {
     async function checkCompletion() {
       try {
         const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
+        if (onboarding.completedSteps.includes("ONBOARDING_COMPLETE")) {
           clearHighestStep();
           // Clear the persisted form data without touching in-memory state.
           // `reset()` would set currentStep=1 and trip the URL-sync effect
@@ -214,7 +215,7 @@ export function useOnboardingPage() {
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
+        await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");

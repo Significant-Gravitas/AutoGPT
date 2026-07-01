@@ -1,8 +1,4 @@
-import {
-  GraphExecutionID,
-  OnboardingStep,
-  UserOnboarding,
-} from "@/lib/autogpt-server-api";
+import { GraphExecutionID, UserOnboarding } from "@/lib/autogpt-server-api";
 import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
 
 export type LocalOnboardingStateUpdate = Omit<
@@ -32,11 +28,11 @@ export function fromBackendUserOnboarding(
 }
 
 export function shouldRedirectFromOnboarding(
-  completedSteps: OnboardingStep[],
+  completedSteps: string[],
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes("VISIT_COPILOT") &&
+    completedSteps.includes("ONBOARDING_COMPLETE") &&
     !pathname.startsWith("/onboarding/reset")
   );
 }

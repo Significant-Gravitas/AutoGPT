@@ -96,45 +96,19 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
-enum OnboardingStep {
-  // Introductory onboarding (Library)
-  WELCOME
-  USAGE_REASON
-  INTEGRATIONS
-  AGENT_CHOICE
-  AGENT_NEW_RUN
-  AGENT_INPUT
-  CONGRATS
-  // First Wins
-  VISIT_COPILOT
-  GET_RESULTS
-  MARKETPLACE_VISIT
-  MARKETPLACE_ADD_AGENT
-  MARKETPLACE_RUN_AGENT
-  BUILDER_SAVE_AGENT
-  // Consistency Challenge
-  RE_RUN_AGENT
-  SCHEDULE_AGENT
-  RUN_AGENTS
-  RUN_3_DAYS
-  // The Pro Playground
-  TRIGGER_WEBHOOK
-  RUN_14_DAYS
-  RUN_AGENTS_100
-  // No longer rewarded but exist for analytical purposes
-  BUILDER_OPEN
-  BUILDER_RUN_AGENT
-}
-
 model UserOnboarding {
   id        String    @id @default(uuid())
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  completedSteps                OnboardingStep[] @default([])
+  // Step names are validated at the API boundary (Pydantic Literal on the
+  // backend, OpenAPI-generated union on the frontend). Storing as String[]
+  // means renames/adds/retires are code-only — legacy values become inert
+  // strings instead of stuck enum members. See SECRT-2355.
+  completedSteps                String[]         @default([])
   walletShown                   Boolean          @default(false)
-  notified                      OnboardingStep[] @default([])
-  rewardedFor                   OnboardingStep[] @default([])
+  notified                      String[]         @default([])
+  rewardedFor                   String[]         @default([])
   usageReason                   String?
   integrations                  String[]         @default([])
   otherIntegrations             String?

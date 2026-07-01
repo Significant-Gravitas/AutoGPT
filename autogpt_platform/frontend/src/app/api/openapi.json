@@ -8613,7 +8613,7 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
-                "VISIT_COPILOT",
+                "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN"
               ],
               "type": "string",
@@ -17232,11 +17232,11 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
-          "VISIT_COPILOT",
+          "ONBOARDING_COMPLETE",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
+          "LIBRARY_RUN_AGENT",
           "BUILDER_SAVE_AGENT",
           "RE_RUN_AGENT",
           "SCHEDULE_AGENT",
@@ -17248,7 +17248,8 @@
           "BUILDER_OPEN",
           "BUILDER_RUN_AGENT"
         ],
-        "title": "OnboardingStep"
+        "title": "OnboardingStep",
+        "description": "Application-level onboarding step identifiers.\n\nStored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}\nso adds/renames/retires are code-only. Boundary validation lives on the\ncompletion endpoint via ``FrontendOnboardingStep`` (a Pydantic ``Literal``).\nLegacy values that no longer appear here remain readable from existing rows\nas inert strings.\n\nLives in its own module (rather than ``onboarding.py``) so the response\nmodel in ``backend.data.model`` can type its fields with this enum without\nimporting the onboarding logic layer, which would create an import cycle."
       },
       "OrphanedScheduleDetail": {
         "properties": {

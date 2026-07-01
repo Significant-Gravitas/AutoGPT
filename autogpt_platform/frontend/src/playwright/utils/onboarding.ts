@@ -22,7 +22,7 @@ export async function completeOnboardingViaAPI(page: Page) {
     resolveAppUrl(page, "/api/proxy/api/onboarding/step"),
     {
       headers: { "Content-Type": "application/json" },
-      params: { step: "VISIT_COPILOT" },
+      params: { step: "ONBOARDING_COMPLETE" },
     },
   );
 }
