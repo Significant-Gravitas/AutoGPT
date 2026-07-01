@@ -419,15 +419,14 @@ app.include_router(
     tags=["v2", "chat", "share", "public"],
     prefix="/api/public/shared/chats",
 )
+# Folders are a sub-resource of the workspace: include the /folders sub-router
+# into the workspace router so the feature mounts once under /api/workspace
+# (mirrors how the library router aggregates its sub-routers).
+workspace_routes.router.include_router(workspace_folder_routes.router)
 app.include_router(
     workspace_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
-)
-app.include_router(
-    workspace_folder_routes.router,
-    tags=["workspace"],
-    prefix="/api/workspace/folders",
 )
 app.include_router(
     mcp_routes.router,

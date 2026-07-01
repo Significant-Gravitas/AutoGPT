@@ -2,8 +2,9 @@
 Workspace folder API routes.
 
 Folders are a DB-level organizational layer over workspace files; storage paths
-are unaffected. Mirrors the Library folder API. The full ``/api/workspace/folders``
-prefix is set where this router is mounted (``rest_api.py``).
+are unaffected. Mirrors the Library folder API: this sub-router owns the
+``/folders`` prefix and is included into the workspace router, which the app
+mounts under ``/api/workspace`` — giving ``/api/workspace/folders``.
 """
 
 from typing import Annotated
@@ -24,6 +25,7 @@ from backend.data.workspace_folder import (
 )
 
 router = fastapi.APIRouter(
+    prefix="/folders",
     dependencies=[fastapi.Security(requires_user)],
 )
 
