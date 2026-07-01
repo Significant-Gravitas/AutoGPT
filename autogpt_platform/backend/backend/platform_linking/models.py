@@ -112,9 +112,38 @@ class BotChatRequest(BaseModel):
         default=None,
         description="Existing CoPilot session ID. If omitted, a new session is created.",
     )
+    file_ids: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Workspace file IDs (already uploaded) to attach to the turn.",
+    )
+
+
+class WorkspaceUploadRequest(BaseModel):
+    """Upload a user-attached file into the conversation owner's workspace.
+
+    Resolved to the same owner a chat turn bills to (server owner, or the
+    DM-linked user). The file runs through the same AV scan + storage as the
+    web upload endpoint."""
+
+    platform: Platform
+    platform_server_id: str | None = Field(default=None, min_length=1, max_length=255)
+    platform_user_id: str = Field(min_length=1, max_length=255)
+    filename: str = Field(min_length=1, max_length=512)
+    mime_type: str = Field(min_length=1, max_length=255)
+    content: bytes
 
 
 # ── Response Models ────────────────────────────────────────────────────
+
+
+class WorkspaceUploadResult(BaseModel):
+    """Outcome of one file upload. ``file_id`` is set on success; otherwise
+    ``error`` carries a stable code the bot maps to user-facing text."""
+
+    filename: str
+    file_id: str | None = None
+    error: str | None = None
 
 
 class LinkTokenResponse(BaseModel):

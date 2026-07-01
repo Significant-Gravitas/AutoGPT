@@ -517,3 +517,20 @@ async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
     assert isinstance(delivered[1], StreamTextDelta)
     assert isinstance(delivered[2], StreamTextEnd)
     assert isinstance(delivered[3], stream_registry.StreamFinish)
+
+
+def test_reconstruct_chunk_round_trips_pending_drained():
+    """The ``data-pending-drained`` hint must survive stream replay.  It is
+    published like any other chunk, so it has to be registered in
+    ``_reconstruct_chunk``; otherwise a client that reconnects mid-turn
+    silently drops the hint and falls back to the slow backstop poll."""
+    import orjson
+
+    from backend.copilot.response_model import StreamPendingDrained
+
+    stored = orjson.loads(StreamPendingDrained(drainedCount=3).model_dump_json())
+
+    chunk = stream_registry._reconstruct_chunk(stored)
+
+    assert isinstance(chunk, StreamPendingDrained)
+    assert chunk.drainedCount == 3
