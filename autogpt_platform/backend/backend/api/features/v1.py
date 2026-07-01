@@ -1619,6 +1619,7 @@ async def list_graphs(
         page=1,
         page_size=250,
         filter_by="active",
+        organization_id=ctx.org_id,
     )
     return paginated_result.graphs
 
@@ -2006,6 +2007,7 @@ async def list_graphs_executions(
         user_id=user_id,
         page=1,
         page_size=250,
+        organization_id=ctx.org_id,
     )
 
     # Apply feature flags to filter out disabled features
@@ -2072,6 +2074,7 @@ async def list_graph_executions(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        organization_id=ctx.org_id,
     )
 
     # Apply feature flags to filter out disabled features

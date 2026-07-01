@@ -28,6 +28,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -1146,6 +1147,7 @@ async def list_graphs_paginated(
     page: int = 1,
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
+    organization_id: str | None = None,
 ) -> GraphsPaginated:
     """
     Retrieves paginated graph metadata objects.
@@ -1155,11 +1157,22 @@ async def list_graphs_paginated(
         page: Page number (1-based).
         page_size: Number of graphs per page.
         filter_by: An optional filter to either select graphs.
+        organization_id: Active org from a membership-verified
+            RequestContext. When set, org/team visibility rules apply
+            (own + org-home + member-team graphs); when None, plain
+            personal ownership.
 
     Returns:
         GraphsPaginated: Paginated list of graph metadata.
     """
-    where_clause: AgentGraphWhereInput = {"userId": user_id}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause = cast(
+            AgentGraphWhereInput,
+            visibility_filter(user_id, organization_id, team_ids),
+        )
+    else:
+        where_clause = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True

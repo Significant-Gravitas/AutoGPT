@@ -45,6 +45,7 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
@@ -704,12 +705,27 @@ async def get_graph_executions_paginated(
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    organization_id: Optional[str] = None,
 ) -> GraphExecutionsPaginated:
-    """Get paginated graph executions for a specific graph."""
+    """Get paginated graph executions for a specific graph.
+
+    With ``organization_id`` (from a membership-verified RequestContext),
+    org/team visibility rules apply: own + org-home + member-team runs.
+    Nested in ``AND`` so it can't collide with the ``statuses`` OR-clause.
+    """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
-        "userId": user_id,
     }
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_filter["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where_filter["userId"] = user_id
 
     if graph_id:
         where_filter["agentGraphId"] = graph_id

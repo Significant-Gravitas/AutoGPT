@@ -114,6 +114,7 @@ async def list_library_agents(
     folder_id: Optional[str] = None,
     include_root_only: bool = False,
     is_hidden: Optional[bool] = None,
+    organization_id: Optional[str] = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -155,6 +156,19 @@ async def list_library_agents(
         "isDeleted": False,
         "isArchived": False,
     }
+    # Library entries are personal bookmarks (per-user favorites/folders),
+    # so org context scopes rather than shares: the caller's own rows in
+    # the active org, plus untagged pre-backfill rows. Nested in AND so it
+    # can't collide with the search OR-clause below.
+    if organization_id is not None:
+        where_clause["AND"] = [
+            {
+                "OR": [
+                    {"organizationId": organization_id},
+                    {"organizationId": None},
+                ]
+            }
+        ]
 
     # Apply folder filter (skip when searching — search spans all folders)
     if folder_id is not None and not search_term:
