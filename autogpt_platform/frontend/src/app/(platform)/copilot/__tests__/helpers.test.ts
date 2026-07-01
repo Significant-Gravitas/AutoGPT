@@ -354,6 +354,24 @@ describe("deduplicateMessages", () => {
     expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
   });
 
+  it("removes whole-conversation SSE prefix replays with fresh IDs", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "Build a landing page"),
+      makeMsgWithId("a1", "assistant", "I'll inspect the app."),
+      makeMsgWithId("u2", "user", "Use the dark theme"),
+      makeMsgWithId("a2", "assistant", "Applying the dark theme."),
+      // Reconnect/resume can replay the persisted transcript from the
+      // beginning with fresh client IDs. Without prefix-block deduplication,
+      // the whole chat appears again and again in the UI.
+      makeMsgWithId("u1-replay", "user", "Build a landing page"),
+      makeMsgWithId("a1-replay", "assistant", "I'll inspect the app."),
+      makeMsgWithId("u2-replay", "user", "Use the dark theme"),
+      makeMsgWithId("a2-replay", "assistant", "Applying the dark theme."),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
   it("keeps identical assistant replies to different user prompts", () => {
     const msgs = [
       makeMsgWithId("u1", "user", "What is 2+2?"),

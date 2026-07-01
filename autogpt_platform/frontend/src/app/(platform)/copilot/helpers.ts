@@ -336,27 +336,92 @@ export function shouldDebounceReconnect(
   return windowMs - sinceLastResume;
 }
 
+const MIN_PREFIX_REPLAY_MESSAGES = 4;
+
+function messageContentFingerprint(msg: UIMessage): string {
+  // JSON.stringify the parts array to avoid separator-collision false
+  // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
+  // produces the same string. JSON encoding each element is unambiguous.
+  // Fall back to JSON.stringify(p) for parts that carry neither a text nor
+  // a toolCallId (e.g. step-start) so structurally different parts never
+  // collapse to the same empty-string fingerprint element.
+  return JSON.stringify(
+    msg.parts.map(
+      (p) =>
+        ("text" in p && p.text) ||
+        ("toolCallId" in p && p.toolCallId) ||
+        JSON.stringify(p),
+    ),
+  );
+}
+
+function messageReplayFingerprint(msg: UIMessage): string {
+  return `${msg.role}:${messageContentFingerprint(msg)}`;
+}
+
 /**
- * Deduplicate messages by ID and by consecutive content fingerprint.
+ * Drop appended transcript-prefix replays. During SSE resume, the stream can
+ * replay the persisted transcript from the beginning with fresh client IDs;
+ * that creates a suffix whose fingerprints match the array prefix exactly:
+ *   [u1, a1, u2, a2, u1', a1', u2', a2']
  *
- * ID dedup catches exact duplicates within the same source.
- * Content dedup uses a composite key of `role + preceding-user-message-id +
- * content-fingerprint` to detect replayed messages that arrive with new
- * IDs after an SSE reconnection replays from the beginning of the Redis
- * stream. Scoping by user message ID (not text) preserves the second
- * assistant reply when the user asks the same question twice and gets the
- * same answer — two different user messages produce two different IDs even
- * when their text is identical.
+ * We only remove prefix blocks with at least 4 messages. That is deliberately
+ * conservative so a user asking the same question twice and getting the same
+ * short answer (two messages) is preserved.
+ */
+function removeTranscriptPrefixReplays(messages: UIMessage[]): UIMessage[] {
+  if (messages.length < MIN_PREFIX_REPLAY_MESSAGES * 2) return messages;
+
+  const fingerprints = messages.map(messageReplayFingerprint);
+  const dropped = new Set<number>();
+
+  for (let i = MIN_PREFIX_REPLAY_MESSAGES; i < messages.length; i++) {
+    if (dropped.has(i)) continue;
+
+    let replayLength = 0;
+    while (
+      i + replayLength < messages.length &&
+      replayLength < i &&
+      fingerprints[replayLength] === fingerprints[i + replayLength]
+    ) {
+      replayLength++;
+    }
+
+    if (replayLength < MIN_PREFIX_REPLAY_MESSAGES) continue;
+
+    for (let offset = 0; offset < replayLength; offset++) {
+      dropped.add(i + offset);
+    }
+    i += replayLength - 1;
+  }
+
+  if (dropped.size === 0) return messages;
+  return messages.filter((_, index) => !dropped.has(index));
+}
+
+/**
+ * Deduplicate messages by ID, appended transcript-prefix replay, and assistant
+ * content fingerprint.
+ *
+ * ID dedup catches exact duplicates within the same source. Prefix replay
+ * dedup catches whole transcript replays that arrive with fresh IDs after an
+ * SSE reconnection/resume. Assistant content dedup catches repeated assistant
+ * chunks within a turn while preserving identical answers to different user
+ * prompts by scoping to the preceding user message ID.
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
+  const idDeduped = messages.filter((msg) => {
+    if (seenIds.has(msg.id)) return false;
+    seenIds.add(msg.id);
+    return true;
+  });
+
+  const replayDeduped = removeTranscriptPrefixReplays(idDeduped);
   const seenFingerprints = new Set<string>();
   let lastUserMsgID = "";
 
-  return messages.filter((msg) => {
-    if (seenIds.has(msg.id)) return false;
-    seenIds.add(msg.id);
-
+  return replayDeduped.filter((msg) => {
     if (msg.role === "user") {
       // Track the ID (not text) of the latest user message so we can scope
       // assistant fingerprints to their conversational turn. Using the ID
@@ -366,20 +431,7 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
     }
 
     if (msg.role === "assistant") {
-      // JSON.stringify the parts array to avoid separator-collision false
-      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
-      // produces the same string. JSON encoding each element is unambiguous.
-      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
-      // a toolCallId (e.g. step-start) so structurally different parts never
-      // collapse to the same empty-string fingerprint element.
-      const contentFingerprint = JSON.stringify(
-        msg.parts.map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            JSON.stringify(p),
-        ),
-      );
+      const contentFingerprint = messageContentFingerprint(msg);
 
       if (contentFingerprint !== "[]") {
         // Scope to the preceding user message turn so that identical assistant
