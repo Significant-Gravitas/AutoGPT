@@ -614,6 +614,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Authenticated Web Request](block-integrations/misc.md#send-authenticated-web-request) | Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart) |
 | [Send Email](block-integrations/misc.md#send-email) | This block sends an email using the provided SMTP credentials |
 | [Send Web Request](block-integrations/misc.md#send-web-request) | Make an HTTP request (JSON / form / multipart) |
+| [Shieldz Create Payment Link](block-integrations/misc.md#shieldz-create-payment-link) | Create a keyless, non-custodial crypto payment link with Shieldz (no API key) |
+| [Shieldz Create Tip Jar](block-integrations/misc.md#shieldz-create-tip-jar) | Create a keyless, non-custodial 'pay what you want' tip jar with Shieldz |
 
 ## Agent Integration
 
