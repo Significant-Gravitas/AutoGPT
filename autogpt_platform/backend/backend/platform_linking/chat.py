@@ -98,6 +98,11 @@ async def upload_workspace_file(
             filename=safe_name,
             mime_type=request.mime_type,
             metadata={"origin": "user-upload"},
+            # Re-uploading a same-named file in the conversation replaces it
+            # rather than erroring — without this a name collision raises
+            # ValueError that would be mislabelled a "too large / quota"
+            # rejection. Keeps the ValueError branch below meaning only that.
+            overwrite=True,
         )
     except VirusDetectedError:
         return WorkspaceUploadResult(filename=request.filename, error="virus_detected")

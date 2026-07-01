@@ -309,6 +309,9 @@ class TestUploadWorkspaceFile:
         kwargs = write.await_args.kwargs
         assert kwargs["filename"] == "a.png"
         assert "path" not in kwargs
+        # Overwrite so a re-uploaded same-named file replaces rather than
+        # erroring (a conflict would be mislabelled a size/quota rejection).
+        assert kwargs["overwrite"] is True
 
     @pytest.mark.asyncio
     async def test_filename_path_components_are_stripped(self):

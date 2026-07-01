@@ -116,7 +116,6 @@ class MessageHandler:
         # AutoPilot can read them (same as a web upload). The session is
         # normally resolved when the turn starts; resolve/create it up front
         # here and cache it so both the upload and the turn use the same one.
-        session_id: str | None = None
         if ctx.attachments:
             try:
                 session_id = await self._api.ensure_session(
@@ -127,13 +126,22 @@ class MessageHandler:
                 )
                 await sessions.set_session(ctx.platform, target_id, session_id)
             except Exception:
-                # Degrade gracefully: without a session the file uploads but
-                # won't be session-scoped. Better than dropping the message.
+                # Without a session the files can't be made readable to
+                # AutoPilot, so report them as failed rather than uploading
+                # them somewhere it can't see.
                 logger.exception(
                     "Failed to resolve session for uploads (user %s)", ctx.user_id
                 )
-
-        file_ids, upload_problems = await self._upload_attachments(ctx, session_id)
+                file_ids: list[str] = []
+                upload_problems = [
+                    (a.filename, "couldn't be uploaded") for a in ctx.attachments
+                ]
+            else:
+                file_ids, upload_problems = await self._upload_attachments(
+                    ctx, session_id
+                )
+        else:
+            file_ids, upload_problems = await self._upload_attachments(ctx)
 
         # Files that didn't make it: adapter-stage (too large / failed download)
         # plus upload-stage (virus / quota). Tell the user AND, below, the model

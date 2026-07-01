@@ -1017,6 +1017,23 @@ class TestAttachments:
         )
 
     @pytest.mark.asyncio
+    async def test_session_resolution_failure_reports_files_as_failed(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        api.ensure_session = AsyncMock(side_effect=RuntimeError("rpc down"))
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # Files are NOT uploaded sessionless (where AutoPilot couldn't read
+        # them); the user is told they couldn't be attached and no file_ids
+        # reach the turn.
+        api.upload_workspace_files.assert_not_awaited()
+        assert "a.png" in adapter.send_message.await_args_list[0].args[1]
+        assert captured["file_ids"] == []
+
+    @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
         results = [
             WorkspaceUploadResult(filename="good.png", file_id="f1"),
