@@ -1,0 +1,50 @@
+name: batch-command-handler
+
+# Handles the repository_dispatch events emitted by batch-command-listener.yml.
+# All the real work lives in .github/batch-bot/batch.mjs (dependency-free Node,
+# drives `git` + `gh`). Runs under BATCH_BOT_TOKEN so the rollup-branch push and
+# the eventual merge trigger the preview-deploy + downstream CI (GITHUB_TOKEN
+# pushes/merges do not trigger other workflows).
+on:
+  repository_dispatch:
+    types: [batch-command, batch-remove-command, batch-merge-command]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+concurrency:
+  # Serialize all batch mutations — the rollup branch is a single shared artifact.
+  group: batch-bot
+  cancel-in-progress: false
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BATCH_BOT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure bot git identity
+        run: |
+          git config user.name  "${{ vars.BATCH_BOT_NAME || 'autogpt-batch-bot' }}"
+          git config user.email "${{ vars.BATCH_BOT_EMAIL || 'autogpt-batch-bot@users.noreply.github.com' }}"
+
+      - name: Run batch bot
+        env:
+          GH_TOKEN: ${{ secrets.BATCH_BOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ vars.BATCH_BASE_BRANCH || 'dev' }}
+          COMMAND: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.client_payload.slash_command.args.named.pr }}
+          ARG1: ${{ github.event.client_payload.slash_command.args.unnamed.arg1 }}
+          COMMENT_URL: ${{ github.event.client_payload.github.payload.comment.html_url }}
+        run: node .github/batch-bot/batch.mjs
