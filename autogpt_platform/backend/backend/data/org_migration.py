@@ -453,6 +453,84 @@ async def create_store_listing_aliases() -> int:
     return result
 
 
+async def migrate_credentials_to_table() -> int:
+    """Copy each user's UserIntegrations blob credentials into
+    IntegrationCredential rows (ownerType=USER, personal org).
+
+    Big-bang per launch decision: the table becomes the org-aware source
+    of truth; the encrypted blob is left untouched as the rollback
+    artifact until prod-verified. Row ids reuse the credential's existing
+    UUID so graph ``credentials_id`` references stay valid. Idempotent —
+    ids already present in the table are skipped, so re-runs (every
+    startup) only pick up blob credentials not yet copied.
+
+    Returns the number of credential rows created.
+    """
+    from backend.data.model import UserIntegrations
+    from backend.util.encryption import JSONCryptor
+
+    cryptor = JSONCryptor()
+    created = 0
+
+    users = await prisma.user.find_many(where={"integrations": {"not": ""}})
+    for user in users:
+        try:
+            integrations = UserIntegrations.model_validate(
+                cryptor.decrypt(user.integrations)
+            )
+        except Exception:
+            logger.error(
+                f"Credential migration: cannot decrypt blob for user {user.id}; "
+                "skipping (blob left untouched)",
+                exc_info=True,
+            )
+            continue
+
+        if not integrations.credentials:
+            continue
+
+        org_row = await prisma.organization.find_first(
+            where={
+                "isPersonal": True,
+                "Members": {"some": {"userId": user.id, "isOwner": True}},
+            }
+        )
+        if org_row is None:
+            # Personal org not bootstrapped yet — the next startup sweep
+            # (after create_orgs_for_existing_users) will pick this up.
+            logger.warning(
+                f"Credential migration: no personal org for user {user.id}; deferring"
+            )
+            continue
+
+        existing_rows = await prisma.integrationcredential.find_many(
+            where={"id": {"in": [c.id for c in integrations.credentials]}}
+        )
+        existing_ids = {row.id for row in existing_rows}
+
+        for cred in integrations.credentials:
+            if cred.id in existing_ids:
+                continue
+            await prisma.integrationcredential.create(
+                data={
+                    "id": cred.id,
+                    "organizationId": org_row.id,
+                    "ownerType": "USER",
+                    "ownerId": user.id,
+                    "provider": cred.provider,
+                    "credentialType": cred.type,
+                    "displayName": cred.title or cred.provider,
+                    "encryptedPayload": cryptor.encrypt(cred.model_dump()),
+                    "createdByUserId": user.id,
+                }
+            )
+            created += 1
+
+    if created:
+        logger.info(f"Credential migration: copied {created} blob credentials to table")
+    return created
+
+
 async def run_migration() -> None:
     """Orchestrate the full org bootstrap migration. Idempotent.
 
@@ -481,6 +559,7 @@ async def run_migration() -> None:
         resource_counts = await assign_resources_to_teams()
         await migrate_store_listings()
         await create_store_listing_aliases()
+        await migrate_credentials_to_table()
 
         total_resources = sum(resource_counts.values())
         elapsed = time.monotonic() - start

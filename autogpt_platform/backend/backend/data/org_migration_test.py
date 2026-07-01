@@ -424,10 +424,11 @@ class TestAssignResources:
 
         result = await assign_resources_to_teams()
 
-        # 8 tables with workspace + 3 tables org-only = 11 entries
-        assert len(result) == 11
+        # 9 tables with workspace + 3 tables org-only = 12 entries
+        assert len(result) == 12
         assert result["AgentGraph"] == 10
         assert result["ChatSession"] == 10
+        assert result["UserNotificationBatch"] == 10
         assert result["BuilderSearchHistory"] == 10
         assert result["PendingHumanReview"] == 10
         assert result["StoreListingVersion"] == 10
@@ -493,6 +494,10 @@ class TestRunMigration:
             "backend.data.org_migration.create_store_listing_aliases",
             new_callable=lambda: lambda: _track(calls, "aliases", 0),
         )
+        mocker.patch(
+            "backend.data.org_migration.migrate_credentials_to_table",
+            new_callable=lambda: lambda: _track(calls, "credentials", 0),
+        )
 
         await run_migration()
 
@@ -503,9 +508,119 @@ class TestRunMigration:
             "assign_resources",
             "store_listings",
             "aliases",
+            "credentials",
         ]
 
 
 async def _track(calls: list[str], name: str, result):
     calls.append(name)
     return result
+
+
+class TestCredentialMigration:
+    """Blob → IntegrationCredential table copy (big-bang, blob preserved)."""
+
+    @pytest.mark.asyncio
+    async def test_migrates_blob_credentials_to_rows(self, mock_prisma):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, UserIntegrations
+        from backend.data.org_migration import migrate_credentials_to_table
+        from backend.util.encryption import JSONCryptor
+
+        cred = APIKeyCredentials(
+            id="cred-1",
+            provider="github",
+            api_key=SecretStr("sk-live-1"),
+            title="GitHub",
+        )
+        blob = JSONCryptor().encrypt(
+            UserIntegrations(credentials=[cred]).model_dump(exclude_none=True)
+        )
+        user = MagicMock()
+        user.id = "u1"
+        user.integrations = blob
+        mock_prisma.user.find_many = AsyncMock(return_value=[user])
+        mock_prisma.organization.find_first = AsyncMock(
+            return_value=MagicMock(id="org-personal")
+        )
+        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[])
+        mock_prisma.integrationcredential.create = AsyncMock()
+
+        created = await migrate_credentials_to_table()
+
+        assert created == 1
+        data = mock_prisma.integrationcredential.create.call_args.kwargs["data"]
+        # Row id MUST reuse the credential UUID so graph credentials_id
+        # references keep resolving after the store switches to the table.
+        assert data["id"] == "cred-1"
+        assert data["organizationId"] == "org-personal"
+        assert data["ownerType"] == "USER"
+        assert data["ownerId"] == "u1"
+        assert data["provider"] == "github"
+        payload = JSONCryptor().decrypt(data["encryptedPayload"])
+        assert payload["api_key"] == "sk-live-1"
+        assert payload["id"] == "cred-1"
+
+    @pytest.mark.asyncio
+    async def test_skips_already_migrated_credentials(self, mock_prisma):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, UserIntegrations
+        from backend.data.org_migration import migrate_credentials_to_table
+        from backend.util.encryption import JSONCryptor
+
+        cred = APIKeyCredentials(
+            id="cred-1",
+            provider="github",
+            api_key=SecretStr("sk-live-1"),
+            title="GitHub",
+        )
+        blob = JSONCryptor().encrypt(
+            UserIntegrations(credentials=[cred]).model_dump(exclude_none=True)
+        )
+        user = MagicMock()
+        user.id = "u1"
+        user.integrations = blob
+        mock_prisma.user.find_many = AsyncMock(return_value=[user])
+        mock_prisma.organization.find_first = AsyncMock(
+            return_value=MagicMock(id="org-personal")
+        )
+        existing = MagicMock()
+        existing.id = "cred-1"
+        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[existing])
+        mock_prisma.integrationcredential.create = AsyncMock()
+
+        created = await migrate_credentials_to_table()
+
+        assert created == 0
+        mock_prisma.integrationcredential.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_defers_user_without_personal_org(self, mock_prisma):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, UserIntegrations
+        from backend.data.org_migration import migrate_credentials_to_table
+        from backend.util.encryption import JSONCryptor
+
+        cred = APIKeyCredentials(
+            id="cred-1",
+            provider="github",
+            api_key=SecretStr("sk-live-1"),
+            title="GitHub",
+        )
+        blob = JSONCryptor().encrypt(
+            UserIntegrations(credentials=[cred]).model_dump(exclude_none=True)
+        )
+        user = MagicMock()
+        user.id = "u1"
+        user.integrations = blob
+        mock_prisma.user.find_many = AsyncMock(return_value=[user])
+        mock_prisma.organization.find_first = AsyncMock(return_value=None)
+        mock_prisma.integrationcredential.create = AsyncMock()
+
+        created = await migrate_credentials_to_table()
+
+        assert created == 0
+        mock_prisma.integrationcredential.create.assert_not_called()
