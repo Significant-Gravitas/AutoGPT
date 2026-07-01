@@ -41,6 +41,7 @@ const command = req("COMMAND").replace(/-command$/, ""); // batch | batch-remove
 const prNumber = process.env.PR_NUMBER ? Number(process.env.PR_NUMBER) : null;
 const arg1 = (process.env.ARG1 || "").trim();
 const rollupUrl = process.env.ROLLUP_URL || "";
+const rollupPr = process.env.ROLLUP_PR ? Number(process.env.ROLLUP_PR) : null;
 const SAFE_REF = /^[\w./-]+$/; // git ref chars we allow through, defense-in-depth
 
 function req(name) {
@@ -173,7 +174,9 @@ function rollupBody(merged, ejected) {
     "",
     "---",
     "Commands (comment on any PR): `/batch` add · `/batch-remove` drop · `/batch-merge` land all · `/batch help`",
-    "Preview: deployed from this branch by the preview-environment workflow.",
+    "Preview: an isolated per-PR full-stack env (namespace `pr-<n>`, its own DB schema running the",
+    "batched migrations) is (re)deployed automatically via `!deploy` on each batch change, and torn",
+    "down when this PR merges or closes.",
     "",
     "> This PR is the union of everyone's code. Its approval must be a real human review of the",
     "> merged result — do not auto-approve or bypass; per-member approvals do not cover the union.",
@@ -196,10 +199,19 @@ function upsertRollupPR(merged, ejected) {
   }
   gh(["pr", "edit", String(pr.number), "--repo", REPO, "--title", title, "--body-file", f]);
   if (merged.length === 0) {
+    // Closing the rollup PR triggers the deploy dispatcher's PR-close auto-undeploy.
     tryGh(["pr", "close", String(pr.number), "--repo", REPO, "--delete-branch"]);
     return null;
   }
   return pr;
+}
+
+// The infra preview system deploys a per-PR isolated env on an exact `!deploy`
+// comment (autogpt-platform-preview-env-cd.yml, keyed by PR number). Posting it on
+// the rollup PR (re)deploys ONE env whose DB runs all the batched migrations. The
+// bot must be a write collaborator for the deploy dispatcher to honor the comment.
+function deployRollup(pr) {
+  tryGh(["pr", "comment", String(pr.number), "--repo", REPO, "--body", "!deploy"]);
 }
 
 // --- commands ------------------------------------------------------------
@@ -220,13 +232,14 @@ function assertBatchable(pr) {
 function rebuildAndReport(actionNote) {
   const { merged, ejected } = buildRollup(members());
   const pr = upsertRollupPR(merged, ejected);
+  if (pr) deployRollup(pr); // (re)deploy the combined preview to reflect the new batch
   if (prNumber) {
     const names = merged.map((p) => `#${p.number}`).join(", ") || "none";
     comment(
       prNumber,
       `${MARKER}\n🤖 ${actionNote} Current batch (${merged.length}): ${names}.` +
         (ejected.length ? ` Ejected: ${ejected.map((p) => "#" + p.number).join(", ")}.` : "") +
-        (pr ? `\n\nOne preview deploys from the rollup branch; \`/batch-merge\` lands them together.` : ""),
+        (pr ? `\n\nDeploying the combined preview (${pr.url}); \`/batch-merge\` lands them together.` : ""),
     );
   }
   console.log(`batch: ${merged.length} member(s)${pr ? ` → ${pr.url}` : " (empty)"}`);
@@ -287,6 +300,10 @@ function cmdBatchMerge() {
 // Fired by batch-reconcile.yml after the rollup PR squash-merges. Squash rewrites
 // SHAs, so members won't auto-flip to "Merged" — close them explicitly with credit.
 function cmdReconcile() {
+  // Tear the combined preview down explicitly (the deploy dispatcher also
+  // auto-undeploys on the rollup PR's close; this is the guaranteed path and
+  // idempotent teardown makes the overlap harmless).
+  if (rollupPr) tryGh(["pr", "comment", String(rollupPr), "--repo", REPO, "--body", "!undeploy"]);
   const list = members();
   for (const p of list) {
     comment(p.number, `${MARKER}\n🤖 Landed on \`${BASE}\` via batch rollup${rollupUrl ? ` ${rollupUrl}` : ""}. Closing — your change is merged.`);

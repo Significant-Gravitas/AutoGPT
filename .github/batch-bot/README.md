@@ -29,12 +29,21 @@ repo-permission lookup, not the unreliable `author_association`):
   author told to rebase) so one bad PR never stalls the batch.
 - A **rollup PR** (`batch/rollup` → `dev`) is the sticky status surface, the thing
   the preview env deploys, and the thing `/batch-merge` lands.
+- **Preview:** the bot reuses the repo's existing per-PR preview system. On each
+  batch change it posts a bare **`!deploy`** comment on the rollup PR, which the
+  `platform-dev-deploy-event-dispatcher.yml` → `AutoGPT_cloud_infrastructure`
+  pipeline turns into ONE **isolated per-PR environment** keyed by the rollup PR's
+  number (namespace `pr-<n>`, Postgres schema `pr_<n>`, URLs `pr-<n>-server.agpt.co`
+  / `autogpt-pr-<n>.vercel.app`) that **runs all the batched migrations against its
+  own schema**. That isolation is provided by the preview system, not this bot.
 - `/batch-merge` requires every member **`reviewDecision === APPROVED` + green**,
   then enables **auto-merge (squash)** on the rollup. It lands once the rollup PR's
   own required human approval + checks pass.
-- After the rollup squash-merges, `batch-reconcile.yml` **closes each member** with
-  a comment crediting the rollup (squash rewrites SHAs, so members would otherwise
-  show neither "Merged" nor closed) and deletes the rollup branch.
+- After the rollup squash-merges, `batch-reconcile.yml` posts **`!undeploy`** to
+  tear the preview down and **closes each member** with a comment crediting the
+  rollup (squash rewrites SHAs, so members would otherwise show neither "Merged"
+  nor closed), then deletes the rollup branch. (The deploy dispatcher also
+  auto-undeploys on the rollup PR's close; the overlap is idempotent.)
 
 `dev` is squash-only with linear history and no merge queue, so this uses
 auto-merge, not a queue. If you later add a native merge queue you get the
@@ -66,11 +75,14 @@ suggestions:
    `batch/rollup`** so only the bot identity can push to it. Otherwise a member
    could get the rollup approved, then push, and land on a stale approval.
 3. **Preview isolation.** `/batch` deploys code that is not yet code-reviewed (that
-   is the point — test early), and it co-locates multiple authors' code + arbitrary
-   migration SQL in one environment. The preview MUST use **non-prod, per-preview,
-   network-isolated secrets** and a **fresh DB that shares no server/creds** with
-   other environments. Optionally set `BATCH_REQUIRE_APPROVAL=1` to require an
-   approval before a PR can be added to the batch.
+   is the point — test early), co-locating multiple authors' code + migration SQL in
+   one environment. This is handled by the existing per-PR preview system
+   (`AutoGPT_cloud_infrastructure`): each rollup gets its own namespace `pr-<n>`,
+   Postgres schema `pr_<n>`, and URLs — non-prod and per-PR isolated. Confirm those
+   previews use non-prod secrets (they do by design). Nuance: isolation is
+   schema-level within a shared preview Postgres cluster, not separate DB servers —
+   fine for non-prod previews. Optionally set `BATCH_REQUIRE_APPROVAL=1` to require
+   an approval before a PR can be added to the batch.
 4. **Pinned actions.** All actions are pinned to commit SHAs (`slash-command-dispatch`,
    `checkout`, `setup-node`); keep them pinned when bumping.
 5. **No shell.** `batch.mjs` uses array-arg `execFileSync` only — attacker-controlled
@@ -106,8 +118,13 @@ Optional repo **variables**: `BATCH_BASE_BRANCH` (default `dev`), `BATCH_BOT_NAM
 
 ### 2. Preview environment
 
-Deploy on push to `batch/rollup` with a fresh, isolated DB per build (see security
-requirement 3). Put the preview URL into the rollup PR body.
+No new preview infra needed — the bot reuses the repo's existing per-PR preview
+system by posting `!deploy` on the rollup PR (handled by
+`platform-dev-deploy-event-dispatcher.yml` → `AutoGPT_cloud_infrastructure`'s
+`autogpt-platform-preview-env-cd.yml`). Two prerequisites: that per-PR preview
+system is enabled, and the bot identity is a **write collaborator** so the deploy
+dispatcher honors its `!deploy`/`!undeploy` comments (the dispatcher gates on the
+commenter's `author_association`).
 
 ## Opt-out
 

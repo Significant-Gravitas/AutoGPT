@@ -25,6 +25,7 @@ jobs:
       BASE: ${{ vars.BATCH_BASE_BRANCH || 'dev' }}
       COMMAND: reconcile
       ROLLUP_URL: ${{ github.event.pull_request.html_url }}
+      ROLLUP_PR: ${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
