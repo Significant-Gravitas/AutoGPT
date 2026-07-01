@@ -3294,7 +3294,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3659,6 +3659,59 @@
           "429": { "description": "Call-frequency cap exceeded" },
           "503": {
             "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/pinned": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session pinned",
+        "description": "Pin or unpin a chat session.\n\nPinned sessions surface at the top of the user's sidebar list ahead of\nunpinned ones, regardless of recency.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new pin state.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session pinned",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionPinnedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Pinned"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -19284,6 +19337,11 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
           }
         },
         "type": "object",
@@ -21511,6 +21569,15 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdateSessionPinnedRequest": {
+        "properties": {
+          "is_pinned": { "type": "boolean", "title": "Is Pinned" }
+        },
+        "type": "object",
+        "required": ["is_pinned"],
+        "title": "UpdateSessionPinnedRequest",
+        "description": "Request model for pinning/unpinning a session."
       },
       "UpdateSessionTitleRequest": {
         "properties": { "title": { "type": "string", "title": "Title" } },

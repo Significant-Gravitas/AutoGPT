@@ -34,6 +34,7 @@ from backend.copilot.model import (
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
+    update_session_pinned,
     update_session_title,
 )
 from backend.copilot.pending_message_helpers import (
@@ -333,6 +334,7 @@ class SessionSummaryResponse(BaseModel):
     chat_status: str = "idle"
     is_processing: bool
     source_platform: str | None = None
+    is_pinned: bool = False
 
 
 class ListSessionsResponse(BaseModel):
@@ -363,6 +365,12 @@ class UpdateSessionTitleRequest(BaseModel):
         return stripped
 
 
+class UpdateSessionPinnedRequest(BaseModel):
+    """Request model for pinning/unpinning a session."""
+
+    is_pinned: bool
+
+
 # ========== Routes ==========
 
 
@@ -379,7 +387,7 @@ async def list_sessions(
     List chat sessions for the authenticated user.
 
     Returns a paginated list of chat sessions belonging to the current user,
-    ordered by most recently updated.
+    with pinned sessions first and most-recently-updated as the tiebreaker.
 
     Args:
         user_id: The authenticated user's ID.
@@ -426,6 +434,7 @@ async def list_sessions(
                 chat_status=session.chat_status,
                 is_processing=session.session_id in processing_set,
                 source_platform=session.metadata.source_platform,
+                is_pinned=session.is_pinned,
             )
             for session in sessions
         ],
@@ -585,6 +594,44 @@ async def update_session_title_route(
         HTTPException: 404 if session not found or not owned by user.
     """
     success = await update_session_title(session_id, user_id, request.title)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
+
+
+@router.patch(
+    "/sessions/{session_id}/pinned",
+    summary="Update session pinned",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_pinned_route(
+    session_id: str,
+    request: UpdateSessionPinnedRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Pin or unpin a chat session.
+
+    Pinned sessions surface at the top of the user's sidebar list ahead of
+    unpinned ones, regardless of recency.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new pin state.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    success = await update_session_pinned(session_id, user_id, request.is_pinned)
     if not success:
         raise HTTPException(
             status_code=404,

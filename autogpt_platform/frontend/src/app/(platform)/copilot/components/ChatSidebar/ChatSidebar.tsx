@@ -1,6 +1,7 @@
 "use client";
 import {
   getV2GetSession,
+  usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
@@ -22,6 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   CircleNotch,
@@ -32,6 +34,8 @@ import {
   PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
+  PushPinIcon,
+  PushPinSlashIcon,
   ShareNetworkIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
@@ -95,6 +99,31 @@ export function ChatSidebar() {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
+  const isPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
+
+  const { mutate: setSessionPinned } = usePatchV2UpdateSessionPinned({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: SESSION_LIST_QUERY_KEY,
+        });
+      },
+      onError: (error) => {
+        const description =
+          error instanceof ApiError
+            ? ((error.response as { detail?: string } | undefined)?.detail ??
+              error.message)
+            : error instanceof Error
+              ? error.message
+              : "An error occurred";
+        toast({
+          title: "Failed to update chat",
+          description,
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
@@ -175,6 +204,11 @@ export function ChatSidebar() {
   ) {
     e.stopPropagation();
     requestDelete(id, title);
+  }
+
+  function handlePinClick(e: React.MouseEvent, id: string, isPinned: boolean) {
+    e.stopPropagation();
+    setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
   }
 
   async function handleExportClick(
@@ -402,6 +436,7 @@ export function ChatSidebar() {
                             }
                             updatedAt={session.updated_at}
                             sourcePlatform={session.source_platform}
+                            showPinned={isPinningEnabled && !!session.is_pinned}
                             isActive={session.id === sessionId}
                             chatStatus={session.chat_status}
                             showProcessing={
@@ -447,6 +482,29 @@ export function ChatSidebar() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {isPinningEnabled && (
+                              <DropdownMenuItem
+                                onClick={(e) =>
+                                  handlePinClick(
+                                    e,
+                                    session.id,
+                                    !!session.is_pinned,
+                                  )
+                                }
+                              >
+                                {session.is_pinned ? (
+                                  <>
+                                    <PushPinSlashIcon className="mr-2 h-4 w-4" />
+                                    Unpin chat
+                                  </>
+                                ) : (
+                                  <>
+                                    <PushPinIcon className="mr-2 h-4 w-4" />
+                                    Pin chat
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) =>
                                 handleRenameClick(e, session.id, session.title)

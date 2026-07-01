@@ -128,6 +128,73 @@ def test_update_title_not_found(
     assert response.status_code == 404
 
 
+# ─── Update pinned ────────────────────────────────────────────────────
+
+
+def _mock_update_session_pinned(
+    mocker: pytest_mock.MockerFixture, *, success: bool = True
+):
+    """Mock update_session_pinned."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.update_session_pinned",
+        new_callable=AsyncMock,
+        return_value=success,
+    )
+
+
+def test_update_pinned_success(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_pinned(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    mock_update.assert_called_once_with("sess-1", test_user_id, True)
+
+
+def test_update_pinned_unpin(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_pinned(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": False},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("sess-1", test_user_id, False)
+
+
+def test_update_pinned_missing_field_rejected(
+    test_user_id: str,
+) -> None:
+    response = client.patch("/sessions/sess-1/pinned", json={})
+
+    assert response.status_code == 422
+
+
+def test_update_pinned_not_found(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _mock_update_session_pinned(mocker, success=False)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": True},
+    )
+
+    assert response.status_code == 404
+
+
 # ─── file_ids Pydantic validation ─────────────────────────────────────
 
 
@@ -1148,6 +1215,7 @@ def _make_session_info(
     session_id: str = "sess-1",
     title: str | None = "Test",
     source_platform: str | None = None,
+    is_pinned: bool = False,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -1160,6 +1228,7 @@ def _make_session_info(
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(source_platform=source_platform),
+        is_pinned=is_pinned,
     )
 
 
@@ -1217,6 +1286,32 @@ def test_list_sessions_returns_source_platform(
 
     assert response.status_code == 200
     assert response.json()["sessions"][0]["source_platform"] == "discord"
+
+
+def test_list_sessions_returns_is_pinned(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _make_session_info("sess-pinned", is_pinned=True)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["is_pinned"] is True
 
 
 def test_list_sessions_marks_running_as_processing(
