@@ -86,6 +86,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
     api.upload_workspace_files = AsyncMock(return_value=[])
+    api.ensure_session = AsyncMock(return_value="session-ensured")
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -408,7 +409,9 @@ class TestBatching:
 
         stream_calls: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -429,7 +432,9 @@ class TestBatching:
 
         seen: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
@@ -936,6 +941,26 @@ class TestMessageTextReferencedConversations:
 
 
 class TestAttachments:
+    @pytest.fixture(autouse=True)
+    def _mock_redis(self):
+        # These tests drive handle() end-to-end, which touches Redis: the
+        # upload path resolves the session cache, and _stream_batch reads the
+        # per-target session key. Mock both so the tests stay hermetic.
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.bot.handler.sessions.get_session",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.bot.handler.sessions.set_session", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+        ):
+            yield
+
     @staticmethod
     def _upload_recording_api(results):
         api = _api()
@@ -945,6 +970,7 @@ class TestAttachments:
         async def _recording_stream(*args, **kwargs):
             captured["file_ids"] = kwargs.get("file_ids")
             captured["message"] = kwargs.get("message")
+            captured["session_id"] = kwargs.get("session_id")
             if False:
                 yield ""
 
@@ -977,6 +1003,50 @@ class TestAttachments:
 
         api.upload_workspace_files.assert_awaited_once()
         assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_uploads_are_session_scoped_via_ensure_session(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # The session is resolved up front and threaded into BOTH the upload
+        # and the turn — the turn uses the exact session the file went to, not a
+        # separate Redis read that could diverge.
+        api.ensure_session.assert_awaited_once()
+        assert (
+            api.upload_workspace_files.await_args.kwargs["session_id"]
+            == "session-ensured"
+        )
+        assert captured["session_id"] == "session-ensured"
+
+    @pytest.mark.asyncio
+    async def test_session_resolution_failure_reports_files_as_failed(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        api.ensure_session = AsyncMock(side_effect=RuntimeError("rpc down"))
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # Files are NOT uploaded sessionless (where AutoPilot couldn't read
+        # them); the user is told they couldn't be attached and no file_ids
+        # reach the turn.
+        api.upload_workspace_files.assert_not_awaited()
+        assert "a.png" in adapter.send_message.await_args_list[0].args[1]
+        assert captured["file_ids"] == []
+
+    def test_session_lock_is_stable_per_target(self):
+        # Concurrent attachment messages on the same target serialise on one
+        # lock (so they converge on one session); different targets don't block.
+        handler = MessageHandler(_api())
+        lock = handler._session_lock("t-1")
+        assert handler._session_lock("t-1") is lock
+        assert handler._session_lock("t-2") is not lock
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
@@ -1082,7 +1152,9 @@ class TestAttachments:
         adapter = _adapter()
         captured: list[list[str] | None] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             captured.append(file_ids)
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]

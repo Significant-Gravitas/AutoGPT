@@ -63,14 +63,56 @@ class TargetState:
     # Workspace file IDs uploaded for messages in `pending`, drained together
     # with them so a batched turn carries every attached file.
     pending_file_ids: list[str] = field(default_factory=list)
+    # Session the pending attachments were uploaded to, carried straight to the
+    # turn so it uses the same session (not a separate Redis read that could
+    # diverge). None for text-only batches, which resolve the session normally.
+    session_id: str | None = None
 
 
 class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
+        # Per-target lock serialising session resolution, so two attachment
+        # messages racing on a fresh target converge on ONE session instead of
+        # each creating its own and splitting the files across them.
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # Strong-ref set so the GC doesn't drop fire-and-forget rename tasks.
         self._rename_tasks: set[asyncio.Task[None]] = set()
+
+    def _session_lock(self, target_id: str) -> asyncio.Lock:
+        lock = self._session_locks.get(target_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[target_id] = lock
+        return lock
+
+    async def _resolve_session_for_attachments(
+        self, ctx: MessageContext, target_id: str
+    ) -> str | None:
+        """Resolve (or create) the session this message's attachments upload
+        into, so they land where the turn will read them (``/sessions/<id>/``).
+
+        Serialised per target so concurrent attachment messages converge on one
+        session instead of splitting the files. Returns None on failure — the
+        caller then reports the files as un-attachable rather than uploading
+        them somewhere AutoPilot can't see.
+        """
+        async with self._session_lock(target_id):
+            try:
+                session_id = await self._api.ensure_session(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    platform_server_id=ctx.server_id,
+                    session_id=await sessions.get_session(ctx.platform, target_id),
+                )
+                await sessions.set_session(ctx.platform, target_id, session_id)
+                return session_id
+            except Exception:
+                logger.exception(
+                    "Failed to resolve session for uploads (user %s)", ctx.user_id
+                )
+                return None
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip() and not ctx.attachments:
@@ -112,7 +154,28 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        file_ids, upload_problems = await self._upload_attachments(ctx)
+        # Attachments must be written into the turn's session folder so
+        # AutoPilot can read them (same as a web upload), and the turn must run
+        # in that same session — resolve it up front and thread it through.
+        session_id: str | None = None
+        file_ids: list[str]
+        upload_problems: list[tuple[str, str]]
+        if ctx.attachments:
+            session_id = await self._resolve_session_for_attachments(ctx, target_id)
+            if session_id is None:
+                # Without a session the files can't be made readable to
+                # AutoPilot, so report them as failed rather than uploading
+                # them somewhere it can't see.
+                file_ids = []
+                upload_problems = [
+                    (a.filename, "couldn't be uploaded") for a in ctx.attachments
+                ]
+            else:
+                file_ids, upload_problems = await self._upload_attachments(
+                    ctx, session_id
+                )
+        else:
+            file_ids, upload_problems = await self._upload_attachments(ctx)
 
         # Files that didn't make it: adapter-stage (too large / failed download)
         # plus upload-stage (virus / quota). Tell the user AND, below, the model
@@ -138,16 +201,19 @@ class MessageHandler:
         message_text = self._message_text(ctx, include_thread_history, current_text)
         if problems:
             message_text += "\n\n" + _model_attachment_note(problems)
-        await self._enqueue_and_process(ctx, adapter, target_id, message_text, file_ids)
+        await self._enqueue_and_process(
+            ctx, adapter, target_id, message_text, file_ids, session_id
+        )
 
     async def _upload_attachments(
-        self, ctx: MessageContext
+        self, ctx: MessageContext, session_id: str | None = None
     ) -> tuple[list[str], list[tuple[str, str]]]:
         """Upload the user's attachments to the workspace.
 
-        Returns ``(file_ids, problems)`` — the IDs that succeeded, and
-        ``(filename, reason)`` for the ones that were rejected — so the caller
-        can attach the successes and surface the failures.
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them. Returns ``(file_ids, problems)`` — the IDs that succeeded,
+        and ``(filename, reason)`` for the ones that were rejected — so the
+        caller can attach the successes and surface the failures.
         """
         if not ctx.attachments:
             return [], []
@@ -157,6 +223,7 @@ class MessageHandler:
                 platform_user_id=ctx.user_id,
                 platform_server_id=ctx.server_id,
                 attachments=ctx.attachments,
+                session_id=session_id,
             )
         except Exception:
             # The upload path itself failed (not a per-file rejection). Don't
@@ -253,11 +320,16 @@ class MessageHandler:
         target_id: str,
         message_text: str | None = None,
         file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
         if file_ids:
             state.pending_file_ids.extend(file_ids)
+        # First attachment message in a batch pins the session; later ones
+        # resolved the same session (serialised by _session_lock), so keep it.
+        if session_id and state.session_id is None:
+            state.session_id = session_id
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick
@@ -269,8 +341,10 @@ class MessageHandler:
             while state.pending:
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
+                batch_session_id = state.session_id
                 state.pending.clear()
                 state.pending_file_ids.clear()
+                state.session_id = None
                 if len(batch_file_ids) > MAX_TURN_FILE_IDS:
                     logger.warning(
                         "Dropping %d batched file(s) over the per-turn cap of %d",
@@ -279,7 +353,12 @@ class MessageHandler:
                     )
                     batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
                 await self._stream_batch(
-                    batch, ctx, adapter, target_id, file_ids=batch_file_ids
+                    batch,
+                    ctx,
+                    adapter,
+                    target_id,
+                    file_ids=batch_file_ids,
+                    session_id=batch_session_id,
                 )
         finally:
             state.processing = False
@@ -414,17 +493,23 @@ class MessageHandler:
         adapter: PlatformAdapter,
         target_id: str,
         file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
-        cached_session_id = await redis.get(cache_key)
-        active_session_id = (
-            cached_session_id.decode()
-            if isinstance(cached_session_id, bytes)
-            else cached_session_id
-        )
+        if session_id is not None:
+            # Attachments were already uploaded to this session — use it
+            # directly so the turn can't diverge from where the files went.
+            active_session_id: str | None = session_id
+        else:
+            cached_session_id = await redis.get(cache_key)
+            active_session_id = (
+                cached_session_id.decode()
+                if isinstance(cached_session_id, bytes)
+                else cached_session_id
+            )
 
         async def _on_session_id(sid: str) -> None:
             nonlocal active_session_id
