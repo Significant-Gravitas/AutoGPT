@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import pytest
 
+from backend.util.clients import ORCAROUTER_BASE_URL
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
@@ -601,6 +602,49 @@ class TestOpenRouter:
         # carries cost data.
         assert kwargs["extra_body"] == {"usage": {"include": True}}
         assert "HTTP-Referer" in kwargs["extra_headers"]
+
+
+class TestOrcaRouter:
+    @pytest.mark.asyncio
+    async def test_dispatches_to_orcarouter_base_url_with_attribution(self):
+        fake_response = _fake_openai_chat_response("hello", prompt=10, completion=5)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            result = await call_provider(
+                provider="orca_router",
+                model="openai/gpt-5.5",
+                api_key="sk-orca-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        assert result.content == "hello"
+        # Routed at the OrcaRouter base URL.
+        assert constructor.call_args.kwargs["base_url"] == ORCAROUTER_BASE_URL
+        kwargs = async_create.call_args.kwargs
+        # OrcaRouter bills deterministically via TOKEN_COST, so it must NOT
+        # request OpenRouter-style usage-cost extras...
+        assert "extra_body" not in kwargs
+        # ...but it must still send client attribution headers.
+        assert kwargs["extra_headers"]["HTTP-Referer"] == "https://agpt.co"
+        assert kwargs["extra_headers"]["X-Title"] == "AutoGPT"
 
 
 class TestLlamaAPI:

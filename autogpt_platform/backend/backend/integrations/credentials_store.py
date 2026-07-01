@@ -132,6 +132,13 @@ open_router_credentials = APIKeyCredentials(
     title="Use Credits for Open Router",
     expires_at=None,
 )
+orca_router_credentials = APIKeyCredentials(
+    id="57f7d05a-ff17-4c98-baed-e393b9b6b291",
+    provider="orca_router",
+    api_key=SecretStr(settings.secrets.orca_router_api_key),
+    title="Use Credits for OrcaRouter",
+    expires_at=None,
+)
 fal_credentials = APIKeyCredentials(
     id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
     provider="fal",
@@ -269,6 +276,7 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    orca_router_credentials,
     enrichlayer_credentials,
     fal_credentials,
     exa_credentials,
@@ -389,6 +397,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.orca_router_api_key:
+            all_credentials.append(orca_router_credentials)
         if settings.secrets.enrichlayer_api_key:
             all_credentials.append(enrichlayer_credentials)
         if settings.secrets.fal_api_key:

@@ -45,7 +45,7 @@ from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import OPENROUTER_BASE_URL, ORCAROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -86,6 +86,7 @@ ProviderLiteral = Literal[
     "groq",
     "ollama",
     "open_router",
+    "orca_router",
     "llama_api",
     "aiml_api",
     "v0",
@@ -346,6 +347,26 @@ async def _dispatch_sync(
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=True,
             service_tier=service_tier,
+        )
+    if provider == "orca_router":
+        # OrcaRouter is an OpenAI-compatible meta-router (same shape as
+        # OpenRouter). Billing is handled deterministically via TOKEN_COST
+        # in block_cost_config (like the llama_api / v0 gateways), so we
+        # don't request OpenRouter-style usage-cost extras here — we only
+        # attach the client attribution headers.
+        return await _call_openai_compat(
+            base_url=ORCAROUTER_BASE_URL,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
+            extra_headers={"HTTP-Referer": "https://agpt.co", "X-Title": "AutoGPT"},
         )
     if provider == "llama_api":
         return await _call_openai_compat(
