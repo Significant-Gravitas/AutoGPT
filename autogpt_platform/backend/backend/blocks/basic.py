@@ -1,4 +1,5 @@
 import enum
+import inspect
 from typing import Any
 
 from backend.blocks._base import (
@@ -68,9 +69,12 @@ class FileStoreBlock(Block):
 
 class StoreValueBlock(Block):
     """
-    This block allows you to provide a constant value as a block, in a stateless manner.
-    The common use-case is simply pass the `input` data, it will `output` the same data.
-    The block output will be static, the output can be consumed multiple times.
+    Holds or receives a value and outputs it statically so that it can be used multiple
+    times within the same agent run. Whenever consumed, the output value reflects the
+    last input value that was received.
+
+    NOTE: The value is NOT persisted across runs. To store data that survives between
+    runs, use PersistInformationBlock and RetrieveInformationBlock instead.
     """
 
     class Input(BlockSchemaInput):
@@ -90,7 +94,7 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.",
+            description=inspect.cleandoc(StoreValueBlock.__doc__ or ""),
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
