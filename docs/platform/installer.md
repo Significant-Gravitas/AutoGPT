@@ -4,36 +4,61 @@ The AutoGPT Platform provides easy-to-use installers to help you quickly set up 
 
 ## What the Installer Does
 
-The installer scripts will:
+The **bootstrap installer** (`install.sh` / `install.ps1`) is a zero-prerequisite, one-line entry point. It:
 
-1. Check for required prerequisites (Git, Docker, npm)
-2. Clone the AutoGPT repository
-3. Set up the backend services using Docker
-4. Set up the frontend application
-5. Start both the backend and frontend services
+1. **Pre-flight check** — verifies your machine can actually run AutoGPT (OS/version, CPU virtualization, RAM, free disk, admin rights) and **tells you up front, with a fix,** if something is a hard blocker (e.g. virtualization disabled in BIOS) — *before* installing anything.
+2. **Installs prerequisites** — git and Docker if they're missing (Docker Engine on Linux, Docker Desktop on Windows/macOS). Already-present tools are detected and skipped.
+3. **Fetches the repo** at the version you choose — the latest release (default), the `dev` branch, or a custom branch/tag.
+4. **Hands off** to `setup-autogpt.{sh,bat}`, which builds the Docker stack, optionally wires a local LLM, and starts everything.
+
+> Already have git + Docker and just want the platform setup? Run `setup-autogpt.{sh,bat}` directly (see [Manual Installation](#manual-installation)).
 
 ## Prerequisites
 
-Before running the installer, make sure you have the following installed:
+**None required up front.** The bootstrap installer checks for and installs git and Docker for you, and runs a pre-flight check first so you know whether your hardware/OS can run them. The only hard requirements it verifies:
 
-- **Git**: For cloning the repository
-- **Docker**: For running the backend services
-- **Node.js and npm**: For the frontend application
+- **CPU virtualization** available/enabled — Docker needs it on Windows/macOS (WSL2 / Apple Hypervisor). On Linux, Docker is native and this isn't required.
+- **~25 GB free disk** and **8 GB+ RAM** for the full stack.
+- **Admin / sudo** to install Docker and enable WSL2 (Windows).
 
 ## Quick One-Liner Installation
 
-For convenience, you can use the following one-liner commands to install AutoGPT Platform:
+These commands install everything from scratch — prerequisites included.
 
-### Linux/macOS
+### Linux / macOS
 
 ```bash
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+curl -fsSL https://setup.agpt.co/install.sh | bash
 ```
 
-### Windows
+To pass any of the [options](#options) below, use the `bash -s --` form so the
+flags reach the script (not `bash`), e.g.
+`curl -fsSL https://setup.agpt.co/install.sh | bash -s -- --dev`.
+
+### Windows (PowerShell)
 
 ```powershell
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+powershell -ExecutionPolicy Bypass -Command "iwr https://setup.agpt.co/install.ps1 -OutFile install.ps1; ./install.ps1"
+```
+
+### Options
+
+Both installers share the same flags:
+
+| Goal | Linux/macOS | Windows |
+|------|-------------|---------|
+| Latest release (default) | *(no flag)* | *(no flag)* |
+| `dev` branch | `--dev` | `-Dev` |
+| Specific branch | `--branch=NAME` | `-Branch NAME` |
+| Specific release | `--release=TAG` | `-Release TAG` |
+| Local LLM, no cloud keys | `--with-ollama` | `-WithOllama` |
+| Just check my machine | `--preflight-only` | `-PreflightOnly` |
+| Custom install dir | `--dir=PATH` | `-Dir PATH` |
+
+Example (dev branch + local LLM):
+
+```bash
+curl -fsSL https://setup.agpt.co/install.sh | bash -s -- --dev --with-ollama
 ```
 
 ## Manual Installation
