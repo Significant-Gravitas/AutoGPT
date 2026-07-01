@@ -54,9 +54,13 @@ export function getTimezoneAbbreviation(timezone: string): string {
       timeZoneName: "short",
     }).format(date);
 
-    // Extract the timezone abbreviation from the formatted string
-    const match = formatted.match(/[A-Z]{2,5}$/);
-    return match ? match[0] : timezone;
+    // Extract the trailing zone name. Intl separates it from the date with a
+    // comma, and with timeZoneName "short" it is either a letter abbreviation
+    // ("EST") or a GMT offset ("GMT+8", "GMT+5:30"). An uppercase-letters-only
+    // regex misses offset zones (they end in a digit) and would fall back to
+    // the raw IANA id, so match everything after the comma instead.
+    const match = formatted.match(/,\s*(.+)$/);
+    return match ? match[1] : timezone;
   } catch {
     return timezone;
   }
