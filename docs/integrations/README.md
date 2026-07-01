@@ -287,6 +287,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Webset Summary](block-integrations/exa/websets.md#exa-webset-summary) | Get a comprehensive summary of a webset with samples and statistics |
 | [Extract Website Content](block-integrations/jina/search.md#extract-website-content) | This block scrapes the content from the given web URL |
 | [Fact Checker](block-integrations/jina/fact_checker.md#fact-checker) | This block checks the factuality of a given statement using Jina AI's Grounding API |
+| [Fast CRW Crawl](block-integrations/fastcrw/crawl.md#fast-crw-crawl) | fastCRW crawls websites to extract comprehensive data while bypassing blockers |
+| [Fast CRW Extract](block-integrations/fastcrw/extract.md#fast-crw-extract) | fastCRW crawls websites to extract comprehensive data while bypassing blockers |
+| [Fast CRW Map Website](block-integrations/fastcrw/map.md#fast-crw-map-website) | fastCRW maps a website to extract all the links |
+| [Fast CRW Scrape](block-integrations/fastcrw/scrape.md#fast-crw-scrape) | fastCRW scrapes a website to extract comprehensive data while bypassing blockers |
+| [Fast CRW Search](block-integrations/fastcrw/search.md#fast-crw-search) | fastCRW searches the web for the given query |
 | [Firecrawl Crawl](block-integrations/firecrawl/crawl.md#firecrawl-crawl) | Firecrawl crawls websites to extract comprehensive data while bypassing blockers |
 | [Firecrawl Extract](block-integrations/firecrawl/extract.md#firecrawl-extract) | Firecrawl crawls websites to extract comprehensive data while bypassing blockers |
 | [Firecrawl Map Website](block-integrations/firecrawl/map.md#firecrawl-map-website) | Firecrawl maps a website to extract all the links |
