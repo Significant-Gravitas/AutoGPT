@@ -1773,27 +1773,38 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    # Resource-follows-parent tenancy: a preset lives in the same org/team
+    # as the graph it runs, regardless of the caller's active org. Resolved
+    # here (not threaded by callers) so the invariant can't be forgotten.
+    graph_row = await prisma.models.AgentGraph.prisma().find_first(
+        where={"id": preset.graph_id, "version": preset.graph_version},
+    )
+    create_input = prisma.types.AgentPresetCreateInput(
+        userId=user_id,
+        name=preset.name,
+        description=preset.description,
+        agentGraphId=preset.graph_id,
+        agentGraphVersion=preset.graph_version,
+        isActive=preset.is_active,
+        webhookId=preset.webhook_id,
+        InputPresets={
+            "create": [
+                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                    name=name, data=SafeJson(data)
+                )
+                for name, data in {
+                    **preset.inputs,
+                    **preset.credentials,
+                }.items()
+            ]
+        },
+    )
+    if graph_row and graph_row.organizationId:
+        create_input["organizationId"] = graph_row.organizationId
+    if graph_row and graph_row.teamId:
+        create_input["teamId"] = graph_row.teamId
     new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=prisma.types.AgentPresetCreateInput(
-            userId=user_id,
-            name=preset.name,
-            description=preset.description,
-            agentGraphId=preset.graph_id,
-            agentGraphVersion=preset.graph_version,
-            isActive=preset.is_active,
-            webhookId=preset.webhook_id,
-            InputPresets={
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
-                        **preset.inputs,
-                        **preset.credentials,
-                    }.items()
-                ]
-            },
-        ),
+        data=create_input,
         include=AGENT_PRESET_INCLUDE,
     )
     return library_model.LibraryAgentPreset.from_db(new_preset)

@@ -824,3 +824,120 @@ async def test_fetch_execution_counts_uses_group_by(mocker):
         },
         count=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_create_preset_inherits_graph_org(mocker):
+    """A preset lives in the same org/team as the graph it runs
+    (resource-follows-parent), regardless of the caller's active org."""
+    graph_row = prisma.models.AgentGraph(
+        id="graph-1",
+        version=2,
+        name="Org Graph",
+        userId="test-user",
+        isActive=True,
+        createdAt=datetime.now(),
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-of-graph",
+        teamId="team-of-graph",
+    )
+    created_row = prisma.models.AgentPreset(
+        id="preset-1",
+        userId="test-user",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=2,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+
+    mock_graph_client = AsyncMock()
+    mock_graph_client.find_first.return_value = graph_row
+    mocker.patch.object(
+        prisma.models.AgentGraph, "prisma", return_value=mock_graph_client
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    result = await db.create_preset(
+        user_id="test-user",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=2,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+    )
+
+    assert result.id == "preset-1"
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert create_data["organizationId"] == "org-of-graph"
+    assert create_data["teamId"] == "team-of-graph"
+
+
+@pytest.mark.asyncio
+async def test_create_preset_tenantless_graph_creates_untagged(mocker):
+    """Graphs predating org tagging have no org — the preset create must
+    not write organizationId/teamId keys at all (backfill sweep owns them)."""
+    graph_row = prisma.models.AgentGraph(
+        id="graph-1",
+        version=2,
+        name="Legacy Graph",
+        userId="test-user",
+        isActive=True,
+        createdAt=datetime.now(),
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+    created_row = prisma.models.AgentPreset(
+        id="preset-2",
+        userId="test-user",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=2,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+
+    mock_graph_client = AsyncMock()
+    mock_graph_client.find_first.return_value = graph_row
+    mocker.patch.object(
+        prisma.models.AgentGraph, "prisma", return_value=mock_graph_client
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="test-user",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=2,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+    )
+
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert "organizationId" not in create_data
+    assert "teamId" not in create_data

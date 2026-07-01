@@ -2254,3 +2254,40 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+
+
+def test_graph_meta_from_db_carries_org_team():
+    """Graph-bound resources (webhooks, presets) inherit the GRAPH's tenant,
+    so from_db must surface the row's organizationId/teamId — and exports
+    must strip them like user_id."""
+    from datetime import datetime
+
+    import prisma.enums
+    import prisma.models
+
+    from backend.data.graph import GraphMeta
+
+    row = prisma.models.AgentGraph(
+        id="g-org",
+        version=1,
+        name="Org Graph",
+        description="",
+        userId="u1",
+        isActive=True,
+        createdAt=datetime.now(),
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
+        teamId="team-1",
+    )
+
+    meta = GraphMeta.from_db(row)
+    assert meta.organization_id == "org-1"
+    assert meta.team_id == "team-1"
+
+    model = GraphModel.from_db(row)
+    assert model.organization_id == "org-1"
+    assert model.team_id == "team-1"
+
+    exported = GraphModel.from_db(row, for_export=True)
+    assert exported.organization_id is None
+    assert exported.team_id is None

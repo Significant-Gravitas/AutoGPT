@@ -175,7 +175,9 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
     return None
 
 
-async def update_search(user_id: str, search: SearchEntry) -> str:
+async def update_search(
+    user_id: str, search: SearchEntry, organization_id: str | None = None
+) -> str:
     """
     Upsert a search request for the user and return the search ID.
     """
@@ -200,6 +202,7 @@ async def update_search(user_id: str, search: SearchEntry) -> str:
                 "searchQuery": search.search_query or "",
                 "filter": search.filter or [],  # type: ignore
                 "byCreator": search.by_creator or [],
+                **({"organizationId": organization_id} if organization_id else {}),
             }
         )
         return new_search.id

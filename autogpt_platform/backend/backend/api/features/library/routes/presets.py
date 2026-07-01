@@ -182,6 +182,8 @@ async def setup_trigger(
         user_id=user_id,
         trigger_block=trigger_node.block,
         trigger_config=trigger_config_with_credentials,
+        organization_id=graph.organization_id,
+        team_id=graph.team_id,
     )
     if not new_webhook:
         raise HTTPException(
@@ -262,6 +264,8 @@ async def update_preset(
             trigger_block=graph.webhook_input_node.block,
             trigger_config=trigger_config_with_credentials,
             for_preset_id=preset_id,
+            organization_id=graph.organization_id,
+            team_id=graph.team_id,
         )
         trigger_inputs_updated = True
         if not new_webhook:

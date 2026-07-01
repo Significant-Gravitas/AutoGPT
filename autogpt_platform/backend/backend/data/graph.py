@@ -364,6 +364,10 @@ class GraphMeta(GraphBaseMeta):
     version: int  # type: ignore
     user_id: str
     created_at: datetime
+    # Org/team tenancy from the graph row. Resources bound to a graph
+    # (webhooks, presets) inherit THIS tenant, not the caller's active org.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @classmethod
     def from_db(cls, graph: "AgentGraph") -> Self:
@@ -379,6 +383,8 @@ class GraphMeta(GraphBaseMeta):
             forked_from_version=graph.forkedFromVersion,
             user_id=graph.userId,
             created_at=graph.createdAt,
+            organization_id=graph.organizationId,
+            team_id=graph.teamId,
         )
 
 
@@ -1060,6 +1066,8 @@ class GraphModel(Graph, GraphMeta):
             description=graph.description or "",
             instructions=graph.instructions,
             recommended_schedule_cron=graph.recommendedScheduleCron,
+            organization_id=graph.organizationId if not for_export else None,
+            team_id=graph.teamId if not for_export else None,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {

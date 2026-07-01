@@ -47,6 +47,8 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         webhook_type: TelegramWebhookType,
         resource: str,
         events: list[str],
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> integrations.Webhook:
         """
         Telegram only supports one webhook per bot. Instead of creating a new
@@ -98,6 +100,8 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             events=events,
             resource=resource,
             credentials=credentials,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     @classmethod
