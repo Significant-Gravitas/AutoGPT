@@ -130,7 +130,11 @@ class TestDeleteCommunityRebuildSchedule:
         s = _stub_scheduler()
         fake_job = MagicMock()
         s.scheduler.get_job.return_value = fake_job
-        assert s.delete_community_rebuild_schedule("abc") is True
+        with (
+            patch("backend.executor.scheduler.run_async"),
+            patch("backend.executor.scheduler.clear_registration_marker"),
+        ):
+            assert s.delete_community_rebuild_schedule("abc") is True
         # Look up by the canonical job id
         s.scheduler.get_job.assert_called_once_with(
             "community_rebuild_abc", jobstore=Jobstores.EXECUTION.value
@@ -141,6 +145,23 @@ class TestDeleteCommunityRebuildSchedule:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = None
         assert s.delete_community_rebuild_schedule("abc") is False
+
+    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+        self,
+    ) -> None:
+        """An in-band delete must clear the Redis registration marker —
+        otherwise ``ensure_dream_system_scheduled`` sees the stored tz
+        still matching and refuses to re-register for up to 7 days
+        while no cron exists in APScheduler."""
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = MagicMock()
+        with (
+            patch("backend.executor.scheduler.run_async") as run_async_mock,
+            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+        ):
+            assert s.delete_community_rebuild_schedule("abc") is True
+        clear_mock.assert_called_once_with("abc", "community_rebuild_registered")
+        run_async_mock.assert_called_once()
 
 
 class TestExecuteCommunityRebuildPass:
@@ -231,7 +252,11 @@ class TestDeleteNightlyBatchSchedule:
         s = _stub_scheduler()
         fake_job = MagicMock()
         s.scheduler.get_job.return_value = fake_job
-        assert s.delete_nightly_batch_schedule("abc") is True
+        with (
+            patch("backend.executor.scheduler.run_async"),
+            patch("backend.executor.scheduler.clear_registration_marker"),
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is True
         s.scheduler.get_job.assert_called_once_with(
             "dream_nightly_batch_abc", jobstore=Jobstores.EXECUTION.value
         )
@@ -241,6 +266,22 @@ class TestDeleteNightlyBatchSchedule:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = None
         assert s.delete_nightly_batch_schedule("abc") is False
+
+    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+        self,
+    ) -> None:
+        """Same contract as the community-rebuild delete: removing the
+        cron in-band must also drop the dedup marker so the next memory
+        write can lazily re-register without waiting out the TTL."""
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = MagicMock()
+        with (
+            patch("backend.executor.scheduler.run_async") as run_async_mock,
+            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is True
+        clear_mock.assert_called_once_with("abc", "dream_nightly_batch_registered")
+        run_async_mock.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +497,92 @@ class TestExecuteNightlyBatchWithStatus:
 
         complete_mock.assert_called_once_with(
             kind="nightly", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# JobStatus transitions for the admin-triggered community rebuild wrapper
+# ---------------------------------------------------------------------------
+
+
+def _run_rebuild_wrapper(result):
+    """Invoke the rebuild wrapper with the work body + status writers mocked.
+
+    ``rebuild_communities_for_user`` is stubbed to return a sentinel so the
+    ``run_async`` fake can hand back the rebuild ``result`` dict for that
+    call only and ``None`` for the (mocked) status writes.
+    """
+    from backend.executor.scheduler import execute_community_rebuild_with_status
+
+    rebuild_sentinel = object()
+
+    def fake_run_async(coro, timeout=None):
+        return result if coro is rebuild_sentinel else None
+
+    with (
+        patch("backend.executor.scheduler.run_async", side_effect=fake_run_async),
+        # ``new=MagicMock(...)`` — a bare patch() would auto-detect the
+        # async target and install an AsyncMock, whose call returns a
+        # coroutine instead of the sentinel.
+        patch(
+            "backend.executor.scheduler.rebuild_communities_for_user",
+            new=MagicMock(return_value=rebuild_sentinel),
+        ),
+        patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
+        patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
+        patch("backend.copilot.dream.job_status.update_status_phase"),
+    ):
+        execute_community_rebuild_with_status("abc", "job-1")
+    return complete_mock, errored_mock
+
+
+class TestExecuteCommunityRebuildWithStatus:
+    def test_errored_rebuild_result_marks_errored_not_complete(self) -> None:
+        """``rebuild_communities_for_user`` never raises — failures land
+        in ``result['error']``. The admin row must read 'errored';
+        'complete' would toast success on a rebuild that DETACH-DELETEd
+        every :Community node and then crashed mid-summarization."""
+        result = {
+            "user_id": "abc",
+            "error": "OpenRouterError: 502",
+            "skipped": False,
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", error="OpenRouterError: 502"
+        )
+        complete_mock.assert_not_called()
+
+    def test_clean_rebuild_result_marks_complete(self) -> None:
+        result = {
+            "user_id": "abc",
+            "error": None,
+            "communities_built": 4,
+            "skipped": False,
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+
+    def test_skipped_rebuild_result_still_marks_complete(self) -> None:
+        """An activity-gated skip is a successful no-op — the result dict
+        carries ``skip_reason`` for the visualizer, the row stays
+        'complete'."""
+        result = {
+            "user_id": "abc",
+            "error": None,
+            "skipped": True,
+            "skip_reason": "no_activity",
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", result=result
         )
         errored_mock.assert_not_called()
 

@@ -14,9 +14,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
+
 from . import orchestrator as orchestrator_mod
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
+from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -239,6 +243,87 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     assert result.summary_for_user == "Dream consolidated 1 fact."
     assert result.dream_session_id == "s1"
     apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion(
+    mocker,
+):
+    """Recombine/sanitize got 16384-token output budgets because real
+    responses exceed 8192 tokens; at real decode speeds those responses
+    outlive the shared 120s ``call_provider`` default, so each phase
+    must hand ``structured_completion`` its own wall-clock budget —
+    otherwise the timeout kills exactly the responses the token-cap
+    raise was meant to save."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(
+        writes=[],
+        proposals=[],
+        demotions=[],
+        entity_invalidations=[],
+        summary_for_user="quiet night",
+    )
+    llm_mock = mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    timeouts = [call.kwargs["timeout_seconds"] for call in llm_mock.call_args_list]
+    assert timeouts == [
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS,
+        orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS,
+        orchestrator_mod.SANITIZE_TIMEOUT_SECONDS,
+    ]
+
+
+def test_long_output_phase_timeouts_exceed_the_shared_request_default():
+    """Regression pin: every phase used to run on the shared 120s
+    ``DEFAULT_REQUEST_TIMEOUT_SECONDS``, which cannot decode the 16384
+    output tokens recombine/sanitize are budgeted for. If these ever
+    drop back to (or below) the default, the token-cap raise becomes
+    dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
+    assert (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= DEFAULT_REQUEST_TIMEOUT_SECONDS
+    )
+
+
+def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
+    """Budget-math invariant: the scheduler abandons the whole pass at
+    ``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` and the dream lock
+    expires at ``DEFAULT_LOCK_TTL_SECONDS`` (both 1800s). The per-phase
+    LLM ceilings plus the non-LLM headroom (budget check + fetch +
+    apply + cost logging) must fit inside both envelopes — a future
+    bump to any phase timeout (or a cut to either envelope) fails here
+    loudly instead of producing passes that outlive their lock."""
+    worst_case = (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
+        + orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
+        + orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
+        + orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
+    )
+    assert worst_case <= SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+    assert worst_case <= DEFAULT_LOCK_TTL_SECONDS
 
 
 @pytest.mark.asyncio

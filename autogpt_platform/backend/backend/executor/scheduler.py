@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.dream.scheduling import (
+    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
+    NIGHTLY_BATCH_REGISTRATION_PREFIX,
+    clear_registration_marker,
+)
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
@@ -56,6 +61,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -65,7 +71,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import Config
+from backend.util.settings import AppEnvironment, Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -855,6 +861,27 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
             )
         return
 
+    error = result.get("error")
+    if error:
+        # ``rebuild_communities_for_user`` never raises — failures land
+        # in ``result['error']``. Same contract as the dream/nightly
+        # wrappers above: an errored rebuild must surface as errored,
+        # otherwise the Memory Visualizer toasts success on a rebuild
+        # that deleted every :Community node and then crashed.
+        try:
+            run_async(
+                mark_errored(kind="rebuild", job_id=job_id, error=error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark community rebuild %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="rebuild", job_id=job_id, result=result),
@@ -864,6 +891,24 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         logger.warning(
             "Failed to mark community rebuild %s complete for user %s",
             job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
+    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+
+    Best-effort: a failed clear only delays lazy re-registration until
+    the marker's 7-day TTL expires, so it must never break the delete
+    RPC that called it.
+    """
+    try:
+        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+    except Exception:
+        logger.warning(
+            "Failed to clear registration marker %s for user %s",
+            key_prefix,
             user_id[:12],
             exc_info=True,
         )
@@ -1284,6 +1329,15 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Eagerly initialize LaunchDarkly (mirrors rest_api.py's
+        # launch_darkly_context). The @expose flag gates (e.g.
+        # add_nightly_batch_schedule's DREAM_PASS_ENABLED check) fail
+        # closed, so evaluating them against a lazily-initialized LD
+        # client right after a pod restart would silently skip
+        # registrations until the first lazy init completed.
+        if config.app_env != AppEnvironment.LOCAL:
+            initialize_launchdarkly()
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -1505,6 +1559,11 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        # Reverse order of run_service: LD was initialized before the
+        # scheduler started, so close it after all jobs have drained.
+        if config.app_env != AppEnvironment.LOCAL:
+            shutdown_launchdarkly()
 
         super().cleanup()
 
@@ -1891,6 +1950,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
         logger.info("Removed community rebuild job for user %s", user_id[:12])
         return True
 
@@ -1997,6 +2057,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 

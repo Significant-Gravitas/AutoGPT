@@ -23,6 +23,7 @@ Contracts pinned here:
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -473,6 +474,112 @@ async def test_one_cron_rpc_failure_does_not_block_the_other():
         "reason": "registration_failed",
     }
     assert result["dream_nightly_batch"]["id"] == "dream_nightly_batch_abc"
+
+
+# ---------------------------------------------------------------------------
+# Layer-1/layer-2 disagreement — a skipped RPC result must NOT stamp the
+# 7-day Redis marker (no APScheduler job exists; the marker would silently
+# block re-registration until the TTL expires)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_layer2_skipped_rpc_result_writes_no_marker_and_warns(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Layer-1 said ON but the scheduler's layer-2 gate returned a
+    ``{"skipped": True, ...}`` dict without creating the job (e.g. LD
+    cold start in the scheduler pod evaluating the flag to its False
+    default). Writing the marker would leave Redis saying 'registered'
+    with no cron behind it for 7 days. The skip must be recorded in the
+    results, surfaced at WARNING (a layer-2 skip after layer-1 said ON
+    is always a disagreement), and the marker left unwritten so the
+    next cycle retries."""
+    client = MagicMock()
+    client.add_community_rebuild_schedule = AsyncMock(
+        return_value={
+            "id": "community_rebuild_abc",
+            "user_id": "abc",
+            "next_run_time": None,
+        }
+    )
+    skipped_rpc = {
+        "id": None,
+        "user_id": "abc",
+        "user_timezone": "UTC",
+        "next_run_time": None,
+        "skipped": True,
+        "reason": "dream_pass_disabled",
+    }
+    client.add_nightly_batch_schedule = AsyncMock(return_value=skipped_rpc)
+    write_spy = AsyncMock()
+
+    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
+        _PATH_TZ, new=AsyncMock(return_value="UTC")
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
+        _PATH_WRITE_TZ, new=write_spy
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ), caplog.at_level(
+        logging.WARNING, logger="backend.copilot.dream.scheduling"
+    ):
+        result = await ensure_dream_system_scheduled("abc")
+
+    # The scheduler's skip dict is recorded verbatim for auditability.
+    assert result["dream_nightly_batch"] == skipped_rpc
+    # Marker written ONLY for the cron that actually registered.
+    written_prefixes = [call.args[1] for call in write_spy.await_args_list]
+    assert written_prefixes == ["community_rebuild_registered"]
+    # The disagreement is surfaced at WARNING, not logged as 'registered'.
+    assert any(
+        record.levelno == logging.WARNING and "skipped" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+# ---------------------------------------------------------------------------
+# Registration-marker clearing — used by the scheduler's delete_* RPCs so an
+# in-band delete immediately re-opens lazy registration
+# ---------------------------------------------------------------------------
+
+
+def test_exported_key_prefixes_match_registry_rows():
+    """The scheduler's delete_* methods import these constants to clear
+    markers — drift between them and the registry would clear the wrong
+    Redis key and leave the real marker blocking re-registration."""
+    by_prefix = {j.job_id_prefix: j.registration_key_prefix for j in DREAM_SYSTEM_JOBS}
+    assert (
+        by_prefix["community_rebuild"]
+        == scheduling.COMMUNITY_REBUILD_REGISTRATION_PREFIX
+    )
+    assert (
+        by_prefix["dream_nightly_batch"] == scheduling.NIGHTLY_BATCH_REGISTRATION_PREFIX
+    )
+
+
+@pytest.mark.asyncio
+async def test_clear_registration_marker_deletes_the_single_per_cron_key():
+    """Single-key DEL (Redis-cluster-safe) on the per-cron marker."""
+    redis = AsyncMock()
+    with patch(
+        "backend.data.redis_client.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        await scheduling.clear_registration_marker(
+            "abc", "dream_nightly_batch_registered"
+        )
+    redis.delete.assert_awaited_once_with("dream_nightly_batch_registered:abc")
+
+
+@pytest.mark.asyncio
+async def test_clear_registration_marker_swallows_redis_failure():
+    """Best-effort: a Redis outage during clear must never break the
+    delete RPC — the marker self-heals via its 7-day TTL."""
+    with patch(
+        "backend.data.redis_client.get_redis_async",
+        new=AsyncMock(side_effect=ConnectionError("redis down")),
+    ):
+        await scheduling.clear_registration_marker("abc", "x_registered")
 
 
 # ---------------------------------------------------------------------------

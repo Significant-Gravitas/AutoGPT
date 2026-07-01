@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
-from backend.copilot.graphiti.ingest import enqueue_episode
+from backend.copilot.graphiti.ingest import enqueue_episode, wait_for_ingestion
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -51,6 +51,16 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Upper bound on waiting for the per-user ingestion queue to drain before
+# apply_operations returns. Dev numbers put a single add_episode at 7-131s,
+# so a full pass (up to 30 writes + 20 proposals) can take far longer than
+# any defensible in-lock wait. The caller holds the dream lock until apply
+# returns (locks.DEFAULT_LOCK_TTL_SECONDS=1800, shared with the three LLM
+# phases budgeted at ~1320s), so 300s keeps the whole pass inside the lock
+# TTL envelope. Past the cap we simply revert to the pre-drain
+# fire-and-forget behavior: warn + report ingestion_drained=False.
+INGESTION_DRAIN_TIMEOUT_SECONDS = 300
 
 
 def _provenance(pass_id: str, phase: str) -> str:
@@ -351,19 +361,55 @@ async def _write_dream_summary_message(
     )
 
 
+async def _drain_ingestion(user_id: str, pass_id: str, enqueued: int) -> bool:
+    """Wait for the dream's enqueued episodes to actually land in the graph.
+
+    ``enqueue_episode`` returning True only proves the episode reached the
+    in-process asyncio queue; the real write (LLM extraction + embedding in
+    ``_ingestion_worker``) happens later. The caller of ``apply_operations``
+    holds the dream lock until apply returns, so draining here keeps the
+    writes inside the lock envelope — without it, a scheduler pod restart
+    silently discards queued writes while the pass stays recorded
+    successful.
+
+    Skipped entirely when the pass enqueued nothing: the per-user queue is
+    shared with live-chat ingestion, and blocking on someone else's
+    episodes buys the dream pass nothing.
+
+    On timeout this reverts to the old fire-and-forget behavior (warn +
+    ``False``) rather than failing the pass — partial visibility beats a
+    failed pass.
+    """
+    if not enqueued:
+        return True
+    drained = await wait_for_ingestion(user_id, INGESTION_DRAIN_TIMEOUT_SECONDS)
+    if not drained:
+        logger.warning(
+            "Dream pass %s: ingestion queue did not drain within %ds — "
+            "reported write/proposal counts include episodes still queued "
+            "in-process (lost if this pod restarts)",
+            pass_id,
+            INGESTION_DRAIN_TIMEOUT_SECONDS,
+        )
+    return drained
+
+
 async def apply_operations(
     user_id: str,
     pass_id: str,
     ops: DreamOperations,
     *,
     known_fact_uuids: set[str] | None = None,
-) -> dict[str, int | str | DreamOperationsSnapshot]:
+) -> dict[str, int | str | bool | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
     Returns a small stats dict the orchestrator can fold into
     ``DreamPassResult``. Includes a ``snapshot`` key carrying the
     detailed ``DreamOperationsSnapshot`` payload for consumers that
-    need per-operation rollups (eval, admin UI, future P9 SSE event).
+    need per-operation rollups (eval, admin UI, future P9 SSE event),
+    and an ``ingestion_drained`` flag — ``False`` means the write/
+    proposal counts were reported while episodes were still queued
+    in-process (drain timed out; see ``_drain_ingestion``).
 
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
@@ -426,6 +472,11 @@ async def apply_operations(
                 )
             )
 
+    # Drain the in-process ingestion queue before anything downstream
+    # treats the writes as landed (and before we return and the caller
+    # releases the dream lock). See ``_drain_ingestion``.
+    ingestion_drained = await _drain_ingestion(user_id, pass_id, written + proposed)
+
     demotions = await _filter_demotions_to_known_facts(
         pass_id, ops.demotions, known_fact_uuids
     )
@@ -452,7 +503,8 @@ async def apply_operations(
 
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d demoted=%d (failed=%d) entity_edges=%d",
+        "writes=%d proposals=%d demoted=%d (failed=%d) entity_edges=%d "
+        "ingestion_drained=%s",
         pass_id,
         user_id[:12],
         written,
@@ -460,6 +512,7 @@ async def apply_operations(
         demoted_ok,
         demoted_fail,
         entity_edges_demoted,
+        ingestion_drained,
     )
 
     snapshot = DreamOperationsSnapshot(
@@ -476,5 +529,6 @@ async def apply_operations(
         "demotion_count": demoted_ok,
         "demotion_failed_count": demoted_fail,
         "entity_invalidation_count": entity_edges_demoted,
+        "ingestion_drained": ingestion_drained,
         "snapshot": snapshot,
     }

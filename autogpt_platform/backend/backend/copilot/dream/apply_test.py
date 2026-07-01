@@ -377,6 +377,77 @@ async def test_summary_written_after_memory_ops(mocker):
 
 
 # ---------------------------------------------------------------------------
+# Ingestion drain — enqueue_episode returning True only proves the episode
+# reached the in-process asyncio queue; the real graph write (LLM extraction
+# + embedding in _ingestion_worker) happens later. apply_operations must
+# await the queue drain BEFORE returning, because the caller holds the dream
+# lock only until apply returns — otherwise a scheduler pod restart silently
+# discards queued writes while the pass stays recorded successful.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
+    """With writes enqueued, apply must await wait_for_ingestion (bounded
+    by the drain timeout) and report ingestion_drained=True on success."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-drain", pass_id="p-drain", ops=ops
+    )
+
+    drain.assert_awaited_once_with("u-drain", apply_mod.INGESTION_DRAIN_TIMEOUT_SECONDS)
+    assert stats["ingestion_drained"] is True
+
+
+@pytest.mark.asyncio
+async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, caplog):
+    """When the queue doesn't drain inside the cap, the pass must still
+    succeed (partial visibility beats a failed pass): counts are returned,
+    ingestion_drained=False flags the overflow, and a WARNING records the
+    revert to fire-and-forget behavior."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=False))
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
+        stats = await apply_mod.apply_operations(
+            user_id="u-slow", pass_id="p-slow", ops=ops
+        )
+
+    assert stats["ingestion_drained"] is False
+    assert stats["consolidated_count"] == 1
+    assert any(
+        "did not drain" in record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_enqueued_writes_skips_ingestion_drain(mocker):
+    """A dream with no writes/proposals must not block on the shared
+    per-user queue (live chat episodes could be in flight) — the drain is
+    skipped and reported vacuously drained."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(summary_for_user="Nothing new today.")
+    stats = await apply_mod.apply_operations(
+        user_id="u-empty", pass_id="p-empty", ops=ops
+    )
+
+    drain.assert_not_awaited()
+    assert stats["ingestion_drained"] is True
+
+
+# ---------------------------------------------------------------------------
 # Prisma auto-connect regression (scheduler service starts without an open
 # Prisma connection; apply_operations must open one before any DB writes).
 # ---------------------------------------------------------------------------

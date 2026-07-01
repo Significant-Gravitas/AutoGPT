@@ -53,6 +53,109 @@ class TestIngestionWorkerExceptionHandling:
         # Worker processed the item (task_done called) and exited.
         assert queue.empty()
 
+    @pytest.mark.asyncio
+    async def test_worker_marks_task_done_even_when_ingestion_fails(self) -> None:
+        """``queue.join()`` (the basis of ``wait_for_ingestion``) only
+        completes if the worker calls ``task_done()`` for every item —
+        including items whose graph write raised."""
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        queue.put_nowait(
+            {
+                "name": "ep1",
+                "episode_body": "hello",
+                "source": "message",
+                "source_description": "test",
+                "reference_time": None,
+                "group_id": "user_test",
+            }
+        )
+
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_test"),
+            patch.object(
+                ingest,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("connection failed"),
+            ),
+        ):
+            original_timeout = ingest._WORKER_IDLE_TIMEOUT
+            ingest._WORKER_IDLE_TIMEOUT = 0.05
+            try:
+                await ingest._ingestion_worker("test-user", queue)
+            finally:
+                ingest._WORKER_IDLE_TIMEOUT = original_timeout
+
+        # join() resolves immediately only if task_done() was called for
+        # the failed item; a hang here means the worker leaked the count.
+        await asyncio.wait_for(queue.join(), timeout=0.1)
+
+
+class TestWaitForIngestion:
+    """``wait_for_ingestion`` — the drain barrier dream-pass apply uses so
+    'enqueued' can be upgraded to 'written' before counts are reported."""
+
+    @pytest.mark.asyncio
+    async def test_returns_true_when_user_has_no_queue(self) -> None:
+        """No queue means nothing pending — vacuously drained."""
+        result = await ingest.wait_for_ingestion("user-without-queue", 0.1)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_true_once_worker_drains_queue(self) -> None:
+        user_id = "drain-user"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        queue.put_nowait(
+            {
+                "name": "ep1",
+                "episode_body": "hello",
+                "source": "message",
+                "source_description": "test",
+                "reference_time": None,
+                "group_id": "user_drain",
+            }
+        )
+        state = ingest._get_loop_state()
+        state.user_queues[user_id] = queue
+
+        mock_client = MagicMock()
+        mock_client.add_episode = AsyncMock(return_value=None)
+
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_drain"),
+            patch.object(
+                ingest,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ),
+        ):
+            worker = asyncio.create_task(ingest._ingestion_worker(user_id, queue))
+            state.user_workers[user_id] = worker
+            try:
+                result = await ingest.wait_for_ingestion(user_id, 5)
+            finally:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+
+        assert result is True
+        mock_client.add_episode.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_queue_does_not_drain_within_timeout(
+        self,
+    ) -> None:
+        """A stalled/dead worker (crashed mid add_episode, never calling
+        task_done) must not hang the caller — give up after the timeout."""
+        user_id = "stalled-user"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        queue.put_nowait({"name": "ep1"})
+        ingest._get_loop_state().user_queues[user_id] = queue
+
+        # No worker is consuming, so join() can never complete.
+        result = await ingest.wait_for_ingestion(user_id, 0.05)
+        assert result is False
+
 
 class TestEnqueueConversationTurn:
     @pytest.mark.asyncio
