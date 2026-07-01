@@ -115,6 +115,18 @@ def test_sanitize_prompt_includes_known_fact_uuids_for_demotion_guard():
     assert str(MAX_WRITES_PER_PASS) in sys
 
 
+def test_sanitize_prompt_rejects_transient_intent_and_generic_knowledge():
+    """#13388: the sanitize prompt must instruct dropping transient-intent
+    ('user is asking…') and generic world-knowledge facts, while keeping
+    durable user goals."""
+    bundle = _build_bundle()
+    sys = build_sanitize_prompt(bundle, "{}", "{}")[0]["content"].lower()
+    assert "transient intent" in sys
+    assert "generic world knowledge" in sys
+    # Keeps goals — the rule explicitly carves them out.
+    assert "goal" in sys
+
+
 def test_sanitize_prompt_surfaces_stale_fact_candidates():
     """The staleness heuristics flag candidates for the sanitizer to
     judge. If this section drops out of the prompt, P0.3a fails

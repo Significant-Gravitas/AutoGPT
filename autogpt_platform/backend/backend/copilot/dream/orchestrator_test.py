@@ -698,3 +698,85 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
 
 
 _ = MagicMock  # keep import for editor convenience; not directly used
+
+
+class TestTransientIntentFilter:
+    """#13388: transient-intent 'facts' (questions captured as memory) are
+    dropped deterministically; durable facts and goals are kept; generic
+    world-knowledge is intentionally NOT handled here (prompt's job)."""
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "User is asking how Kubernetes works",
+            "User is interested in knowing which Pull Requests they currently have open",
+            "The user is wondering about the deploy timeline",
+            "user wants to know the markup on credits",
+            "User asked whether the migration is risky",
+            "User is curious about lighthouse restorations",
+            "User is trying to understand the auth flow",
+            # 'learn'/'interested in learning' ARE transient when followed by
+            # an interrogative (a question, not a durable skill goal).
+            "User wants to learn how Kubernetes networking works",
+            "User is interested in learning what the credit markup is",
+        ],
+    )
+    def test_flags_transient_intent(self, content):
+        assert orchestrator_mod._is_transient_intent(content) is True
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Durable goals — NOT transient, must be kept.
+            "User wants to create Bluesky blocks",
+            "User is migrating auth to Better Auth",
+            "User is building a leaf-blower-simulator game",
+            # Durable SKILL goals — 'learn <thing>' with no interrogative is
+            # an aspiration, not a question (review FP fix).
+            "User wants to learn Spanish",
+            "User is interested in learning Rust as their next language",
+            # Bare 'interested in <noun>' must never match — pins the carve-out
+            # so a future broadening of the regex fails loudly here.
+            "User is interested in lighthouses",
+            "User is interested in knowledge graphs",
+            # Durable facts about the user.
+            "Nick's favorite deployment region is us-east1",
+            "Nick prefers Python for backend services",
+            # Generic world-knowledge — left to the sanitize PROMPT, the
+            # code filter must NOT drop these (would risk false positives).
+            "Kubernetes uses pods as the smallest unit",
+            "Better Auth supports dual JWT validation",
+        ],
+    )
+    def test_keeps_durable_facts_goals_and_generic_knowledge(self, content):
+        assert orchestrator_mod._is_transient_intent(content) is False
+
+    def test_clamp_drops_transient_writes_and_proposals(self):
+        ops = DreamOperations(
+            writes=[
+                ConsolidatedFact(
+                    content="User is asking how K8s works", confidence=0.5
+                ),
+                ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ],
+            proposals=[
+                ProposedFinding(
+                    content="User wants to know the credit markup",
+                    confidence=0.5,
+                    rationale="x",
+                    source_fact_uuids=["f1"],
+                ),
+                ProposedFinding(
+                    content="Nick and Sarah both work on auth",
+                    confidence=0.6,
+                    rationale="y",
+                    source_fact_uuids=["f2"],
+                ),
+            ],
+            summary_for_user="ok",
+        )
+        clamped = orchestrator_mod._clamp_operations(ops, active_fact_count=50)
+        assert [w.content for w in clamped.writes] == ["Nick prefers Python"]
+        assert [p.content for p in clamped.proposals] == [
+            "Nick and Sarah both work on auth"
+        ]
