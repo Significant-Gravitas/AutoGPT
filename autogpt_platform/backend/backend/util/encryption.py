@@ -1,9 +1,12 @@
 import json
+import logging
 from typing import Optional
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 ENCRYPTION_KEY = Settings().secrets.encryption_key
 
@@ -33,5 +36,11 @@ class JSONCryptor:
         try:
             decrypted = self.fernet.decrypt(encrypted_str.encode())
             return json.loads(decrypted.decode())
-        except Exception:
+        except InvalidToken:
+            logger.warning(
+                "Decryption failed: invalid token or wrong encryption key"
+            )
+            return {}
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.warning("Decryption failed: %s", e)
             return {}
