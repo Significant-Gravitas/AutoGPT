@@ -187,7 +187,7 @@ class ActivityStatusResponse(TypedDict):
     """Type definition for structured activity status response."""
 
     activity_status: str
-    correctness_score: float
+    correctness_score: float | None
 
 
 def _truncate_uuid(uuid_str: str) -> str:
@@ -195,6 +195,46 @@ def _truncate_uuid(uuid_str: str) -> str:
     if not uuid_str:
         return uuid_str
     return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
+
+
+_CREDIT_EXHAUSTION_MESSAGES = (
+    "you have no credits left to run an agent.",
+    "insufficient balance of",
+    "insufficient balance to run",
+)
+
+
+def _is_credit_exhaustion(error_str: str) -> bool:
+    """Check if the error indicates credit/balance exhaustion."""
+    error_lower = error_str.lower()
+    return any(message in error_lower for message in _CREDIT_EXHAUSTION_MESSAGES)
+
+
+def _check_obvious_failure(
+    execution_stats: GraphExecutionStats,
+    execution_status: ExecutionStatus | None,
+) -> ActivityStatusResponse | None:
+    """
+    Check if the execution failed for an obvious, deterministic reason
+    that doesn't require LLM analysis.
+
+    Returns a static ActivityStatusResponse if matched, None otherwise.
+    """
+    if execution_status != ExecutionStatus.FAILED:
+        return None
+
+    error_str = str(execution_stats.error) if execution_stats.error else ""
+
+    if _is_credit_exhaustion(error_str):
+        return {
+            "activity_status": (
+                "This run couldn't complete because your account has run out of credits. "
+                "Please top up your credits to continue using this agent."
+            ),
+            "correctness_score": None,
+        }
+
+    return None
 
 
 async def generate_activity_status_for_execution(
@@ -242,12 +282,12 @@ async def generate_activity_status_for_execution(
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
-    # Check if we should skip existing data (for admin regeneration option)
-    if (
-        skip_existing
-        and execution_stats.activity_status
-        and execution_stats.correctness_score is not None
-    ):
+    # Check if we should skip existing data (for admin regeneration option).
+    # We skip if activity_status is already set, regardless of whether
+    # correctness_score is None — credit-exhaustion failures are stored with
+    # activity_status set but correctness_score=None, and should not be
+    # re-processed.
+    if skip_existing and execution_stats.activity_status:
         logger.debug(
             f"Skipping activity status generation for {graph_exec_id}: already exists"
         )
@@ -255,6 +295,14 @@ async def generate_activity_status_for_execution(
             "activity_status": execution_stats.activity_status,
             "correctness_score": execution_stats.correctness_score,
         }
+
+    # Check for deterministic failures that don't need LLM analysis.
+    obvious_result = _check_obvious_failure(execution_stats, execution_status)
+    if obvious_result is not None:
+        logger.info(
+            f"Skipping LLM analysis for {graph_exec_id}: " "obvious failure detected"
+        )
+        return obvious_result
 
     # Acquire an OpenRouter-backed (or local-transport) OpenAI client.
     # Activity-status generation under OpenRouter is only meaningful when we

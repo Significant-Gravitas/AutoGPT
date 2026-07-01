@@ -250,12 +250,12 @@ async def generate_execution_analytics(
         # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
-            # Skip if we should skip existing analytics and both activity_status and correctness_score exist
+            # Skip if activity_status already exists. Credit-exhaustion failures
+            # intentionally store correctness_score=None.
             if (
                 request.skip_existing
                 and execution.stats
                 and execution.stats.activity_status
-                and execution.stats.correctness_score is not None
             ):
                 continue
 
