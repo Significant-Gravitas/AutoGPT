@@ -36,6 +36,20 @@ RedditCredentialsInput = CredentialsMetaInput[
     Literal["oauth2"],
 ]
 
+REDDIT_REQUIRED_SCOPES = [
+    "identity",
+    "read",
+    "submit",
+    "edit",
+    "history",
+    "privatemessages",
+    "flair",
+    "modposts",
+    "modcontributors",
+    "modmail",
+    "modlog",
+]
+
 
 def RedditCredentialsField() -> RedditCredentialsInput:
     """Creates a Reddit credentials input on a block."""
@@ -50,15 +64,7 @@ TEST_CREDENTIALS = OAuth2Credentials(
     access_token=SecretStr("mock-reddit-access-token"),
     refresh_token=SecretStr("mock-reddit-refresh-token"),
     access_token_expires_at=9999999999,
-    scopes=[
-        "identity",
-        "read",
-        "submit",
-        "edit",
-        "history",
-        "privatemessages",
-        "flair",
-    ],
+    scopes=REDDIT_REQUIRED_SCOPES,
     title="Mock Reddit credentials",
     username="mock-reddit-username",
 )
