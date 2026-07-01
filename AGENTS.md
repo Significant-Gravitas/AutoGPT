@@ -56,6 +56,18 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+## Implementation loops
+
+For end-to-end implementation work, use the pipeline skills instead of ad-hoc edit-and-commit:
+
+- `/feature-implementer` — plan → plan-review → implement → impl-review → commit, each step in a fresh agent, review loops run until clean. Supporting skills: `/feature-planner`, `/review-feature-plan`, `/review-impl`.
+- `/block-implementer` — the same pipeline specialized for new blocks; works from a plain-language description. Domain checklist: `/add-block`.
+- `contribute-block` workflow (`.claude/workflows/contribute-block.js`) — batch automation of the block pipeline: one branch + PR per request, bounded review loops, unclean items ship as draft PRs. Auto-picks from open `platform/blocks` issues when invoked with a bare count. Ends with a `/pr-polish` handoff list.
+
+The full lifecycle chains into the PR review stack: implementation loop → `/open-pr` → `/pr-polish` (alternates `/pr-review` + `/pr-address` until merge-ready). `/pr-polish` always runs in the foreground main thread — never inside a spawned agent. `/review-impl` gates the working tree pre-commit; `/pr-review` gates the PR surface.
+
+For queue-level maintenance, `/pr-sweep` triages all open PRs — clusters duplicates, consolidates complementary work onto a winner PR with author credit, auto-closes only unambiguous junk (spam, blank template, proven-superseded), and recommends the rest. Its analysis arm is the read-only `sweep-prs` workflow (`.claude/workflows/sweep-prs.js`); mutations >5 PRs require explicit confirmation.
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
