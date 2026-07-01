@@ -1,0 +1,36 @@
+name: batch-reconcile
+
+# When the rollup PR squash-merges into BASE, its members' commit SHAs are
+# rewritten, so GitHub will not auto-mark them "Merged". This closes each batched
+# member with a comment crediting the rollup and cleans up the rollup branch.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  reconcile:
+    # Only when the ROLLUP branch's PR actually merged.
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'batch/rollup'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.BATCH_BOT_TOKEN }}
+      REPO: ${{ github.repository }}
+      BASE: ${{ vars.BATCH_BASE_BRANCH || 'dev' }}
+      COMMAND: reconcile
+      ROLLUP_URL: ${{ github.event.pull_request.html_url }}
+      ROLLUP_PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.BATCH_BOT_TOKEN }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - run: node .github/batch-bot/batch.mjs
