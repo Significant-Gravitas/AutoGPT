@@ -24,6 +24,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -1333,13 +1334,20 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
-                is_user_error = (
+                # Invalid/retired model IDs (often surfaced as 400s) are
+                # non-retryable by design: a fresh attempt with the same model
+                # will fail identically. Other 400s are intentionally left to
+                # exhaust retries since they may be transient.
+                invalid_model_error = is_invalid_model_error(e)
+                is_user_error = invalid_model_error or (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
                 if is_user_error:
                     logger.warning(f"Error calling LLM: {e}")
-                    error_feedback_message = f"Error calling LLM: {e}"
+                    error_feedback_message = format_llm_error_message(
+                        e, llm_model, is_invalid_model=invalid_model_error
+                    )
                     break
                 if isinstance(e, TimeoutError):
                     # A request that hung once will most likely hang again on
@@ -1356,14 +1364,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    # Clamp so repeated 15% reductions can never decay to 0,
+                    # which providers reject outright.
+                    input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
                     # Don't add retry prompt for token limit errors,
                     # just retry with lower maximum output tokens
 
-                error_feedback_message = f"Error calling LLM: {e}"
+                error_feedback_message = format_llm_error_message(e, llm_model)
 
         # All retries exhausted or user-error break: persist accumulated cost so
         # the executor can still charge/report the spend even on failure.

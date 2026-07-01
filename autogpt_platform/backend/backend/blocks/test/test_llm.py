@@ -1113,6 +1113,40 @@ class TestUserErrorStatusCodeHandling:
             call_count > 1
         ), f"Expected multiple retry attempts for 500, got {call_count}"
 
+
+class TestContextLengthRetryHandling:
+    """Context-length failures retry with reduced max_tokens, never reaching 0."""
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reduction_clamps_above_zero(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        seen_max_tokens = []
+
+        async def mock_llm_call(*args, **kwargs):
+            seen_max_tokens.append(kwargs["max_tokens"])
+            raise ValueError("This model's maximum context length is 8192 tokens")
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                max_tokens=2,
+                retry=5,
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert len(seen_max_tokens) > 1, "context-length errors should keep retrying"
+        assert all(
+            tokens >= 1 for tokens in seen_max_tokens[1:]
+        ), f"max_tokens decayed below 1: {seen_max_tokens}"
+
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
@@ -1141,6 +1175,124 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors should surface a targeted remediation hint."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                (
+                    "Error code: 400 - {'error': {'message': "
+                    "'invalid model ID: claude-haiku-4-5-20251001'}}"
+                ),
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        assert "check anthropic's current model list" in str(exc_info.value).lower()
+        assert "update the block's model configuration" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_does_not_append_model_guidance(self):
+        """Non-model 400 errors should keep their original provider message and
+        still be retried (i.e. they are not treated as non-retryable)."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                "Error code: 400 - {'error': {'message': 'prompt rejected by moderation'}}",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=2,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        # Generic 400s are retryable, so the mock must be invoked more than once.
+        assert call_count > 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" not in error_message
+        assert "update the block's model configuration" not in error_message
+
+    @pytest.mark.asyncio
+    async def test_anthropic_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors from the Anthropic SDK should also surface
+        remediation guidance and skip retries."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(404, request=request)
+            raise anthropic.APIStatusError(
+                "Error code: 404 - model `claude-imaginary` does not exist",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" in error_message
+        assert "update the block's model configuration" in error_message
 
 
 class TestLlmModelMissing:
