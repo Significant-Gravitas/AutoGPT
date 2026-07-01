@@ -535,7 +535,7 @@ When activated, the block:
 2. Installs the latest version of Claude Code in the sandbox
 3. Optionally runs setup commands to prepare the environment
 4. Executes your prompt using Claude Code, which can create/edit files, install dependencies, run terminal commands, and build applications
-5. Extracts all text files created/modified during execution
+5. Extracts all files created/modified during execution (text files and binary files like images, PDFs, etc.)
 6. Returns the response and files, optionally keeping the sandbox alive for follow-up tasks
 
 The block supports conversation continuation through three mechanisms:
@@ -563,7 +563,7 @@ The block supports conversation continuation through three mechanisms:
 |--------|-------------|------|
 | error | Error message if execution failed | str |
 | response | The output/response from Claude Code execution | str |
-| files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. workspace_ref contains a workspace:// URI if the file was stored to workspace. | List[SandboxFileOutput] |
+| files | List of files created/modified by Claude Code during this execution. Includes text files and binary files (images, PDFs, etc.). Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. workspace_ref contains a workspace:// URI for workspace storage. For binary files, content contains a placeholder; use workspace_ref to access the file. | List[SandboxFileOutput] |
 | conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
 | session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
 | sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
