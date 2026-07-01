@@ -56,6 +56,14 @@ EXCLUDED_BLOCK_IDS = frozenset(
     }
 )
 
+INPUT_BLOCK_TYPES = frozenset(
+    {
+        BlockType.INPUT.value,
+        BlockType.WEBHOOK.value,
+        BlockType.WEBHOOK_MANUAL.value,
+    }
+)
+
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
 
@@ -152,9 +160,13 @@ def get_blocks(
             continue
         # Skip blocks that don't match the type
         if (
-            (type == "input" and block.block_type.value != "Input")
-            or (type == "output" and block.block_type.value != "Output")
-            or (type == "action" and block.block_type.value in ("Input", "Output"))
+            (type == "input" and block.block_type.value not in INPUT_BLOCK_TYPES)
+            or (type == "output" and block.block_type.value != BlockType.OUTPUT.value)
+            or (
+                type == "action"
+                and block.block_type.value
+                in (*INPUT_BLOCK_TYPES, BlockType.OUTPUT.value)
+            )
         ):
             continue
         # Skip blocks that don't match the provider
@@ -639,9 +651,9 @@ async def _get_static_counts():
 
         all_blocks += 1
 
-        if block.block_type.value == "Input":
+        if block.block_type.value in INPUT_BLOCK_TYPES:
             input_blocks += 1
-        elif block.block_type.value == "Output":
+        elif block.block_type.value == BlockType.OUTPUT.value:
             output_blocks += 1
         else:
             action_blocks += 1
