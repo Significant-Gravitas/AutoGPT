@@ -124,6 +124,54 @@ These examples show just a glimpse of what you can achieve with AutoGPT! You can
 
 ---
 
+### 🎬 YouTube Transcript Summarizer Block
+
+The **YouTube Transcript Summarizer** is a built-in block that fetches the transcript of any YouTube video and summarizes it using an LLM of your choice — in a single step.
+
+**What it does:**
+
+1. Takes a YouTube URL as input
+2. Fetches the full transcript via [Supadata API](https://supadata.ai)
+3. Sends the transcript to your chosen LLM (GPT, Claude, Groq, etc.)
+4. Outputs: `video_id`, `transcript` (raw text), and `summary` (bullet-point summary)
+
+**Why Supadata API?**
+
+YouTube actively blocks automated transcript requests from server and cloud environments (including Docker). The Supadata API is a dedicated service that reliably fetches YouTube transcripts from any environment, without requiring proxies, cookies, or browser automation.
+
+**Setup — choose your option:**
+
+**Option 1: AutoGPT Cloud (Subscription users)**
+No setup needed. The Supadata API cost is included in your subscription. Leave the "Supadata API Key" field blank — the platform handles it automatically.
+
+**Option 2: Self-hosted users**
+You need to provide your own Supadata API key:
+1. Go to [supadata.ai](https://supadata.ai) and sign up for a free account
+2. Free tier includes **100 requests/month** — no credit card required
+3. Copy your API key from the dashboard
+4. In the block settings, expand **Advanced** and paste the key into the **"Supadata API Key (optional)"** field
+
+**Block inputs:**
+
+| Field | Required | Description |
+|---|---|---|
+| YouTube URL | Yes | Any public YouTube video URL |
+| Supadata API Key | Self-hosted only | Get free key at supadata.ai |
+| LLM Model | Yes | Choose your preferred model |
+| LLM Credentials | Yes | Your OpenAI / Anthropic / Groq API key |
+| Custom Prompt | No | Override the default summarization instruction |
+
+**Block outputs:**
+
+| Field | Description |
+|---|---|
+| video_id | Extracted YouTube video ID |
+| transcript | Full raw transcript text |
+| summary | LLM-generated summary with bullet points |
+| error | Error message if the block fails |
+
+---
+
 ### **License Overview:**
 
 🛡️ **Polyform Shield License:**
