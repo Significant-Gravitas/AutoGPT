@@ -87,6 +87,33 @@ class MessageHandler:
             self._session_locks[target_id] = lock
         return lock
 
+    async def _resolve_session_for_attachments(
+        self, ctx: MessageContext, target_id: str
+    ) -> str | None:
+        """Resolve (or create) the session this message's attachments upload
+        into, so they land where the turn will read them (``/sessions/<id>/``).
+
+        Serialised per target so concurrent attachment messages converge on one
+        session instead of splitting the files. Returns None on failure — the
+        caller then reports the files as un-attachable rather than uploading
+        them somewhere AutoPilot can't see.
+        """
+        async with self._session_lock(target_id):
+            try:
+                session_id = await self._api.ensure_session(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    platform_server_id=ctx.server_id,
+                    session_id=await sessions.get_session(ctx.platform, target_id),
+                )
+                await sessions.set_session(ctx.platform, target_id, session_id)
+                return session_id
+            except Exception:
+                logger.exception(
+                    "Failed to resolve session for uploads (user %s)", ctx.user_id
+                )
+                return None
+
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip() and not ctx.attachments:
             if ctx.channel_type == "channel":
@@ -128,29 +155,13 @@ class MessageHandler:
         )
 
         # Attachments must be written into the turn's session folder so
-        # AutoPilot can read them (same as a web upload). The session is
-        # normally resolved when the turn starts; resolve/create it up front
-        # here (under a per-target lock so concurrent uploads share one session)
-        # and thread it to the turn so both use the same one.
+        # AutoPilot can read them (same as a web upload), and the turn must run
+        # in that same session — resolve it up front and thread it through.
         session_id: str | None = None
         file_ids: list[str]
         upload_problems: list[tuple[str, str]]
         if ctx.attachments:
-            async with self._session_lock(target_id):
-                try:
-                    session_id = await self._api.ensure_session(
-                        platform=ctx.platform,
-                        platform_user_id=ctx.user_id,
-                        platform_server_id=ctx.server_id,
-                        session_id=await sessions.get_session(ctx.platform, target_id),
-                    )
-                    await sessions.set_session(ctx.platform, target_id, session_id)
-                except Exception:
-                    logger.exception(
-                        "Failed to resolve session for uploads (user %s)", ctx.user_id
-                    )
-                    session_id = None
-
+            session_id = await self._resolve_session_for_attachments(ctx, target_id)
             if session_id is None:
                 # Without a session the files can't be made readable to
                 # AutoPilot, so report them as failed rather than uploading

@@ -170,9 +170,17 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     the full stream (Redis Streams, not pub/sub).
     """
     owner_user_id = await resolve_chat_owner(request)
-    session = await _resolve_or_create_session(
-        owner_user_id, request.session_id, request.platform.value.lower()
-    )
+    if request.file_ids and request.session_id:
+        # Attachment turn: the files were already uploaded into this session
+        # (ensure_chat_session ran first). It must still exist — silently
+        # switching to a new session would orphan those files. Fail instead.
+        session = await get_chat_session(request.session_id, owner_user_id)
+        if session is None:
+            raise NotFoundError("The session for the uploaded files no longer exists.")
+    else:
+        session = await _resolve_or_create_session(
+            owner_user_id, request.session_id, request.platform.value.lower()
+        )
     session_id = session.session_id
 
     # Persist the user message before enqueueing, mirroring the REST chat

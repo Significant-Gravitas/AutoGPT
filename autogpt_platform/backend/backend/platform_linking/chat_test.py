@@ -157,6 +157,30 @@ class TestStartChatTurn:
         assert handle.session_id == "sess-fresh"
         mock_create.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_attachment_turn_with_missing_session_raises(self):
+        # An attachment turn's files are pinned to the supplied session; if it's
+        # gone, fail rather than silently switching to a new (fileless) session.
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
+            ) as mock_create,
+        ):
+            with pytest.raises(NotFoundError):
+                await start_chat_turn(_request(session_id="gone", file_ids=["f1"]))
+
+        mock_create.assert_not_awaited()
+
 
 class TestListUserChats:
     @pytest.mark.asyncio
