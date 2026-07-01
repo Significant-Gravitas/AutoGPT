@@ -166,10 +166,9 @@ export const getCredentialProviderFromSchema = (
       );
     }
     if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
+      // Discriminator (e.g. `model`) hasn't been chosen yet; hide the
+      // credentials input until the user selects a value. This is an expected
+      // UI state, so we intentionally do not log/warn here.
       return null;
     }
     return discriminatedProvider;
