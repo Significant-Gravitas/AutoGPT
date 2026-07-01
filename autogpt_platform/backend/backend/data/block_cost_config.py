@@ -184,6 +184,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
+    LlmModel.XIAOMI_MIMO_V2_PRO: 3,
+    LlmModel.XIAOMI_MIMO_V2_OMNI: 3,
+    LlmModel.XIAOMI_MIMO_V2_FLASH: 1,
     # Z.ai (Zhipu) models
     LlmModel.ZAI_GLM_4_6: 1,
     LlmModel.ZAI_GLM_4_6V: 1,
