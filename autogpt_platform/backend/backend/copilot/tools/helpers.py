@@ -20,6 +20,7 @@ from backend.copilot.constants import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
+from backend.copilot.tools.binary_output_processor import process_binary_outputs
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
@@ -34,6 +35,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
+from backend.util.workspace import WorkspaceManager
 
 from .models import (
     BlockOutputResponse,
@@ -390,11 +392,33 @@ async def execute_block(
                         )
                     )
 
+                # Process binary outputs: detect embedded base64, save to workspace,
+                # replace with workspace:// references to reduce LLM token usage.
+                raw_outputs = dict(outputs)
+                try:
+                    workspace_manager = WorkspaceManager(
+                        user_id=user_id,
+                        workspace_id=workspace.id,
+                        session_id=session_id,
+                    )
+                    processed_outputs = await process_binary_outputs(
+                        raw_outputs, workspace_manager, block.name
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Binary output processing failed for block %s, "
+                        "returning raw outputs: %s",
+                        block.name,
+                        e,
+                        exc_info=True,
+                    )
+                    processed_outputs = raw_outputs
+
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
-                    outputs=dict(outputs),
+                    outputs=processed_outputs,
                     success=True,
                     session_id=session_id,
                 )

@@ -125,7 +125,7 @@ Decodes a JSON string into the value or data structure, it represents, e.g. an o
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`. 
+This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`.
 
 If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
 <!-- END MANUAL -->
