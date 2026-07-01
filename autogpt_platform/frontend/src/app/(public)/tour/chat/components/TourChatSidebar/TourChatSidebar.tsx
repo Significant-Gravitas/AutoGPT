@@ -27,7 +27,7 @@ export function TourChatSidebar() {
     <Sidebar
       variant="inset"
       collapsible="none"
-      className="!top-0 !h-[100dvh] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
+      className="!top-0 !h-[100dvh] px-0 [--sidebar-width:22rem] [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
     >
       <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
         <div className="flex flex-col gap-3 px-3">
