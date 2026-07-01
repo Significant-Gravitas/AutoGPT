@@ -93,6 +93,12 @@ async def test_backfill_does_not_overwrite_existing_status(
     """If an edge already has ``status`` set to something other than
     'active' (e.g. an edge that was demoted before the backfill ran),
     the migration must NOT clobber it.
+
+    A demoted edge is still touched by the backfill: ``mark_edges_superseded``
+    only writes ``status``/``expired_at``/``expiration_reason``, so its
+    ``source_kind``/``scope`` are NULL and legitimately get the defaults.
+    The coalesce guards ``status`` so the existing 'superseded' value
+    survives.
     """
     driver, group_id = clean_graph
 
@@ -118,17 +124,25 @@ async def test_backfill_does_not_overwrite_existing_status(
     )
 
     records, _, _ = await driver.execute_query(BACKFILL_QUERY)
-    assert records[0]["updated"] == 1, "only the unstatussed edge should be touched"
+    # Both edges match the WHERE clause: the legacy edge needs all three
+    # defaults, and the superseded edge still needs source_kind/scope.
+    assert records[0]["updated"] == 2
 
-    # Verify the superseded edge kept its status.
+    # Verify the superseded edge kept its status while gaining the other
+    # backfilled defaults.
     records, _, _ = await driver.execute_query(
         """
         MATCH ()-[e:RELATES_TO {uuid: 'already-superseded'}]->()
-        RETURN e.status AS status, e.expiration_reason AS reason
+        RETURN e.status AS status,
+               e.expiration_reason AS reason,
+               e.source_kind AS source_kind,
+               e.scope AS scope
         """
     )
     assert records[0]["status"] == "superseded"
     assert records[0]["reason"] == "previous_pass"
+    assert records[0]["source_kind"] == "user_asserted"
+    assert records[0]["scope"] == "real:global"
 
     # And the legacy edge got 'active'.
     records, _, _ = await driver.execute_query(

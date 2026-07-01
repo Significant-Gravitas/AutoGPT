@@ -100,6 +100,12 @@ async def test_writes_become_active_envelopes():
     body = call_kwargs["episode_body"]
     assert '"status":"active"' in body
     assert '"source_kind":"assistant_derived"' in body
+    # #13389: edge_metadata is threaded so the write's envelope fields land
+    # ON the edge (not just in the episode body). Active consolidated fact.
+    em = call_kwargs["edge_metadata"]
+    assert em["status"] == "active"
+    assert em["source_kind"] == "assistant_derived"
+    assert em["provenance"].startswith("dream:p-abc:consolidate")
 
 
 @pytest.mark.asyncio
@@ -121,6 +127,12 @@ async def test_proposals_become_tentative_envelopes():
     assert call_kwargs["name"].startswith("dream_p-2_recombine_")
     body = call_kwargs["episode_body"]
     assert '"status":"tentative"' in body
+    # #13389: a proposal rides edge_metadata as tentative so ratification
+    # can find it on the edge.
+    em = call_kwargs["edge_metadata"]
+    assert em["status"] == "tentative"
+    assert em["source_kind"] == "assistant_derived"
+    assert em["provenance"].startswith("dream:p-2:recombine")
 
 
 @pytest.mark.asyncio
