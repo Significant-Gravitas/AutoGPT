@@ -2,9 +2,9 @@
 Workspace folder API routes.
 
 Folders are a DB-level organizational layer over workspace files; storage paths
-are unaffected. Mirrors the Library folder API: this sub-router owns the
-``/folders`` prefix and is included into the workspace router, which the app
-mounts under ``/api/workspace`` — giving ``/api/workspace/folders``.
+are unaffected. Routes spell out their full ``/folders`` paths (matching the
+sibling workspace file routes) and are included into the workspace router, which
+the app mounts under ``/api/workspace`` — giving ``/api/workspace/folders``.
 """
 
 from typing import Annotated
@@ -25,7 +25,6 @@ from backend.data.workspace_folder import (
 )
 
 router = fastapi.APIRouter(
-    prefix="/folders",
     dependencies=[fastapi.Security(requires_user)],
 )
 
@@ -52,7 +51,7 @@ class WorkspaceFolderListResponse(BaseModel):
 
 
 @router.get(
-    "",
+    "/folders",
     summary="List workspace folders",
     operation_id="listWorkspaceFolders",
 )
@@ -65,7 +64,7 @@ async def list_workspace_folders(
 
 
 @router.post(
-    "",
+    "/folders",
     summary="Create workspace folder",
     operation_id="createWorkspaceFolder",
     status_code=fastapi.status.HTTP_201_CREATED,
@@ -84,7 +83,7 @@ async def create_workspace_folder(
 
 
 @router.patch(
-    "/{folder_id}",
+    "/folders/{folder_id}",
     summary="Update workspace folder",
     operation_id="updateWorkspaceFolder",
     responses={
@@ -107,7 +106,7 @@ async def update_workspace_folder(
 
 
 @router.delete(
-    "/{folder_id}",
+    "/folders/{folder_id}",
     summary="Delete workspace folder",
     operation_id="deleteWorkspaceFolder",
     status_code=fastapi.status.HTTP_204_NO_CONTENT,
@@ -123,7 +122,7 @@ async def delete_workspace_folder(
 
 
 @router.post(
-    "/files/bulk-move",
+    "/folders/files/bulk-move",
     summary="Move workspace files to a folder",
     operation_id="bulkMoveWorkspaceFiles",
 )
