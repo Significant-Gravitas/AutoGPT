@@ -318,6 +318,45 @@ async def test_update_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_creates_when_missing(mocker):
+    """When a user has no Profile yet, update_profile creates one from the
+    submitted data instead of raising — this is the user's self-service
+    recovery path."""
+    created_profile = prisma.models.Profile(
+        id="new-profile-id",
+        name="New Creator",
+        username="newcreator",
+        userId="user-id",
+        description="Fresh start",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=None)
+    mock_profile_db.return_value.create = AsyncMock(return_value=created_profile)
+    mock_profile_db.return_value.update = AsyncMock()
+
+    profile = Profile(
+        name="New Creator",
+        username="newcreator",
+        description="Fresh start",
+        links=[],
+        avatar_url=None,
+    )
+
+    result = await db.update_profile("user-id", profile)
+
+    assert result.username == "newcreator"
+    assert result.name == "New Creator"
+    mock_profile_db.return_value.create.assert_called_once()
+    mock_profile_db.return_value.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
