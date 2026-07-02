@@ -46,7 +46,8 @@ def provider_matches(stored: str, expected: str) -> bool:
     return False
 
 
-# This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
+# Ollama runs locally and does not require user-supplied API credentials.
+# The platform injects a system credential at execution time when needed.
 ollama_credentials = APIKeyCredentials(
     id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
     provider="ollama",

@@ -41,7 +41,7 @@ describe("toConnectableProviders", () => {
     expect(result.map((p) => p.id)).toEqual(["github", "openai"]);
   });
 
-  test("filters unknown auth types out and tolerates missing supported_auth_types", () => {
+  test("filters unknown auth types out and excludes providers with no auth types", () => {
     const result = toConnectableProviders([
       makeMeta({
         name: "github",
@@ -49,12 +49,13 @@ describe("toConnectableProviders", () => {
         // wire — we want unknowns ignored, not crashing the whole list.
         supported_auth_types: ["oauth2", "weird_thing" as never],
       }),
+      makeMeta({ name: "ollama", supported_auth_types: [] }),
       makeMeta({ name: "openai", supported_auth_types: undefined }),
     ]);
     const github = result.find((p) => p.id === "github");
-    const openai = result.find((p) => p.id === "openai");
     expect(github?.supportedAuthTypes).toEqual(["oauth2"]);
-    expect(openai?.supportedAuthTypes).toEqual([]);
+    expect(result.find((p) => p.id === "ollama")).toBeUndefined();
+    expect(result.find((p) => p.id === "openai")).toBeUndefined();
   });
 });
 

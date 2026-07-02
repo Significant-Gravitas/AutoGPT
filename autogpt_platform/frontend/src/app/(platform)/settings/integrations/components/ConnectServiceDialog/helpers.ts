@@ -32,12 +32,14 @@ export function toConnectableProviders(
   const result: ConnectableProvider[] = [];
   for (const item of metadata) {
     if (seen.has(item.name)) continue;
+    const supportedAuthTypes = normalizeAuthTypes(item.supported_auth_types);
+    if (supportedAuthTypes.length === 0) continue;
     seen.add(item.name);
     result.push({
       id: item.name,
       name: formatProviderName(item.name),
       description: item.description,
-      supportedAuthTypes: normalizeAuthTypes(item.supported_auth_types),
+      supportedAuthTypes,
     });
   }
   result.sort((a, b) => a.name.localeCompare(b.name));

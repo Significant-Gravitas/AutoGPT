@@ -396,6 +396,33 @@ CRED_ERR_INVALID_TYPE_MISMATCH = "Invalid credentials: type/provider mismatch"
 CRED_ERR_NOT_AVAILABLE_PREFIX = "Credentials not available:"
 CRED_ERR_UNKNOWN_PREFIX = "Unknown credentials #"
 
+
+def _node_llm_model_value(
+    node,
+    nodes_input_masks: Optional["NodesInputMasks"],
+) -> str | None:
+    if nodes_input_masks and node.id in nodes_input_masks:
+        masked = nodes_input_masks[node.id].get("model")
+        if masked is not None:
+            return masked if isinstance(masked, str) else None
+    model = node.input_default.get("model")
+    return model if isinstance(model, str) else None
+
+
+def _node_uses_ollama_model(
+    node,
+    nodes_input_masks: Optional["NodesInputMasks"],
+) -> bool:
+    from backend.blocks.llm import is_ollama_model
+
+    model = _node_llm_model_value(node, nodes_input_masks)
+    if not model:
+        return False
+    try:
+        return is_ollama_model(model)
+    except ValueError:
+        return False
+
 # Markers used by ``is_credential_validation_error_message`` to classify a
 # message. Each entry is (match_mode, lowercased_marker) — "exact" means
 # the full message must equal the marker, "prefix" means it must start
@@ -511,6 +538,8 @@ async def _validate_node_input_credentials(
                 if field_value is None or (
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
+                    if _node_uses_ollama_model(node, nodes_input_masks):
+                        continue
                     has_missing_credentials = True
                     # If credential field is optional, skip instead of error
                     if field_is_optional:

@@ -10,6 +10,8 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
 
+import { getCredentialProviderFromSchema } from "./helpers";
+
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
 
@@ -31,6 +33,12 @@ export const CredentialsField = (props: FieldProps) => {
     () => node?.data?.hardcodedValues || {},
     [node?.data?.hardcodedValues],
   );
+
+  const credentialProvider = getCredentialProviderFromSchema(
+    hardcodedValues,
+    schema as BlockIOCredentialsSubSchema,
+  );
+
   const credentialsOptional = useMemo(() => {
     const value = node?.data?.metadata?.credentials_optional;
     return typeof value === "boolean" ? value : false;
@@ -70,6 +78,10 @@ export const CredentialsField = (props: FieldProps) => {
   // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
   // In run dialogs (no nodeId): show star based on schema's required array
   const isRequired = nodeId ? !credentialsOptional : required;
+
+  if (credentialProvider === "ollama") {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-2">

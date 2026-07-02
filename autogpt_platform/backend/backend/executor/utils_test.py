@@ -675,6 +675,43 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
 
 
 @pytest.mark.asyncio
+async def test_validate_node_input_credentials_skips_ollama_without_credentials(
+    mocker: MockerFixture,
+):
+    from backend.blocks.llm import LlmModel
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "ollama-llm-node"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"model": LlmModel.OLLAMA_LLAMA3_3.value}
+
+    mock_block = mocker.MagicMock()
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_required_fields.return_value = {
+        "credentials",
+        "model",
+    }
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {}
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
 async def test_validate_graph_with_credentials_returns_nodes_to_skip(
     mocker: MockerFixture,
 ):

@@ -1981,7 +1981,7 @@ class OrchestratorBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None = None,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,
@@ -1993,6 +1993,7 @@ class OrchestratorBlock(Block):
         nodes_to_skip: set[str] | None = None,
         **kwargs,
     ) -> BlockOutput:
+        credentials = llm.resolve_llm_credentials(input_data.model, credentials)
 
         tool_functions = await self._create_tool_node_signatures(node_id)
         original_tool_count = len(tool_functions)

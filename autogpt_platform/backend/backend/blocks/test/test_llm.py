@@ -10,6 +10,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+from backend.integrations.credentials_store import ollama_credentials
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1605,3 +1606,29 @@ class TestLlmModelMissingHandler:
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )
+
+
+class TestOllamaOptionalCredentials:
+    def test_is_ollama_model(self):
+        assert llm.is_ollama_model(llm.LlmModel.OLLAMA_LLAMA3_3)
+        assert llm.is_ollama_model("llama3.3")
+        assert not llm.is_ollama_model(llm.LlmModel.GPT4O)
+
+    def test_resolve_llm_credentials_uses_system_credential_for_ollama(self):
+        resolved = llm.resolve_llm_credentials(
+            llm.LlmModel.OLLAMA_LLAMA3_3,
+            None,
+        )
+        assert resolved.provider == "ollama"
+        assert resolved.id == ollama_credentials.id
+
+    def test_resolve_llm_credentials_requires_credentials_for_other_providers(self):
+        with pytest.raises(ValueError, match="Credentials are required"):
+            llm.resolve_llm_credentials(llm.LlmModel.GPT4O, None)
+
+    def test_resolve_llm_credentials_preserves_user_credential(self):
+        resolved = llm.resolve_llm_credentials(
+            llm.LlmModel.GPT4O,
+            llm.TEST_CREDENTIALS,
+        )
+        assert resolved is llm.TEST_CREDENTIALS

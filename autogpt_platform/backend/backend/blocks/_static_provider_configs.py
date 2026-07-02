@@ -25,7 +25,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "anthropic": ("Claude language models", ("api_key",)),
     "groq": ("Fast LLM inference", ("api_key",)),
     "llama_api": ("Llama model hosting", ("api_key",)),
-    "ollama": ("Run open-source LLMs locally", ("api_key",)),
+    "ollama": ("Run open-source LLMs locally", ()),
     "open_router": ("One API for every LLM", ("api_key",)),
     "openai": ("GPT models and embeddings", ("api_key",)),
     "v0": ("AI-generated UI components", ("api_key",)),

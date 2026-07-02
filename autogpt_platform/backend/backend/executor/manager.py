@@ -21,6 +21,7 @@ from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.llm import is_ollama_model
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
@@ -44,6 +45,7 @@ from backend.executor.cost_tracking import (
     log_system_credential_cost,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.credentials_store import ollama_credentials
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -283,6 +285,22 @@ async def execute_node(
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")
         ):
+            model_value = input_data.get("model")
+            if model_value and is_ollama_model(model_value):
+                credentials_meta = input_type(
+                    id=ollama_credentials.id,
+                    provider=ollama_credentials.provider,
+                    type=ollama_credentials.type,
+                    title=ollama_credentials.title,
+                )
+                input_data[field_name] = credentials_meta.model_dump(mode="json")
+                credentials, lock = await creds_manager.acquire(
+                    user_id, ollama_credentials.id
+                )
+                creds_locks.append(lock)
+                extra_exec_kwargs[field_name] = credentials
+                continue
+
             # No credentials configured — nullify so JSON schema validation
             # doesn't choke on the empty default `{}`.
             input_data[field_name] = None

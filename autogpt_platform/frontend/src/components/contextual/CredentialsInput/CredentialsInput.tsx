@@ -15,6 +15,7 @@ import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsMod
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
 import { isSystemCredential } from "./helpers";
+import { getCredentialProviderFromSchema } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import {
   CredentialsInputState,
   useCredentialsInput,
@@ -62,6 +63,14 @@ export function CredentialsInput({
   });
 
   if (!isLoaded(hookData)) {
+    return null;
+  }
+
+  const credentialProvider = getCredentialProviderFromSchema(
+    siblingInputs ?? {},
+    schema,
+  );
+  if (credentialProvider === "ollama") {
     return null;
   }
 

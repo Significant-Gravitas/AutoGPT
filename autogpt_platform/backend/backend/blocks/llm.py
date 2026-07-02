@@ -31,6 +31,7 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
+from backend.integrations.credentials_store import ollama_credentials
 from backend.integrations.providers import ProviderName
 from backend.util import json
 
@@ -691,6 +692,35 @@ MODEL_METADATA = {
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
+
+def resolve_llm_model(model: str | LlmModel) -> LlmModel:
+    if isinstance(model, LlmModel):
+        return model
+    resolved = LlmModel._missing_(model)
+    if resolved is not None:
+        return resolved
+    return LlmModel(model)
+
+
+def llm_model_provider(model: str | LlmModel) -> str:
+    return resolve_llm_model(model).metadata.provider
+
+
+def is_ollama_model(model: str | LlmModel) -> bool:
+    return llm_model_provider(model) == ProviderName.OLLAMA.value
+
+
+def resolve_llm_credentials(
+    model: str | LlmModel,
+    credentials: APIKeyCredentials | None,
+) -> APIKeyCredentials:
+    if credentials is not None:
+        return credentials
+    if is_ollama_model(model):
+        return ollama_credentials
+    raise ValueError("Credentials are required for this LLM model.")
+
+
 # Family-aware mapping for legacy model values that have been retired from the
 # `LlmModel` enum. Used by both the Prisma migration that rewrites stored graph
 # definitions and by the boot-time safety net (`migrate_llm_models` in
@@ -1155,8 +1185,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        credentials = resolve_llm_credentials(input_data.model, credentials)
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
@@ -1573,8 +1608,13 @@ class AITextGeneratorBlock(AIBlockBase):
         return response["response"]
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        credentials = resolve_llm_credentials(input_data.model, credentials)
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{
                 attr: getattr(input_data, attr)
@@ -1665,8 +1705,13 @@ class AITextSummarizerBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        credentials = resolve_llm_credentials(input_data.model, credentials)
         async for output_name, output_data in self._run(input_data, credentials):
             yield output_name, output_data
 
@@ -1886,8 +1931,13 @@ class AIConversationBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        credentials = resolve_llm_credentials(input_data.model, credentials)
         has_messages = any(
             isinstance(m, dict)
             and isinstance(m.get("content"), str)
@@ -2034,8 +2084,13 @@ class AIListGeneratorBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        credentials = resolve_llm_credentials(input_data.model, credentials)
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 
         # Create a proper expected format for the structured response generator
