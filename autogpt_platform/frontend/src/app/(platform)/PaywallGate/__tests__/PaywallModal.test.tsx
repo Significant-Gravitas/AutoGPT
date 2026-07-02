@@ -118,8 +118,12 @@ function setupMocks({
   return { mutateFn, refetchFn };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Flush in-flight async work (e.g. a redirect from a rejected upgrade
+  // mutation) before clearing mocks, so a late router.replace from one test
+  // can't leak into the next and trip its "not redirected" assertion.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.clearAllMocks();
 });
 
