@@ -1,7 +1,42 @@
-import type { UIMessage } from "ai";
+export interface TourPlanStep {
+  description: string;
+  blockName: string;
+}
+
+export interface TourPlan {
+  goal: string;
+  steps: TourPlanStep[];
+}
+
+export interface TourAgent {
+  name: string;
+  schedule: string;
+  blocks: string[];
+}
+
+export interface TourArtifact {
+  /** Completes the "Artifact · …" caption, e.g. "what lands in your inbox". */
+  caption: string;
+  title: string;
+  subtitle?: string;
+  bullets?: string[];
+  diff?: { from: string; to: string; delta: string };
+}
+
+export type TourPart =
+  | { type: "text"; text: string }
+  | { type: "plan"; plan: TourPlan }
+  | { type: "agent"; agent: TourAgent }
+  | { type: "artifact"; artifact: TourArtifact };
+
+export interface TourMessage {
+  id: string;
+  role: "user" | "assistant";
+  parts: TourPart[];
+}
 
 export interface ScriptedPart {
-  part: NonNullable<UIMessage["parts"]>[number];
+  part: TourPart;
   delayMs: number;
 }
 
@@ -15,9 +50,9 @@ export interface ScriptedTurn {
 
 export type TourScript = ScriptedTurn[];
 
-export interface TourChat {
+export interface TourScenario {
   id: string;
-  title: string;
-  updatedAt: string;
+  /** Chip label — kept in sync with the product page's scenario chips. */
+  label: string;
   script: TourScript;
 }
