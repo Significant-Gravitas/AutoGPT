@@ -12684,6 +12684,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Organization Id"
           },
+          "team_id_restriction": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id Restriction"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "head": {
@@ -12704,10 +12708,6 @@
           "owner_type": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Owner Type"
-          },
-          "team_id_restriction": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Team Id Restriction"
           }
         },
         "type": "object",
@@ -14593,6 +14593,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -16398,6 +16406,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -16563,6 +16579,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -16656,6 +16680,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -16736,6 +16768,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -16782,6 +16822,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "nodes": {
             "items": { "$ref": "#/components/schemas/NodeModel" },
@@ -16888,6 +16936,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "input_schema": {
             "additionalProperties": true,
@@ -24423,6 +24479,14 @@
             "title": "Config"
           },
           "secret": { "type": "string", "title": "Secret" },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "provider_webhook_id": {
             "type": "string",
             "title": "Provider Webhook Id"

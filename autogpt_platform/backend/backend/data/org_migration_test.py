@@ -178,6 +178,45 @@ class TestCreateOrgsForExistingUsers:
         assert ws_data["joinPolicy"] == "OPEN"
 
     @pytest.mark.asyncio
+    async def test_json_profile_fields_are_wrapped_for_prisma(self, mock_prisma):
+        """Regression (live-repro'd on real seeded data): Profile.links and
+        User.topUpConfig are Json columns; query_raw returns them as parsed
+        Python objects, but prisma create() rejects a raw list/dict — it
+        must be re-wrapped as prisma.Json. A pure AsyncMock accepts the raw
+        value, so this asserts the WRAPPING, not just that create was called.
+        Without the wrap, the whole startup org migration crashes for any
+        user who has a populated store profile."""
+        import prisma as prisma_pkg
+
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-1",
+                    "email": "alice@example.com",
+                    "name": "Alice",
+                    "stripeCustomerId": "cus_123",
+                    "topUpConfig": {"threshold": 100, "amount": 500},
+                    "profile_username": "alice",
+                    "profile_name": "Alice Smith",
+                    "profile_description": "A developer",
+                    "profile_avatar_url": "https://example.com/avatar.png",
+                    "profile_links": ["https://github.com/alice"],
+                },
+            ]
+        )
+
+        result = await create_orgs_for_existing_users()
+        assert result == 1
+
+        org_data = mock_prisma.organization.create.call_args[1]["data"]
+        assert isinstance(org_data["topUpConfig"], prisma_pkg.Json)
+        assert not isinstance(org_data["topUpConfig"], (dict, list))
+
+        profile_data = mock_prisma.organizationprofile.create.call_args[1]["data"]
+        assert isinstance(profile_data["socialLinks"], prisma_pkg.Json)
+        assert not isinstance(profile_data["socialLinks"], (dict, list))
+
+    @pytest.mark.asyncio
     async def test_user_without_profile_uses_email_slug(self, mock_prisma):
         mock_prisma.query_raw = AsyncMock(
             return_value=[
@@ -263,7 +302,9 @@ class TestCreateOrgsForExistingUsers:
                     "email": "stripe@test.com",
                     "name": "Stripe User",
                     "stripeCustomerId": "cus_abc123",
-                    "topUpConfig": '{"amount": 1000}',
+                    # query_raw hands back Json columns as parsed Python
+                    # objects (see test_json_profile_fields_are_wrapped...).
+                    "topUpConfig": {"amount": 1000},
                     "profile_username": "stripeuser",
                     "profile_name": "Stripe User",
                     "profile_description": None,
@@ -276,9 +317,12 @@ class TestCreateOrgsForExistingUsers:
         result = await create_orgs_for_existing_users()
         assert result == 1
 
+        import prisma as prisma_pkg
+
         create_data = mock_prisma.organization.create.call_args[1]["data"]
         assert create_data["stripeCustomerId"] == "cus_abc123"
-        assert create_data["topUpConfig"] == '{"amount": 1000}'
+        # topUpConfig re-wrapped for prisma create (not the raw dict).
+        assert isinstance(create_data["topUpConfig"], prisma_pkg.Json)
 
     @pytest.mark.asyncio
     async def test_stripe_fields_omitted_when_none(self, mock_prisma):

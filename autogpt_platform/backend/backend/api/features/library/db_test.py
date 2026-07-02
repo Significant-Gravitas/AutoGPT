@@ -131,6 +131,10 @@ async def test_list_library_agents_is_hidden_filter(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     await connect()
 
     # Mock data
@@ -247,6 +251,10 @@ async def test_add_agent_to_library(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library_not_found(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     await connect()
     # Mock prisma calls
     mock_store_listing_version = mocker.patch(
@@ -310,6 +318,10 @@ async def test_get_library_agent_by_graph_id_can_include_archived(mocker):
 
 @pytest.mark.asyncio
 async def test_update_graph_in_library_allows_archived_library_agent(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     graph = mocker.Mock(id="graph-id")
     existing_version = mocker.Mock(version=1, is_active=True)
     graph_model = mocker.Mock()
@@ -384,6 +396,10 @@ async def test_create_library_agent_uses_upsert():
             "backend.api.features.library.model.LibraryAgent.from_db",
             return_value=MagicMock(),
         ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-personal", "team-default")),
+        ),
     ):
         mock_prisma.return_value.upsert = AsyncMock(return_value=mock_upserted)
 
@@ -432,6 +448,10 @@ async def test_create_library_agent_preserves_is_hidden_in_upsert(is_hidden):
         patch(
             "backend.api.features.library.model.LibraryAgent.from_db",
             return_value=MagicMock(),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-personal", "team-default")),
         ),
     ):
         mock_prisma.return_value.upsert = AsyncMock(return_value=MagicMock())
@@ -941,3 +961,55 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     create_data = mock_preset_client.create.call_args.kwargs["data"]
     assert "organizationId" not in create_data
     assert "teamId" not in create_data
+
+
+@pytest.mark.asyncio
+async def test_create_library_agent_tags_adders_org():
+    """Library entries are the ADDING user's bookmarks: explicit org/team
+    params are written to the row; with none supplied, the user's personal
+    org (default team) is resolved — matching the migration invariant."""
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-1"
+    mock_graph.version = 1
+    mock_graph.user_id = "user-1"
+    mock_graph.nodes = []
+    mock_graph.sub_graphs = []
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    default_team = AsyncMock(return_value=("org-personal", "team-default"))
+    with (
+        patch("backend.api.features.library.db.transaction", fake_tx),
+        patch("prisma.models.LibraryAgent.prisma") as mock_prisma,
+        patch(
+            "backend.api.features.library.db.add_generated_agent_image",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.library.model.LibraryAgent.from_db",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=default_team,
+        ),
+    ):
+        mock_prisma.return_value.upsert = AsyncMock(return_value=MagicMock())
+
+        # Explicit org context (e.g. graph-create route passing ctx)
+        await db.create_library_agent(
+            mock_graph, "user-1", organization_id="org-ctx", team_id="team-ctx"
+        )
+        create = mock_prisma.return_value.upsert.call_args.kwargs["data"]["create"]
+        assert create["organizationId"] == "org-ctx"
+        assert create["Team"] == {"connect": {"id": "team-ctx"}}
+        default_team.assert_not_called()
+
+        # No org context → personal-org fallback
+        await db.create_library_agent(mock_graph, "user-1")
+        create = mock_prisma.return_value.upsert.call_args.kwargs["data"]["create"]
+        assert create["organizationId"] == "org-personal"
+        assert create["Team"] == {"connect": {"id": "team-default"}}
+        default_team.assert_awaited_once()

@@ -1638,6 +1638,16 @@ class TestPR10WebhookTenancy:
             "backend.api.features.orgs.db.get_user_default_team",
             self.mock_get_default_team,
         )
+        # _run_agent's post-execution side effects must not leave the test:
+        # _safe_link_to_chat_share crosses the DatabaseManager RPC boundary,
+        # and a half-up service leaves the socket read hanging FOREVER (its
+        # catch-all only fires on raise, not on a wedged read) — this was
+        # the invisible ~45-minute/indefinite stall in full-suite runs.
+        mocker.patch(
+            "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+            AsyncMock(),
+        )
+        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):

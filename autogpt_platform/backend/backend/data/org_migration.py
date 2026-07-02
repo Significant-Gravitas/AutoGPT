@@ -14,6 +14,7 @@ import time
 from typing import LiteralString
 
 from backend.data.db import prisma
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,9 @@ async def create_orgs_for_existing_users() -> int:
         if row.get("stripeCustomerId"):
             org_data["stripeCustomerId"] = row["stripeCustomerId"]
         if row.get("topUpConfig"):
-            org_data["topUpConfig"] = row["topUpConfig"]
+            # query_raw returns Json columns as parsed Python objects; prisma
+            # create() requires them re-wrapped as Json, not raw dict/list.
+            org_data["topUpConfig"] = SafeJson(row["topUpConfig"])
 
         org = await prisma.organization.create(data=org_data)
 
@@ -161,7 +164,11 @@ async def create_orgs_for_existing_users() -> int:
         if row.get("profile_description"):
             profile_data["bio"] = row["profile_description"]
         if row.get("profile_links"):
-            profile_data["socialLinks"] = row["profile_links"]
+            # Profile.links is a Json column; query_raw hands it back as a
+            # parsed Python object, so re-wrap for prisma create(). Without
+            # this, any user with a populated store profile crashes the
+            # whole startup migration.
+            profile_data["socialLinks"] = SafeJson(row["profile_links"])
 
         await prisma.organizationprofile.create(data=profile_data)
 

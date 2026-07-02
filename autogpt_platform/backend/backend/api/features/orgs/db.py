@@ -41,9 +41,22 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
     """
     from backend.data.redis_client import get_redis_async
 
-    redis = await get_redis_async()
     lock_key = f"personal-org-bootstrap:{user_id}"
-    acquired = await redis.set(lock_key, "1", nx=True, ex=30)
+    try:
+        # Bounded: an unreachable redis must surface as a transient failure
+        # (the caller 400s and the client retries), never as a hung socket
+        # read stalling every first-touch request.
+        redis = await asyncio.wait_for(get_redis_async(), timeout=10)
+        acquired = await asyncio.wait_for(
+            redis.set(lock_key, "1", nx=True, ex=30), timeout=10
+        )
+    except Exception:
+        logger.error(
+            f"Personal-org bootstrap lock unavailable for {user_id} "
+            "(redis unreachable?) — failing closed",
+            exc_info=True,
+        )
+        return None
     if not acquired:
         for _ in range(40):
             await asyncio.sleep(0.25)

@@ -163,7 +163,9 @@ async def create_graph(
     graph_model.validate_graph(for_run=False)
 
     await graph_db.create_graph(graph_model, user_id=auth.user_id)
-    await library_db.create_library_agent(graph_model, auth.user_id)
+    await library_db.create_library_agent(
+        graph_model, auth.user_id, organization_id=auth.organization_id
+    )
     activated_graph = await on_graph_activate(graph_model, user_id=auth.user_id)
 
     return activated_graph

@@ -1697,7 +1697,9 @@ async def create_new_graph(
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
     )
-    await library_db.create_library_agent(graph, user_id)
+    await library_db.create_library_agent(
+        graph, user_id, organization_id=ctx.org_id, team_id=ctx.team_id
+    )
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
     return activated_graph

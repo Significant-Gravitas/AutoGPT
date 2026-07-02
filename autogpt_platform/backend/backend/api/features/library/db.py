@@ -515,6 +515,8 @@ async def create_library_agent(
     create_library_agents_for_sub_graphs: bool = True,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -543,6 +545,16 @@ async def create_library_agent(
     if folder_id:
         await get_folder(folder_id, user_id)
 
+    # Library entries are the ADDING user's bookmarks: their tenancy is the
+    # adder's active org (not the graph publisher's org — tagging with the
+    # publisher's org would hide a marketplace add from the user's own org
+    # context). Default to the user's personal org, matching the migration
+    # invariant for backfilled rows.
+    if organization_id is None:
+        from backend.api.features.orgs.db import get_user_default_team
+
+        organization_id, team_id = await get_user_default_team(user_id)
+
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
     )
@@ -564,6 +576,16 @@ async def create_library_agent(
                             isHidden=is_hidden,
                             useGraphIsActiveVersion=True,
                             User={"connect": {"id": user_id}},
+                            **(
+                                {"organizationId": organization_id}
+                                if organization_id
+                                else {}
+                            ),
+                            **(
+                                {"Team": {"connect": {"id": team_id}}}
+                                if team_id
+                                else {}
+                            ),
                             AgentGraph={
                                 "connect": {
                                     "graphVersionId": {
