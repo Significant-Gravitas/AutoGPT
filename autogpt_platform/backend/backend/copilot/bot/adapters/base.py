@@ -30,6 +30,22 @@ class MessageHistoryEntry:
     text: str
 
 
+@dataclass
+class ReferencedConversation:
+    """A different thread/channel the incoming message linked or @-referenced,
+    fetched by the bot via its own gateway so the model can read it directly
+    instead of trying to web-fetch a JS-rendered Discord page.
+
+    ``channel_id`` ties this content back to the raw link/mention in the user's
+    message so the renderer can rewrite that link into a readable ``#name``.
+    ``messages`` is in chronological order and already bounded to a char budget.
+    """
+
+    title: str
+    channel_id: str
+    messages: tuple[MessageHistoryEntry, ...]
+
+
 class FileAttachment(BaseModel):
     """A workspace artifact ready to attach to a platform message.
 
@@ -37,6 +53,19 @@ class FileAttachment(BaseModel):
     these after the backend has already checked them against the adapter's
     ``max_attachment_bytes``, so adapters can attach directly without
     re-validating size.
+    """
+
+    filename: str
+    mime_type: str
+    content: bytes
+
+
+class InboundAttachment(BaseModel):
+    """A file the user attached to an inbound platform message.
+
+    The adapter downloads the bytes from the platform up-front (bounded by the
+    adapter's ``max_attachment_bytes``); the handler then uploads them to the
+    user's workspace so AutoPilot can read them during the turn.
     """
 
     filename: str
@@ -89,6 +118,16 @@ class MessageContext:
     # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
     # get pinged even if the LLM produces `@theirname` in its output.
     mentionable_users: tuple[tuple[str, str], ...] = ()
+    # Other threads/channels the message linked or @-referenced, fetched by the
+    # bot up-front so the model has their content without web-fetching Discord.
+    referenced_conversations: tuple[ReferencedConversation, ...] = ()
+    # Files the user attached to this message (bytes already downloaded). The
+    # handler uploads these to the workspace and passes their IDs to the turn.
+    attachments: tuple[InboundAttachment, ...] = ()
+    # Attachments the adapter couldn't ingest at all (too large / download
+    # failed), as ``(filename, reason)`` pairs — surfaced to the user and the
+    # model so neither thinks the file was read.
+    skipped_attachments: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_dm(self) -> bool:

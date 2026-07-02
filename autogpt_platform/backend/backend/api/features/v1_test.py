@@ -11,10 +11,12 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
+    SkillLimitError,
     SkillNotFoundError,
 )
 from backend.data.credit import AutoTopUpConfig
@@ -1420,3 +1422,85 @@ def test_read_copilot_skill_returns_404_when_missing(
 
     response = client.get("/skills/missing")
     assert response.status_code == 404
+
+
+_VALID_SKILL_MD = (
+    "---\n"
+    "name: oauth_flow\n"
+    "description: OAuth handshake recipe\n"
+    "triggers:\n"
+    "  - auth\n"
+    "---\n\n"
+    "# OAuth flow\n\nStep 1: redirect to /authorize\n"
+)
+
+
+def test_upload_copilot_skill_creates_skill(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """POST /skills parses the SKILL.md and persists it via store_user_skill."""
+    store_mock = AsyncMock(
+        return_value=ParsedSkill(
+            name="oauth_flow",
+            description="OAuth handshake recipe",
+            body="# OAuth flow",
+            triggers=("auth",),
+        )
+    )
+    mocker.patch("backend.api.features.v1.store_user_skill", store_mock)
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "oauth_flow"
+    assert body["triggers"] == ["auth"]
+    store_mock.assert_awaited_once()
+    assert store_mock.await_args.kwargs["name"] == "oauth_flow"
+
+
+def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
+    """A file without valid frontmatter returns 400 before touching storage."""
+    response = client.post(
+        "/skills", json={"content": "just some text, no frontmatter"}
+    )
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_409_when_at_cap(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The per-user cap surfaces as 409 so the UI can prompt a delete."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=SkillLimitError("Skill limit reached (50).")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 409
+
+
+def test_upload_copilot_skill_returns_400_on_validation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A validation failure from store_user_skill maps to 400."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=ValueError("name must be a slug")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_400_on_virus_detection(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A virus-scan rejection surfaces as a 400 client error, not a 500."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=VirusDetectedError("nasty")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+    assert "virus scan" in response.json()["detail"]

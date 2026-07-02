@@ -151,25 +151,42 @@ const config = {
             height: "0",
           },
         },
+        // Bridge the height change with an opacity fade so the content
+        // doesn't clip in/out abruptly (Emil Kowalski: fade to soften
+        // state transitions). Opacity resolves over the first/last ~60%
+        // so text is fully legible before the height finishes settling.
+        "collapsible-down": {
+          from: {
+            height: "0",
+            opacity: "0",
+          },
+          "60%": {
+            opacity: "1",
+          },
+          to: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+        },
+        "collapsible-up": {
+          from: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+          "40%": {
+            opacity: "0",
+          },
+          to: {
+            height: "0",
+            opacity: "0",
+          },
+        },
         "fade-in": {
           "0%": {
             opacity: "0",
           },
           "100%": {
             opacity: "1",
-          },
-        },
-        // Emil Kowalski enter pattern: translate from below + fade,
-        // ease-out, under 300ms. Driven by inline ``animation-delay``
-        // for per-item staggering.
-        "search-item-in": {
-          "0%": {
-            opacity: "0",
-            transform: "translateY(4px)",
-          },
-          "100%": {
-            opacity: "1",
-            transform: "translateY(0)",
           },
         },
         shimmer: {
@@ -211,13 +228,13 @@ const config = {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // easeOutCubic for a smooth, decelerating settle; asymmetric
+        // timing (open a touch slower than close) per Emil Kowalski.
+        // Both stay under the 300ms UI budget.
+        "collapsible-down":
+          "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
+        "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
-        // 180ms / ease-out keeps the entry inside Emil Kowalski's
-        // "faster is better" UI budget. Backwards mode so the item
-        // stays invisible until its staggered delay elapses, instead
-        // of flashing at frame zero.
-        "search-item-in":
-          "search-item-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both",
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
