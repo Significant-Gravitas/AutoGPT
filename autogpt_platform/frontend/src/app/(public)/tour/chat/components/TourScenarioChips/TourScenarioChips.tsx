@@ -1,22 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { Icon } from "@phosphor-icons/react";
-import {
-  HeadsetIcon,
-  MagnifyingGlassIcon,
-  PhoneCallIcon,
-  SunIcon,
-} from "@phosphor-icons/react";
 import { tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
-
-const SCENARIO_ICONS: Record<string, Icon> = {
-  "daily-brief": SunIcon,
-  "call-prep": PhoneCallIcon,
-  "competitor-watch": MagnifyingGlassIcon,
-  "support-queue": HeadsetIcon,
-};
 
 export function TourScenarioChips() {
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
@@ -25,7 +11,7 @@ export function TourScenarioChips() {
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
       {tourScenarios.map((scenario) => {
-        const ChipIcon = SCENARIO_ICONS[scenario.id];
+        const ChipIcon = scenario.icon;
         const isActive = scenario.id === activeScenarioId;
         return (
           <button
@@ -40,7 +26,7 @@ export function TourScenarioChips() {
                 : "border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:text-zinc-900",
             )}
           >
-            {ChipIcon && <ChipIcon className="size-4 shrink-0" />}
+            <ChipIcon className="size-4 shrink-0" />
             {scenario.label}
           </button>
         );

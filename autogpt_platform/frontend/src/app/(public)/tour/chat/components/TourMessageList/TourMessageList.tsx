@@ -103,5 +103,9 @@ function TourPartRenderer({
           <TourArtifactCard artifact={part.artifact} />
         </div>
       );
+    default: {
+      const exhaustiveCheck: never = part;
+      return exhaustiveCheck;
+    }
   }
 }

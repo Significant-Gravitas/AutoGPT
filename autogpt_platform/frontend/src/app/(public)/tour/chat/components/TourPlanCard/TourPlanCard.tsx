@@ -35,7 +35,7 @@ export function TourPlanCard({ plan }: { plan: TourPlan }) {
           <div className="space-y-0.5">
             {plan.steps.map((step, index) => (
               <TourPlanStepItem
-                key={step.blockName}
+                key={`${step.blockName}-${index}`}
                 step={step}
                 index={index}
               />

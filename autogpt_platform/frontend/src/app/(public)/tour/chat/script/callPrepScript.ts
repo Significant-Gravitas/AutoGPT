@@ -1,3 +1,4 @@
+import { RUN_DELAY_MS } from "./constants";
 import type { TourScript } from "./types";
 
 export const callPrepScript: TourScript = [
@@ -67,7 +68,7 @@ export const callPrepScript: TourScript = [
         },
       },
       {
-        delayMs: 5000,
+        delayMs: RUN_DELAY_MS,
         part: {
           type: "text",
           text: "Done — first run just finished. Here's what it produced:",

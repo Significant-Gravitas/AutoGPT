@@ -24,7 +24,7 @@ export function TourArtifactCard({ artifact }: Props) {
         </Text>
       )}
 
-      {artifact.bullets && (
+      {artifact.bullets && artifact.bullets.length > 0 && (
         <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-zinc-700">
           {artifact.bullets.map((bullet) => (
             <li key={bullet}>{bullet}</li>

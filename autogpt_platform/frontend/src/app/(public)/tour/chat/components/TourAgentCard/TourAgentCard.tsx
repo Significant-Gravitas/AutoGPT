@@ -45,7 +45,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
 
       <div className="flex flex-wrap items-center gap-2">
         {agent.blocks.map((block, index) => (
-          <Fragment key={block}>
+          <Fragment key={`${block}-${index}`}>
             {index > 0 && (
               <ArrowRightIcon className="size-3.5 shrink-0 text-zinc-400" />
             )}

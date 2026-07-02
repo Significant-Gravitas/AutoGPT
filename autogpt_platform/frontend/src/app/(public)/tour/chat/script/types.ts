@@ -1,3 +1,5 @@
+import type { Icon } from "@phosphor-icons/react";
+
 export interface TourPlanStep {
   description: string;
   blockName: string;
@@ -54,5 +56,6 @@ export interface TourScenario {
   id: string;
   /** Chip label — kept in sync with the product page's scenario chips. */
   label: string;
+  icon: Icon;
   script: TourScript;
 }
