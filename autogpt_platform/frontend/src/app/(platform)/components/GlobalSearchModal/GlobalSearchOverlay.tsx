@@ -31,7 +31,7 @@ export function GlobalSearchOverlay() {
     if (!isEnabled) return;
     function handleSearchShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "k") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
       event.preventDefault();
       useGlobalSearchStore.getState().toggleSearch();
