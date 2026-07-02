@@ -166,7 +166,7 @@
     "@types/react-window": "2.0.0",
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
-    "@vitest/coverage-v8": "4.1.9",
+    "@vitest/coverage-v8": "4.0.17",
     "agentation": "3.0.2",
     "axe-playwright": "2.2.2",
     "chromatic": "13.3.3",
@@ -190,7 +190,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
-    "vitest": "4.1.9"
+    "vitest": "4.0.17"
   },
   "msw": {
     "workerDirectory": [
