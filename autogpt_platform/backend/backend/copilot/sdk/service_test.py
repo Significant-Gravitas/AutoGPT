@@ -12,6 +12,7 @@ import pytest
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
@@ -102,9 +103,25 @@ class TestPrepareFileAttachments:
         assert saved.exists()
         assert saved.read_bytes() == b"%PDF-1.4 fake"
         # The model is given the workspace identity, not the host path.
-        assert "file_id: f1" in result.hint
+        assert "file_id=f1" in result.hint
         assert str(saved) not in result.hint
         assert "read_workspace_file" in result.hint
+
+    @pytest.mark.asyncio
+    async def test_hint_file_ids_extractable_for_chat_sharing(self, tmp_path):
+        """Chat-share allowlisting parses ``file_id=<uuid>`` out of message
+        content with extract_workspace_file_ids; the hint must keep that exact
+        shape or shared chats lose access to their attachments."""
+        fid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        info = _FakeFileInfo(fid, "doc.pdf", "/doc.pdf", "application/pdf", 50)
+        mgr = AsyncMock()
+        mgr.get_file_info.return_value = info
+        mgr.read_file_by_id.return_value = b"%PDF-1.4 fake"
+
+        with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
+            result = await _prepare_file_attachments([fid], "u", "s", str(tmp_path))
+
+        assert extract_workspace_file_ids(result.hint) == {fid}
 
     @pytest.mark.asyncio
     async def test_mixed_images_and_files(self, tmp_path):
@@ -137,8 +154,8 @@ class TestPrepareFileAttachments:
         # model must NOT be told to use the (disallowed) built-in Read tool.
         assert "read_workspace_file" in result.hint
         assert "Use the Read tool" not in result.hint
-        assert "file_id: id2" in result.hint
-        assert "file_id: id3" in result.hint
+        assert "file_id=id2" in result.hint
+        assert "file_id=id3" in result.hint
 
     @pytest.mark.asyncio
     async def test_singular_noun(self, tmp_path):
