@@ -21,16 +21,29 @@ function getSendBar() {
   return screen.getByRole("button", { name: /^Send:/i });
 }
 
+const ADVANCE_STEP_MS = 200;
+// Longest turn is ~7.7s of parts — including the 5s fake run — plus the 3s
+// hold before the final turn flips to the upsell.
+const ADVANCE_TOTAL_MS = 13000;
+
 // The prompt bar is prefilled and locked — the visitor only presses Enter to send.
 async function pressEnterToSend() {
   fireEvent.keyDown(getSendBar(), { key: "Enter" });
-  // The scripted reveal streams in over real setTimeout delays; advance fake
-  // timers past the whole turn (longest turn ~7.7s of parts — including the
-  // 5s fake run — plus the 3s hold before the final turn flips to the
-  // upsell) so everything commits.
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(13000);
-  });
+  // TourStreamingText mounts mid-stream (from a setTimeout callback) and
+  // registers its own setInterval — a timer created by an effect that fires
+  // *during* an in-flight advanceTimersByTimeAsync call is never picked up
+  // by that same call. Advancing in small chunks, each in its own act(),
+  // gives React a chance to flush the mount effect and register the new
+  // interval before the next chunk advances past it.
+  for (
+    let elapsed = 0;
+    elapsed < ADVANCE_TOTAL_MS;
+    elapsed += ADVANCE_STEP_MS
+  ) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ADVANCE_STEP_MS);
+    });
+  }
 }
 
 describe("Tour chat scripted demo", () => {
