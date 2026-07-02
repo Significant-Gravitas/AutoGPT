@@ -1,5 +1,6 @@
 """Database operations for organization management."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -19,28 +20,90 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def get_user_default_team(
-    user_id: str,
-) -> tuple[str | None, str | None]:
-    """Get the user's personal org ID and its default workspace ID.
-
-    Returns (organization_id, team_id). Either may be None if
-    the user has no org (e.g., migration hasn't run yet).
-    """
-    member = await prisma.orgmember.find_first(
+async def _find_personal_org_member(user_id: str):
+    return await prisma.orgmember.find_first(
         where={
             "userId": user_id,
             "isOwner": True,
             "Org": {"isPersonal": True, "deletedAt": None},
         },
     )
-    if member is None:
-        logger.warning(
-            f"User {user_id} has no personal org — account may be in inconsistent state"
-        )
-        return None, None
 
-    org_id = member.orgId
+
+async def _bootstrap_personal_org(user_id: str) -> str | None:
+    """Create the personal org for a user who has none.
+
+    The startup migration only covers users existing at boot — every NEW
+    signup lands here on their first request. Redis-locked (single-key
+    SET NX, cluster-safe) because a fresh login fires many API calls in
+    parallel and each would otherwise race to create an org; losers wait
+    for the winner instead.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    lock_key = f"personal-org-bootstrap:{user_id}"
+    acquired = await redis.set(lock_key, "1", nx=True, ex=30)
+    if not acquired:
+        for _ in range(40):
+            await asyncio.sleep(0.25)
+            member = await _find_personal_org_member(user_id)
+            if member is not None:
+                return member.orgId
+        logger.error(
+            f"Timed out waiting for concurrent personal-org bootstrap of {user_id}"
+        )
+        return None
+
+    try:
+        # Re-check under the lock — the row may have appeared between the
+        # caller's miss and our acquisition.
+        member = await _find_personal_org_member(user_id)
+        if member is not None:
+            return member.orgId
+
+        user = await prisma.user.find_unique(where={"id": user_id})
+        if user is None:
+            logger.warning(f"Cannot bootstrap personal org: user {user_id} not found")
+            return None
+
+        local_part = user.email.split("@")[0] if user.email else "user"
+        slug_base = _sanitize_slug(local_part) or "user"
+        display_name = user.name or local_part
+        org = await _create_personal_org_for_user(user_id, slug_base, display_name)
+        logger.info(f"Bootstrapped personal org {org.id} for new user {user_id}")
+        return org.id
+    finally:
+        try:
+            await redis.delete(lock_key)
+        except Exception:
+            pass
+
+
+async def get_user_default_team(
+    user_id: str,
+) -> tuple[str | None, str | None]:
+    """Get the user's personal org ID and its default workspace ID.
+
+    Self-healing: users created after the startup migration (i.e. every
+    new signup) have no personal org yet — one is bootstrapped on first
+    touch so their first request doesn't fail with "no org context".
+
+    Returns (organization_id, team_id). Either may be None if the user
+    row itself is missing or bootstrap failed.
+    """
+    member = await _find_personal_org_member(user_id)
+    if member is not None:
+        org_id = member.orgId
+    else:
+        org_id = await _bootstrap_personal_org(user_id)
+        if org_id is None:
+            logger.warning(
+                f"User {user_id} has no personal org — "
+                "account may be in inconsistent state"
+            )
+            return None, None
+
     workspace = await prisma.team.find_first(where={"orgId": org_id, "isDefault": True})
     ws_id = workspace.id if workspace else None
     return org_id, ws_id

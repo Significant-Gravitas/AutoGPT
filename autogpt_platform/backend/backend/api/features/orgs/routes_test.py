@@ -2690,3 +2690,87 @@ class TestInvitationSeeding:
 
         assert result is not None
         self.prisma.orginvitation.create.assert_called_once()
+
+
+class TestPersonalOrgBootstrapOnDemand:
+    """Users created AFTER the startup migration (every new signup) must
+    get a personal org on first touch — without this, their first API
+    call fails with 'No organization context available' (live-repro'd)."""
+
+    @pytest.fixture(autouse=True)
+    def _mocks(self, mocker):
+        from backend.api.features.orgs import db as org_db
+
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        self.redis = MagicMock()
+        self.redis.set = AsyncMock(return_value=True)
+        self.redis.delete = AsyncMock()
+        mocker.patch(
+            "backend.data.redis_client.get_redis_async",
+            AsyncMock(return_value=self.redis),
+        )
+        self.create_org = mocker.patch.object(
+            org_db,
+            "_create_personal_org_for_user",
+            AsyncMock(return_value=MagicMock(id="org-new")),
+        )
+
+    @pytest.mark.asyncio
+    async def test_new_user_gets_personal_org_bootstrapped(self):
+        from backend.api.features.orgs.db import get_user_default_team
+
+        user = MagicMock()
+        user.email = "newbie@example.com"
+        user.name = None
+        self.prisma.orgmember.find_first = AsyncMock(return_value=None)
+        self.prisma.user.find_unique = AsyncMock(return_value=user)
+        default_team = MagicMock()
+        default_team.id = "team-new"
+        self.prisma.team.find_first = AsyncMock(return_value=default_team)
+
+        org_id, team_id = await get_user_default_team("new-user")
+
+        assert org_id == "org-new"
+        assert team_id == "team-new"
+        self.create_org.assert_awaited_once()
+        # Redis lock held around the bootstrap (parallel first requests)
+        self.redis.set.assert_awaited_once()
+        assert self.redis.set.await_args.kwargs.get("nx") is True
+
+    @pytest.mark.asyncio
+    async def test_existing_user_skips_bootstrap(self):
+        from backend.api.features.orgs.db import get_user_default_team
+
+        member = MagicMock()
+        member.orgId = "org-existing"
+        self.prisma.orgmember.find_first = AsyncMock(return_value=member)
+        default_team = MagicMock()
+        default_team.id = "team-existing"
+        self.prisma.team.find_first = AsyncMock(return_value=default_team)
+
+        org_id, team_id = await get_user_default_team("old-user")
+
+        assert org_id == "org-existing"
+        self.create_org.assert_not_called()
+        self.redis.set.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lock_loser_waits_for_winner(self, mocker):
+        from backend.api.features.orgs.db import get_user_default_team
+
+        mocker.patch("backend.api.features.orgs.db.asyncio.sleep", AsyncMock())
+        self.redis.set = AsyncMock(return_value=None)  # lock not acquired
+        member = MagicMock()
+        member.orgId = "org-from-winner"
+        # First check misses; poll inside the wait loop finds the row the
+        # lock winner created.
+        self.prisma.orgmember.find_first = AsyncMock(side_effect=[None, member])
+        default_team = MagicMock()
+        default_team.id = "team-w"
+        self.prisma.team.find_first = AsyncMock(return_value=default_team)
+
+        org_id, _ = await get_user_default_team("racing-user")
+
+        assert org_id == "org-from-winner"
+        self.create_org.assert_not_called()
