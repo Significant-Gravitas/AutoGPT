@@ -1338,8 +1338,19 @@ class TestInvitationListPending:
 class TestOrgCreditsSpend:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
+        from backend.data import org_credit
+
         self.prisma = MagicMock()
+        # These classes test the ORG-ledger path: the org must not look
+        # personal (a bare MagicMock's isPersonal is truthy → the
+        # personal-org delegation to the owner's user wallet kicks in).
+        non_personal = MagicMock()
+        non_personal.isPersonal = False
+        self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
+        org_credit._personal_org_owner.cache_clear()
+        yield
+        org_credit._personal_org_owner.cache_clear()
 
     @pytest.mark.asyncio
     async def test_spend_credits_success(self):
@@ -1425,8 +1436,19 @@ class TestOrgCreditsSpend:
 class TestOrgCreditsTopUp:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
+        from backend.data import org_credit
+
         self.prisma = MagicMock()
+        # These classes test the ORG-ledger path: the org must not look
+        # personal (a bare MagicMock's isPersonal is truthy → the
+        # personal-org delegation to the owner's user wallet kicks in).
+        non_personal = MagicMock()
+        non_personal.isPersonal = False
+        self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
+        org_credit._personal_org_owner.cache_clear()
+        yield
+        org_credit._personal_org_owner.cache_clear()
 
     @pytest.mark.asyncio
     async def test_top_up_creates_balance_if_not_exists(self):
@@ -1482,8 +1504,19 @@ class TestOrgCreditsTopUp:
 class TestOrgCreditsGet:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
+        from backend.data import org_credit
+
         self.prisma = MagicMock()
+        # These classes test the ORG-ledger path: the org must not look
+        # personal (a bare MagicMock's isPersonal is truthy → the
+        # personal-org delegation to the owner's user wallet kicks in).
+        non_personal = MagicMock()
+        non_personal.isPersonal = False
+        self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
+        org_credit._personal_org_owner.cache_clear()
+        yield
+        org_credit._personal_org_owner.cache_clear()
 
     @pytest.mark.asyncio
     async def test_get_credits_returns_balance(self):

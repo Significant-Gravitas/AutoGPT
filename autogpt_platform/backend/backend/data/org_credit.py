@@ -17,9 +17,11 @@ from backend.data.credit import (
     InvoiceListItem,
     UsageTransactionMetadata,
     UserCreditBase,
+    get_user_credit_model,
 )
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
+from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 
@@ -30,8 +32,30 @@ class _BalanceResult(BaseModel):
     balance: int
 
 
+@cached(maxsize=1000, ttl_seconds=60, shared_cache=True)
+async def _personal_org_owner(org_id: str) -> str | None:
+    """Owner user id when *org_id* is a personal org, else None.
+
+    Short TTL because org conversion (personal → team) flips isPersonal;
+    a stale minute of owner-ledger billing after conversion is acceptable.
+    """
+    org = await prisma.organization.find_unique(where={"id": org_id})
+    if org is None or not org.isPersonal:
+        return None
+    member = await prisma.orgmember.find_first(where={"orgId": org_id, "isOwner": True})
+    return member.userId if member else None
+
+
 async def get_org_credits(org_id: str) -> int:
-    """Get the current credit balance for an organization."""
+    """Get the current credit balance for an organization.
+
+    Personal orgs report the owner's wallet balance — see
+    :func:`spend_org_credits` for why the ledgers must be one.
+    """
+    owner_id = await _personal_org_owner(org_id)
+    if owner_id is not None:
+        credit_model = await get_user_credit_model(owner_id)
+        return await credit_model.get_credits(owner_id)
     balance = await prisma.orgbalance.find_unique(where={"orgId": org_id})
     return balance.balance if balance else 0
 
@@ -45,6 +69,12 @@ async def spend_org_credits(
 ) -> int:
     """Atomically spend credits from the org balance.
 
+    PERSONAL orgs bill the owner's user wallet instead: Stripe top-ups,
+    grants, refunds, and auto-top-up all land on the user ledger (org
+    top-ups don't exist yet), so debiting the migration-seeded OrgBalance
+    copy would drift the two ledgers apart — a paying user's runs would
+    fail on a stale org balance no payment can replenish.
+
     Uses a single UPDATE ... WHERE balance >= $amount to prevent race
     conditions. If the UPDATE affects 0 rows, the balance is insufficient.
 
@@ -56,6 +86,15 @@ async def spend_org_credits(
     """
     if amount <= 0:
         raise ValueError("Spend amount must be positive")
+
+    owner_id = await _personal_org_owner(org_id)
+    if owner_id is not None:
+        credit_model = await get_user_credit_model(owner_id)
+        return await credit_model.spend_credits(
+            user_id=owner_id,
+            cost=amount,
+            metadata=UsageTransactionMetadata.model_validate(metadata or {}),
+        )
 
     # Atomic deduct — only succeeds if balance >= amount.
     # Uses RETURNING to get the new balance in the same statement,
@@ -111,10 +150,21 @@ async def top_up_org_credits(
 
     Creates the OrgBalance row if it doesn't exist (upsert pattern via raw SQL).
 
+    Personal orgs credit the owner's user wallet instead, keeping the
+    single-ledger invariant established by :func:`spend_org_credits`.
+
     Returns the new balance.
     """
     if amount <= 0:
         raise ValueError("Top-up amount must be positive")
+
+    owner_id = await _personal_org_owner(org_id)
+    if owner_id is not None:
+        credit_model = await get_user_credit_model(owner_id)
+        reason = (metadata or {}).get("reason", "Org credit top-up")
+        return await credit_model.grant_credits(
+            user_id=owner_id, amount=amount, reason=reason
+        )
 
     # Atomic upsert — INSERT or UPDATE in one statement.
     # Uses RETURNING to get the new balance in the same statement,
