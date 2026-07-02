@@ -20,6 +20,7 @@ images: {
 import asyncio
 import json
 import random
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -42,6 +43,7 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
+from backend.util.json import SafeJson
 
 faker = Faker()
 
@@ -1033,6 +1035,174 @@ class TestDataCreator:
                 )
                 continue
 
+    async def create_kitchen_sink_data(self) -> None:
+        """Populate EVERY remaining tenancy-scoped model for the deterministic
+        login users, so a QA login is a "user with literally everything".
+
+        The other create_* methods cover graphs / library agents / presets /
+        API keys / store listings. This fills the gap: chats, executions,
+        webhooks, folders, search history, notification batches, human
+        reviews, and a real (non-system) connected credential — each tagged
+        with the user's personal org/team, mirroring the create-path scoping
+        so the fixture matches production shape.
+        """
+        print("Creating kitchen-sink data (all tenancy models) for login users...")
+
+        power_users = [u for u in self.users if u["email"] in SEEDED_TEST_EMAILS]
+        notif_type = list(prisma_enums.NotificationType)[0]
+
+        async def _try(label: str, coro) -> None:
+            # Per-model isolation: one model failing must not skip the rest.
+            try:
+                await coro
+            except Exception as e:
+                print(f"  kitchen-sink {label} failed for {user['email']}: {e}")
+
+        for user in power_users:
+            user_id = user["id"]
+            org_id, team_id = await self._get_user_org_ws(user_id)
+            org_team = {"organizationId": org_id, "teamId": team_id}
+            org_only = {"organizationId": org_id}
+            user_graphs = [g for g in self.agent_graphs if g.get("userId") == user_id]
+            graph = user_graphs[0] if user_graphs else None
+
+            # Chat session (+ one message) — the copilot conversation shell.
+            session_id = str(uuid.uuid4())
+            await _try(
+                "chat_session",
+                prisma.chatsession.create(
+                    data={
+                        "id": session_id,
+                        "userId": user_id,
+                        "title": "Kitchen-sink chat",
+                        **org_team,
+                    }
+                ),
+            )
+            await _try(
+                "chat_message",
+                prisma.chatmessage.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "sessionId": session_id,
+                        "role": "user",
+                        "content": "Seed message",
+                        "sequence": 1,
+                    }
+                ),
+            )
+
+            await _try(
+                "library_folder",
+                prisma.libraryfolder.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "name": "Kitchen-sink folder",
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "search_history",
+                prisma.buildersearchhistory.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "searchQuery": "kitchen sink",
+                        **org_only,
+                    }
+                ),
+            )
+
+            await _try(
+                "notification_batch",
+                prisma.usernotificationbatch.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "type": notif_type,
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "webhook",
+                prisma.integrationwebhook.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "provider": "github",
+                        "credentialsId": str(uuid.uuid4()),
+                        "webhookType": "repo",
+                        "resource": "owner/repo",
+                        "events": ["push"],
+                        "config": SafeJson({}),
+                        "secret": uuid.uuid4().hex,
+                        "providerWebhookId": str(uuid.uuid4()),
+                        **org_team,
+                    }
+                ),
+            )
+
+            # Real (non-system) connected credential in the table.
+            await _try(
+                "credential",
+                prisma.integrationcredential.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "organizationId": org_id or "",
+                        "ownerType": prisma_enums.CredentialOwnerType.USER,
+                        "ownerId": user_id,
+                        "teamId": team_id,
+                        "provider": "github",
+                        "credentialType": "api_key",
+                        "displayName": "Kitchen-sink GitHub",
+                        "encryptedPayload": SafeJson(
+                            {"api_key": "ghp_seed", "provider": "github"}
+                        ),
+                        "createdByUserId": user_id,
+                    }
+                ),
+            )
+
+            # Execution + a pending human review, if the user has a graph.
+            if graph:
+                exec_id = str(uuid.uuid4())
+                await _try(
+                    "execution",
+                    prisma.agentgraphexecution.create(
+                        data={
+                            "id": exec_id,
+                            "agentGraphId": graph["id"],
+                            "agentGraphVersion": graph.get("version", 1),
+                            "userId": user_id,
+                            "executionStatus": prisma_enums.AgentExecutionStatus.COMPLETED,
+                            **org_team,
+                        }
+                    ),
+                )
+                await _try(
+                    "human_review",
+                    prisma.pendinghumanreview.create(
+                        data={
+                            "nodeExecId": str(uuid.uuid4()),
+                            "userId": user_id,
+                            "graphExecId": exec_id,
+                            "graphId": graph["id"],
+                            "graphVersion": graph.get("version", 1),
+                            "payload": SafeJson({"input": "seed"}),
+                            "status": prisma_enums.ReviewStatus.WAITING,
+                            "instructions": "Seed review",
+                            **org_only,
+                        }
+                    ),
+                )
+
+        print(f"Kitchen-sink data created for {len(power_users)} login users")
+
     async def create_all_test_data(self):
         """Create all test data."""
         print("Starting E2E test data creation...")
@@ -1068,6 +1238,10 @@ class TestDataCreator:
 
         # Create store submissions
         await self.create_test_store_submissions()
+
+        # Populate every remaining tenancy model for the login users so a
+        # QA login is a "user with literally everything".
+        await self.create_kitchen_sink_data()
 
         # Add user credits
         await self.add_user_credits()
