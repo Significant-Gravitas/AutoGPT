@@ -544,6 +544,153 @@ describe("convertChatSessionMessagesToUiMessages", () => {
       output: { results: [{ title: "in-page result" }] },
     });
   });
+
+  it("marks an unresolved tool call with an empty output when the session is complete", () => {
+    // Session finished (no active stream) but the DB has no tool row for
+    // this call — e.g. the tool errored server-side before persisting a
+    // result.  The slot stays unfilled, so the card must render as
+    // output-available with an empty output to stop a stale spinner
+    // rather than hang in the input-available state forever.
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "search foo", sequence: 0 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "call_orphan",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "foo" }),
+              },
+            },
+          ],
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const toolPart = result.messages[1].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    expect(toolPart).toMatchObject({
+      type: "tool-web_search",
+      state: "output-available",
+      input: { query: "foo" },
+      output: "",
+    });
+  });
+
+  it("leaves an unresolved tool call as input-available while the session is still streaming", () => {
+    // isComplete is false: the tool call is genuinely still in flight, so
+    // the card keeps the input-available (spinner) state and carries no
+    // output yet.
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "search foo", sequence: 0 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "call_pending",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "foo" }),
+              },
+            },
+          ],
+        },
+      ],
+      { isComplete: false },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const toolPart = result.messages[1].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    expect(toolPart).toMatchObject({
+      type: "tool-web_search",
+      state: "input-available",
+      input: { query: "foo" },
+    });
+    expect(toolPart).not.toHaveProperty("output");
+  });
+
+  it("skips malformed tool_calls entries and still pairs the valid call, ignoring an orphan tool row", () => {
+    // Providers occasionally emit junk in the tool_calls array (a null
+    // entry, or an entry with a blank id).  Those must not consume a slot
+    // or crash pairing — only the well-formed call renders.  A trailing
+    // tool row whose id matches no assistant call (call_ghost), and a
+    // second tool row for an already-filled id (call_ok), are both
+    // dropped without disturbing the valid pairing.
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "do it", sequence: 0 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            null,
+            {
+              id: "   ",
+              type: "function",
+              function: { name: "web_search", arguments: "{}" },
+            },
+            {
+              id: "call_ok",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "real" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_ok",
+          content: JSON.stringify({ results: [{ title: "real result" }] }),
+          sequence: 2,
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_ok",
+          content: JSON.stringify({ results: [{ title: "second (dropped)" }] }),
+          sequence: 3,
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_ghost",
+          content: JSON.stringify({ results: [{ title: "orphan (dropped)" }] }),
+          sequence: 4,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const toolParts = result.messages[1].parts.filter((p) =>
+      p.type.startsWith("tool-"),
+    );
+    // Only the well-formed call renders; malformed entries are skipped.
+    expect(toolParts).toHaveLength(1);
+    expect(toolParts[0]).toMatchObject({
+      type: "tool-web_search",
+      input: { query: "real" },
+      output: { results: [{ title: "real result" }] },
+    });
+  });
 });
 
 // --------------------------------------------------------------------------- //
