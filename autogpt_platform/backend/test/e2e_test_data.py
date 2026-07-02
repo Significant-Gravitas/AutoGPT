@@ -553,6 +553,9 @@ class TestDataCreator:
             from backend.data.auth.api_key import APIKeyPermission
 
             try:
+                # Tag the key with the user's personal org (mirrors the real
+                # request path, which always passes ctx.org_id).
+                org_id, _ws_id = await self._get_user_org_ws(user["id"])
                 # Use the API function to create API key
                 api_key, _ = await create_api_key(
                     name=faker.word(),
@@ -562,6 +565,7 @@ class TestDataCreator:
                         APIKeyPermission.READ_GRAPH,
                     ],
                     description=faker.text(),
+                    organization_id=org_id,
                 )
                 api_keys.append(api_key.model_dump())
             except Exception as e:
