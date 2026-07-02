@@ -94,7 +94,7 @@ export function useOnboardingPage() {
   }
 
   // Skip the paywall for users already on a paid tier (admin grants or
-  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
   const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
     query: {
       enabled: isLoggedIn,
