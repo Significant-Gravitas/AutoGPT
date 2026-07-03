@@ -2846,8 +2846,10 @@ async def _prepare_file_attachments(
     Images (PNG/JPEG/GIF/WebP) are embedded directly as vision content blocks
     in the user message so Claude can see them without tool calls.
 
-    Non-image files (PDFs, text, etc.) are saved to *sdk_cwd* so the CLI's
-    built-in Read tool can access them.
+    Non-image files (PDFs, text, etc.) are referenced by ``file_id`` so the
+    model retrieves them with ``read_workspace_file``, which works in every
+    execution mode. A copy is also written to *sdk_cwd* for non-E2B tooling,
+    but the model is never pointed at that host-side path.
 
     Returns a :class:`PreparedAttachments` with a text hint and any image
     content blocks.
@@ -2894,11 +2896,19 @@ async def _prepare_file_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                # Non-image files: save to sdk_cwd for Read tool access
-                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # Non-image files: surface via read_workspace_file by file_id.
+                # In E2B mode (prod default) the model's file tools operate on
+                # the remote sandbox filesystem, so a host-side sdk_cwd path
+                # is unreadable there — the workspace tool works in both modes.
+                # A local copy is still written for non-E2B tooling, but the
+                # model is never pointed at that path.
+                _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # ``file_id=<uuid>`` (not ``file_id:``) — chat-share
+                # allowlisting extracts references via _FILE_ID_RE, which
+                # matches exactly this shape (data/sharing/workspace_refs.py).
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
-                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                    f"{file_info.size_bytes:,} bytes) file_id={fid}"
                 )
         except Exception:
             logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
@@ -2908,7 +2918,12 @@ async def _prepare_file_attachments(
 
     noun = "file" if len(file_descriptions) == 1 else "files"
     has_non_images = len(file_descriptions) > len(image_blocks)
-    read_hint = " Use the Read tool to view non-image files." if has_non_images else ""
+    read_hint = (
+        " Use the read_workspace_file tool with the file_id to view non-image"
+        " files (pass save_to_path to copy one into the working directory)."
+        if has_non_images
+        else ""
+    )
     hint = (
         f"[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
         + "\n".join(file_descriptions)
