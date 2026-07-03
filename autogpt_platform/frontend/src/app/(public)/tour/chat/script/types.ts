@@ -52,10 +52,18 @@ export interface ScriptedTurn {
 
 export type TourScript = ScriptedTurn[];
 
+/** Mock workspace file opened in the artifact panel when a scenario's
+ * script finishes — stands in for the real agent's output file. */
+export interface TourCompletionArtifact {
+  filename: string;
+  markdown: string;
+}
+
 export interface TourScenario {
   id: string;
   /** Chip label — kept in sync with the product page's scenario chips. */
   label: string;
   icon: Icon;
   script: TourScript;
+  completionArtifact: TourCompletionArtifact;
 }

@@ -16,9 +16,15 @@ interface Args {
   sessionId: string;
   script: TourScript;
   onComplete: () => void;
+  onReset?: () => void;
 }
 
-export function useTourCopilot({ sessionId, script, onComplete }: Args) {
+export function useTourCopilot({
+  sessionId,
+  script,
+  onComplete,
+  onReset,
+}: Args) {
   const [messages, setMessages] = useState<TourMessage[]>([]);
   const [status, setStatus] = useState<TourStatus>("ready");
   const stepIndex = useRef(0);
@@ -78,6 +84,7 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
     stepIndex.current = 0;
     commit([]);
     setStatus("ready");
+    onReset?.();
   }
 
   useMountEffect(() => clearTimers);
