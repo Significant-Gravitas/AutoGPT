@@ -33,42 +33,37 @@ export function TourUpsellBanner({ onReplay }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 sm:ml-auto sm:items-end">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Button
-              variant="ghost"
-              size="small"
-              leftIcon={<ArrowCounterClockwiseIcon className="h-4 w-4" />}
-              onClick={onReplay}
-            >
-              Replay demo
-            </Button>
-            <Button
-              as="NextLink"
-              href="https://github.com/Significant-Gravitas/AutoGPT"
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="secondary"
-              size="small"
-              leftIcon={<GithubLogoIcon className="h-4 w-4" />}
-            >
-              Self-host free
-            </Button>
-            <Button
-              as="NextLink"
-              href="https://agpt.co/pricing"
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="primary"
-              size="small"
-              className="shadow-[0_0_24px_-4px_rgba(124,58,237,0.7)] transition-shadow hover:shadow-[0_0_32px_-2px_rgba(124,58,237,0.85)]"
-            >
-              Start with Pro — $42.50/mo
-            </Button>
-          </div>
-          <Text variant="small" className="text-zinc-500">
-            Open source · cancel anytime
-          </Text>
+        <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-3">
+          <Button
+            variant="ghost"
+            size="small"
+            leftIcon={<ArrowCounterClockwiseIcon className="h-4 w-4" />}
+            onClick={onReplay}
+          >
+            Replay demo
+          </Button>
+          <Button
+            as="NextLink"
+            href="https://github.com/Significant-Gravitas/AutoGPT"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="small"
+            leftIcon={<GithubLogoIcon className="h-4 w-4" />}
+          >
+            Self-host free
+          </Button>
+          <Button
+            as="NextLink"
+            href="https://agpt.co/pricing"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="primary"
+            size="small"
+            className="shadow-[0_0_24px_-4px_rgba(124,58,237,0.7)] transition-shadow hover:shadow-[0_0_32px_-2px_rgba(124,58,237,0.85)]"
+          >
+            Start with Pro — $42.50/mo
+          </Button>
         </div>
       </div>
     </div>

@@ -99,7 +99,6 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
     expect(screen.getByText(/Start with Pro — \$42\.50\/mo/i)).toBeDefined();
     expect(screen.getByText(/Self-host free/i)).toBeDefined();
-    expect(screen.getByText(/Open source · cancel anytime/i)).toBeDefined();
   });
 
   test("scenario chips switch the demo path", async () => {
