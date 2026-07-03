@@ -301,9 +301,10 @@ export function convertChatSessionMessagesToUiMessages(
 
   for (const msg of messages) {
     if (msg.role !== "tool") continue;
-    if (!msg.tool_call_id) continue;
+    const toolCallId = msg.tool_call_id?.trim();
+    if (!toolCallId) continue;
     if (msg.content == null) continue;
-    toolOutputsByCallId.set(msg.tool_call_id, msg.content);
+    toolOutputsByCallId.set(toolCallId, msg.content);
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];

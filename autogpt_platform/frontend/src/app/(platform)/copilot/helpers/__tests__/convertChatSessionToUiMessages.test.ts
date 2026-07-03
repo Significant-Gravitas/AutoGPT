@@ -509,4 +509,41 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
       expect(todoParts).toHaveLength(1);
     });
   });
+
+  describe("tool output matching", () => {
+    it("attaches an output whose tool_call_id is whitespace-padded", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "running a tool",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: { name: "SomeTool", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ ok: true }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: false },
+      );
+
+      const toolPart = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-SomeTool") as
+        | { state: string; output: unknown }
+        | undefined;
+
+      expect(toolPart?.state).toBe("output-available");
+      expect(toolPart?.output).toEqual({ ok: true });
+    });
+  });
 });
