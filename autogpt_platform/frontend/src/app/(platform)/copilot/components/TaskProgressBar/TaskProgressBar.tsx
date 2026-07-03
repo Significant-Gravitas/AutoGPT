@@ -1,46 +1,23 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   CaretDownIcon,
-  CheckIcon,
-  CircleIcon,
   ListChecksIcon,
-  PauseCircleIcon,
   SealCheckIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
+import { EASE_OUT } from "./animations";
+import { StatusIcon } from "./components/StatusIcon/StatusIcon";
+import { TaskRow } from "./components/TaskRow/TaskRow";
 import {
   getCurrentLabel,
   getCurrentTask,
   isAllComplete,
+  toDisplayStatus,
   type TodoItem,
 } from "./helpers";
-
-// ease-out-quad — Emil's default for entering elements.
-const EASE_OUT = [0.25, 0.46, 0.45, 0.94] as const;
-
-// A newly in-progress loader waits for the completing task's tick + strikethrough
-// to play first, so each step reads as a sequence.
-const LOADER_DELAY = 0.3;
-
-// Blur-bridge for the status icon swap (Emil's copy-button pattern).
-const ICON_EXIT = 0.12;
-const ICON_ENTER = 0.18;
-
-// A task that was in_progress when the agent went idle (user Stop, end of turn,
-// or error) is "stopped" — shown with a distinct amber icon instead of a spinner
-// or a plain pending circle.
-type DisplayStatus = TodoItem["status"] | "stopped";
-
-function toDisplayStatus(
-  status: TodoItem["status"],
-  isStreaming: boolean,
-): DisplayStatus {
-  return !isStreaming && status === "in_progress" ? "stopped" : status;
-}
 
 // BlurText-style swap for the collapsed header's cycling current task only.
 const BLUR_SWAP = {
@@ -187,113 +164,5 @@ export function TaskProgressBar({
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-function TaskRow({
-  todo,
-  isStreaming,
-  reduceMotion,
-}: {
-  todo: TodoItem;
-  isStreaming: boolean;
-  reduceMotion: boolean;
-}) {
-  const status = toDisplayStatus(todo.status, isStreaming);
-  const active = status === "in_progress";
-  const completed = status === "completed";
-  const label = active && todo.activeForm ? todo.activeForm : todo.content;
-  const textClass = completed
-    ? `text-zinc-400 ${reduceMotion ? "line-through" : ""}`
-    : active
-      ? "font-medium text-zinc-900"
-      : "text-zinc-600";
-
-  return (
-    <li className="flex items-start gap-2 text-sm">
-      <span className="mt-0.5 flex-shrink-0">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={status}
-            className="block"
-            initial={reduceMotion ? false : { opacity: 0, filter: "blur(6px)" }}
-            animate={{ opacity: 1, filter: "blur(0px)" }}
-            exit={
-              reduceMotion
-                ? { opacity: 0 }
-                : {
-                    opacity: 0,
-                    filter: "blur(6px)",
-                    transition: {
-                      duration: ICON_EXIT,
-                      ease: EASE_OUT,
-                      // A pending circle only leaves when its task becomes active
-                      // — hold it until the previous step's tick/strike finishes.
-                      delay: status === "pending" ? LOADER_DELAY : 0,
-                    },
-                  }
-            }
-            transition={{ duration: ICON_ENTER, ease: EASE_OUT }}
-          >
-            <StatusIcon status={status} />
-          </motion.span>
-        </AnimatePresence>
-      </span>
-      <span className={`min-w-0 flex-1 ${textClass}`}>
-        <span className="relative inline">
-          {label}
-          {completed && !reduceMotion && (
-            <motion.span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-zinc-400"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              style={{ transformOrigin: "left" }}
-              transition={{ duration: 0.25, ease: EASE_OUT, delay: ICON_EXIT }}
-            />
-          )}
-        </span>
-      </span>
-    </li>
-  );
-}
-
-function StatusIcon({ status }: { status: DisplayStatus }) {
-  if (status === "completed") {
-    return (
-      <CheckIcon
-        size={14}
-        weight="bold"
-        className="text-emerald-500"
-        aria-label="completed"
-      />
-    );
-  }
-  if (status === "in_progress") {
-    return (
-      <LoadingSpinner
-        size="small"
-        className="h-3.5 w-3.5 text-purple-500 [animation-duration:0.5s]"
-        aria-label="in progress"
-      />
-    );
-  }
-  if (status === "stopped") {
-    return (
-      <PauseCircleIcon
-        size={15}
-        weight="fill"
-        className="text-amber-500"
-        aria-label="stopped"
-      />
-    );
-  }
-  return (
-    <CircleIcon
-      size={14}
-      weight="regular"
-      className="text-zinc-400"
-      aria-label="pending"
-    />
   );
 }

@@ -73,3 +73,15 @@ export function getCurrentLabel(todo: TodoItem): string {
   if (todo.status === "in_progress" && todo.activeForm) return todo.activeForm;
   return todo.content;
 }
+
+// A task that was in_progress when the agent went idle (user Stop, end of turn,
+// or error) is "stopped" — shown with a distinct amber icon instead of a spinner
+// or a plain pending circle.
+export type DisplayStatus = TodoItem["status"] | "stopped";
+
+export function toDisplayStatus(
+  status: TodoItem["status"],
+  isStreaming: boolean,
+): DisplayStatus {
+  return !isStreaming && status === "in_progress" ? "stopped" : status;
+}
