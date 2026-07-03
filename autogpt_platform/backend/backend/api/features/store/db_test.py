@@ -357,6 +357,61 @@ async def test_update_profile_creates_when_missing(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_tolerates_create_race(mocker):
+    """If a Profile is created concurrently between the existence check and our
+    create(), update_profile re-fetches and updates it rather than failing."""
+    raced_profile = prisma.models.Profile(
+        id="raced-id",
+        name="Old Name",
+        username="raced",
+        userId="user-id",
+        description="Old",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+    updated_profile = prisma.models.Profile(
+        id="raced-id",
+        name="New Name",
+        username="raced",
+        userId="user-id",
+        description="New desc",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    # First existence check: no profile → enter the create branch. The create
+    # then loses the race (UniqueViolationError), so we re-fetch and find it.
+    mock_profile_db.return_value.find_first = AsyncMock(
+        side_effect=[None, raced_profile]
+    )
+    mock_profile_db.return_value.create = AsyncMock(
+        side_effect=prisma.errors.UniqueViolationError({})
+    )
+    mock_profile_db.return_value.update = AsyncMock(return_value=updated_profile)
+
+    profile = Profile(
+        name="New Name",
+        username="raced",
+        description="New desc",
+        links=[],
+        avatar_url=None,
+    )
+
+    result = await db.update_profile("user-id", profile)
+
+    assert result.name == "New Name"
+    mock_profile_db.return_value.create.assert_called_once()
+    mock_profile_db.return_value.update.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(

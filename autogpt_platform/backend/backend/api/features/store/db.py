@@ -1171,17 +1171,27 @@ async def update_profile(
             logger.info(
                 f"No profile for user {user_id}; creating one from submitted data"
             )
-            created_profile = await prisma.models.Profile.prisma().create(
-                data=prisma.types.ProfileCreateInput(
-                    userId=user_id,
-                    name=profile.name,
-                    username=username,
-                    description=profile.description,
-                    links=profile.links,
-                    avatarUrl=profile.avatar_url,
+            try:
+                created_profile = await prisma.models.Profile.prisma().create(
+                    data=prisma.types.ProfileCreateInput(
+                        userId=user_id,
+                        name=profile.name,
+                        username=username,
+                        description=profile.description,
+                        links=profile.links,
+                        avatarUrl=profile.avatar_url,
+                    )
                 )
-            )
-            return store_model.ProfileDetails.from_db(created_profile)
+                return store_model.ProfileDetails.from_db(created_profile)
+            except prisma.errors.UniqueViolationError:
+                # A concurrent request (or get_or_create_user) created the
+                # Profile first. Re-fetch and fall through to update it with the
+                # submitted data rather than failing the save.
+                existing_profile = await prisma.models.Profile.prisma().find_first(
+                    where={"userId": user_id}
+                )
+                if not existing_profile:
+                    raise
 
         # Verify that the user is authorized to update this profile
         if existing_profile.userId != user_id:
