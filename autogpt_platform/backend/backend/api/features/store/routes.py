@@ -588,9 +588,13 @@ async def get_cache_metrics():
         info = cache_func.cache_info()
         # Cache size metric (dynamic - changes as items are cached/expired)
         metrics.append(f'store_cache_entries{{cache="{cache_name}"}} {info["size"]}')
-        # Cache utilization percentage (dynamic - useful for monitoring)
+        # Cache utilization percentage (dynamic - useful for monitoring).
+        # An unbounded cache reports maxsize=None → utilization is undefined
+        # (0), and comparing None > 0 would raise, 500-ing the endpoint.
         utilization = (
-            (info["size"] / info["maxsize"] * 100) if info["maxsize"] > 0 else 0
+            (info["size"] / info["maxsize"] * 100)
+            if info["maxsize"] and info["maxsize"] > 0
+            else 0
         )
         metrics.append(
             f'store_cache_utilization_percent{{cache="{cache_name}"}} {utilization:.2f}'
