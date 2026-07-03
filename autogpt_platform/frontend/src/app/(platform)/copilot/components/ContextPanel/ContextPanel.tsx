@@ -37,6 +37,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   // When the task bar (above the chat input) is on, the sidebar drops the
   // Progress tab and shows Files only.
   const showProgressTab = !useGetFlag(Flag.TASK_PROGRESS_BAR);
+  // Clamp a persisted "progress" tab to "files" when Progress is hidden, so
+  // the switcher never ends up with no selected tab.
+  const effectiveTab = showProgressTab ? activeTab : "files";
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -47,7 +50,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         )}
       >
         <TabSwitcher
-          activeTab={activeTab}
+          activeTab={effectiveTab}
           filesCount={filesCount}
           onChange={setActiveTab}
           showProgressTab={showProgressTab}
@@ -65,7 +68,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {showProgressTab && activeTab === "progress" ? (
+        {showProgressTab && effectiveTab === "progress" ? (
           <ProgressTab sessionId={sessionId} />
         ) : (
           <FilesTab sessionId={sessionId} />

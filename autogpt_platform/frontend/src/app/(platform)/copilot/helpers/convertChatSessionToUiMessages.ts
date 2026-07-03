@@ -142,25 +142,26 @@ function toToolInput(rawArguments: unknown): unknown {
  * all-completed update of a turn). Dropping it leaves the newest surviving
  * TodoWrite input stale — an earlier "in_progress" snapshot — so the task
  * progress UI shows work still running after the turn finished. Recover the
- * list from the orphan result's ``newTodos`` and synthesize the missing part.
+ * list from the orphan result's ``todos`` and synthesize the missing part.
  */
 function orphanTodoWriteResultToPart(
   msg: SessionChatMessage,
   consumedToolCallIds: ReadonlySet<string>,
 ): UIMessage<unknown, UIDataTypes, UITools>["parts"][number] | null {
-  if (!msg.tool_call_id || consumedToolCallIds.has(msg.tool_call_id)) {
+  const toolCallId = msg.tool_call_id?.trim();
+  if (!toolCallId || consumedToolCallIds.has(toolCallId)) {
     return null;
   }
   if (typeof msg.content !== "string") return null;
   const parsed = safeJsonParse(msg.content);
   if (!parsed || typeof parsed !== "object") return null;
-  const newTodos = (parsed as { newTodos?: unknown }).newTodos;
-  if (!Array.isArray(newTodos) || newTodos.length === 0) return null;
+  const todos = (parsed as { todos?: unknown }).todos;
+  if (!Array.isArray(todos) || todos.length === 0) return null;
   return {
     type: "tool-TodoWrite",
-    toolCallId: msg.tool_call_id,
+    toolCallId,
     state: "output-available",
-    input: { todos: newTodos },
+    input: { todos },
     output: parsed,
   } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
 }
