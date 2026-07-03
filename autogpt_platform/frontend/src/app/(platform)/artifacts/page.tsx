@@ -6,11 +6,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { Transition, Variants } from "framer-motion";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
@@ -48,7 +45,7 @@ export default function ArtifactsPage() {
   const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
     Flag.ARTIFACTS_PAGE,
   );
-  const showNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  const { showNewLayout } = usePlatformChrome();
   const reduceMotion = useReducedMotion();
   const {
     files,
