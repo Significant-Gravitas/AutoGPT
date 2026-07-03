@@ -7,6 +7,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { XIcon } from "@phosphor-icons/react";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
@@ -33,6 +34,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   } = useContextPanel();
   const { uploaded, generated } = useSessionFiles(sessionId);
   const filesCount = uploaded.length + generated.length;
+  // When the task bar (above the chat input) is on, the sidebar drops the
+  // Progress tab and shows Files only.
+  const showProgressTab = !useGetFlag(Flag.TASK_PROGRESS_BAR);
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -46,6 +50,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           activeTab={activeTab}
           filesCount={filesCount}
           onChange={setActiveTab}
+          showProgressTab={showProgressTab}
         />
         {!mobile && (
           <button
@@ -60,8 +65,11 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
-        {activeTab === "files" && <FilesTab sessionId={sessionId} />}
+        {showProgressTab && activeTab === "progress" ? (
+          <ProgressTab sessionId={sessionId} />
+        ) : (
+          <FilesTab sessionId={sessionId} />
+        )}
       </div>
     </div>
   );

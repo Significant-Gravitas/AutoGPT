@@ -16,6 +16,8 @@ import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/Copilo
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
@@ -90,6 +92,7 @@ export const ChatContainer = ({
   turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -201,6 +204,14 @@ export const ChatContainer = ({
                   </div>
                 )}
                 <SharedChatNotice sessionId={sessionId} />
+                {isTaskBarEnabled && (
+                  <div className="relative z-10">
+                    <TaskProgressBar
+                      todos={getLatestTaskList(messages) ?? []}
+                      isStreaming={isStreaming}
+                    />
+                  </div>
+                )}
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>
