@@ -17,10 +17,7 @@ function todo(
   return { content, status, activeForm };
 }
 
-function messageWithTodoWrite(
-  todos: unknown,
-  state?: string,
-): UIMessage {
+function messageWithTodoWrite(todos: unknown, state?: string): UIMessage {
   return {
     id: "m1",
     role: "assistant",

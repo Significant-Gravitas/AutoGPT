@@ -91,7 +91,10 @@ describe("TaskProgressBar", () => {
   it("expands to reveal every task row when the header is clicked", () => {
     render(
       <TaskProgressBar
-        todos={[todo("First task", "completed"), todo("Second task", "pending")]}
+        todos={[
+          todo("First task", "completed"),
+          todo("Second task", "pending"),
+        ]}
         defaultExpanded={false}
       />,
     );
