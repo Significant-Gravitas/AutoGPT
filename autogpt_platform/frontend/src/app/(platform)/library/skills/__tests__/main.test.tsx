@@ -283,7 +283,7 @@ describe("SkillsPage", () => {
     await screen.findByTestId("skills-empty");
 
     const input = screen.getByTestId("skill-upload-input");
-    const longDescription = "x".repeat(201);
+    const longDescription = "x".repeat(251);
     const file = new File(
       [`---\nname: too_long\ndescription: ${longDescription}\n---\n\nbody`],
       "too_long.md",
@@ -295,7 +295,7 @@ describe("SkillsPage", () => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Can't upload this skill",
-          description: expect.stringContaining("201/200"),
+          description: expect.stringContaining("251/250"),
           variant: "destructive",
         }),
       );

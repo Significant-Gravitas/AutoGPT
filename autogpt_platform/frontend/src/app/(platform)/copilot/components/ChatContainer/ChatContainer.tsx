@@ -10,6 +10,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -40,7 +41,11 @@ export interface ChatContainerProps {
    * flips immediately regardless of AI SDK's status timing. */
   isUserStopping?: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
