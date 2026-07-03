@@ -1,7 +1,6 @@
 """Chat-turn orchestration for the platform bot bridge."""
 
 import logging
-import os
 from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -9,6 +8,7 @@ from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
+    ChatSession,
     append_and_save_message,
     create_chat_session,
     get_chat_session,
@@ -79,26 +79,30 @@ async def upload_workspace_file(
         request.platform_server_id,
         request.platform_user_id,
     )
-    # Strip any directory components a (possibly hostile) client put in the
-    # filename so it can't traverse the workspace path or leak ".."/separators
-    # into the storage backend (e.g. GCS blob names). write_file passes the
-    # filename through to storage, so use the sanitized name everywhere.
-    # Basename alone still yields "."/".." for those inputs, which would re-
-    # introduce a special segment into uploads/<uuid>/<name>, so reject them.
-    safe_name = os.path.basename(request.filename.replace("\\", "/"))
+    # Reduce the filename to its basename so a (possibly hostile) client can't
+    # traverse the workspace path or leak ".."/separators into the storage
+    # backend. Workspace paths are POSIX, so split on "/" (after normalising
+    # backslashes) rather than os.path. Reject "."/".." which survive that.
+    safe_name = request.filename.replace("\\", "/").rsplit("/", 1)[-1]
     if safe_name in {"", ".", ".."}:
         safe_name = "file"
     try:
         workspace = await workspace_db().get_or_create_workspace(owner_user_id)
-        manager = WorkspaceManager(owner_user_id, workspace.id)
+        # Session-scoped, exactly like the web upload endpoint: the file lands
+        # at /sessions/<session_id>/<name> so AutoPilot reads it during the
+        # turn. The caller resolves the session before uploading (see
+        # ensure_chat_session).
+        manager = WorkspaceManager(owner_user_id, workspace.id, request.session_id)
         stored = await manager.write_file(
             content=request.content,
             filename=safe_name,
-            # Unique sub-path so re-uploading a file with the same name (e.g.
-            # two ``test.txt``) is a fresh file, not a path conflict.
-            path=f"uploads/{uuid4().hex}/{safe_name}",
             mime_type=request.mime_type,
             metadata={"origin": "user-upload"},
+            # Re-uploading a same-named file in the conversation replaces it
+            # rather than erroring — without this a name collision raises
+            # ValueError that would be mislabelled a "too large / quota"
+            # rejection. Keeps the ValueError branch below meaning only that.
+            overwrite=True,
         )
     except VirusDetectedError:
         return WorkspaceUploadResult(filename=request.filename, error="virus_detected")
@@ -119,6 +123,46 @@ async def upload_workspace_file(
     return WorkspaceUploadResult(filename=request.filename, file_id=stored.id)
 
 
+async def _resolve_or_create_session(
+    owner_user_id: str, session_id: str | None, source_platform: str
+) -> ChatSession:
+    """Reuse the bot's cached session, or start a fresh one.
+
+    The bot caches session IDs across turns and a cached session can be
+    deleted from the web app in between — fall back to a new one so the
+    conversation self-heals instead of erroring.
+    """
+    session = None
+    if session_id:
+        session = await get_chat_session(session_id, owner_user_id)
+    if session is None:
+        session = await create_chat_session(
+            owner_user_id, dry_run=False, source_platform=source_platform
+        )
+    return session
+
+
+async def ensure_chat_session(
+    platform: Platform,
+    platform_user_id: str,
+    platform_server_id: str | None,
+    session_id: str | None,
+) -> str:
+    """Resolve (or create) the session for a bot conversation, return its ID.
+
+    Called before uploading attachments so they can be written into the
+    session folder — mirroring the web UI, which uploads into an already-open
+    session so files land at /sessions/<id>/ where AutoPilot reads them.
+    """
+    owner_user_id = await _resolve_owner(
+        platform.value, platform_server_id, platform_user_id
+    )
+    session = await _resolve_or_create_session(
+        owner_user_id, session_id, platform.value.lower()
+    )
+    return session.session_id
+
+
 async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     """Prepare a copilot turn; caller subscribes via the returned handle.
 
@@ -126,19 +170,16 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     the full stream (Redis Streams, not pub/sub).
     """
     owner_user_id = await resolve_chat_owner(request)
-
-    session = None
-    session_id = request.session_id
-    if session_id:
-        session = await get_chat_session(session_id, owner_user_id)
-    if session is None:
-        # The bot caches session IDs across turns and a cached session can
-        # be deleted from the web app in between — fall back to a fresh one
-        # so the conversation self-heals instead of erroring every turn.
-        session = await create_chat_session(
-            owner_user_id,
-            dry_run=False,
-            source_platform=request.platform.value.lower(),
+    if request.file_ids and request.session_id:
+        # Attachment turn: the files were already uploaded into this session
+        # (ensure_chat_session ran first). It must still exist — silently
+        # switching to a new session would orphan those files. Fail instead.
+        session = await get_chat_session(request.session_id, owner_user_id)
+        if session is None:
+            raise NotFoundError("The session for the uploaded files no longer exists.")
+    else:
+        session = await _resolve_or_create_session(
+            owner_user_id, request.session_id, request.platform.value.lower()
         )
     session_id = session.session_id
 
