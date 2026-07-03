@@ -31,6 +31,7 @@ from .models import (
     BotChatRequest,
     ChatSessionSummary,
     ChatTurnHandle,
+    EnsureSessionResult,
     ListUserChatsResponse,
     Platform,
     TurnDenial,
@@ -62,14 +63,8 @@ def _unavailable_denial() -> TurnDenial:
     )
 
 
-async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
-    """Apply the same subscription paywall + usage rate limits as the web UI.
-
-    The bot enqueues turns directly into the executor, bypassing the
-    route-level paywall dependency and the dispatcher's rate-limit check, so
-    without this a NO_TIER / over-cap user would get unmetered free usage.
-    Returns a :class:`TurnDenial` to surface, or None when the turn may run.
-    """
+async def _check_paywall(user_id: str) -> TurnDenial | None:
+    """Subscription paywall check — fail closed on lookup failure."""
     try:
         paywalled = await is_user_paywalled(user_id)
     except Exception:
@@ -81,18 +76,22 @@ async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
             exc_info=True,
         )
         return _unavailable_denial()
-    if paywalled:
-        billing = _billing_url()
-        return TurnDenial(
-            reason="paywalled",
-            message=(
-                "AutoPilot needs an active subscription. "
-                "Upgrade your plan to start chatting with it."
-            ),
-            button_label="Subscribe" if billing else None,
-            button_url=billing,
-        )
+    if not paywalled:
+        return None
+    billing = _billing_url()
+    return TurnDenial(
+        reason="paywalled",
+        message=(
+            "AutoPilot needs an active subscription. "
+            "Upgrade your plan to start chatting with it."
+        ),
+        button_label="Subscribe" if billing else None,
+        button_url=billing,
+    )
 
+
+async def _check_usage_limits(user_id: str) -> TurnDenial | None:
+    """Daily/weekly USD-cap check — fail closed on any lookup failure."""
     cfg = ChatConfig()
     try:
         daily, weekly, _tier = await get_global_rate_limits(
@@ -117,7 +116,27 @@ async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
         )
     except RateLimitUnavailable:
         return _unavailable_denial()
+    except Exception:
+        # Same fail-closed treatment as the paywall lookup: an unexpected
+        # error (LD, config, Redis client) must not bypass the USD caps.
+        logger.warning(
+            "evaluate_turn_gate: rate limit check failed for ...%s",
+            user_id[-8:],
+            exc_info=True,
+        )
+        return _unavailable_denial()
     return None
+
+
+async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
+    """Apply the same subscription paywall + usage rate limits as the web UI.
+
+    The bot enqueues turns directly into the executor, bypassing the
+    route-level paywall dependency and the dispatcher's rate-limit check, so
+    without this a NO_TIER / over-cap user would get unmetered free usage.
+    Returns a :class:`TurnDenial` to surface, or None when the turn may run.
+    """
+    return await _check_paywall(user_id) or await _check_usage_limits(user_id)
 
 
 async def _resolve_owner(
@@ -233,20 +252,34 @@ async def ensure_chat_session(
     platform_user_id: str,
     platform_server_id: str | None,
     session_id: str | None,
-) -> str:
-    """Resolve (or create) the session for a bot conversation, return its ID.
+) -> EnsureSessionResult:
+    """Resolve (or create) the session for a bot conversation.
 
     Called before uploading attachments so they can be written into the
     session folder — mirroring the web UI, which uploads into an already-open
     session so files land at /sessions/<id>/ where AutoPilot reads them.
+
+    Evaluates the turn gate first: a capped/paywalled user gets the denial
+    back *before* any file is scanned or stored (the caller renders it and
+    skips the upload + turn). ``start_chat_turn`` re-checks the gate as the
+    authoritative enforcement point; this early check exists purely to spare
+    the wasted upload.
     """
     owner_user_id = await _resolve_owner(
         platform.value, platform_server_id, platform_user_id
     )
+    denial = await evaluate_turn_gate(owner_user_id)
+    if denial is not None:
+        logger.info(
+            "Bot session request denied (%s) for user ...%s",
+            denial.reason,
+            owner_user_id[-8:],
+        )
+        return EnsureSessionResult(denial=denial)
     session = await _resolve_or_create_session(
         owner_user_id, session_id, platform.value.lower()
     )
-    return session.session_id
+    return EnsureSessionResult(session_id=session.session_id)
 
 
 async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:

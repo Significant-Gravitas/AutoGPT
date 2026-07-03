@@ -29,6 +29,7 @@ from backend.platform_linking.models import (
     BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     Platform,
     TurnDenial,
     WorkspaceArtifact,
@@ -341,12 +342,14 @@ class BotBackend:
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
-    ) -> str:
+    ) -> EnsureSessionResult:
         """Resolve (or create) the copilot session for this conversation.
 
         Called before uploading attachments so they land in the session folder
         (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
-        UI uploads into an already-open session.
+        UI uploads into an already-open session. Carries a ``denial`` instead
+        of a session when the turn gate refuses the user, so the caller can
+        skip the upload entirely.
         """
         return await self._client.ensure_chat_session(
             platform=Platform(platform.upper()),

@@ -18,6 +18,7 @@ from backend.platform_linking.models import (
     LinkTokenResponse,
     Platform,
     ResolveResponse,
+    TurnDenial,
     WorkspaceUploadResult,
 )
 from backend.util.exceptions import (
@@ -30,6 +31,7 @@ from .adapters.base import InboundAttachment
 from .bot_backend import (
     BotBackend,
     BotStreamError,
+    ChatTurnDeniedError,
     _extract_setup_requirements,
     _is_corrupted_setup_requirements,
 )
@@ -519,9 +521,6 @@ class TestUploadWorkspaceFiles:
 class TestStreamChatDenial:
     @pytest.mark.asyncio
     async def test_stream_chat_raises_chat_turn_denied_on_denial(self, api: BotBackend):
-        from backend.copilot.bot.bot_backend import ChatTurnDeniedError
-        from backend.platform_linking.models import ChatTurnHandle, TurnDenial
-
         api._client.start_chat_turn = AsyncMock(
             return_value=ChatTurnHandle(
                 session_id="",

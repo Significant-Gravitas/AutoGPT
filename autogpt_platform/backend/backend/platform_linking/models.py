@@ -236,6 +236,18 @@ class TurnDenial(BaseModel):
     button_url: str | None = None
 
 
+class EnsureSessionResult(BaseModel):
+    """Result of resolving a session ahead of attachment uploads.
+
+    When ``denial`` is set the turn gate refused the user before anything was
+    uploaded — the bot renders the denial and skips both the upload and the
+    turn, so a capped/paywalled user's files are never scanned or stored.
+    """
+
+    session_id: str | None = None
+    denial: TurnDenial | None = None
+
+
 class ChatTurnHandle(BaseModel):
     """Subscribe keys for a pending copilot turn.
 
