@@ -102,7 +102,9 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getAllByText(COMPANY_ORG.name).length).toBeGreaterThan(0);
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
-    expect(screen.getByText("Create organization")).toBeDefined();
+    // "Create organization" is hidden until the org management frontend
+    // ships (PR1 is backend-only; /org/settings does not exist yet).
+    expect(screen.queryByText("Create organization")).toBeNull();
   });
 
   it("lists teams with a Private badge on invite-only teams", async () => {

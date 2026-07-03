@@ -8,7 +8,7 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { useOrgTeamSwitcher } from "./useOrgTeamSwitcher";
-import { CaretDown, Check, Plus, GearSix } from "@phosphor-icons/react";
+import { CaretDown, Check, GearSix } from "@phosphor-icons/react";
 import Link from "next/link";
 
 export function OrgTeamSwitcher() {
@@ -82,13 +82,9 @@ export function OrgTeamSwitcher() {
               )}
             </button>
           ))}
-          <Link
-            href="/org/settings"
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
-          >
-            <Plus size={14} />
-            <span>Create organization</span>
-          </Link>
+          {/* "Create organization" is intentionally hidden until the org
+              management frontend ships (PR1 is backend-only; /org/settings
+              does not exist yet). */}
         </div>
 
         {/* Team list (only if orgs exist) */}
