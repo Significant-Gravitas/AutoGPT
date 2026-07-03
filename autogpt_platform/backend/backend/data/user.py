@@ -62,14 +62,8 @@ async def get_or_create_user(user_data: dict) -> User:
             )
 
         # Ensure every user has a marketplace Profile (required to publish
-        # agents). This was historically created by a Postgres trigger on
-        # auth.users, but that trigger is unreliable — e.g. in preview
-        # environments a single shared auth.users trigger gets repointed at
-        # another schema, leaving platform users with no Profile and no way to
-        # publish. Do it here at the app layer, the one choke point every real
-        # user passes through. Best-effort: a failure must not block user
-        # resolution — the user self-heals on their next request or via the
-        # profile settings page.
+        # agents). Best-effort: a failure must not block user resolution — the
+        # user self-heals on their next request or via the profile settings page.
         try:
             await _ensure_user_profile(user.id, user.email)
         except Exception:
