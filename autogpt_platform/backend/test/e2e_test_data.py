@@ -27,6 +27,7 @@ from typing import Any, Dict, List
 import prisma.enums as prisma_enums
 import prisma.models as prisma_models
 from faker import Faker
+from pydantic import SecretStr
 
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
@@ -41,8 +42,10 @@ from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
+from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
+from backend.util.encryption import JSONCryptor
 from backend.util.json import SafeJson
 
 faker = Faker()
@@ -1147,22 +1150,30 @@ class TestDataCreator:
                 ),
             )
 
-            # Real (non-system) connected credential in the table.
+            # Real (non-system) connected credential — encrypt a proper
+            # Credentials model exactly like set_user_credentials, so the
+            # decrypt/validate read path (get_user_credentials) accepts it.
+            # (A raw/plaintext payload is silently rejected and never shows.)
+            cred_id = str(uuid.uuid4())
+            gh_cred = APIKeyCredentials(
+                id=cred_id,
+                provider="github",
+                api_key=SecretStr("ghp_kitchensink_seed"),
+                title="Kitchen-sink GitHub",
+            )
             await _try(
                 "credential",
                 prisma.integrationcredential.create(
                     data={
-                        "id": str(uuid.uuid4()),
+                        "id": cred_id,
                         "organizationId": org_id or "",
                         "ownerType": prisma_enums.CredentialOwnerType.USER,
                         "ownerId": user_id,
                         "teamId": team_id,
-                        "provider": "github",
-                        "credentialType": "api_key",
-                        "displayName": "Kitchen-sink GitHub",
-                        "encryptedPayload": SafeJson(
-                            {"api_key": "ghp_seed", "provider": "github"}
-                        ),
+                        "provider": gh_cred.provider,
+                        "credentialType": gh_cred.type,
+                        "displayName": gh_cred.title or gh_cred.provider,
+                        "encryptedPayload": JSONCryptor().encrypt(gh_cred.model_dump()),
                         "createdByUserId": user_id,
                     }
                 ),
