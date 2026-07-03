@@ -177,7 +177,11 @@ export default function ArtifactsPage() {
   );
 }
 
-function ArtifactsPageSkeleton({ showNewLayout }: { showNewLayout: boolean }) {
+interface Props {
+  showNewLayout: boolean;
+}
+
+function ArtifactsPageSkeleton({ showNewLayout }: Props) {
   return (
     <main
       className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}
