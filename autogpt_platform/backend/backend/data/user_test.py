@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import prisma.errors
 import pytest
 
 from backend.data import user as user_module
@@ -221,3 +222,29 @@ class TestGetOrCreateUserProfile:
 
         assert result is sentinel_user
         warn_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_profile_create_on_username_collision(self):
+        """A UniqueViolationError from a username clash (not a userId race)
+        must retry with a fresh handle so the user still gets a Profile."""
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-clash", email="dave@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            # userId never resolves to a Profile (so the clash is on username),
+            # and generated usernames pre-check as free.
+            mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+            # First create() collides on username, the retry succeeds.
+            mock_prisma.profile.create = AsyncMock(
+                side_effect=[prisma.errors.UniqueViolationError({}), None]
+            )
+
+            await user_module.get_or_create_user(
+                {"sub": "user-clash", "email": "dave@example.com"}
+            )
+
+        assert mock_prisma.profile.create.await_count == 2

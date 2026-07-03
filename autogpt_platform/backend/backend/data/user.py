@@ -110,30 +110,42 @@ _PROFILE_USERNAME_ANIMALS = (
 async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
     """Create a default marketplace Profile for *user_id* if none exists.
 
-    Idempotent and race-safe: an existing Profile short-circuits, and a
-    concurrent insert that loses the unique(userId) constraint is treated as
-    success rather than an error.
+    Idempotent and race-safe. A UniqueViolationError has two possible sources:
+    a concurrent request that already created this user's Profile (done), or a
+    collision on the unique username with *another* user (retry with a fresh
+    handle — otherwise the user would be left without a Profile).
     """
-    existing = await prisma.profile.find_unique(where={"userId": user_id})
-    if existing:
+    if await prisma.profile.find_unique(where={"userId": user_id}):
         return
 
     name = (email or "").split("@", 1)[0] or "user"
-    try:
-        await prisma.profile.create(
-            data=ProfileCreateInput(
-                userId=user_id,
-                name=name,
-                username=await _generate_profile_username(),
-                description="I'm new here",
-                links=[],
-                avatarUrl="",
+    for _ in range(3):
+        try:
+            await prisma.profile.create(
+                data=ProfileCreateInput(
+                    userId=user_id,
+                    name=name,
+                    username=await _generate_profile_username(),
+                    description="I'm new here",
+                    links=[],
+                    avatarUrl="",
+                )
             )
-        )
-    except UniqueViolationError:
-        # Created concurrently (another in-flight request, or the legacy
-        # auth.users trigger). The Profile now exists — nothing to do.
-        logger.debug("Profile for user %s already created concurrently", user_id)
+            return
+        except UniqueViolationError:
+            if await prisma.profile.find_unique(where={"userId": user_id}):
+                # Another in-flight request (or the legacy auth.users trigger)
+                # created this user's Profile — nothing to do.
+                logger.debug(
+                    "Profile for user %s already created concurrently", user_id
+                )
+                return
+            # The generated username collided with another user — loop and
+            # retry with a fresh handle.
+    logger.warning(
+        "Failed to create a unique profile handle for user %s after retries",
+        user_id,
+    )
 
 
 async def _generate_profile_username() -> str:
