@@ -20,8 +20,6 @@ export enum Flag {
   AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
-  // When on, the copilot task list renders as a bar above the chat input
-  // (TaskProgressBar); when off, it stays in the artifacts sidebar (ProgressTab).
   TASK_PROGRESS_BAR = "task-progress-bar",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
@@ -52,7 +50,7 @@ const defaultFlags = {
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: true,
+  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
