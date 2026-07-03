@@ -55,7 +55,7 @@ const defaultFlags = {
   [Flag.AUTOGPT_NEW_LAYOUT]: true,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
-  [Flag.TASK_PROGRESS_BAR]: true,
+  [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
@@ -112,6 +112,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
+    case Flag.TASK_PROGRESS_BAR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:
