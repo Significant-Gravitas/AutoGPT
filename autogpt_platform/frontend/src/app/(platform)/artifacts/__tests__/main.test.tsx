@@ -22,8 +22,11 @@ const { setFlagStatusMock } = vi.hoisted(() => {
 });
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
+  Flag: {
+    ARTIFACTS_PAGE: "artifacts-page",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+  },
+  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
 }));
 
