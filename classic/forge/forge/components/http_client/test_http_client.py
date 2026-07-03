@@ -63,6 +63,54 @@ def test_backslash_url_rejected_without_allowlist():
         component._make_request("GET", "http://127.0.0.1:6666\\@example.com/")
 
 
+def _redirect_response(location: str) -> MagicMock:
+    response = MagicMock()
+    response.is_redirect = True
+    response.status_code = 302
+    response.headers = {"Location": location}
+    return response
+
+
+def _final_response() -> MagicMock:
+    response = MagicMock()
+    response.is_redirect = False
+    response.status_code = 200
+    response.headers = {}
+    response.content = b"ok"
+    return response
+
+
+def test_cross_host_redirect_strips_authorization_header():
+    # requests strips Authorization when following a cross-host redirect
+    # (Session.rebuild_auth); the manual redirect loop must do the same.
+    component = HTTPClientComponent(HTTPClientConfiguration())
+    component.session.request = MagicMock(
+        side_effect=[_redirect_response("https://example.org/"), _final_response()]
+    )
+
+    component._make_request(
+        "GET", "https://example.com/", headers={"Authorization": "Bearer token"}
+    )
+
+    calls = component.session.request.call_args_list
+    assert calls[0].kwargs["headers"] == {"Authorization": "Bearer token"}
+    assert calls[1].kwargs["headers"] == {}
+
+
+def test_same_host_redirect_keeps_authorization_header():
+    component = HTTPClientComponent(HTTPClientConfiguration())
+    component.session.request = MagicMock(
+        side_effect=[_redirect_response("/moved"), _final_response()]
+    )
+
+    component._make_request(
+        "GET", "https://example.com/", headers={"Authorization": "Bearer token"}
+    )
+
+    calls = component.session.request.call_args_list
+    assert calls[1].kwargs["headers"] == {"Authorization": "Bearer token"}
+
+
 def test_make_request_blocks_redirect_to_internal():
     # A public URL that redirects to an internal host must be rejected: redirects
     # are followed manually and each hop is re-validated.

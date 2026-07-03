@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Any, Iterator, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 from pydantic import BaseModel, Field
@@ -70,8 +70,6 @@ class HTTPClientComponent(
 
         if not self.config.allowed_domains:
             return True
-
-        from urllib.parse import urlparse
 
         parsed = urlparse(url)
         # .hostname strips userinfo and port and lowercases the host.
@@ -156,7 +154,17 @@ class HTTPClientComponent(
                     break
 
                 # Resolve the next hop; it gets re-validated next iteration.
-                current_url = urljoin(current_url, location)
+                next_url = urljoin(current_url, location)
+                # requests strips Authorization when a redirect crosses hosts
+                # (Session.rebuild_auth); mirror that here so caller-supplied
+                # credentials don't follow a redirect to a different host.
+                if urlparse(next_url).hostname != urlparse(current_url).hostname:
+                    request_headers = {
+                        key: value
+                        for key, value in request_headers.items()
+                        if key.lower() != "authorization"
+                    }
+                current_url = next_url
                 # Per HTTP semantics, 301/302/303 downgrade to GET without a body.
                 if response.status_code in (301, 302, 303):
                     current_method = "GET"
