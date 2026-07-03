@@ -25,7 +25,7 @@ export function TourSidebarHeader() {
         {isCollapsed ? (
           <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
         ) : (
-          <AutoGPTLogo className="h-7 w-auto" />
+          <AutoGPTLogo className="h-9 w-auto" />
         )}
       </Link>
 

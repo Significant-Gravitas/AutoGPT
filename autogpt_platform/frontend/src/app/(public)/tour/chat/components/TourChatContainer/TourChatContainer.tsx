@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { LightningIcon } from "@phosphor-icons/react";
 import type { useTourCopilot } from "../../useTourCopilot";
 import { TourMessageList } from "../TourMessageList/TourMessageList";
@@ -21,7 +22,14 @@ export function TourChatContainer({ chat }: Props) {
           messages={chat.messages}
           isStreaming={chat.isStreaming}
         />
-        <div className="relative px-3 pb-2 pt-2">
+        <div
+          className={cn(
+            "relative px-3 pb-2 pt-2",
+            // The upsell renders as a fixed bottom banner once the demo is
+            // exhausted — pad so the hint line isn't hidden underneath it.
+            chat.isExhausted && "pb-24",
+          )}
+        >
           <TourPromptBar
             key={chat.turnIndex}
             prompt={chat.currentUserPrompt}

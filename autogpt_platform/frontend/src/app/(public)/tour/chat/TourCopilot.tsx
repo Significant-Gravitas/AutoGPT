@@ -3,11 +3,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
@@ -46,20 +42,49 @@ export function TourCopilot() {
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
 
-  if (!appShellEnabled) {
-    return (
-      <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-[#fafafa]">
-        <TourBackdrop />
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+  // The completion artifact is not gated behind the app-shell flag — the demo
+  // always ends by opening the scenario's mock file in the artifact panel.
+  const chatColumn = (
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <TourBackdrop />
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        {appShellEnabled ? (
+          <div className="h-4 shrink-0" />
+        ) : (
           <div className="px-3 pb-2 pt-5">
             <TourScenarioChips />
           </div>
-          <TourChatHost
-            key={scenario.id}
-            sessionId={scenario.id}
-            script={scenario.script}
-          />
+        )}
+        <TourChatHost
+          key={scenario.id}
+          sessionId={scenario.id}
+          script={scenario.script}
+          onComplete={() => openArtifact(buildTourArtifactRef(scenario))}
+          onReset={clearArtifactPreview}
+        />
+      </div>
+    </div>
+  );
+
+  // The copilot panel sizes itself from the persisted store width — on the
+  // tour we pin it to 500px instead (the !important arbitrary variant wins
+  // over the panel's inline style) without touching the visitor's storage.
+  const artifactPanels = (
+    <>
+      {!isMobile && (
+        <div className="contents [&_[data-artifact-panel]]:!w-[500px]">
+          <ArtifactPanel />
         </div>
+      )}
+      {isMobile && <ArtifactPanel mobile />}
+    </>
+  );
+
+  if (!appShellEnabled) {
+    return (
+      <div className="relative flex h-dvh w-full overflow-hidden bg-[#fafafa]">
+        {chatColumn}
+        {artifactPanels}
       </div>
     );
   }
@@ -72,24 +97,9 @@ export function TourCopilot() {
       <TourSidebar />
       <SidebarInset className="min-h-0 overflow-hidden bg-[#fafafa]">
         <div className="relative flex h-full min-h-0 w-full">
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <TourBackdrop />
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-              <div className="flex h-12 shrink-0 items-center px-3 md:h-4">
-                <SidebarTrigger className="md:hidden" />
-              </div>
-              <TourChatHost
-                key={scenario.id}
-                sessionId={scenario.id}
-                script={scenario.script}
-                onComplete={() => openArtifact(buildTourArtifactRef(scenario))}
-                onReset={clearArtifactPreview}
-              />
-            </div>
-          </div>
-          {!isMobile && <ArtifactPanel />}
+          {chatColumn}
+          {artifactPanels}
         </div>
-        {isMobile && <ArtifactPanel mobile />}
       </SidebarInset>
     </SidebarProvider>
   );

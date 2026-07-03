@@ -32,8 +32,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 });
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { buildTourArtifactRef } from "../helpers";
 import TourChatPage from "../page";
-import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
+import { DEFAULT_SCENARIO_ID, getTourScenario } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
 
 function getSendBar() {
@@ -113,19 +114,42 @@ describe("Tour chat app shell (tour-app-shell flag)", () => {
   });
 
   test("finishing the demo opens the artifact panel with the mock markdown file", async () => {
+    // The next/dynamic ArtifactPanel chunk can't finish loading once timers
+    // are faked. Pre-open an artifact on real timers and wait for the panel
+    // to actually mount (this is what forces the lazy chunk to resolve),
+    // then reset and run the scripted demo under fake timers.
+    vi.useRealTimers();
+    act(() => {
+      useCopilotUIStore
+        .getState()
+        .openArtifact(
+          buildTourArtifactRef(getTourScenario(DEFAULT_SCENARIO_ID)),
+        );
+    });
     render(<TourChatPage />);
-
-    await pressEnterToSend();
-    await pressEnterToSend();
-
-    // The real copilot ArtifactPanel opens with the scenario's mock file.
     expect(
-      await screen.findByText("competitor-pricing-report.md"),
+      await screen.findByText(
+        "competitor-pricing-report.md",
+        {},
+        { timeout: 10_000 },
+      ),
     ).toBeDefined();
+    act(() => {
+      useCopilotUIStore.getState().clearArtifactPreview();
+    });
+    vi.useFakeTimers();
+
+    await pressEnterToSend();
+    await pressEnterToSend();
+
     expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
       "tour-competitor-watch",
     );
-  });
+    // No findBy/waitFor — RTL polling hangs under fake timers. The lazy
+    // chunk is already loaded, so the panel renders synchronously once the
+    // store holds the artifact.
+    expect(screen.getByText("competitor-pricing-report.md")).toBeDefined();
+  }, 30_000);
 
   test("flag off keeps the scenario pills layout", () => {
     flagState.tourAppShell = false;
