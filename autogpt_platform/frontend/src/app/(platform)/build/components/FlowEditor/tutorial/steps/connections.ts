@@ -87,6 +87,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         element: TUTORIAL_SELECTORS.FIRST_CALCULATOR_RESULT_OUTPUT_HANDLER,
         on: "left",
       },
+      classes: "new-builder-tour connection-tour-step",
 
       when: {
         show: () => {
@@ -174,6 +175,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         element: TUTORIAL_SELECTORS.SECOND_CALCULATOR_NUMBER_A_INPUT_HANDLER,
         on: "right",
       },
+      classes: "new-builder-tour connection-tour-step",
       when: {
         show: () => {
           const inputSelector =
