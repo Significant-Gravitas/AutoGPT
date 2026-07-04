@@ -138,7 +138,10 @@ export const useRunGraph = () => {
   const handleRunGraph = async ({
     dryRun = false,
   }: { dryRun?: boolean } = {}) => {
-    await saveGraph(undefined);
+    // Use the version returned by the save, not the one captured in this
+    // closure — saving creates a new graph version and the stale closure value
+    // would run the previous (pre-edit) version. See the delete-node-then-run bug.
+    const savedGraph = await saveGraph(undefined);
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
       setOpenRunInputDialog(true);
@@ -149,8 +152,8 @@ export const useRunGraph = () => {
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({
-        graphId: flowID ?? "",
-        graphVersion: flowVersion || null,
+        graphId: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
         data: {
           inputs: {},
           credentials_inputs: {},
