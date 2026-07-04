@@ -62,6 +62,23 @@ describe("usePlatformChrome", () => {
     });
   });
 
+  it.each([
+    "/reset-password",
+    "/auth/auth-code-error",
+    "/error",
+    "/unauthorized",
+  ])(
+    "excludes the unauthenticated %s route from the new layout",
+    async (route) => {
+      pathnameMock.mockReturnValue(route);
+      const { result } = renderHook(() => usePlatformChrome());
+
+      await waitFor(() => {
+        expect(result.current.showNewLayout).toBe(false);
+      });
+    },
+  );
+
   it("passes the flag enum to useGetFlag", async () => {
     renderHook(() => usePlatformChrome());
     await waitFor(() => {
