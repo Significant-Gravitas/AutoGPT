@@ -10,15 +10,16 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 import {
+  buildEditPayload,
   INITIAL_FILTER_STATE,
   toDashboardStats,
+  type EditPayload,
   type FilterState,
 } from "./helpers";
 
@@ -31,11 +32,6 @@ interface PublishState {
   isOpen: boolean;
   step: PublishStep;
   submissionData: StoreSubmission | null;
-}
-
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
-  graph_id: string;
 }
 
 interface EditState {
@@ -185,6 +181,11 @@ export function useCreatorDashboardPage() {
     setEditState({ isOpen: true, submission });
   }
 
+  function onEditFromReview(submission: StoreSubmission) {
+    setPublishState({ isOpen: false, step: "select", submissionData: null });
+    onEditSubmission(buildEditPayload(submission));
+  }
+
   function onEditClose() {
     setEditState({ isOpen: false, submission: null });
   }
@@ -233,6 +234,7 @@ export function useCreatorDashboardPage() {
     editState,
     onViewSubmission,
     onEditSubmission,
+    onEditFromReview,
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,

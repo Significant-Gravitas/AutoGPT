@@ -15,12 +15,15 @@ import {
   CheckIcon,
   ClockIcon,
   ImageBrokenIcon,
-  PaperPlaneTiltIcon,
-  RocketLaunchIcon,
+  NotePencilIcon,
+  StorefrontIcon,
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { getSubmissionMeta } from "../helpers";
+import { ReviewStepper } from "./ReviewStepper";
+import { ShareLinkButton } from "./ShareLinkButton";
 
 interface Props {
   agentName: string;
@@ -29,9 +32,16 @@ interface Props {
   onClose: () => void;
   onDone: () => void;
   onViewProgress: () => void;
+  onEdit?: () => void;
   thumbnailSrc?: string;
   status?: SubmissionStatus;
   reviewComments?: string | null;
+  version?: number;
+  category?: string | null;
+  submittedAt?: string | Date | null;
+  reviewedAt?: string | Date | null;
+  runCount?: number;
+  marketplaceUrl?: string;
 }
 
 function getHeroContent(
@@ -57,6 +67,15 @@ function getHeroContent(
         ringClass: "bg-rose-50 ring-rose-100",
         iconClass: "bg-rose-500 text-white",
       };
+    case SubmissionStatus.DRAFT:
+      return {
+        title: "Draft saved",
+        description:
+          "This agent isn't submitted yet. Finish the details and submit it for review.",
+        Icon: NotePencilIcon,
+        ringClass: "bg-zinc-50 ring-zinc-100",
+        iconClass: "bg-zinc-500 text-white",
+      };
     default:
       return {
         title: "Submission received",
@@ -70,6 +89,25 @@ function getHeroContent(
   }
 }
 
+function getHeroAccent(iconClass: string) {
+  if (iconClass.includes("bg-emerald")) {
+    return {
+      pulse: "bg-emerald-400/40",
+      gradient: "from-emerald-400 to-emerald-600",
+    };
+  }
+  if (iconClass.includes("bg-rose")) {
+    return { pulse: "bg-rose-400/40", gradient: "from-rose-400 to-rose-600" };
+  }
+  if (iconClass.includes("bg-zinc")) {
+    return { pulse: "bg-zinc-400/40", gradient: "from-zinc-400 to-zinc-600" };
+  }
+  return {
+    pulse: "bg-purple-400/40",
+    gradient: "from-purple-400 to-purple-600",
+  };
+}
+
 export function AgentReviewStep({
   agentName,
   subheader,
@@ -77,20 +115,46 @@ export function AgentReviewStep({
   thumbnailSrc,
   onDone,
   onViewProgress,
+  onEdit,
   status,
   reviewComments,
+  version,
+  category,
+  submittedAt,
+  reviewedAt,
+  runCount,
+  marketplaceUrl,
 }: Props) {
   const pathname = usePathname();
   const isDashboardPage = pathname.includes("/settings/creator-dashboard");
   const hero = getHeroContent(status, isDashboardPage);
   const HeroIcon = hero.Icon;
+  const accent = getHeroAccent(hero.iconClass);
   const shouldReduceMotion = useReducedMotion();
-  const isPending =
-    status !== SubmissionStatus.APPROVED &&
-    status !== SubmissionStatus.REJECTED;
 
-  const showCelebration = status !== SubmissionStatus.REJECTED;
+  const isApproved = status === SubmissionStatus.APPROVED;
+  const isRejected = status === SubmissionStatus.REJECTED;
+  const isDraft = status === SubmissionStatus.DRAFT;
+  const isPending = !isApproved && !isRejected && !isDraft;
+
+  const showCelebration = isApproved || isPending;
   const showConfetti = showCelebration && !shouldReduceMotion;
+
+  const metaItems = getSubmissionMeta({
+    status,
+    version,
+    category,
+    submittedAt,
+    reviewedAt,
+    runCount,
+  });
+
+  const editLabel = isRejected
+    ? "Edit & resubmit"
+    : isDraft
+      ? "Continue editing"
+      : "Edit details";
+  const editIsPrimary = !!onEdit && (isRejected || isDraft);
 
   return (
     <div
@@ -123,11 +187,7 @@ export function AgentReviewStep({
               }}
               className={cn(
                 "absolute inline-block size-24 rounded-full",
-                hero.iconClass.includes("bg-emerald")
-                  ? "bg-emerald-400/40"
-                  : hero.iconClass.includes("bg-rose")
-                    ? "bg-rose-400/40"
-                    : "bg-purple-400/40",
+                accent.pulse,
               )}
             />
             <motion.span
@@ -143,11 +203,7 @@ export function AgentReviewStep({
               }}
               className={cn(
                 "absolute inline-block size-24 rounded-full",
-                hero.iconClass.includes("bg-emerald")
-                  ? "bg-emerald-400/40"
-                  : hero.iconClass.includes("bg-rose")
-                    ? "bg-rose-400/40"
-                    : "bg-purple-400/40",
+                accent.pulse,
               )}
             />
           </>
@@ -163,12 +219,8 @@ export function AgentReviewStep({
               : { type: "spring", stiffness: 280, damping: 20, delay: 0.05 }
           }
           className={cn(
-            "relative flex size-20 items-center justify-center rounded-full shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
-            hero.iconClass.includes("bg-emerald")
-              ? "bg-gradient-to-br from-emerald-400 to-emerald-600"
-              : hero.iconClass.includes("bg-rose")
-                ? "bg-gradient-to-br from-rose-400 to-rose-600"
-                : "bg-gradient-to-br from-purple-400 to-purple-600",
+            "relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
+            accent.gradient,
           )}
         >
           <span
@@ -259,6 +311,32 @@ export function AgentReviewStep({
         ) : null}
       </motion.div>
 
+      {metaItems.length > 0 ? (
+        <motion.div
+          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24, ease: "easeOut", delay: 0.21 }}
+          className="mt-4 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-3 rounded-[14px] border border-zinc-200 bg-zinc-50/60 p-4"
+          data-testid="submission-meta"
+        >
+          {metaItems.map((item) => (
+            <div key={item.label} className="flex min-w-0 flex-col">
+              <Text variant="small" as="span" className="text-zinc-500">
+                {item.label}
+              </Text>
+              <Text
+                variant="small-medium"
+                as="span"
+                title={item.title}
+                className="truncate text-textBlack"
+              >
+                {item.value}
+              </Text>
+            </div>
+          ))}
+        </motion.div>
+      ) : null}
+
       {reviewComments && status === SubmissionStatus.REJECTED ? (
         <div className="mt-4 w-full max-w-md rounded-[14px] border border-rose-200 bg-rose-50 p-3">
           <div className="mb-1 flex items-center gap-2 text-rose-700">
@@ -273,95 +351,75 @@ export function AgentReviewStep({
         </div>
       ) : null}
 
-      {status !== SubmissionStatus.REJECTED ? (
-        <motion.div
-          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
-          className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
-        >
-          <Text variant="body-medium" as="span" className="text-textBlack">
-            What happens next
-          </Text>
-          <ol className="flex flex-col gap-3">
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-purple-50 text-purple-600">
-                <PaperPlaneTiltIcon size={14} weight="bold" />
-              </span>
-              <div className="flex min-w-0 flex-col">
-                <Text
-                  variant="small-medium"
-                  as="span"
-                  className="text-textBlack"
-                >
-                  Submitted for review
-                </Text>
-                <Text variant="small" className="text-zinc-500">
-                  Your listing is queued in the marketplace review pipeline.
-                </Text>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-                <ClockIcon size={14} weight="bold" />
-              </span>
-              <div className="flex min-w-0 flex-col">
-                <Text
-                  variant="small-medium"
-                  as="span"
-                  className="text-textBlack"
-                >
-                  Reviewed soon
-                </Text>
-                <Text variant="small" className="text-zinc-500">
-                  Our team checks the details, media, and safety of your agent.
-                </Text>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
-                <RocketLaunchIcon size={14} weight="bold" />
-              </span>
-              <div className="flex min-w-0 flex-col">
-                <Text
-                  variant="small-medium"
-                  as="span"
-                  className="text-textBlack"
-                >
-                  Approved listings go live
-                </Text>
-                <Text variant="small" className="text-zinc-500">
-                  You&apos;ll get an email; rejected listings come back with
-                  feedback.
-                </Text>
-              </div>
-            </li>
-          </ol>
-        </motion.div>
+      {isPending ? (
+        <ReviewStepper shouldReduceMotion={!!shouldReduceMotion} />
+      ) : null}
+
+      {isApproved && marketplaceUrl ? (
+        <div className="mt-4 flex w-full max-w-md justify-center">
+          <ShareLinkButton url={marketplaceUrl} />
+        </div>
       ) : null}
 
       <div className="mt-8 w-full">
         <StepFooter
           secondary={
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={onDone}
-              className="w-full sm:w-auto"
-            >
-              Done
-            </Button>
+            <>
+              {onEdit && isPending ? (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={onEdit}
+                  className="w-full sm:w-auto"
+                  leftIcon={<NotePencilIcon size={14} weight="bold" />}
+                  data-testid="edit-submission-button"
+                >
+                  {editLabel}
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={onDone}
+                className="w-full sm:w-auto"
+              >
+                Done
+              </Button>
+            </>
           }
           primary={
-            <Button
-              size="small"
-              onClick={onViewProgress}
-              className="w-full sm:w-auto"
-              rightIcon={<ArrowRightIcon size={14} weight="bold" />}
-              data-testid="view-progress-button"
-            >
-              {isDashboardPage ? "View progress" : "Go to Creator Dashboard"}
-            </Button>
+            isApproved && marketplaceUrl ? (
+              <Button
+                as="NextLink"
+                href={marketplaceUrl}
+                size="small"
+                className="w-full sm:w-auto"
+                rightIcon={<StorefrontIcon size={14} weight="bold" />}
+                data-testid="view-marketplace-button"
+              >
+                View on marketplace
+              </Button>
+            ) : editIsPrimary ? (
+              <Button
+                size="small"
+                onClick={onEdit}
+                className="w-full sm:w-auto"
+                rightIcon={<NotePencilIcon size={14} weight="bold" />}
+                data-testid="edit-submission-button"
+              >
+                {editLabel}
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                onClick={onViewProgress}
+                className="w-full sm:w-auto"
+                rightIcon={<ArrowRightIcon size={14} weight="bold" />}
+                data-testid="view-progress-button"
+              >
+                {isDashboardPage ? "View progress" : "Go to Creator Dashboard"}
+              </Button>
+            )
           }
         />
       </div>
