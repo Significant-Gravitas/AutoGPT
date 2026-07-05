@@ -215,7 +215,13 @@ jobs:
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
+            // Unlike the close/undeploy scan, this path TRIGGERS a deploy, so
+            // only commands from authorized authors count — otherwise a
+            // drive-by !deploy comment (ignored by the comment handler's
+            // permission gate) would arm auto-redeploy for the next push.
+            const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
             comments.data.forEach((comment, index) => {
+              if (!allowed.includes(comment.author_association)) return;
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {
