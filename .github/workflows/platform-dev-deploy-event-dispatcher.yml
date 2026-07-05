@@ -2,7 +2,7 @@ name: AutoGPT Platform - Dev Deploy PR Event Dispatcher
 
 on:
   pull_request:
-    types: [closed]
+    types: [closed, synchronize]
   issue_comment:
     types: [created]
 
@@ -195,4 +195,68 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: `🧹 **Auto-undeploying**: PR closed with active deployment. Cleaning up development environment for PR #${{ github.event.pull_request.number }}.`
+            });
+
+      # Auto-redeploy: previews go stale silently when a PR is pushed to and nobody
+      # remembers to re-run !deploy. Reuse the close-handler's active-deployment scan
+      # (last !deploy with no later !undeploy) and refresh the preview if one is active.
+      - name: Check deployment status on PR update
+        id: check_pr_sync
+        if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            let lastDeployIndex = -1;
+            let lastUndeployIndex = -1;
+
+            comments.data.forEach((comment, index) => {
+              if (comment.body.trim() === '!deploy') {
+                lastDeployIndex = index;
+              } else if (comment.body.trim() === '!undeploy') {
+                lastUndeployIndex = index;
+              }
+            });
+
+            // Redeploy only if there's an active deployment (a !deploy without a subsequent !undeploy)
+            const shouldDeploy = lastDeployIndex !== -1 && lastDeployIndex > lastUndeployIndex;
+            core.setOutput('should_deploy', shouldDeploy);
+
+      - name: Dispatch Deploy Event (PR updated with active deployment)
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action == 'synchronize' &&
+          steps.check_pr_sync.outputs.should_deploy == 'true'
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.DISPATCH_TOKEN }}
+          repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
+          event-type: pr-event
+          client-payload: |
+            {
+              "action": "deploy",
+              "pr_number": "${{ github.event.pull_request.number }}",
+              "pr_title": "${{ github.event.pull_request.title }}",
+              "pr_state": "${{ github.event.pull_request.state }}",
+              "repo": "${{ github.repository }}"
+            }
+
+      - name: Post PR update redeploy comment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action == 'synchronize' &&
+          steps.check_pr_sync.outputs.should_deploy == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🔄 **Auto-redeploying**: new commits pushed to a PR with an active deployment. Refreshing development environment for PR #${{ github.event.pull_request.number }}.`
             });
