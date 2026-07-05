@@ -38,10 +38,19 @@ const ContextPanel = dynamic(
   { ssr: false },
 );
 
+const SandboxIdePanel = dynamic(
+  () =>
+    import("./components/SandboxIdePanel/SandboxIdePanel").then(
+      (m) => m.SandboxIdePanel,
+    ),
+  { ssr: false },
+);
+
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isSandboxIdeEnabled = useGetFlag(Flag.COPILOT_SANDBOX_IDE);
   // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
   // hidden in lockstep with the layout swap — avoids a one-frame flash where
   // the classic shell renders without its sidebar before the new layout mounts.
@@ -87,6 +96,7 @@ export function CopilotPage() {
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
+        isSandboxIdeEnabled={isSandboxIdeEnabled}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
@@ -104,6 +114,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   isArtifactsEnabled: boolean;
+  isSandboxIdeEnabled: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -112,6 +123,7 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   isArtifactsEnabled,
+  isSandboxIdeEnabled,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -156,6 +168,9 @@ function MainArea({
       )}
       {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
       {!isMobile && isArtifactsEnabled && sessionId && <ContextPanelToggle />}
+      {!isMobile && isSandboxIdeEnabled && sessionId && (
+        <SandboxIdePanel sessionId={sessionId} />
+      )}
     </div>
   );
 }

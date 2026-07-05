@@ -45,11 +45,23 @@ interface ArtifactPanelState {
   activeTab: ContextPanelTab;
 }
 
+/** Sandbox IDE panel tab (flagged behind `copilot-sandbox-ide`). */
+export type SandboxIdeTab = "files" | "changes" | "terminal";
+
+interface SandboxIdePanelState {
+  isOpen: boolean;
+  activeTab: SandboxIdeTab;
+  selectedFilePath: string | null;
+  width: number;
+}
+
 export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
 export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
 export const MIN_CONTEXT_PANEL_WIDTH = 280;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;
 export const MIN_ARTIFACT_PANEL_WIDTH = 400;
+export const DEFAULT_SANDBOX_IDE_PANEL_WIDTH = 640;
+export const MIN_SANDBOX_IDE_PANEL_WIDTH = 400;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -173,6 +185,14 @@ interface CopilotUIState {
   setAutoOpenReady: () => void;
   markUserClosedForAutoOpen: () => void;
   resetAutoOpenState: () => void;
+
+  // Sandbox IDE panel (flagged behind `copilot-sandbox-ide`)
+  sandboxIdePanel: SandboxIdePanelState;
+  openSandboxIde: () => void;
+  closeSandboxIdePanel: () => void;
+  setSandboxIdeTab: (tab: SandboxIdeTab) => void;
+  selectSandboxFile: (path: string | null) => void;
+  setSandboxIdeWidth: (width: number) => void;
 
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
@@ -464,6 +484,33 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }
     _autoOpenKnownIds.add(ref.id);
   },
+  sandboxIdePanel: {
+    isOpen: true,
+    activeTab: "files",
+    selectedFilePath: null,
+    width: DEFAULT_SANDBOX_IDE_PANEL_WIDTH,
+  },
+  openSandboxIde: () =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, isOpen: true },
+    })),
+  closeSandboxIdePanel: () =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, isOpen: false },
+    })),
+  setSandboxIdeTab: (tab) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, activeTab: tab },
+    })),
+  selectSandboxFile: (path) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, selectedFilePath: path },
+    })),
+  setSandboxIdeWidth: (width) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, width },
+    })),
+
   setAutoOpenReady: () => {
     _autoOpenReady = true;
   },
