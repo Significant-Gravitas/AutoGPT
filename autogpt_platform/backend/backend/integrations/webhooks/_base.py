@@ -10,7 +10,7 @@ from strenum import StrEnum
 import backend.data.integrations as integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
 
 from .utils import webhook_ingress_url
@@ -116,6 +116,34 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         logger.info(f"Webhook #{webhook_id} deleted as it had no remaining triggers")
         return True
 
+    # --8<-- [start:BaseWebhooksManager6]
+    @classmethod
+    async def verify_signature(
+        cls,
+        webhook: integrations.WebhookWithRelations,
+        request: Request,
+    ) -> None:
+        """
+        Verify the authenticity of an incoming webhook request.
+
+        Default is a no-op: not every provider's webhook protocol supports
+        signing, so unsigned providers (e.g. Compass, Slant3D) don't override
+        this. Providers whose protocol does sign deliveries (GitHub, Telegram,
+        Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
+        missing or invalid signatures, using `hmac.compare_digest` for any
+        secret comparison. Overrides that only need the stored `secret` /
+        `config` may widen the parameter to `integrations.Webhook`.
+
+        Params:
+            webhook: Configured webhook including stored `secret` / config,
+                with `triggered_nodes` / `triggered_presets` relations loaded.
+            request: Incoming FastAPI `Request`. Read with `await request.body()`
+                for HMAC computation; Starlette caches the body so a second
+                read inside `validate_payload` is safe.
+        """
+
+    # --8<-- [end:BaseWebhooksManager6]
+
     # --8<-- [start:BaseWebhooksManager3]
     @classmethod
     @abstractmethod
@@ -211,9 +239,16 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         if register:
             if not credentials:
                 raise TypeError("credentials are required if register = True")
-            provider_webhook_id, config = await self._register_webhook(
-                credentials, webhook_type, resource, events, ingress_url, secret
-            )
+            try:
+                provider_webhook_id, config = await self._register_webhook(
+                    credentials, webhook_type, resource, events, ingress_url, secret
+                )
+            except Exception as e:
+                if isinstance(e, WebhookRegistrationError):
+                    raise
+                raise WebhookRegistrationError(
+                    f"Failed to register webhook: {e}"
+                ) from e
         else:
             provider_webhook_id, config = "", {}
 

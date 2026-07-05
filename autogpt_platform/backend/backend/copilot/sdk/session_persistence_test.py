@@ -25,8 +25,16 @@ from backend.copilot.constants import (
     STREAM_INCOMPLETE_MARKER,
 )
 from backend.copilot.model import ChatMessage, ChatSession
-from backend.copilot.response_model import StreamStartStep, StreamTextDelta
-from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
+from backend.copilot.response_model import (
+    StreamStartStep,
+    StreamTextDelta,
+    StreamToolInputAvailable,
+)
+from backend.copilot.sdk.service import (
+    _dispatch_response,
+    _intermediate_flush_blocked,
+    _StreamAccumulator,
+)
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -460,3 +468,129 @@ class TestPruneOrphanToolCallsLogging:
 
         assert removed == 1
         assert caplog.text == ""
+
+
+def _make_adapter(
+    *, text_streaming: bool = False, reasoning_streaming: bool = False
+) -> MagicMock:
+    """Adapter whose text/reasoning blocks are closed by default, so
+    ``_intermediate_flush_blocked`` reflects only the assistant-row state."""
+    adapter = MagicMock()
+    adapter.has_started_text = True
+    adapter.has_ended_text = not text_streaming
+    adapter.has_started_reasoning = reasoning_streaming
+    adapter.has_ended_reasoning = not reasoning_streaming
+    return adapter
+
+
+def _tool_call(name: str) -> dict:
+    return {"id": "c1", "type": "function", "function": {"name": name}}
+
+
+class TestIntermediateFlushBlocked:
+    """Regression for OPEN-3168: the append-only mid-turn flush must not lock an
+    assistant row before its tool_calls arrive. The model can emit a text
+    preamble and the tool_use as *separate* AssistantMessage events; flushing
+    the text row first orphaned the tool result (no call row) so the tool card
+    vanished on reload."""
+
+    def test_unsealed_assistant_row_blocks_flush(self) -> None:
+        # Text row appended, but no tool_calls yet — a tool_use may still follow.
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(
+                role="assistant", content="Let me set it up now."
+            ),
+            accumulated_tool_calls=[],
+            has_appended_assistant=True,
+            has_tool_results=False,
+        )
+        assert _intermediate_flush_blocked(acc, _make_adapter()) is True
+
+    def test_pending_tool_call_blocks_flush(self) -> None:
+        # tool_calls dispatched, result not yet recorded.
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content="x"),
+            accumulated_tool_calls=[_tool_call("t")],
+            has_appended_assistant=True,
+            has_tool_results=False,
+        )
+        assert _intermediate_flush_blocked(acc, _make_adapter()) is True
+
+    def test_completed_tool_round_allows_flush(self) -> None:
+        # tool_calls set AND result recorded → round sealed, safe to persist.
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content="x"),
+            accumulated_tool_calls=[_tool_call("t")],
+            has_appended_assistant=True,
+            has_tool_results=True,
+        )
+        assert _intermediate_flush_blocked(acc, _make_adapter()) is False
+
+    def test_nothing_appended_allows_flush(self) -> None:
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+            has_appended_assistant=False,
+            has_tool_results=False,
+        )
+        assert _intermediate_flush_blocked(acc, _make_adapter()) is False
+
+    def test_open_text_block_blocks_flush(self) -> None:
+        # Even a sealed round must not flush while text is still streaming.
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content="x"),
+            accumulated_tool_calls=[_tool_call("t")],
+            has_appended_assistant=True,
+            has_tool_results=True,
+        )
+        assert (
+            _intermediate_flush_blocked(acc, _make_adapter(text_streaming=True)) is True
+        )
+
+    def test_split_text_then_tool_use_keeps_call_on_same_row(self) -> None:
+        """End-to-end: a text preamble then a tool_use (separate events). The
+        flush is held while the row is unsealed, so the tool_calls land on that
+        same still-unpersisted row instead of orphaning the tool result."""
+        session = _make_session()
+        ctx = _make_ctx(session)
+        state = _make_state()
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+            has_appended_assistant=False,
+            has_tool_results=False,
+        )
+
+        # AssistantMessage #1 — text preamble → one assistant row appended.
+        _dispatch_response(
+            StreamTextDelta(id="t1", delta="The agent already has a webhook block."),
+            acc,
+            ctx,
+            state,
+            False,
+            "[test]",
+        )
+        assert len(session.messages) == 1
+        # The flush MUST be held here — the tool_use hasn't arrived yet.
+        assert _intermediate_flush_blocked(acc, _make_adapter()) is True
+
+        # AssistantMessage #2 — the tool_use → tool_calls attach to the SAME row.
+        _dispatch_response(
+            StreamToolInputAvailable(
+                toolCallId="toolu_01",
+                toolName="setup_agent_webhook_trigger",
+                input={"library_agent_id": "a1"},
+            ),
+            acc,
+            ctx,
+            state,
+            False,
+            "[test]",
+        )
+        # Still one assistant row, now carrying the call (not orphaned).
+        assert len(session.messages) == 1
+        assert session.messages[0].tool_calls
+        assert (
+            session.messages[0].tool_calls[0]["function"]["name"]
+            == "setup_agent_webhook_trigger"
+        )

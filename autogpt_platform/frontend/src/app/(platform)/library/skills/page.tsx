@@ -8,6 +8,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
+import { UploadSkillButton } from "./components/UploadSkillButton/UploadSkillButton";
 import { useSkillsPage } from "./useSkillsPage";
 
 export default function SkillsPage() {
@@ -27,13 +28,18 @@ export default function SkillsPage() {
         <ArrowLeftIcon size={14} weight="bold" />
         Back to Library
       </Link>
-      <header className="flex flex-col gap-2">
-        <Text variant="h2">AutoPilot skills</Text>
-        <Text variant="body" className="!text-zinc-500">
-          Reusable procedures your AutoPilot has distilled from past sessions.
-          Review what it remembers, or delete a skill you no longer want it to
-          reach for.
-        </Text>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <Text variant="h2">AutoPilot skills</Text>
+          <Text variant="body" className="!text-zinc-500">
+            Reusable procedures your AutoPilot has distilled from past sessions.
+            Review what it remembers, upload your own, download one to share, or
+            delete a skill you no longer want it to reach for.
+          </Text>
+        </div>
+        <div className="flex-shrink-0">
+          <UploadSkillButton />
+        </div>
       </header>
 
       {error ? (

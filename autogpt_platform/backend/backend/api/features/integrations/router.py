@@ -568,6 +568,23 @@ async def webhook_ingress_generic(
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    # Run provider signature verification (no-op for providers whose protocol
+    # has no signing scheme). 403 on failure; not 404 — that would leak
+    # webhook existence.
+    try:
+        await webhook_manager.verify_signature(webhook, request)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -613,6 +630,12 @@ async def webhook_ping(
     user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
+    if webhook.user_id != user_id:
+        # Treat a webhook the caller doesn't own as if it doesn't exist, so this
+        # endpoint can't be used to enumerate webhook IDs or ping others' webhooks.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+        )
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (

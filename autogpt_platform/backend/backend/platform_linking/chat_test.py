@@ -5,10 +5,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .chat import list_user_chats, start_chat_turn
-from .models import BotChatRequest, Platform
+from .chat import (
+    ensure_chat_session,
+    list_user_chats,
+    start_chat_turn,
+    upload_workspace_file,
+)
+from .models import BotChatRequest, Platform, WorkspaceUploadRequest
 
 
 def _request(**overrides) -> BotChatRequest:
@@ -162,6 +168,30 @@ class TestStartChatTurn:
         assert handle.session_id == "sess-fresh"
         mock_create.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_attachment_turn_with_missing_session_raises(self):
+        # An attachment turn's files are pinned to the supplied session; if it's
+        # gone, fail rather than silently switching to a new (fileless) session.
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
+            ) as mock_create,
+        ):
+            with pytest.raises(NotFoundError):
+                await start_chat_turn(_request(session_id="gone", file_ids=["f1"]))
+
+        mock_create.assert_not_awaited()
+
 
 class TestListUserChats:
     @pytest.mark.asyncio
@@ -228,3 +258,180 @@ class TestListUserChats:
             await list_user_chats(Platform.DISCORD, "pu1", limit=10_000, offset=-50)
 
         mock_get_sessions.assert_awaited_once_with("owner-1", limit=25, offset=0)
+
+
+class TestUploadWorkspaceFile:
+    @staticmethod
+    def _req(**overrides):
+        defaults = dict(
+            platform=Platform.DISCORD,
+            platform_user_id="pu1",
+            filename="a.png",
+            mime_type="image/png",
+            content=b"data",
+        )
+        defaults.update(overrides)
+        return WorkspaceUploadRequest(**defaults)
+
+    @staticmethod
+    def _patches(write_file_mock):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        ws_db = MagicMock()
+        ws_db.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+        manager = MagicMock()
+        manager.write_file = write_file_mock
+        return (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.workspace_db", return_value=ws_db),
+            patch(
+                "backend.platform_linking.chat.WorkspaceManager", return_value=manager
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_success_returns_file_id(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_workspace_file(self._req())
+        assert result.file_id == "file-1"
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_virus_detected_maps_to_error(self):
+        write = AsyncMock(side_effect=VirusDetectedError("EICAR-Test"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_workspace_file(self._req())
+        assert result.file_id is None
+        assert result.error == "virus_detected"
+
+    @pytest.mark.asyncio
+    async def test_scan_unavailable_maps_to_error(self):
+        write = AsyncMock(side_effect=VirusScanError("clamd down"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_workspace_file(self._req())
+        assert result.error == "scan_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_size_or_quota_maps_to_rejected(self):
+        write = AsyncMock(side_effect=ValueError("File too large"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_workspace_file(self._req())
+        assert result.error == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_maps_to_upload_failed(self):
+        write = AsyncMock(side_effect=RuntimeError("storage exploded"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            result = await upload_workspace_file(self._req())
+        assert result.error == "upload_failed"
+
+    @pytest.mark.asyncio
+    async def test_writes_into_session_scoped_manager(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3 as mock_wm:
+            await upload_workspace_file(self._req(session_id="sess-1"))
+        # Session-scoped manager (like the web upload) plus a flat filename —
+        # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
+        # reads it. No explicit uploads/<uuid> path.
+        mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
+        kwargs = write.await_args.kwargs
+        assert kwargs["filename"] == "a.png"
+        assert "path" not in kwargs
+        # Overwrite so a re-uploaded same-named file replaces rather than
+        # erroring (a conflict would be mislabelled a size/quota rejection).
+        assert kwargs["overwrite"] is True
+
+    @pytest.mark.asyncio
+    async def test_filename_path_components_are_stripped(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            await upload_workspace_file(self._req(filename="../../etc/passwd"))
+        # Only the sanitized basename reaches the storage backend.
+        kwargs = write.await_args.kwargs
+        assert kwargs["filename"] == "passwd"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", [".", "..", "dir/..", "/"])
+    async def test_dot_filenames_fall_back_to_safe_name(self, name: str):
+        # "."/".." survive basename stripping and would be a special path
+        # segment, so they must become "file".
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            await upload_workspace_file(self._req(filename=name))
+        assert write.await_args.kwargs["filename"] == "file"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_user_raises_not_found(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value=None)
+        with patch(
+            "backend.platform_linking.chat.platform_linking_db", return_value=db
+        ):
+            with pytest.raises(NotFoundError):
+                await upload_workspace_file(self._req())
+
+    @pytest.mark.asyncio
+    async def test_not_found_in_try_propagates_not_rejected(self):
+        # NotFoundError subclasses ValueError; if one is raised inside the
+        # write path it must propagate, not be swallowed as "rejected".
+        write = AsyncMock(side_effect=NotFoundError("workspace gone"))
+        p1, p2, p3 = self._patches(write)
+        with p1, p2, p3:
+            with pytest.raises(NotFoundError):
+                await upload_workspace_file(self._req())
+
+
+class TestEnsureChatSession:
+    @pytest.mark.asyncio
+    async def test_reuses_valid_cached_session(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="cached")),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
+            ) as mock_create,
+        ):
+            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, "cached")
+
+        assert sid == "cached"
+        mock_create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_creates_session_when_none_cached(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="fresh")),
+            ) as mock_create,
+        ):
+            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+        assert sid == "fresh"
+        assert mock_create.await_args.kwargs["source_platform"] == "discord"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_dm_raises_not_found(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value=None)
+        with patch(
+            "backend.platform_linking.chat.platform_linking_db", return_value=db
+        ):
+            with pytest.raises(NotFoundError):
+                await ensure_chat_session(Platform.DISCORD, "pu1", None, None)

@@ -6,21 +6,20 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, st
 
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
-from backend.data.graph import get_graph
-from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput
-from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
-from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.webhooks import get_webhook_manager
-from backend.integrations.webhooks.utils import setup_webhook_for_block
-from backend.util.exceptions import NotFoundError
+from backend.executor.utils import add_graph_execution
+from backend.util.exceptions import NotFoundError, WebhookRegistrationError
 
 from .. import db
 from .. import model as models
+from ..triggers import (
+    delete_preset_with_webhook_cleanup,
+    setup_triggered_preset,
+    update_triggered_preset,
+)
 
 logger = logging.getLogger(__name__)
 
-credentials_manager = IntegrationCredentialsManager()
 router = APIRouter(
     tags=["presets"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
@@ -154,55 +153,21 @@ async def setup_trigger(
     Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
     Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
     """
-    graph = await get_graph(
-        params.graph_id, version=params.graph_version, user_id=user_id
-    )
-    if not graph:
-        raise HTTPException(
-            status.HTTP_410_GONE,
-            f"Graph #{params.graph_id} not accessible (anymore)",
-        )
-    if not (trigger_node := graph.webhook_input_node):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Graph #{params.graph_id} does not have a webhook node",
-        )
-
-    trigger_config_with_credentials = {
-        **params.trigger_config,
-        **(
-            make_node_credentials_input_map(graph, params.agent_credentials).get(
-                trigger_node.id
-            )
-            or {}
-        ),
-    }
-
-    new_webhook, feedback = await setup_webhook_for_block(
-        user_id=user_id,
-        trigger_block=trigger_node.block,
-        trigger_config=trigger_config_with_credentials,
-    )
-    if not new_webhook:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Could not set up webhook: {feedback}",
-        )
-
-    new_preset = await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
+    try:
+        return await setup_triggered_preset(
+            user_id=user_id,
             graph_id=params.graph_id,
             graph_version=params.graph_version,
             name=params.name,
             description=params.description,
-            inputs=trigger_config_with_credentials,
-            credentials=params.agent_credentials,
-            webhook_id=new_webhook.id,
-            is_active=True,
-        ),
-    )
-    return new_preset
+            trigger_config=params.trigger_config,
+            agent_credentials=params.agent_credentials,
+        )
+    except WebhookRegistrationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not set up the trigger: {e}",
+        )
 
 
 @router.patch(
@@ -229,84 +194,19 @@ async def update_preset(
     Raises:
         HTTPException: If an error occurs while updating the preset.
     """
-    current = await get_preset(preset_id, user_id=user_id)
-    if not current:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Preset #{preset_id} not found")
-
-    graph = await get_graph(
-        current.graph_id,
-        current.graph_version,
+    # Webhook re-registration + old-webhook pruning lives in the shared
+    # update_triggered_preset (see triggers.py) so the copilot update_preset tool
+    # reuses the exact same logic. NotFoundError/InvalidInputError are mapped to
+    # 404/400 by the global exception handlers.
+    return await update_triggered_preset(
         user_id=user_id,
+        preset_id=preset_id,
+        inputs=preset.inputs,
+        credentials=preset.credentials,
+        name=preset.name,
+        description=preset.description,
+        is_active=preset.is_active,
     )
-    if not graph:
-        raise HTTPException(
-            status.HTTP_410_GONE,
-            f"Graph #{current.graph_id} not accessible (anymore)",
-        )
-
-    trigger_inputs_updated, new_webhook, feedback = False, None, None
-    if (trigger_node := graph.webhook_input_node) and (
-        preset.inputs is not None and preset.credentials is not None
-    ):
-        trigger_config_with_credentials = {
-            **preset.inputs,
-            **(
-                make_node_credentials_input_map(graph, preset.credentials).get(
-                    trigger_node.id
-                )
-                or {}
-            ),
-        }
-        new_webhook, feedback = await setup_webhook_for_block(
-            user_id=user_id,
-            trigger_block=graph.webhook_input_node.block,
-            trigger_config=trigger_config_with_credentials,
-            for_preset_id=preset_id,
-        )
-        trigger_inputs_updated = True
-        if not new_webhook:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not update trigger configuration: {feedback}",
-            )
-
-    try:
-        updated = await db.update_preset(
-            user_id=user_id,
-            preset_id=preset_id,
-            inputs=preset.inputs,
-            credentials=preset.credentials,
-            name=preset.name,
-            description=preset.description,
-            is_active=preset.is_active,
-        )
-    except Exception as e:
-        logger.exception("Preset update failed for user %s: %s", user_id, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-
-    # Update the webhook as well, if necessary
-    if trigger_inputs_updated:
-        updated = await db.set_preset_webhook(
-            user_id, preset_id, new_webhook.id if new_webhook else None
-        )
-
-        # Clean up webhook if it is now unused
-        if current.webhook_id and (
-            current.webhook_id != (new_webhook.id if new_webhook else None)
-        ):
-            current_webhook = await get_webhook(current.webhook_id)
-            credentials = (
-                await credentials_manager.get(user_id, current_webhook.credentials_id)
-                if current_webhook.credentials_id
-                else None
-            )
-            await get_webhook_manager(
-                current_webhook.provider
-            ).prune_webhook_if_dangling(user_id, current_webhook.id, credentials)
-
-    return updated
 
 
 @router.delete(
@@ -329,38 +229,10 @@ async def delete_preset(
     Raises:
         HTTPException: If an error occurs while deleting the preset.
     """
-    preset = await db.get_preset(user_id, preset_id)
-    if not preset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Preset #{preset_id} not found for user #{user_id}",
-        )
-
-    # Detach and clean up the attached webhook, if any
-    if preset.webhook_id:
-        webhook = await get_webhook(preset.webhook_id)
-        await db.set_preset_webhook(user_id, preset_id, None)
-
-        # Clean up webhook if it is now unused
-        credentials = (
-            await credentials_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
-        )
-
-    try:
-        await db.delete_preset(user_id, preset_id)
-    except Exception as e:
-        logger.exception(
-            "Error deleting preset %s for user %s: %s", preset_id, user_id, e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
+    # Webhook detach + prune-if-dangling lives in the shared
+    # delete_preset_with_webhook_cleanup (see triggers.py) so the copilot
+    # delete_preset tool reuses it. NotFoundError → 404 via the global handler.
+    await delete_preset_with_webhook_cleanup(user_id=user_id, preset_id=preset_id)
 
 
 @router.post(
