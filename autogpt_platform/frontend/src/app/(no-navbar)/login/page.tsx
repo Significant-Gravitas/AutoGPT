@@ -14,6 +14,7 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import { PreviewLoginButtons } from "./components/PreviewLoginButtons/PreviewLoginButtons";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +140,8 @@ export default function LoginPage() {
           Sign up
         </Link>
       </div>
+
+      <PreviewLoginButtons />
 
       <MobileWarningBanner />
       <EmailNotAllowedModal
