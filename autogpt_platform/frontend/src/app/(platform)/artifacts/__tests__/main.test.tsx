@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -21,9 +21,18 @@ const { setFlagStatusMock } = vi.hoisted(() => {
   };
 });
 
+// usePlatformChrome re-renders once on mount (isMounted guard), so per-test
+// flag overrides must persist across renders; restore the default afterward.
+afterEach(() => {
+  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
+  Flag: {
+    ARTIFACTS_PAGE: "artifacts-page",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+  },
+  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
 }));
 
@@ -216,7 +225,7 @@ describe("ArtifactsPage - search filter", () => {
 
 describe("ArtifactsPage - feature flag gating", () => {
   test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
-    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: false });
+    setFlagStatusMock.mockReturnValue({ enabled: false, ready: false });
 
     render(<ArtifactsPage />);
 

@@ -7,6 +7,7 @@ import type { Transition, Variants } from "framer-motion";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
@@ -33,10 +34,18 @@ const REDUCED_SECTION_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
+// The sidebar-inset dashboard layout the artifacts page was redesigned for.
+const NEW_LAYOUT_MAIN =
+  "mx-auto min-h-screen w-full max-w-7xl space-y-6 px-6 pb-20 pt-2 md:px-8";
+// Classic navbar layout — kept intact when the new-layout flag is off.
+const CLASSIC_MAIN =
+  "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
+
 export default function ArtifactsPage() {
   const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
     Flag.ARTIFACTS_PAGE,
   );
+  const { showNewLayout } = usePlatformChrome();
   const reduceMotion = useReducedMotion();
   const {
     files,
@@ -64,7 +73,7 @@ export default function ArtifactsPage() {
   }, []);
 
   if (!flagReady) {
-    return <ArtifactsPageSkeleton />;
+    return <ArtifactsPageSkeleton showNewLayout={showNewLayout} />;
   }
   if (!isEnabled) {
     notFound();
@@ -73,7 +82,7 @@ export default function ArtifactsPage() {
   const variants = reduceMotion ? REDUCED_SECTION_VARIANTS : SECTION_VARIANTS;
 
   return (
-    <main className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12">
+    <main className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <motion.div
           className="flex flex-col gap-1"
@@ -82,8 +91,11 @@ export default function ArtifactsPage() {
           animate="show"
           transition={{ delay: 0 }}
         >
-          <Text variant="h3">Files</Text>
-          <Text variant="body" className="max-w-prose text-zinc-600">
+          {!showNewLayout && <Text variant="h3">Files</Text>}
+          <Text
+            variant={showNewLayout ? "large" : "body"}
+            className="max-w-prose text-zinc-600"
+          >
             Every file your agents generate or use in the Builder lives here —
             ready to reuse, download, or share.
           </Text>
@@ -165,10 +177,14 @@ export default function ArtifactsPage() {
   );
 }
 
-function ArtifactsPageSkeleton() {
+interface Props {
+  showNewLayout: boolean;
+}
+
+function ArtifactsPageSkeleton({ showNewLayout }: Props) {
   return (
     <main
-      className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12"
+      className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}
       data-testid="artifacts-flag-loading"
     >
       <Skeleton className="h-8 w-48 rounded-md" />
