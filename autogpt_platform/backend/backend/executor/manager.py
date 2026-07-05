@@ -44,8 +44,8 @@ from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
 )
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.credentials_store import ollama_credentials
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,

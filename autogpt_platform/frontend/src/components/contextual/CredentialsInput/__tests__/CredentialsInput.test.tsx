@@ -101,6 +101,35 @@ afterEach(() => {
   cleanup();
 });
 
+describe("CredentialsInput – ollama", () => {
+  it("renders nothing when provider is ollama", () => {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "ollama",
+        providerName: "Ollama",
+        supportsApiKey: false,
+        supportsOAuth2: false,
+        supportsUserPassword: false,
+        supportsHostScoped: false,
+      }),
+    );
+
+    const ollamaSchema: BlockIOCredentialsSubSchema = {
+      credentials_provider: ["ollama"],
+      credentials_types: ["api_key"],
+    } as BlockIOCredentialsSubSchema;
+
+    const { container } = render(
+      <CredentialsInput
+        schema={ollamaSchema}
+        onSelectCredentials={vi.fn()}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+});
+
 describe("CredentialsInput – OAuth flow", () => {
   it("clicking the Add account button calls oAuthLogin without a credentialID", async () => {
     const oAuthLoginMock = vi.fn().mockResolvedValue({

@@ -423,6 +423,7 @@ def _node_uses_ollama_model(
     except ValueError:
         return False
 
+
 # Markers used by ``is_credential_validation_error_message`` to classify a
 # message. Each entry is (match_mode, lowercased_marker) — "exact" means
 # the full message must equal the marker, "prefix" means it must start
