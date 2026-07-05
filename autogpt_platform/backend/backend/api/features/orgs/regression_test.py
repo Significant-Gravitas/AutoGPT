@@ -1046,7 +1046,7 @@ class TestRegressionLibraryAgents:
                 return_value=mock_new_graph,
             ) as mock_fork,
             patch(
-                "backend.api.features.library.db.on_graph_activate",
+                "backend.api.features.library.db.before_graph_activate",
                 new_callable=AsyncMock,
                 return_value=mock_new_graph,
             ),

@@ -412,10 +412,17 @@ class TestEnsureChatSession:
 
     @pytest.mark.asyncio
     async def test_creates_session_when_none_cached(self):
+        # Creating a bot session resolves the owner's default org/team and
+        # threads that tenancy into create_chat_session, so mock the lookup and
+        # assert the org/team params are passed through.
         db = MagicMock()
         db.find_user_link_owner = AsyncMock(return_value="owner-1")
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.get_user_default_team",
+                new=AsyncMock(return_value=("org-1", "team-1")),
+            ),
             patch(
                 "backend.platform_linking.chat.create_chat_session",
                 new=AsyncMock(return_value=MagicMock(session_id="fresh")),
@@ -424,7 +431,10 @@ class TestEnsureChatSession:
             sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
 
         assert sid == "fresh"
-        assert mock_create.await_args.kwargs["source_platform"] == "discord"
+        create_kwargs = mock_create.await_args.kwargs
+        assert create_kwargs["source_platform"] == "discord"
+        assert create_kwargs["organization_id"] == "org-1"
+        assert create_kwargs["team_id"] == "team-1"
 
     @pytest.mark.asyncio
     async def test_unlinked_dm_raises_not_found(self):
