@@ -13,7 +13,12 @@ from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.errors import UniqueViolationError
 from prisma.models import User as PrismaUser
-from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
+from prisma.types import (
+    JsonFilter,
+    ProfileCreateInput,
+    UserCreateInput,
+    UserUpdateInput,
+)
 
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
@@ -57,9 +62,17 @@ async def get_or_create_user(user_data: dict) -> User:
 
         # Marketplace features (e.g. store submissions) require a Profile.
         # The legacy Supabase auth.users trigger used to create it; since its
-        # removal this is the only place that does. Also backfills users
-        # created while no auto-creation mechanism was active.
-        await _ensure_default_profile(user_id, user_email)
+        # removal this is the only place that does. Best-effort: a failure
+        # must not block user resolution — the user self-heals on their next
+        # request or via the profile settings page.
+        try:
+            await _ensure_default_profile(user_id, user_email)
+        except Exception:
+            logger.warning(
+                "Failed to ensure marketplace profile for user %s",
+                user_id,
+                exc_info=True,
+            )
 
         return User.from_db(user)
     except Exception as e:

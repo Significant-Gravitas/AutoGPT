@@ -3,13 +3,7 @@
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
@@ -79,20 +73,16 @@ export function RecentChats() {
 
   return (
     <>
-      {groupSessionsByDate(sessions).map((group) => (
-        <Collapsible key={group.label} defaultOpen className="group/day">
-          <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 pb-1 pt-2 text-xs font-medium text-zinc-600">
-            <span>{group.label}</span>
-            <CaretDownIcon
-              weight="bold"
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-3.5 text-zinc-500 transition-transform duration-200 group-data-[state=open]/day:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+      <div className="mt-2 flex flex-col gap-4">
+        {groupSessionsByDate(sessions).map((group) => (
+          <div key={group.label}>
+            <div className="px-2 pb-1 text-xs font-medium text-zinc-600">
+              {group.label}
+            </div>
             <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
-      ))}
+          </div>
+        ))}
+      </div>
 
       {hasMore && (
         <button
