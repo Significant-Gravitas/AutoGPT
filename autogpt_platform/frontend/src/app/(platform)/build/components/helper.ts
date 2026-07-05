@@ -122,4 +122,11 @@ export const isCostFilterMatch = (
     : costFilter === inputValues;
 };
 
-export { findFreePosition, type NodeDimensions } from "./placementHelpers";
+export {
+  findFreePosition,
+  getFlowViewportBounds,
+  getNodeDimensions,
+  type ExistingNodeForPlacement,
+  type FlowViewportBounds,
+  type NodeDimensions,
+} from "./placementHelpers";
