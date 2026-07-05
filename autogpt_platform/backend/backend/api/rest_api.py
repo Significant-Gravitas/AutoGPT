@@ -28,6 +28,7 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.sandbox_routes as chat_sandbox_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
@@ -412,6 +413,11 @@ app.include_router(
 )
 app.include_router(
     chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_sandbox_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )

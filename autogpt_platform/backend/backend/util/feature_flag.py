@@ -59,6 +59,7 @@ class Flag(str, Enum):
     # current_session_id line stays regardless — only the followup
     # surface is gated.  Default-on.
     COPILOT_SCHEDULED_FOLLOWUPS = "copilot-scheduled-followups"
+    COPILOT_SANDBOX_IDE = "copilot-sandbox-ide"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
