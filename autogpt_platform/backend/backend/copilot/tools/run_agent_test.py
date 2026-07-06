@@ -941,6 +941,8 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
     assert captured["organization_id"] == "personal-org"
     assert captured["team_id"] == "personal-team"
     default_team.assert_awaited_once()
+
+
 async def test_run_agent_redirects_webhook_trigger_agent():
     """A webhook-trigger agent can't be run/scheduled — run_agent returns an
     AgentDetailsResponse (carrying trigger_info) that points AutoPilot to

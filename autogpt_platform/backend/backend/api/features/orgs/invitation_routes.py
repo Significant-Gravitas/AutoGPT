@@ -1,5 +1,6 @@
 """Invitation API routes for organization membership."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -14,6 +15,8 @@ from backend.util.exceptions import NotFoundError
 
 from . import db as org_db
 from .model import CreateInvitationRequest, InvitationCreateResponse, InvitationResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -176,7 +179,10 @@ async def accept_invitation(
         # User is already a member — treat as success (idempotent)
         pass
 
-    # Add to specified workspaces
+    # Add to specified workspaces. Failures are non-fatal (a team may have
+    # been deleted between invite and accept) but must not be silent — the
+    # user ends up an org member without the team access the invite
+    # promised, which support needs to be able to trace.
     for ws_id in invitation.teamIds:
         try:
             from . import team_db as team_db
@@ -188,8 +194,14 @@ async def accept_invitation(
                 invited_by=invitation.invitedByUserId,
             )
         except Exception:
-            # Non-fatal -- workspace may have been deleted
-            pass
+            logger.warning(
+                "Invitation accept: failed to add user %s to team %s in "
+                "org %s (team deleted?); continuing with org membership",
+                user_id,
+                ws_id,
+                invitation.orgId,
+                exc_info=True,
+            )
 
     # Mark invitation as accepted
     await prisma.orginvitation.update(

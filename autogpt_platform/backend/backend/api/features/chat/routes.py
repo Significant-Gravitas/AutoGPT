@@ -1155,6 +1155,13 @@ async def stream_chat_post(
     )
     session = await _validate_and_get_session(session_id, user_id)
 
+    # Session-anchored tenancy: the ChatSession row is the authoritative
+    # org/team for every turn in it — a user whose active header org
+    # differs still charges/attributes turns to the session's org.
+    # Untagged legacy sessions fall back to the request context.
+    turn_org_id = session.organization_id or ctx.org_id
+    turn_team_id = session.team_id if session.organization_id else ctx.team_id
+
     try:
         turn_in_flight = (
             request.is_user_message
@@ -1263,8 +1270,8 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             context=request.context,
             file_ids=sanitized_file_ids,
-            organization_id=ctx.org_id,
-            team_id=ctx.team_id,
+            organization_id=turn_org_id,
+            team_id=turn_team_id,
             mode=request.mode,
             model=request.model,
             permissions=builder_permissions,

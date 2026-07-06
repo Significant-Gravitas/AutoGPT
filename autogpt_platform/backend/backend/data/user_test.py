@@ -250,6 +250,8 @@ class TestTableBackedCredentials:
 
         with pytest.raises(DatabaseError):
             await set_user_credentials("u1", [new])
+
+
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since
     the auth.users trigger that used to do this is unreliable."""

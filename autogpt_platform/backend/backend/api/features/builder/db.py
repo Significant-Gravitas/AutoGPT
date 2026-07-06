@@ -310,9 +310,7 @@ async def _build_cached_search_results(
         )
     if include_library_agents:
         branches.append(
-            _search_library(
-                user_id, search_query, normalized_query, organization_id
-            )
+            _search_library(user_id, search_query, normalized_query, organization_id)
         )
     if include_marketplace_agents:
         branches.append(

@@ -180,7 +180,7 @@ async def get_request_context(
             where={
                 "userId": user_id,
                 "isOwner": True,
-                "Org": {"isPersonal": True},
+                "Org": {"isPersonal": True, "deletedAt": None},
             },
             order={"createdAt": "asc"},
         )
@@ -202,11 +202,20 @@ async def get_request_context(
         where={
             "orgId_userId": {"orgId": org_id, "userId": user_id},
         },
+        include={"Org": True},
     )
     if org_member is None or org_member.status != "ACTIVE":
         raise fastapi.HTTPException(
             status_code=403,
             detail="User is not an active member of this organization",
+        )
+    # A soft-deleted org must not remain usable as request context —
+    # delete_org keeps the row (deletedAt set) but memberships with it
+    # no longer grant access.
+    if org_member.Org is not None and org_member.Org.deletedAt is not None:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail="This organization has been deleted",
         )
 
     is_org_owner = org_member.isOwner
@@ -232,6 +241,7 @@ async def get_request_context(
         )
         if (
             ws_member is None
+            or ws_member.status != "ACTIVE"
             or ws_member.Team is None
             or ws_member.Team.orgId != org_id
         ):

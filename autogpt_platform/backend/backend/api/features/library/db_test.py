@@ -1017,6 +1017,8 @@ async def test_create_library_agent_tags_adders_org():
         assert create["organizationId"] == "org-personal"
         assert create["Team"] == {"connect": {"id": "team-default"}}
         default_team.assert_awaited_once()
+
+
 def _library_agent_prisma(
     *,
     id: str,

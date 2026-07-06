@@ -670,9 +670,16 @@ async def _execute_webhook_node_trigger(
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
-        from backend.api.features.orgs.db import get_user_default_team
+        # Resource-follows-parent: the webhook is tagged with its graph's
+        # org/team at creation (and backfilled by the org migration), so
+        # triggered runs attribute there — not the owner's personal org.
+        # Untagged legacy webhooks fall back to the owner's default team.
+        if webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
 
-        org_id, ws_id = await get_user_default_team(webhook.user_id)
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
@@ -736,9 +743,17 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     try:
-        from backend.api.features.orgs.db import get_user_default_team
+        # Resource-follows-parent: attribute to the preset's org/team (set
+        # from its parent graph), falling back to the webhook's own tag,
+        # then to the owner's default team for untagged legacy rows.
+        if preset.organization_id:
+            org_id, ws_id = preset.organization_id, preset.team_id
+        elif webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
 
-        org_id, ws_id = await get_user_default_team(webhook.user_id)
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
