@@ -16,8 +16,9 @@ vi.mock("../components/PreviewLoginButtons/actions", () => ({
   loginAsPreviewAccount: (role: string) => mockLoginAsPreviewAccount(role),
 }));
 
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 const toastSpy = vi.fn();
@@ -43,6 +44,7 @@ describe("PreviewLoginButtons", () => {
     mockIsConfigured.mockReset();
     mockLoginAsPreviewAccount.mockReset();
     toastSpy.mockClear();
+    mockSearchParams = new URLSearchParams();
   });
 
   test("renders nothing outside a preview environment", () => {
@@ -108,6 +110,76 @@ describe("PreviewLoginButtons", () => {
     expect(getButton("Admin").disabled).toBe(true);
   });
 
+  test("navigates to the login result destination on success", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockLoginAsPreviewAccount.mockResolvedValue({
+      success: true,
+      next: "/marketplace",
+    });
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() => expect(window.location.href).toContain("/marketplace"));
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  test("prefers the sanitized next param over the login result destination", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockSearchParams = new URLSearchParams("next=/onboarding");
+    mockLoginAsPreviewAccount.mockResolvedValue({
+      success: true,
+      next: "/marketplace",
+    });
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/onboarding"));
+  });
+
+  test("navigates home when the login result has no destination", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockLoginAsPreviewAccount.mockResolvedValue({ success: true });
+
+    window.location.href = "http://localhost:3000/start";
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+  });
+
+  test("ignores the config result when unmounted before the check resolves", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    let resolveConfig: (configured: boolean) => void = () => {};
+    mockIsConfigured.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveConfig = resolve;
+      }),
+    );
+
+    const { unmount } = render(<PreviewLoginButtons />);
+    unmount();
+    resolveConfig(true);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Admin" })).toBeNull(),
+    );
+  });
+
   test("shows a toast when the preview login fails", async () => {
     mockGetPreviewStealingDev.mockReturnValue("some-branch");
     mockIsConfigured.mockResolvedValue(true);
@@ -130,5 +202,48 @@ describe("PreviewLoginButtons", () => {
         }),
       ),
     );
+  });
+
+  test("falls back to a generic toast when the failure has no error message", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockLoginAsPreviewAccount.mockResolvedValue({ success: false });
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Preview login failed",
+          variant: "destructive",
+        }),
+      ),
+    );
+  });
+
+  test("shows a generic toast when the login action rejects with a non-Error", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockLoginAsPreviewAccount.mockRejectedValue("boom");
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Preview login failed",
+          variant: "destructive",
+        }),
+      ),
+    );
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
   });
 });
