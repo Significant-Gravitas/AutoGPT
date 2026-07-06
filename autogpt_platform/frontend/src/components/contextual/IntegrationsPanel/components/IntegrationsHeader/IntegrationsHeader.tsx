@@ -6,15 +6,18 @@ import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   onConnect: () => void;
+  withTitle?: boolean;
 }
 
-export function IntegrationsHeader({ onConnect }: Props) {
+export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
   return (
     <div className="flex flex-col items-start gap-4 pb-6 pl-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-col">
-        <Text variant="h4" as="h1" className="leading-[28px] text-[#1F1F20]">
-          Third Party Integrations
-        </Text>
+        {withTitle && (
+          <Text variant="h4" as="h1" className="leading-[28px] text-[#1F1F20]">
+            Third Party Integrations
+          </Text>
+        )}
         <Text variant="body" className="mt-4 max-w-[600px] text-[#505057]">
           Manage the 3rd party accounts you&apos;ve connected to AutoGPT. These
           are services that can be used by your agents — like Gmail for sending
