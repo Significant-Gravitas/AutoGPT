@@ -47,7 +47,7 @@ const hasAnyEdge = (): boolean => {
 // Shepherd 14 positions the popover via @floating-ui/dom (absolute left/top),
 // so CSS margins don't move it. Use a floating-ui offset middleware to push the
 // popover away from the handle, leaving room to grab and drag the connection.
-export const CONNECTION_STEP_OFFSET = 15;
+export const CONNECTION_STEP_OFFSET = 72;
 
 export const connectionHandleOffset = ({
   placement,
