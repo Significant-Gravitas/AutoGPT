@@ -4,9 +4,16 @@ import { useEffect, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 // Routes that must stay outside the new top-level sidebar layout. Login,
-// signup and onboarding already live in the (no-navbar) group, so settings
-// is the only (platform) route to exclude here.
-const NEW_LAYOUT_EXCLUDED_PREFIXES = ["/settings"];
+// signup and onboarding already live in the (no-navbar) group. These
+// (platform) routes should not show the app sidebar — reset-password and the
+// auth/error/unauthorized pages are all reachable while unauthenticated.
+const NEW_LAYOUT_EXCLUDED_PREFIXES = [
+  "/settings",
+  "/reset-password",
+  "/auth/auth-code-error",
+  "/error",
+  "/unauthorized",
+];
 
 export function usePlatformChrome() {
   const pathname = usePathname();

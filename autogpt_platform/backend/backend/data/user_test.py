@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import prisma.errors
 import pytest
 
 from backend.data import user as user_module
@@ -146,3 +147,104 @@ class TestUpdateUserTimezone:
         assert not user_module._background_tasks & set(spawned)
         warn_mock.assert_called_once()
         assert isinstance(warn_mock.call_args.kwargs["exc_info"], RuntimeError)
+
+
+class TestGetOrCreateUserProfile:
+    """get_or_create_user must guarantee a marketplace Profile exists, since
+    the auth.users trigger that used to do this is unreliable."""
+
+    @pytest.mark.asyncio
+    async def test_creates_profile_when_missing(self):
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            # No existing profile, and the generated username is free.
+            mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+            mock_prisma.profile.create = AsyncMock()
+
+            await user_module.get_or_create_user(
+                {"sub": "user-new", "email": "alice@example.com"}
+            )
+
+        mock_prisma.profile.create.assert_awaited_once()
+        created = mock_prisma.profile.create.await_args.kwargs["data"]
+        assert created["userId"] == "user-new"
+        # name defaults to the email local-part
+        assert created["name"] == "alice"
+        assert created["username"]
+
+    @pytest.mark.asyncio
+    async def test_does_not_create_profile_when_one_exists(self):
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-has", email="bob@example.com", name="Bob")
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            mock_prisma.profile.find_unique = AsyncMock(return_value=MagicMock())
+            mock_prisma.profile.create = AsyncMock()
+
+            await user_module.get_or_create_user(
+                {"sub": "user-has", "email": "bob@example.com"}
+            )
+
+        mock_prisma.profile.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_profile_creation_failure_does_not_block_user(self):
+        """Profile creation is best-effort: a failure is logged but the user
+        is still resolved so login/auth isn't broken."""
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-err", email="carol@example.com", name=None)
+        sentinel_user = MagicMock()
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=sentinel_user),
+            patch.object(user_module.logger, "warning") as warn_mock,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+            mock_prisma.profile.create = AsyncMock(
+                side_effect=RuntimeError("db hiccup")
+            )
+
+            result = await user_module.get_or_create_user(
+                {"sub": "user-err", "email": "carol@example.com"}
+            )
+
+        assert result is sentinel_user
+        warn_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_profile_create_on_username_collision(self):
+        """A UniqueViolationError from a username clash (not a userId race)
+        must retry with a fresh handle so the user still gets a Profile."""
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-clash", email="dave@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+            # userId never resolves to a Profile (so the clash is on username),
+            # and generated usernames pre-check as free.
+            mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+            # First create() collides on username, the retry succeeds.
+            mock_prisma.profile.create = AsyncMock(
+                side_effect=[prisma.errors.UniqueViolationError({}), None]
+            )
+
+            await user_module.get_or_create_user(
+                {"sub": "user-clash", "email": "dave@example.com"}
+            )
+
+        assert mock_prisma.profile.create.await_count == 2

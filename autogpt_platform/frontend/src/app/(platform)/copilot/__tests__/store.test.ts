@@ -113,6 +113,35 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  it("openArtifact/closeArtifactPanel persist the open state by default", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "true",
+    );
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "false",
+    );
+  });
+
+  it("openArtifact/closeArtifactPanel skip localStorage with persist: false", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore
+      .getState()
+      .openArtifact(makeArtifact("a"), { persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
   it("openArtifact does not resurrect a previously closed artifact into history", () => {
     const a = makeArtifact("a");
     const b = makeArtifact("b");

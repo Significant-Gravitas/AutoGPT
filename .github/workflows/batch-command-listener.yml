@@ -1,0 +1,40 @@
+name: batch-command-listener
+
+# Turns `/batch`, `/batch-remove`, `/batch-merge` PR comments into repository_dispatch
+# events handled by batch-command-handler.yml. Deterministic ChatOps — no AI.
+#
+# Why a bot token (BATCH_BOT_TOKEN) and not GITHUB_TOKEN:
+#   A repository_dispatch created with GITHUB_TOKEN does NOT trigger the handler
+#   workflow (GitHub suppresses workflow-triggered-by-GITHUB_TOKEN to avoid loops).
+#   The dispatch must be made by a real identity (PAT on a bot account, or a
+#   GitHub App token) for the handler to run.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    # PR comments only, and only when the FIRST line starts with `/batch`
+    # (peter-evans/slash-command-dispatch additionally enforces first-line + a
+    # real repo-permission lookup — `author_association` is unreliable in orgs).
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/batch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slash command dispatch
+        uses: peter-evans/slash-command-dispatch@0683e68ce8b375f2dc24214e065a3ae1ef93040e # v5
+        with:
+          token: ${{ secrets.BATCH_BOT_TOKEN }}
+          issue-type: pull-request
+          permission: write
+          commands: |
+            batch
+            batch-remove
+            batch-merge
+          # Pass the PR number explicitly so the handler never has to guess it.
+          static-args: |
+            pr=${{ github.event.issue.number }}
