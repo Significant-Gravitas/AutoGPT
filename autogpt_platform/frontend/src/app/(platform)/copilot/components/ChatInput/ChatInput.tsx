@@ -24,7 +24,7 @@ import {
   partitionAttachments,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
-import { AttachmentMenu } from "./components/AttachmentMenu";
+import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { BlockCaret } from "./components/BlockCaret";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
@@ -299,7 +299,7 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            <AttachmentMenu
+            <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               showWorkspaceOption={showWorkspaceFiles}

@@ -141,8 +141,8 @@ vi.mock("@/components/ui/input-group", () => ({
   }) => <div className={className}>{children}</div>,
 }));
 
-vi.mock("../components/AttachmentMenu", () => ({
-  AttachmentMenu: () => <div data-testid="attachment-menu" />,
+vi.mock("../components/ComposerPlusMenu", () => ({
+  ComposerPlusMenu: () => <div data-testid="attachment-menu" />,
 }));
 vi.mock("../components/FileChips", () => ({
   FileChips: () => null,

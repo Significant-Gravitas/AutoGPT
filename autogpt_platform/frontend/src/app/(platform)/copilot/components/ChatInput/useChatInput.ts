@@ -27,8 +27,15 @@ export function useChatInput({
       if (!initialPrompt) return;
       setValue((prev) => (prev.length === 0 ? initialPrompt : prev));
       setInitialPrompt(null);
+      // Guided flows can prefill while the composer is already mounted
+      // (e.g. from a copilot modal) — put the caret in the input so the
+      // draft is immediately editable/sendable.
+      const textarea = document.getElementById(
+        inputId,
+      ) as HTMLTextAreaElement | null;
+      textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt],
+    [initialPrompt, setInitialPrompt, inputId],
   );
 
   useEffect(
