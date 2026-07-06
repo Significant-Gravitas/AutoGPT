@@ -1,14 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { WarningCircleIcon } from "@phosphor-icons/react";
-
-import { Text } from "@/components/atoms/Text/Text";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { ReviewStepper } from "./ReviewStepper";
 import { ShareLinkButton } from "./ShareLinkButton";
 import { ReviewHero } from "./ReviewHero";
 import { SubmissionSummaryCard } from "./SubmissionSummaryCard";
+import { SubmissionMetaGrid } from "./SubmissionMetaGrid";
+import { RejectionFeedback } from "./RejectionFeedback";
 import { ReviewStepFooter } from "./ReviewStepFooter";
 import { useAgentReviewStep } from "./useAgentReviewStep";
 
@@ -88,44 +86,13 @@ export function AgentReviewStep({
         shouldReduceMotion={!!shouldReduceMotion}
       />
 
-      {metaItems.length > 0 ? (
-        <motion.div
-          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.24, ease: "easeOut", delay: 0.21 }}
-          className="mt-4 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-3 rounded-[14px] border border-zinc-200 bg-zinc-50/60 p-4"
-          data-testid="submission-meta"
-        >
-          {metaItems.map((item) => (
-            <div key={item.label} className="flex min-w-0 flex-col">
-              <Text variant="small" as="span" className="text-zinc-500">
-                {item.label}
-              </Text>
-              <Text
-                variant="small-medium"
-                as="span"
-                title={item.title}
-                className="truncate text-textBlack"
-              >
-                {item.value}
-              </Text>
-            </div>
-          ))}
-        </motion.div>
-      ) : null}
+      <SubmissionMetaGrid
+        items={metaItems}
+        shouldReduceMotion={!!shouldReduceMotion}
+      />
 
       {reviewComments && status === SubmissionStatus.REJECTED ? (
-        <div className="mt-4 w-full max-w-md rounded-[14px] border border-rose-200 bg-rose-50 p-3">
-          <div className="mb-1 flex items-center gap-2 text-rose-700">
-            <WarningCircleIcon size={16} weight="duotone" />
-            <Text variant="small-medium" as="span" className="!text-current">
-              Review feedback
-            </Text>
-          </div>
-          <Text variant="small" className="text-rose-700">
-            {reviewComments}
-          </Text>
-        </div>
+        <RejectionFeedback comments={reviewComments} />
       ) : null}
 
       {isPending ? (
