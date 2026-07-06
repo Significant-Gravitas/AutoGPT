@@ -30,7 +30,7 @@ import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "../SubmissionItem/useSubmissionItem";
 
 interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 

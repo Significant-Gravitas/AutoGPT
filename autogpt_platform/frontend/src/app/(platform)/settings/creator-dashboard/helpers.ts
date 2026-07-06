@@ -12,7 +12,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { SubmissionStats } from "@/app/api/__generated__/models/submissionStats";
 
 export interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 
