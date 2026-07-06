@@ -175,6 +175,12 @@ export function useCreatorDashboardPage() {
   }
 
   function onEditFromReview(submission: StoreSubmission) {
+    if (!submission.listing_version_id) {
+      Sentry.captureException(
+        new Error("No store listing version ID found for submission"),
+      );
+      return;
+    }
     setPublishState({ isOpen: false, step: "select", submissionData: null });
     onEditSubmission(buildEditPayload(submission));
   }
