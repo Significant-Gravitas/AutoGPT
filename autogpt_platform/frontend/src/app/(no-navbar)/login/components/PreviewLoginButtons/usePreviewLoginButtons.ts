@@ -9,6 +9,7 @@ import { PreviewRole } from "./helpers";
 export function usePreviewLoginButtons() {
   const isPreview = Boolean(environment.getPreviewStealingDev());
   const [isConfigured, setIsConfigured] = useState(false);
+  const [isCheckingConfig, setIsCheckingConfig] = useState(true);
   const [loadingRole, setLoadingRole] = useState<PreviewRole | null>(null);
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -19,7 +20,9 @@ export function usePreviewLoginButtons() {
 
     let active = true;
     isPreviewLoginConfigured().then((configured) => {
-      if (active) setIsConfigured(configured);
+      if (!active) return;
+      setIsConfigured(configured);
+      setIsCheckingConfig(false);
     });
 
     return () => {
@@ -51,6 +54,7 @@ export function usePreviewLoginButtons() {
   return {
     isPreview,
     isConfigured,
+    isCheckingConfig,
     loadingRole,
     handlePreviewLogin,
   };

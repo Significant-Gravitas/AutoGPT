@@ -8,8 +8,13 @@ import { PREVIEW_ROLES } from "./helpers";
 import { usePreviewLoginButtons } from "./usePreviewLoginButtons";
 
 export function PreviewLoginButtons() {
-  const { isPreview, isConfigured, loadingRole, handlePreviewLogin } =
-    usePreviewLoginButtons();
+  const {
+    isPreview,
+    isConfigured,
+    isCheckingConfig,
+    loadingRole,
+    handlePreviewLogin,
+  } = usePreviewLoginButtons();
 
   if (!isPreview) {
     return null;
@@ -26,7 +31,7 @@ export function PreviewLoginButtons() {
         </Text>
       </div>
 
-      {!isConfigured ? (
+      {!isCheckingConfig && !isConfigured ? (
         <Text variant="small" className="!text-slate-500">
           Set PREVIEW_ACCOUNTS_PASSWORD in the preview environment to enable
           one-click sign-in.

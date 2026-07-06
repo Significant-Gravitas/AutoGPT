@@ -1,8 +1,10 @@
 "use server";
 
+import { environment } from "@/services/environment";
 import { login } from "../../actions";
+import { PreviewRole } from "./helpers";
 
-const PREVIEW_ACCOUNT_EMAILS: Record<string, string> = {
+const PREVIEW_ACCOUNT_EMAILS: Record<PreviewRole, string> = {
   admin: "preview-admin@agpt.co",
   existing: "preview-existing@agpt.co",
   clean: "preview-clean@agpt.co",
@@ -10,11 +12,24 @@ const PREVIEW_ACCOUNT_EMAILS: Record<string, string> = {
   enterprise: "preview-enterprise@agpt.co",
 };
 
-export async function isPreviewLoginConfigured() {
-  return Boolean(process.env.PREVIEW_ACCOUNTS_PASSWORD);
+function isPreviewEnvironment() {
+  return Boolean(environment.getPreviewStealingDev());
 }
 
-export async function loginAsPreviewAccount(role: string) {
+export async function isPreviewLoginConfigured() {
+  return (
+    isPreviewEnvironment() && Boolean(process.env.PREVIEW_ACCOUNTS_PASSWORD)
+  );
+}
+
+export async function loginAsPreviewAccount(role: PreviewRole) {
+  // Gate the action server-side on the preview marker: it must be a no-op in any
+  // non-preview environment, regardless of what the client sends. Hiding the UI
+  // client-side is not enough since a server action is directly callable.
+  if (!isPreviewEnvironment()) {
+    return { success: false, error: "Preview login is not available" };
+  }
+
   const email = PREVIEW_ACCOUNT_EMAILS[role];
   if (!email) {
     return { success: false, error: "Unknown preview account" };

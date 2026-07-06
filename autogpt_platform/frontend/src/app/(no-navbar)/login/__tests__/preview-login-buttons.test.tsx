@@ -91,10 +91,44 @@ describe("PreviewLoginButtons", () => {
 
     render(<PreviewLoginButtons />);
 
-    await waitFor(() => expect(mockIsConfigured).toHaveBeenCalled());
-
-    expect(screen.getByText(/PREVIEW_ACCOUNTS_PASSWORD/i)).toBeTruthy();
+    expect(await screen.findByText(/PREVIEW_ACCOUNTS_PASSWORD/i)).toBeTruthy();
     expect(getButton("Admin").disabled).toBe(true);
     expect(mockLoginAsPreviewAccount).not.toHaveBeenCalled();
+  });
+
+  test("does not show the setup hint while the config check is loading", () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    // Never resolves so the component stays in its initial checking state.
+    mockIsConfigured.mockReturnValue(new Promise(() => {}));
+
+    render(<PreviewLoginButtons />);
+
+    expect(screen.getByText(/Preview test accounts/i)).toBeTruthy();
+    expect(screen.queryByText(/PREVIEW_ACCOUNTS_PASSWORD/i)).toBeNull();
+    expect(getButton("Admin").disabled).toBe(true);
+  });
+
+  test("shows a toast when the preview login fails", async () => {
+    mockGetPreviewStealingDev.mockReturnValue("some-branch");
+    mockIsConfigured.mockResolvedValue(true);
+    mockLoginAsPreviewAccount.mockResolvedValue({
+      success: false,
+      error: "Preview login is not available",
+    });
+
+    render(<PreviewLoginButtons />);
+
+    await waitFor(() => expect(getButton("Admin").disabled).toBe(false));
+
+    fireEvent.click(getButton("Admin"));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Preview login is not available",
+          variant: "destructive",
+        }),
+      ),
+    );
   });
 });
