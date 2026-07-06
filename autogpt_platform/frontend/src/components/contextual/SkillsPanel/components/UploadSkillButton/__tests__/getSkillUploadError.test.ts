@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   getSkillUploadError,
   MAX_SKILL_DESCRIPTION_CHARS,
-} from "../components/UploadSkillButton/helpers";
+} from "../helpers";
 
 function md(frontmatter: string, body = "# Body\n\ncontent"): string {
   return `---\n${frontmatter}\n---\n\n${body}`;
