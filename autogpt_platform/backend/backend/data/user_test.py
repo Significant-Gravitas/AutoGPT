@@ -153,6 +153,18 @@ class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since
     the auth.users trigger that used to do this is unreliable."""
 
+    @pytest.fixture(autouse=True)
+    def stub_ensure_personal_org(self):
+        """Stub the personal-org bootstrap for the Profile-focused tests.
+
+        The real bootstrap hits the DB; these tests only exercise the Profile
+        branch. Tests that assert on the bootstrap use the yielded mock.
+        """
+        with patch.object(
+            user_module, "ensure_personal_org", new_callable=AsyncMock
+        ) as m:
+            yield m
+
     @pytest.mark.asyncio
     async def test_creates_profile_when_missing(self):
         user_module.get_or_create_user.cache_clear()
@@ -248,3 +260,60 @@ class TestGetOrCreateUserProfile:
             )
 
         assert mock_prisma.profile.create.await_count == 2
+
+
+class TestGetOrCreateUserPersonalOrg:
+    """get_or_create_user must bootstrap a personal org so new sign-ups don't
+    hit "No organization context available" on every org-scoped endpoint.
+
+    Unlike the marketplace Profile, this is NOT best-effort: without an org the
+    account is unusable, so a bootstrap failure must fail the request loudly.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bootstraps_personal_org_for_user(self):
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-org", email="erin@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(
+                user_module, "ensure_personal_org", new_callable=AsyncMock
+            ) as ensure_org,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user(
+                {"sub": "user-org", "email": "erin@example.com"}
+            )
+
+        ensure_org.assert_awaited_once_with("user-org")
+
+    @pytest.mark.asyncio
+    async def test_org_bootstrap_failure_fails_loudly(self):
+        """A failed org bootstrap must raise (DatabaseError) — never return a
+        bricked account. Contrast with the best-effort Profile branch."""
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-brick", email="frank@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(
+                user_module,
+                "ensure_personal_org",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("org bootstrap exploded"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            with pytest.raises(DatabaseError) as exc:
+                await user_module.get_or_create_user(
+                    {"sub": "user-brick", "email": "frank@example.com"}
+                )
+
+        assert "org bootstrap exploded" in str(exc.value)

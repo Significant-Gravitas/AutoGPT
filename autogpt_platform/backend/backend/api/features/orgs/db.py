@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import prisma.errors
 
 from backend.data.db import prisma
-from backend.data.org_migration import _resolve_unique_slug, _sanitize_slug
+from backend.data.org_migration import _sanitize_slug, create_personal_org
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -53,71 +53,12 @@ async def _create_personal_org_for_user(
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
-    Used by both initial org creation (migration) and conversion (spawning
-    a new personal org when the old one becomes a team org).
+    Thin wrapper over the data-layer ``create_personal_org`` so the sign-up
+    bootstrap, org conversion, and the backfill all share one record shape.
+    Used here by conversion (spawning a new personal org when the old one
+    becomes a team org).
     """
-    slug = await _resolve_unique_slug(slug_base)
-
-    org = await prisma.organization.create(
-        data={
-            "name": display_name,
-            "slug": slug,
-            "isPersonal": True,
-            "bootstrapUserId": user_id,
-            "settings": "{}",
-        }
-    )
-
-    await prisma.orgmember.create(
-        data={
-            "orgId": org.id,
-            "userId": user_id,
-            "isOwner": True,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
-
-    workspace = await prisma.team.create(
-        data={
-            "name": "Default",
-            "orgId": org.id,
-            "isDefault": True,
-            "joinPolicy": "OPEN",
-            "createdByUserId": user_id,
-        }
-    )
-
-    await prisma.teammember.create(
-        data={
-            "teamId": workspace.id,
-            "userId": user_id,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
-
-    await prisma.organizationprofile.create(
-        data={
-            "organizationId": org.id,
-            "username": slug,
-            "displayName": display_name,
-        }
-    )
-
-    await prisma.organizationseatassignment.create(
-        data={
-            "organizationId": org.id,
-            "userId": user_id,
-            "seatType": "FREE",
-            "status": "ACTIVE",
-            "assignedByUserId": user_id,
-        }
-    )
-
-    # Create zero-balance row so credit operations don't need upsert
-    await prisma.orgbalance.create(data={"orgId": org.id, "balance": 0})
-
+    org = await create_personal_org(user_id, slug_base, display_name)
     return OrgResponse.from_db(org, member_count=1)
 
 

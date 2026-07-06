@@ -24,6 +24,7 @@ from prisma.types import (
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.org_migration import ensure_personal_org
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError
@@ -72,6 +73,14 @@ async def get_or_create_user(user_data: dict) -> User:
                 user.id,
                 exc_info=True,
             )
+
+        # Ensure every user owns a personal org + default team. Unlike the
+        # Profile above this is NOT best-effort: without an org, every
+        # org-scoped endpoint (save graph, chat, ...) fails with "No
+        # organization context available", so a failure here must fail the
+        # request loudly instead of returning a bricked account. Idempotent and
+        # race-safe (see ensure_personal_org).
+        await ensure_personal_org(user.id)
 
         return User.from_db(user)
     except Exception as e:
