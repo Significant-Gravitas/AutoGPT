@@ -26,6 +26,10 @@ export const useRunGraph = () => {
     useShallow((state) => state.setIsGraphRunning),
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+  const [runTarget, setRunTarget] = useState<{
+    graphID: string;
+    graphVersion: number | null;
+  } | null>(null);
 
   const setNodeErrorsForBackendId = useNodeStore(
     useShallow((state) => state.setNodeErrorsForBackendId),
@@ -144,6 +148,12 @@ export const useRunGraph = () => {
     const savedGraph = await saveGraph(undefined);
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
+      // Hand the freshly-saved version to the dialog so it runs THIS version,
+      // not the stale one still in the URL (setQueryStates updates it async).
+      setRunTarget({
+        graphID: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
+      });
       setOpenRunInputDialog(true);
     } else {
       // Clear stale results so the UI shows fresh output from this execution
@@ -182,5 +192,6 @@ export const useRunGraph = () => {
     isTerminatingGraph,
     openRunInputDialog,
     setOpenRunInputDialog: handleSetOpenRunInputDialog,
+    runTarget,
   };
 };

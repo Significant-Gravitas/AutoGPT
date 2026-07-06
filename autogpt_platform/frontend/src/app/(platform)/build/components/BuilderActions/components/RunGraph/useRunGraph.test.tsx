@@ -99,10 +99,11 @@ describe("useRunGraph", () => {
     );
   });
 
-  it("falls back to the closure version when the save reports no changes", async () => {
-    // No new version created — saveGraph resolves undefined-ish; the run should
-    // fall back to the current flowID/flowVersion from the URL.
-    mockSaveGraph.mockResolvedValue(undefined);
+  it("runs the unchanged version when the save reports no changes", async () => {
+    // No new version created — saveGraph resolves with the existing graph
+    // (mirrors useSaveGraph's no-op branch, which returns `graph`, not
+    // undefined). The run must target that same, matching version.
+    mockSaveGraph.mockResolvedValue({ id: "graph-1", version: 1 });
 
     const { result } = renderHook(() => useRunGraph());
 
