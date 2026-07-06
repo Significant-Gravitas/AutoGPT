@@ -149,12 +149,9 @@ export function AgentReviewStep({
     runCount,
   });
 
-  const editLabel = isRejected
-    ? "Edit & resubmit"
-    : isDraft
-      ? "Continue editing"
-      : "Edit details";
-  const editIsPrimary = !!onEdit && (isRejected || isDraft);
+  // Editing is only supported for pending submissions; other states can't be
+  // edited in place, so we don't surface an edit action for them.
+  const editLabel = "Edit details";
 
   return (
     <div
@@ -399,17 +396,7 @@ export function AgentReviewStep({
               >
                 View on marketplace
               </Button>
-            ) : editIsPrimary ? (
-              <Button
-                size="small"
-                onClick={onEdit}
-                className="w-full sm:w-auto"
-                rightIcon={<NotePencilIcon size={14} weight="bold" />}
-                data-testid="edit-submission-button"
-              >
-                {editLabel}
-              </Button>
-            ) : (
+            ) : isRejected || isDraft ? null : (
               <Button
                 size="small"
                 onClick={onViewProgress}

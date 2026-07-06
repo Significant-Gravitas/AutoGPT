@@ -77,20 +77,6 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                     NODE_CLASS[step.state],
                   )}
                 >
-                  {step.state === "current" && !shouldReduceMotion ? (
-                    <motion.span
-                      aria-hidden
-                      initial={{ opacity: 0.5, scale: 0.9 }}
-                      animate={{ opacity: 0, scale: 1.7 }}
-                      transition={{
-                        duration: 1.6,
-                        ease: "easeOut",
-                        repeat: Infinity,
-                        repeatDelay: 0.3,
-                      }}
-                      className="absolute inset-0 rounded-full bg-amber-400/40"
-                    />
-                  ) : null}
                   <StepIcon size={14} weight="bold" />
                 </span>
                 {!isLast ? (

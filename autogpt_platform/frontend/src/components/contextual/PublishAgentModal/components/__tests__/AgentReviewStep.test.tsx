@@ -136,7 +136,7 @@ describe("AgentReviewStep", () => {
     expect(screen.queryByTestId("view-progress-button")).toBeNull();
   });
 
-  it("renders the draft hero with a 'Continue editing' primary CTA", () => {
+  it("renders the draft hero without an edit action", () => {
     const onEdit = vi.fn();
     render(
       <AgentReviewStep
@@ -149,14 +149,14 @@ describe("AgentReviewStep", () => {
     expect(screen.queryByText("What happens next")).toBeNull();
     expect(screen.getByText("Not submitted yet")).toBeDefined();
 
-    const cta = screen.getByTestId("edit-submission-button");
-    expect(cta.textContent).toContain("Continue editing");
-    fireEvent.click(cta);
-    expect(onEdit).toHaveBeenCalled();
+    // Editing is only supported for pending submissions, and "Done" is the only
+    // footer action.
+    expect(screen.queryByTestId("edit-submission-button")).toBeNull();
     expect(screen.queryByTestId("view-progress-button")).toBeNull();
+    expect(screen.getByText("Done")).toBeDefined();
   });
 
-  it("renders the rejected hero + feedback with an 'Edit & resubmit' CTA", () => {
+  it("renders the rejected hero + feedback without an edit action", () => {
     const onEdit = vi.fn();
     render(
       <AgentReviewStep
@@ -172,9 +172,10 @@ describe("AgentReviewStep", () => {
     expect(screen.queryByText("What happens next")).toBeNull();
     expect(screen.getByText("Reviewed")).toBeDefined();
 
-    const cta = screen.getByTestId("edit-submission-button");
-    expect(cta.textContent).toContain("Edit & resubmit");
-    fireEvent.click(cta);
-    expect(onEdit).toHaveBeenCalled();
+    // Editing is only supported for pending submissions, and "Done" is the only
+    // footer action.
+    expect(screen.queryByTestId("edit-submission-button")).toBeNull();
+    expect(screen.queryByTestId("view-progress-button")).toBeNull();
+    expect(screen.getByText("Done")).toBeDefined();
   });
 });
