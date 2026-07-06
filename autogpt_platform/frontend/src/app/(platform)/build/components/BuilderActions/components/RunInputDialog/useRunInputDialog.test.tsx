@@ -27,16 +27,18 @@ vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   }),
 }));
 
-class MockApiError extends Error {
-  isGraphValidationError() {
-    return false;
+vi.mock("@/lib/autogpt-server-api", () => {
+  class MockApiError extends Error {
+    isGraphValidationError() {
+      return false;
+    }
   }
-}
-vi.mock("@/lib/autogpt-server-api", () => ({
-  ApiError: MockApiError,
-  CredentialsMetaInput: {},
-  GraphExecutionMeta: {},
-}));
+  return {
+    ApiError: MockApiError,
+    CredentialsMetaInput: {},
+    GraphExecutionMeta: {},
+  };
+});
 
 const graphState = {
   credentialsInputSchema: undefined,
