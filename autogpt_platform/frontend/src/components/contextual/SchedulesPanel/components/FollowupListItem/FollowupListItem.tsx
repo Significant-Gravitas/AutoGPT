@@ -30,9 +30,15 @@ export function FollowupListItem({ followup }: Props) {
     fullMessage,
   } = useFollowupListItem({ followup });
 
-  const sessionLabel = followup.session_id
-    ? `Session ${followup.session_id.slice(0, 8)}`
-    : "New chat";
+  const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
+  const kindBadge = (
+    <span
+      className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+      data-testid="followup-kind-badge"
+    >
+      {kindBadgeLabel}
+    </span>
+  );
 
   const detailContent = (
     <>
@@ -59,9 +65,7 @@ export function FollowupListItem({ followup }: Props) {
             {recurrenceLabel}
           </Text>
           <span className="text-zinc-300">•</span>
-          <Text variant="small" className="!text-zinc-400">
-            {sessionLabel}
-          </Text>
+          {kindBadge}
         </div>
       </div>
     </>
@@ -129,9 +133,7 @@ export function FollowupListItem({ followup }: Props) {
                 {recurrenceLabel}
               </Text>
               <span className="text-zinc-300">•</span>
-              <Text variant="small" className="!text-zinc-400">
-                {sessionLabel}
-              </Text>
+              {kindBadge}
             </div>
             <pre
               className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"

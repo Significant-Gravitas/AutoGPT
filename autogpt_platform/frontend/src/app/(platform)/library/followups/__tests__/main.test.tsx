@@ -16,6 +16,21 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import FollowupsPage from "../page";
 
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/library/followups",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -77,6 +92,7 @@ function defaultGraphSchedulesHandler() {
 describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
+    pushMock.mockClear();
   });
 
   afterEach(() => {
@@ -363,6 +379,55 @@ describe("FollowupsPage", () => {
         }),
       );
     });
+  });
+
+  test("header shows New scheduled task button in empty state and starts the guided flow", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+    await screen.findByTestId("followups-empty");
+
+    fireEvent.click(screen.getByTestId("schedule-new-button"));
+
+    await vi.waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(
+        expect.stringContaining("/copilot#prompt="),
+      );
+    });
+    const url = pushMock.mock.calls[0][0] as string;
+    expect(decodeURIComponent(url.split("#prompt=")[1])).toContain(
+      "I want to create a new scheduled task",
+    );
+  });
+
+  test("empty state shows the spec copy", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const empty = await screen.findByTestId("followups-empty");
+    expect(empty.textContent).toContain("Nothing scheduled yet");
+    expect(empty.textContent).toContain("schedule an agent from the builder");
+  });
+
+  test("copilot follow-up rows show a New chat badge when they fire into a new chat", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", session_id: null as unknown as string }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const badge = await screen.findByTestId("followup-kind-badge");
+    expect(badge.textContent).toBe("New chat");
   });
 
   test("unified page sorts items by next_run_time ascending", async () => {

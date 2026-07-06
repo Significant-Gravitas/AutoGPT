@@ -16,7 +16,7 @@ function nextRunMs(item: { next_run_time?: string | null }): number {
   return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
 }
 
-export function useFollowupsPage() {
+export function useSchedulesPanel() {
   // Followups (copilot_turn) — the scheduled-message side of the
   // feature.  Stored via ``schedule_followup`` MCP tool.
   const copilotQuery = useListCopilotFollowupSchedules({
