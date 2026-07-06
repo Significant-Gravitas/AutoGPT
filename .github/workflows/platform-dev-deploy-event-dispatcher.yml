@@ -142,23 +142,27 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const comments = await github.rest.issues.listComments({
+            // Paginate: listComments returns only the first 30 by default, so a
+            // later !deploy/!undeploy on a busy PR would be missed and corrupt the
+            // active-deployment scan.
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: context.issue.number,
+              per_page: 100
             });
-            
+
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
-            
-            comments.data.forEach((comment, index) => {
+
+            comments.forEach((comment, index) => {
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {
                 lastUndeployIndex = index;
               }
             });
-            
+
             // Should undeploy if there's a !deploy without a subsequent !undeploy
             const shouldUndeploy = lastDeployIndex !== -1 && lastDeployIndex > lastUndeployIndex;
             core.setOutput('should_undeploy', shouldUndeploy);
@@ -206,10 +210,14 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const comments = await github.rest.issues.listComments({
+            // Paginate: listComments returns only the first 30 by default, so a
+            // later !deploy/!undeploy on a busy PR would be missed and corrupt the
+            // active-deployment scan.
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: context.issue.number,
+              per_page: 100
             });
 
             let lastDeployIndex = -1;
@@ -220,7 +228,7 @@ jobs:
             // drive-by !deploy comment (ignored by the comment handler's
             // permission gate) would arm auto-redeploy for the next push.
             const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-            comments.data.forEach((comment, index) => {
+            comments.forEach((comment, index) => {
               if (!allowed.includes(comment.author_association)) return;
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
