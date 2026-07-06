@@ -136,7 +136,9 @@ describe("AgentReviewStep", () => {
     unmount();
 
     pathnameMock.current = "/settings/creator-dashboard";
-    render(<AgentReviewStep {...baseProps} status={SubmissionStatus.PENDING} />);
+    render(
+      <AgentReviewStep {...baseProps} status={SubmissionStatus.PENDING} />,
+    );
     // Viewing an existing pending submission should not throw confetti.
     expect(screen.queryByTestId("confetti")).toBeNull();
   });
