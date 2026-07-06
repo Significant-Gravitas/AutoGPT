@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Props, usePublishAgentModal } from "./usePublishAgentModal";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { getApprovedMarketplaceUrl } from "@/lib/utils";
 import {
   PublishAuthPrompt,
   PublishAuthPromptSkeleton,
@@ -95,13 +96,11 @@ export function PublishAgentModal({
         );
       case "review": {
         const submission = currentState.submissionData;
-        const marketplaceUrl =
-          submission &&
-          submission.status === SubmissionStatus.APPROVED &&
-          creatorUsername &&
-          submission.slug
-            ? `/marketplace/agent/${encodeURIComponent(creatorUsername)}/${encodeURIComponent(submission.slug)}`
-            : undefined;
+        const marketplaceUrl = getApprovedMarketplaceUrl({
+          creatorUsername,
+          slug: submission?.slug,
+          isApproved: submission?.status === SubmissionStatus.APPROVED,
+        });
         const onEdit =
           onRequestEdit &&
           submission &&

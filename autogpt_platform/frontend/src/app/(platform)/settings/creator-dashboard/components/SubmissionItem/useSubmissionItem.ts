@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { getApprovedMarketplaceUrl } from "@/lib/utils";
 
 import { buildEditPayload, type EditPayload } from "../../helpers";
 
@@ -27,10 +28,11 @@ export function useSubmissionItem({
 
   const canModify = submission.status === SubmissionStatus.PENDING;
   const isApproved = submission.status === SubmissionStatus.APPROVED;
-  const marketplaceUrl =
-    isApproved && creatorUsername && submission.slug
-      ? `/marketplace/agent/${encodeURIComponent(creatorUsername)}/${encodeURIComponent(submission.slug)}`
-      : undefined;
+  const marketplaceUrl = getApprovedMarketplaceUrl({
+    creatorUsername,
+    slug: submission.slug,
+    isApproved,
+  });
 
   function handleView() {
     onView(submission);
