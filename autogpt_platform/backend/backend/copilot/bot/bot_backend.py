@@ -29,7 +29,9 @@ from backend.platform_linking.models import (
     BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     Platform,
+    TurnDenial,
     WorkspaceArtifact,
     WorkspaceUploadRequest,
     WorkspaceUploadResult,
@@ -63,10 +65,23 @@ class BotStreamError(Exception):
         self.error_kind = error_kind
 
 
+class ChatTurnDeniedError(Exception):
+    """The turn was refused before running (subscription paywall / rate limit).
+
+    Carries the :class:`TurnDenial` so the handler can show the user-facing
+    message and, when present, a CTA button (e.g. Subscribe / Upgrade).
+    """
+
+    def __init__(self, denial: TurnDenial):
+        super().__init__(denial.message)
+        self.denial = denial
+
+
 __all__ = [
     "BotBackend",
     "BotStreamError",
     "ChatSummary",
+    "ChatTurnDeniedError",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -327,12 +342,14 @@ class BotBackend:
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
-    ) -> str:
+    ) -> EnsureSessionResult:
         """Resolve (or create) the copilot session for this conversation.
 
         Called before uploading attachments so they land in the session folder
         (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
-        UI uploads into an already-open session.
+        UI uploads into an already-open session. Carries a ``denial`` instead
+        of a session when the turn gate refuses the user, so the caller can
+        skip the upload entirely.
         """
         return await self._client.ensure_chat_session(
             platform=Platform(platform.upper()),
@@ -425,6 +442,10 @@ class BotBackend:
                 file_ids=file_ids or [],
             )
         )
+        if handle.denial is not None:
+            # Refused before running (paywall / rate limit) — no stream exists
+            # to subscribe to. Surface the denial for the handler to render.
+            raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
 
