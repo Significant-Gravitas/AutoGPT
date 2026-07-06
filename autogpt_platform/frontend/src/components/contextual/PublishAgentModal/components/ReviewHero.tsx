@@ -32,7 +32,7 @@ export function ReviewHero({
 
   return (
     <>
-      {showConfetti ? (
+      {showConfetti && !shouldReduceMotion ? (
         <Confetti
           options={{
             particleCount: 80,

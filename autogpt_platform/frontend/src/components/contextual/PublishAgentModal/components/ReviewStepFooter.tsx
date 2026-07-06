@@ -71,7 +71,7 @@ export function ReviewStepFooter({
             >
               View on marketplace
             </Button>
-          ) : isRejected || isDraft ? null : (
+          ) : isRejected || isDraft || isDashboardPage ? null : (
             <Button
               size="small"
               onClick={onViewProgress}
@@ -79,7 +79,7 @@ export function ReviewStepFooter({
               rightIcon={<ArrowRightIcon size={14} weight="bold" />}
               data-testid="view-progress-button"
             >
-              {isDashboardPage ? "View progress" : "Go to Creator Dashboard"}
+              Go to Creator Dashboard
             </Button>
           )
         }

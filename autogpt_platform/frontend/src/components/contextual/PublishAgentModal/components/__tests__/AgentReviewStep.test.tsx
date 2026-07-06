@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
+const pathnameMock = vi.hoisted(() => ({ current: "/marketplace" }));
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/marketplace",
+  usePathname: () => pathnameMock.current,
 }));
+
+afterEach(() => {
+  pathnameMock.current = "/marketplace";
+});
 
 vi.mock("next/link", () => ({
   default: ({
@@ -101,6 +107,24 @@ describe("AgentReviewStep", () => {
     expect(onEdit).toHaveBeenCalled();
     // View progress is still the primary action for pending.
     expect(screen.getByTestId("view-progress-button")).toBeDefined();
+  });
+
+  it("hides the redundant 'Go to Creator Dashboard' button on the dashboard", () => {
+    pathnameMock.current = "/settings/creator-dashboard";
+    const onEdit = vi.fn();
+    render(
+      <AgentReviewStep
+        {...baseProps}
+        status={SubmissionStatus.PENDING}
+        onEdit={onEdit}
+      />,
+    );
+
+    // On the dashboard the button would just navigate back to the same page,
+    // so it is hidden; editing and "Done" remain available.
+    expect(screen.queryByTestId("view-progress-button")).toBeNull();
+    expect(screen.getByTestId("edit-submission-button")).toBeDefined();
+    expect(screen.getByText("Done")).toBeDefined();
   });
 
   it("renders the approved hero, hides the stepper, and shows runs + share link", () => {
