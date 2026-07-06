@@ -92,7 +92,7 @@ export function useAgentReviewStep({
   const isDraft = status === SubmissionStatus.DRAFT;
   const isPending = !isApproved && !isRejected && !isDraft;
 
-  const showCelebration = isApproved || isPending;
+  const showCelebration = isApproved || (isPending && !isDashboardPage);
   const showConfetti = showCelebration && !shouldReduceMotion;
 
   const metaItems = getSubmissionMeta({

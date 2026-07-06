@@ -29,7 +29,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/molecules/Confetti/Confetti", () => ({
-  Confetti: () => null,
+  Confetti: () => <div data-testid="confetti" />,
 }));
 
 import { AgentReviewStep } from "../AgentReviewStep";
@@ -125,6 +125,20 @@ describe("AgentReviewStep", () => {
     expect(screen.queryByTestId("view-progress-button")).toBeNull();
     expect(screen.getByTestId("edit-submission-button")).toBeDefined();
     expect(screen.getByText("Done")).toBeDefined();
+  });
+
+  it("celebrates a fresh pending submission but not one viewed on the dashboard", () => {
+    const { unmount } = render(
+      <AgentReviewStep {...baseProps} status={SubmissionStatus.PENDING} />,
+    );
+    // Post-publish (off-dashboard) pending keeps the celebration.
+    expect(screen.getByTestId("confetti")).toBeDefined();
+    unmount();
+
+    pathnameMock.current = "/settings/creator-dashboard";
+    render(<AgentReviewStep {...baseProps} status={SubmissionStatus.PENDING} />);
+    // Viewing an existing pending submission should not throw confetti.
+    expect(screen.queryByTestId("confetti")).toBeNull();
   });
 
   it("renders the approved hero, hides the stepper, and shows runs + share link", () => {
