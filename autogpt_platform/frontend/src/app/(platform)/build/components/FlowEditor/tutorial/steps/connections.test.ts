@@ -7,9 +7,9 @@ import {
 
 describe("connectionHandleOffset", () => {
   it("shifts left placements further left along x", () => {
-    expect(connectionHandleOffset({ placement: "left", x: 100, y: 50 })).toEqual(
-      { x: 100 - CONNECTION_STEP_OFFSET },
-    );
+    expect(
+      connectionHandleOffset({ placement: "left", x: 100, y: 50 }),
+    ).toEqual({ x: 100 - CONNECTION_STEP_OFFSET });
   });
 
   it("shifts right placements further right along x", () => {
@@ -19,9 +19,11 @@ describe("connectionHandleOffset", () => {
   });
 
   it("shifts top placements further up along y", () => {
-    expect(connectionHandleOffset({ placement: "top", x: 100, y: 50 })).toEqual({
-      y: 50 - CONNECTION_STEP_OFFSET,
-    });
+    expect(connectionHandleOffset({ placement: "top", x: 100, y: 50 })).toEqual(
+      {
+        y: 50 - CONNECTION_STEP_OFFSET,
+      },
+    );
   });
 
   it("shifts bottom placements further down along y", () => {
