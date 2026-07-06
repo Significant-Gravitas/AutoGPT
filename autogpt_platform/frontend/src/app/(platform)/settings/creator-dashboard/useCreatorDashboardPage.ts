@@ -14,6 +14,7 @@ import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/st
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 
 import {
   buildEditPayload,
@@ -25,14 +26,6 @@ import {
 
 const PAGE_SIZE = 20;
 const SEARCH_QUERY_MAX_LENGTH = 100;
-
-type PublishStep = "select" | "info" | "review";
-
-interface PublishState {
-  isOpen: boolean;
-  step: PublishStep;
-  submissionData: StoreSubmission | null;
-}
 
 interface EditState {
   isOpen: boolean;

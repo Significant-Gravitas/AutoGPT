@@ -6,15 +6,10 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 import { EASE_OUT } from "../../helpers";
-
-interface PublishState {
-  isOpen: boolean;
-  step: "select" | "info" | "review";
-  submissionData: StoreSubmission | null;
-}
 
 interface Props {
   publishState: PublishState;
