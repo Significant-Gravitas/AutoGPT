@@ -374,7 +374,9 @@ describe("SkillsPage", () => {
 
     const empty = await screen.findByTestId("skills-empty");
     expect(empty.textContent).toContain("No skills yet");
-    expect(empty.textContent).toContain("then it'll reach for it automatically");
+    expect(empty.textContent).toContain(
+      "then it'll reach for it automatically",
+    );
   });
 
   test("uploaded skill shows a New badge", async () => {

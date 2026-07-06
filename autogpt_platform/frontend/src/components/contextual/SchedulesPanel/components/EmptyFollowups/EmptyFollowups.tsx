@@ -15,8 +15,8 @@ export function EmptyFollowups() {
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
         Recurring agent runs and your copilot&apos;s follow-up messages show up
-        here. Hit <strong>New scheduled task</strong> to set one up, or
-        schedule an agent from the builder.
+        here. Hit <strong>New scheduled task</strong> to set one up, or schedule
+        an agent from the builder.
       </Text>
     </div>
   );
