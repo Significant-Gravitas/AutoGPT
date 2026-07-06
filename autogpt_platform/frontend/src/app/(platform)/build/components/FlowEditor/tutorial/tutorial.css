@@ -158,13 +158,3 @@
 .shepherd-element.new-builder-tour[data-popper-placement^="right"] {
   margin-left: 30px !important;
 }
-
-/* Connection steps: extra offset so the popover clears the output/input
-   handle and leaves room to grab and drag the connection. */
-.shepherd-element.new-builder-tour.connection-tour-step[data-popper-placement^="left"] {
-  margin-right: 72px !important;
-}
-
-.shepherd-element.new-builder-tour.connection-tour-step[data-popper-placement^="right"] {
-  margin-left: 72px !important;
-}
