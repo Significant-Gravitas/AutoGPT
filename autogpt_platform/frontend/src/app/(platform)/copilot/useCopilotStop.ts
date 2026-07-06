@@ -107,24 +107,30 @@ export function useCopilotStop({
         });
       }
     } finally {
-      isCancelInFlightRef.current = false;
-      // The cancel endpoint returns once the backend confirmed (or
-      // force-completed) the stop, so this refetch reads the settled
-      // state. Only clear the user-stop flag when the backend actually
-      // reports no active stream — clearing it against a stale cache is
-      // what used to re-arm auto-resume mid-drain.
-      if (sessionId) {
-        try {
+      // Keep ``isCancelInFlightRef`` set through the confirming refetch. The
+      // reset effect in useCopilotStream is gated on it, so clearing it before
+      // the settled session state arrives would let that effect clear the
+      // user-stop flag from the stale pre-stop cache and re-arm auto-resume
+      // mid-drain. The cancel endpoint returns once the backend confirmed (or
+      // force-completed) the stop, so this refetch reads the settled state.
+      // Only clear the user-stop flag when the backend actually reports no
+      // active stream.
+      try {
+        if (sessionId) {
           const result = await refetchSession();
           if (!hasActiveBackendStream(result)) {
             isUserStoppingRef.current = false;
             setIsUserStopping(false);
           }
-        } catch {
-          // Leave the flag set; the fallback reset effect in
-          // useCopilotStream clears it once a later session refetch
-          // reports the stream gone.
         }
+      } catch {
+        // Leave the user-stop flag set; the fallback reset effect in
+        // useCopilotStream clears it once a later session refetch reports
+        // the stream gone.
+      } finally {
+        // Always release the guard once the refetch settles — leaving it set
+        // would permanently disable the fallback reset effect.
+        isCancelInFlightRef.current = false;
       }
     }
   }

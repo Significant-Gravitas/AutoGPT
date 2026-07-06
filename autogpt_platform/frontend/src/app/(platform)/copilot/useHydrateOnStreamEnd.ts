@@ -102,6 +102,18 @@ function messageHasErrorMarker(message: UIMessage): boolean {
   );
 }
 
+/** Text of the marker the stop handler paints — must match `CANCELLED_MARKER`
+ *  in `useCopilotStop.ts` (after the `COPILOT_ERROR_PREFIX` is stripped). */
+const CANCELLATION_MARKER_TEXT = "Operation cancelled";
+
+function isCancellationMarkerText(text: string): boolean {
+  const marker = parseSpecialMarkers(text);
+  return (
+    marker.markerType === "error" &&
+    marker.markerText === CANCELLATION_MARKER_TEXT
+  );
+}
+
 /**
  * After a user stop, the stop handler paints a cancellation marker onto the
  * last in-memory assistant message immediately, while the backend persists
@@ -115,10 +127,12 @@ function preserveLocalStopMarker(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  const prevMarked = [...prev]
-    .reverse()
-    .find((m) => m.role === "assistant" && messageHasErrorMarker(m));
-  if (!prevMarked) return hydrated;
+  // Only the trailing assistant row can carry the just-painted local marker:
+  // the stop handler appends it to `prev`'s last message when that message is
+  // an assistant. Scanning the whole history for any error marker could
+  // reattach a stale marker from an earlier turn to this hydration.
+  const prevMarked = prev[prev.length - 1];
+  if (prevMarked?.role !== "assistant") return hydrated;
   if (hydrated.some((m) => m.role === "assistant" && messageHasErrorMarker(m)))
     return hydrated;
 
@@ -126,8 +140,9 @@ function preserveLocalStopMarker(
     (part) =>
       part.type === "text" &&
       "text" in part &&
-      parseSpecialMarkers(part.text).markerType !== null,
+      isCancellationMarkerText(part.text),
   );
+  if (markerParts.length === 0) return hydrated;
   const last = hydrated[hydrated.length - 1];
   if (last?.role === "assistant") {
     return [
