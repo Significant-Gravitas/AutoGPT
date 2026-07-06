@@ -92,6 +92,7 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 let mockSessionIdForQueryState: string | null = null;
 vi.mock("nuqs", () => ({
   parseAsString: {},
+  parseAsStringLiteral: () => ({}),
   useQueryState: () => [mockSessionIdForQueryState, vi.fn()],
 }));
 
