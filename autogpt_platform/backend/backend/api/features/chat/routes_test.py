@@ -1650,9 +1650,7 @@ def test_cancel_session_force_complete_suppresses_stream_error(
         status="running",
     )
     mock_registry = MagicMock()
-    mock_registry.get_active_session = AsyncMock(
-        return_value=(running_session, "1-0")
-    )
+    mock_registry.get_active_session = AsyncMock(return_value=(running_session, "1-0"))
     # Executor never confirms: status stays "running" for every poll.
     mock_registry.get_session = AsyncMock(return_value=running_session)
     mock_registry.mark_session_completed = AsyncMock(return_value=True)
