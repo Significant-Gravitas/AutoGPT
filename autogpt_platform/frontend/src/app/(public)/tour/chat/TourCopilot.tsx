@@ -4,6 +4,7 @@ import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
@@ -41,6 +42,14 @@ export function TourCopilot() {
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
+  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
+
+  // The tour shares the copilot UI store but must never leak panel state
+  // into the real /copilot: opens skip the localStorage write
+  // (persist: false) and unmount closes the panel in memory the same way.
+  useMountEffect(() => {
+    return () => closeArtifactPanel({ persist: false });
+  });
 
   // The completion artifact is not gated behind the app-shell flag — the demo
   // always ends by opening the scenario's mock file in the artifact panel.
@@ -59,7 +68,9 @@ export function TourCopilot() {
           key={scenario.id}
           sessionId={scenario.id}
           script={scenario.script}
-          onComplete={() => openArtifact(buildTourArtifactRef(scenario))}
+          onComplete={() =>
+            openArtifact(buildTourArtifactRef(scenario), { persist: false })
+          }
           onReset={clearArtifactPreview}
         />
       </div>

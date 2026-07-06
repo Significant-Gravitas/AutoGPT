@@ -58,7 +58,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         {!mobile && (
           <button
             type="button"
-            onClick={closeArtifactPanel}
+            onClick={() => closeArtifactPanel()}
             title="Close"
             aria-label="Close workspace panel"
             className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
