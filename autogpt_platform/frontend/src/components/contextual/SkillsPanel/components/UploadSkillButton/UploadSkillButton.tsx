@@ -1,12 +1,21 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useUploadSkillButton } from "./useUploadSkillButton";
 
-export function UploadSkillButton() {
+interface Props {
+  onUploaded?: (name: string) => void;
+}
+
+export function UploadSkillButton({ onUploaded }: Props) {
   const { fileInputRef, isUploading, openFilePicker, handleFileChange } =
-    useUploadSkillButton();
+    useUploadSkillButton({ onUploaded });
 
   return (
     <>
@@ -18,16 +27,23 @@ export function UploadSkillButton() {
         onChange={handleFileChange}
         data-testid="skill-upload-input"
       />
-      <Button
-        variant="primary"
-        size="small"
-        onClick={openFilePicker}
-        loading={isUploading}
-        data-testid="skill-upload-button"
-      >
-        <UploadSimpleIcon className="mr-1 h-4 w-4" />
-        Upload skill
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={openFilePicker}
+            loading={isUploading}
+            data-testid="skill-upload-button"
+          >
+            <UploadSimpleIcon className="mr-1 h-4 w-4" />
+            Upload skill
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Import a skill file you&apos;ve exported
+        </TooltipContent>
+      </Tooltip>
     </>
   );
 }

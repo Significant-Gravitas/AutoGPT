@@ -7,7 +7,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { getSkillUploadError } from "./helpers";
 
-export function useUploadSkillButton() {
+interface Args {
+  onUploaded?: (name: string) => void;
+}
+
+export function useUploadSkillButton({ onUploaded }: Args = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +48,9 @@ export function useUploadSkillButton() {
       const name =
         result.status === 201 ? result.data.name : (file.name ?? "skill");
       toast({ title: `Skill "${name}" uploaded` });
+      if (result.status === 201) {
+        onUploaded?.(result.data.name);
+      }
       queryClient.invalidateQueries({
         queryKey: getListCopilotSkillsQueryKey(),
       });

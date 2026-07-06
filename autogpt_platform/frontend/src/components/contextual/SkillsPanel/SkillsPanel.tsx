@@ -1,19 +1,29 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { PlusIcon } from "@phosphor-icons/react";
+import { NEW_SKILL_PROMPT } from "../guidedPrompts";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
 import { UploadSkillButton } from "./components/UploadSkillButton/UploadSkillButton";
 import { useSkillsPanel } from "./useSkillsPanel";
 
 interface Props {
+  onGuidedPrompt: (prompt: string) => void;
   withHeading?: boolean;
 }
 
-export function SkillsPanel({ withHeading = true }: Props) {
-  const { skills, isLoading, error } = useSkillsPanel();
+export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
+  const { skills, isLoading, error, newSkillName, handleSkillUploaded } =
+    useSkillsPanel();
 
   return (
     <section className="space-y-6">
@@ -27,7 +37,23 @@ export function SkillsPanel({ withHeading = true }: Props) {
           </Text>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <UploadSkillButton />
+          <UploadSkillButton onUploaded={handleSkillUploaded} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
+                data-testid="skill-new-button"
+              >
+                <PlusIcon className="mr-1 h-4 w-4" />
+                New skill
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Teach AutoPilot a new skill in chat
+            </TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
@@ -56,7 +82,10 @@ export function SkillsPanel({ withHeading = true }: Props) {
         >
           {skills.map((skill) => (
             <li key={skill.name}>
-              <SkillListItem skill={skill} />
+              <SkillListItem
+                skill={skill}
+                isNew={skill.name === newSkillName}
+              />
             </li>
           ))}
         </ul>

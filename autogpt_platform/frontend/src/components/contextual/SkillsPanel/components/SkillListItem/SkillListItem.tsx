@@ -1,6 +1,7 @@
 "use client";
 
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -16,9 +17,10 @@ import { useSkillListItem } from "./useSkillListItem";
 
 interface Props {
   skill: CopilotSkillInfo;
+  isNew?: boolean;
 }
 
-export function SkillListItem({ skill }: Props) {
+export function SkillListItem({ skill, isNew = false }: Props) {
   const {
     descriptionPreview,
     triggers,
@@ -48,9 +50,18 @@ export function SkillListItem({ skill }: Props) {
           <BookOpenIcon size={18} className="text-violet-700" weight="bold" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="body-medium" className="break-words">
-            {skill.name}
-          </Text>
+          <div className="flex items-center gap-2">
+            <Text variant="body-medium" className="break-words">
+              {skill.name}
+            </Text>
+            {isNew && (
+              <span data-testid="skill-new-badge">
+                <Badge variant="success" size="small">
+                  New
+                </Badge>
+              </span>
+            )}
+          </div>
           <Text variant="small" className="!text-zinc-500">
             {descriptionPreview}
           </Text>
