@@ -1625,6 +1625,56 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_enqueue.assert_called_once_with("sess-1")
 
 
+def test_cancel_session_force_complete_suppresses_stream_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When the executor doesn't confirm the cancel within the poll window,
+    the route force-completes the session.  The stop is user-initiated, so it
+    must NOT publish a StreamError (a live/resumed stream would render it as
+    "the assistant encountered an error") and must return
+    ``reason='cancel_published_not_confirmed'`` so the client can tell the
+    user the stop may take a moment."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    running_session = ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-1",
+        status="running",
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(
+        return_value=(running_session, "1-0")
+    )
+    # Executor never confirms: status stays "running" for every poll.
+    mock_registry.get_session = AsyncMock(return_value=running_session)
+    mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    # Skip the real 5s poll wait.
+    mocker.patch("asyncio.sleep", new=AsyncMock())
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["cancelled"] is True
+    assert data["reason"] == "cancel_published_not_confirmed"
+    mock_registry.mark_session_completed.assert_awaited_once_with(
+        "sess-1", error_message="Cancelled", skip_error_publish=True
+    )
+
+
 def test_cancel_session_clears_pending_buffer(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

@@ -61,6 +61,7 @@ function runForceHydrate({
     sessionId: SESSION_ID,
     isReconnectScheduled: false,
     hasActiveStream: false,
+    isUserStoppingRef: { current: false },
     setMessages,
   };
 

@@ -96,6 +96,13 @@ export function useCopilotStream({
   // flipped ``status`` back to ``ready`` yet (which can lag by many seconds
   // when aborting a GET-based resume fetch).
   const [isUserStopping, setIsUserStopping] = useState(false);
+  // True while the /cancel request of a user stop is in flight. Guards the
+  // flag-reset effect below: right after a stop, the session query still
+  // holds the pre-turn snapshot (``active_stream=false``), and resetting the
+  // user-stop flag from that stale cache re-armed the auto-resume effect the
+  // moment the post-stream refetch reported the backend still draining —
+  // replaying the whole transcript over the locally-painted stopped state.
+  const isCancelInFlightRef = useRef(false);
   // Flipped to `false` during mount cleanup so async callbacks that were
   // already in flight (e.g. the post-stream settle in `onFinish`) bail out
   // instead of arming new timers / HTTP requests against a torn-down mount.
@@ -352,6 +359,8 @@ export function useCopilotStream({
     setMessages,
     isUserStoppingRef,
     setIsUserStopping,
+    isCancelInFlightRef,
+    refetchSession,
   });
 
   // Silent-stall watchdog: triggers the reconnect cascade if the stream
@@ -401,6 +410,7 @@ export function useCopilotStream({
     hydratedMessages,
     isReconnectScheduled,
     hasActiveStream,
+    isUserStoppingRef,
     setMessages,
   });
 
@@ -548,8 +558,12 @@ export function useCopilotStream({
 
   // Reset the user-stop flag once the backend confirms the stream is no
   // longer active — this prevents the flag from staying stale forever.
+  // Guarded on the cancel round-trip: until /cancel settles, the cached
+  // ``hasActiveStream=false`` is the PRE-stop snapshot, not a confirmation
+  // that the turn stopped. Resetting from it re-armed auto-resume mid-drain.
   useEffect(() => {
     if (hasActiveStream) return;
+    if (isCancelInFlightRef.current) return;
     if (isUserStoppingRef.current) {
       isUserStoppingRef.current = false;
     }

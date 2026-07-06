@@ -2,6 +2,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 
+import { parseSpecialMarkers } from "./components/ChatMessagesContainer/helpers";
 import {
   deduplicateMessages,
   hasInProgressAssistantParts,
@@ -92,6 +93,53 @@ function preservePromotedUserBubbles(
   return [...hydrated, ...orphans];
 }
 
+function messageHasErrorMarker(message: UIMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      part.type === "text" &&
+      "text" in part &&
+      parseSpecialMarkers(part.text).markerType !== null,
+  );
+}
+
+/**
+ * After a user stop, the stop handler paints a cancellation marker onto the
+ * last in-memory assistant message immediately, while the backend persists
+ * its own marker row only once the cancelled turn finishes draining
+ * (seconds later). If the post-stop hydration applies from a refetch that
+ * landed in between, a blind replace would drop the local marker and the
+ * "Task stopped" card would vanish until the next refetch. Re-attach the
+ * local marker unless the hydrated window already carries one.
+ */
+function preserveLocalStopMarker(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  const prevMarked = [...prev]
+    .reverse()
+    .find((m) => m.role === "assistant" && messageHasErrorMarker(m));
+  if (!prevMarked) return hydrated;
+  if (hydrated.some((m) => m.role === "assistant" && messageHasErrorMarker(m)))
+    return hydrated;
+
+  const markerParts = prevMarked.parts.filter(
+    (part) =>
+      part.type === "text" &&
+      "text" in part &&
+      parseSpecialMarkers(part.text).markerType !== null,
+  );
+  const last = hydrated[hydrated.length - 1];
+  if (last?.role === "assistant") {
+    return [
+      ...hydrated.slice(0, -1),
+      { ...last, parts: [...last.parts, ...markerParts] },
+    ];
+  }
+  // Stopped before any assistant row was persisted — keep the whole local
+  // marker message so the stopped state has something to render from.
+  return [...hydrated, prevMarked];
+}
+
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
 // Survive remount on session re-entry: useRef would reset every time
@@ -120,6 +168,14 @@ interface Args {
    * resend.
    */
   hasActiveStream: boolean;
+  /**
+   * True from the moment the user presses Stop until the backend confirms
+   * the turn is gone. While set, hydration is deferred: the DB still holds
+   * the cancelled turn's mid-stream rows (tools without results), so
+   * applying it would clobber the locally-painted stopped state with
+   * spinners and drop the cancellation marker.
+   */
+  isUserStoppingRef: React.MutableRefObject<boolean>;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -160,11 +216,17 @@ export function useHydrateOnStreamEnd({
   hydratedMessages,
   isReconnectScheduled,
   hasActiveStream,
+  isUserStoppingRef,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
   const needsForceHydrateRef = useRef(false);
   const staleRefAtStreamEnd = useRef<typeof hydratedMessages | null>(null);
+  // Set when an apply was deferred because a user stop was in flight.
+  // Consumed by the eventual apply to (a) skip the "interrupted" toast —
+  // the interruption was the user's own stop — and (b) preserve the local
+  // cancellation marker if the backend hasn't persisted its own row yet.
+  const deferredForUserStopRef = useRef(false);
 
   // Arm the force-hydrate flag the moment the stream transitions to idle.
   useEffect(() => {
@@ -184,6 +246,10 @@ export function useHydrateOnStreamEnd({
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
+    if (isUserStoppingRef.current) {
+      deferredForUserStopRef.current = true;
+      return;
+    }
 
     const deduped = deduplicateMessages(hydratedMessages);
     const needsZombieRecovery =
@@ -207,6 +273,7 @@ export function useHydrateOnStreamEnd({
       needsZombieRecovery &&
       sessionId &&
       !isStaleForceHydrateSnapshot &&
+      !deferredForUserStopRef.current &&
       !sessionsWithInterruptedToastShown.has(sessionId)
     ) {
       sessionsWithInterruptedToastShown.add(sessionId);
@@ -222,11 +289,17 @@ export function useHydrateOnStreamEnd({
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
-      setMessages((prev) =>
-        preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
-      );
+      const wasUserStop = deferredForUserStopRef.current;
+      setMessages((prev) => {
+        const replaced = preservePromotedUserBubbles(
+          prev,
+          retainOlderHistory(prev, finalized),
+        );
+        return wasUserStop ? preserveLocalStopMarker(prev, replaced) : replaced;
+      });
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
+      deferredForUserStopRef.current = false;
       return;
     }
 
