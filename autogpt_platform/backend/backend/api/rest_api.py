@@ -47,6 +47,7 @@ import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
@@ -65,6 +66,7 @@ from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -313,6 +315,7 @@ async def validation_error_handler(
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -424,6 +427,11 @@ app.include_router(
 )
 app.include_router(
     team_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )

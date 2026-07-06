@@ -160,6 +160,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
     set_execution_context,
@@ -785,22 +786,9 @@ async def _consume_sdk_until_done(
         if not isinstance(sdk_msg, StreamEvent):
             loop_state.msgs_since_flush += 1
         now = time.monotonic()
-        has_pending_tools = (
-            acc.has_appended_assistant
-            and acc.accumulated_tool_calls
-            and not acc.has_tool_results
-        )
-        adapter = state.adapter
-        has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
-            adapter.has_started_reasoning and not adapter.has_ended_reasoning
-        )
-        if (
-            not has_pending_tools
-            and not has_open_block
-            and (
-                loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
-                or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
-            )
+        if not _intermediate_flush_blocked(acc, state.adapter) and (
+            loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+            or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
@@ -837,6 +825,46 @@ _THINKING_ONLY_REPROMPT = (
 # session-message flush so page reloads show progress on long turns.
 _FLUSH_INTERVAL_SECONDS = 30.0
 _FLUSH_MESSAGE_THRESHOLD = 10
+
+
+def _intermediate_flush_blocked(
+    acc: "_StreamAccumulator", adapter: SDKResponseAdapter
+) -> bool:
+    """Whether the periodic mid-turn session flush must be held off.
+
+    The DB save is append-only (uses ``start_sequence``), so flushing mid-turn
+    locks the trailing rows at their current sequence permanently. Hold the
+    flush while any of these is true:
+
+    - ``has_pending_tools`` — a tool call is dispatched but its result hasn't
+      been recorded yet; the ``assistant(tool_calls)`` and ``tool`` result rows
+      must persist together.
+    - ``has_unsealed_assistant`` — a live assistant row hasn't acquired
+      ``tool_calls`` yet. The model often emits a text preamble, pauses, then
+      calls a tool — text and ``tool_use`` arrive as *separate* AssistantMessage
+      events, and ``StreamToolInputAvailable`` attaches the ``tool_calls`` onto
+      this same ``acc.assistant_response`` object. Flushing now would lock the
+      row without ``tool_calls``; the later attach could never reach the DB,
+      orphaning the ``tool`` result (no call row → the tool card vanishes on
+      reload).
+    - ``has_open_block`` — text/reasoning is still streaming, so the row would
+      be locked at a truncated length.
+
+    The guaranteed turn-end persist (the ``finally`` upsert) always saves the
+    rows, so holding an intermediate flush never loses data.
+    """
+    has_pending_tools = (
+        acc.has_appended_assistant
+        and bool(acc.accumulated_tool_calls)
+        and not acc.has_tool_results
+    )
+    has_unsealed_assistant = (
+        acc.has_appended_assistant and not acc.accumulated_tool_calls
+    )
+    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+        adapter.has_started_reasoning and not adapter.has_ended_reasoning
+    )
+    return has_pending_tools or has_unsealed_assistant or has_open_block
 
 
 def _hidden_short_names_for_permissions(
@@ -2818,8 +2846,10 @@ async def _prepare_file_attachments(
     Images (PNG/JPEG/GIF/WebP) are embedded directly as vision content blocks
     in the user message so Claude can see them without tool calls.
 
-    Non-image files (PDFs, text, etc.) are saved to *sdk_cwd* so the CLI's
-    built-in Read tool can access them.
+    Non-image files (PDFs, text, etc.) are referenced by ``file_id`` so the
+    model retrieves them with ``read_workspace_file``, which works in every
+    execution mode. A copy is also written to *sdk_cwd* for non-E2B tooling,
+    but the model is never pointed at that host-side path.
 
     Returns a :class:`PreparedAttachments` with a text hint and any image
     content blocks.
@@ -2866,11 +2896,19 @@ async def _prepare_file_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                # Non-image files: save to sdk_cwd for Read tool access
-                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # Non-image files: surface via read_workspace_file by file_id.
+                # In E2B mode (prod default) the model's file tools operate on
+                # the remote sandbox filesystem, so a host-side sdk_cwd path
+                # is unreadable there — the workspace tool works in both modes.
+                # A local copy is still written for non-E2B tooling, but the
+                # model is never pointed at that path.
+                _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # ``file_id=<uuid>`` (not ``file_id:``) — chat-share
+                # allowlisting extracts references via _FILE_ID_RE, which
+                # matches exactly this shape (data/sharing/workspace_refs.py).
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
-                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                    f"{file_info.size_bytes:,} bytes) file_id={fid}"
                 )
         except Exception:
             logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
@@ -2880,7 +2918,12 @@ async def _prepare_file_attachments(
 
     noun = "file" if len(file_descriptions) == 1 else "files"
     has_non_images = len(file_descriptions) > len(image_blocks)
-    read_hint = " Use the Read tool to view non-image files." if has_non_images else ""
+    read_hint = (
+        " Use the read_workspace_file tool with the file_id to view non-image"
+        " files (pass save_to_path to copy one into the working directory)."
+        if has_non_images
+        else ""
+    )
     hint = (
         f"[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
         + "\n".join(file_descriptions)
@@ -4494,6 +4537,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
+            # Drop orphaned tool outputs stashed by a rolled-back attempt —
+            # the name-keyed FIFO would otherwise serve them (off-by-one) to
+            # this attempt's tool calls, corrupting frontend tool payloads.
+            reset_pending_tool_outputs()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()

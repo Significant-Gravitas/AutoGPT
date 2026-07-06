@@ -31,6 +31,8 @@ from backend.platform_linking.models import (
     CreateUserLinkTokenRequest,
     Platform,
     WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 from backend.util.clients import get_platform_linking_manager_client
 from backend.util.exceptions import (
@@ -38,6 +40,8 @@ from backend.util.exceptions import (
     LinkAlreadyExistsError,
     NotFoundError,
 )
+
+from .adapters.base import InboundAttachment
 
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends
@@ -91,6 +95,14 @@ class ChatSummary(BaseModel):
 
 SetupRequiredCallback = Callable[
     [str, dict[str, Any], str | None],
+    Awaitable[None],
+]
+
+# Fired when a setup_requirements payload arrives corrupted and is dropped, so
+# the adapter can surface a user-facing notice instead of leaving the user
+# staring at a sign-in prompt that never renders. Args: (session_id, tool_name).
+SetupDroppedCallback = Callable[
+    [str, str | None],
     Awaitable[None],
 ]
 
@@ -214,6 +226,17 @@ class BotBackend:
         )
         return ResolveResult(linked=resp.linked)
 
+    async def list_linked_server_ids(self, platform: str, user_id: str) -> list[str]:
+        """Return the platform server (guild) IDs ``user_id`` has linked.
+
+        Backs the proactive-output authorization check: a scheduled/autopilot
+        post is only allowed into a channel whose server appears in this list.
+        """
+        return await self._client.list_user_server_ids(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
+
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
     ) -> None:
@@ -298,6 +321,72 @@ class BotBackend:
             for s in resp.sessions
         ]
 
+    async def ensure_session(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> str:
+        """Resolve (or create) the copilot session for this conversation.
+
+        Called before uploading attachments so they land in the session folder
+        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        UI uploads into an already-open session.
+        """
+        return await self._client.ensure_chat_session(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
+            session_id=session_id,
+        )
+
+    async def upload_workspace_files(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        attachments: tuple[InboundAttachment, ...],
+        session_id: str | None = None,
+    ) -> list[WorkspaceUploadResult]:
+        """Upload each attachment into the conversation owner's workspace.
+
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them, matching the web upload. Returns one result per file (with a
+        ``file_id`` on success or an ``error`` code) so the caller can attach
+        the successes to the turn and tell the user about any that were
+        rejected.
+        """
+        platform_enum = Platform(platform.upper())
+        results: list[WorkspaceUploadResult] = []
+        for attachment in attachments:
+            # Isolate each upload: a transport/RPC failure (or an unlinked-owner
+            # error) on one file must not abort the rest or crash the handler.
+            try:
+                results.append(
+                    await self._client.upload_workspace_file(
+                        request=WorkspaceUploadRequest(
+                            platform=platform_enum,
+                            platform_server_id=platform_server_id,
+                            platform_user_id=platform_user_id,
+                            filename=attachment.filename,
+                            mime_type=attachment.mime_type,
+                            content=attachment.content,
+                            session_id=session_id,
+                        )
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to upload inbound attachment %s", attachment.filename
+                )
+                results.append(
+                    WorkspaceUploadResult(
+                        filename=attachment.filename, error="upload_failed"
+                    )
+                )
+        return results
+
     async def fetch_workspace_artifact(
         self, session_id: str, file_id: str, max_bytes: int
     ) -> WorkspaceArtifact | None:
@@ -316,8 +405,10 @@ class BotBackend:
         message: str,
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
+        file_ids: Optional[list[str]] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
+        on_setup_dropped: SetupDroppedCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -331,6 +422,7 @@ class BotBackend:
                 message=message,
                 session_id=session_id,
                 platform_server_id=platform_server_id,
+                file_ids=file_ids or [],
             )
         )
         if on_session_id:
@@ -348,6 +440,14 @@ class BotBackend:
             )
 
         setup_notified = False
+        setup_drop_notified = False
+        # Track which text block each delta belongs to. AutoPilot emits text in
+        # separate blocks around tool calls / reasoning (each with its own id);
+        # the frontend renders them as distinct parts, but here we concatenate
+        # into one message, so insert a paragraph break when the block changes —
+        # otherwise the end of one block and the start of the next run together
+        # ("…first thought.second thought…").
+        last_text_block_id: str | None = None
 
         try:
             while True:
@@ -367,6 +467,12 @@ class BotBackend:
                     )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
+                        if (
+                            last_text_block_id is not None
+                            and chunk.id != last_text_block_id
+                        ):
+                            yield "\n\n"
+                        last_text_block_id = chunk.id
                         yield chunk.delta
                 elif isinstance(chunk, StreamToolOutputAvailable):
                     setup_output = _extract_setup_requirements(chunk.output)
@@ -377,6 +483,18 @@ class BotBackend:
                             setup_output,
                             chunk.toolName,
                         )
+                    elif (
+                        setup_output is None
+                        and not setup_notified
+                        and not setup_drop_notified
+                        and on_setup_dropped
+                        and _is_corrupted_setup_requirements(chunk.output)
+                    ):
+                        # The link was dropped (corrupted payload). Tell the
+                        # user once so they aren't left waiting on a sign-in
+                        # prompt that will never arrive.
+                        setup_drop_notified = True
+                        await on_setup_dropped(handle.session_id, chunk.toolName)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -395,12 +513,39 @@ class BotBackend:
             )
 
 
+def _is_corrupted_setup_requirements(output: str | dict[str, Any]) -> bool:
+    """True when *output* names setup_requirements but doesn't parse as JSON.
+
+    This is the truncation/corruption signature: the tool intended to surface a
+    sign-in card, but the payload arrived mangled, so the user gets nothing
+    unless the caller surfaces a notice.
+    """
+    if not isinstance(output, str):
+        return False
+    if '"setup_requirements"' not in output:
+        return False
+    try:
+        json.loads(output)
+    except json.JSONDecodeError:
+        return True
+    return False
+
+
 def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] | None:
     """Return setup-requirements payloads from structured tool output."""
     if isinstance(output, str):
         try:
             parsed: Any = json.loads(output)
         except json.JSONDecodeError:
+            if '"setup_requirements"' in output:
+                # A payload that mentions setup_requirements but doesn't parse
+                # is almost certainly a truncated/corrupted tool output — the
+                # user never gets their sign-in link if we drop it silently.
+                logger.warning(
+                    "Dropping unparseable setup_requirements tool output "
+                    "(%d chars) — sign-in link will not be sent",
+                    len(output),
+                )
             return None
     else:
         parsed = output

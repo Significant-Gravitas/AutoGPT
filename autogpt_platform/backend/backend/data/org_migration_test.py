@@ -426,6 +426,251 @@ class TestCreateOrgsForExistingUsers:
 
 
 # ---------------------------------------------------------------------------
+# create_personal_org (single-user bootstrap)
+# ---------------------------------------------------------------------------
+
+
+class _FakeTx:
+    """Records the create() calls a transaction body makes, per model."""
+
+    def __init__(self):
+        self.organization = MagicMock()
+        self.organization.create = AsyncMock(return_value=MagicMock(id="org-new"))
+        self.orgmember = MagicMock(create=AsyncMock())
+        self.team = MagicMock()
+        self.team.create = AsyncMock(return_value=MagicMock(id="ws-new"))
+        self.teammember = MagicMock(create=AsyncMock())
+        self.organizationprofile = MagicMock(create=AsyncMock())
+        self.organizationseatassignment = MagicMock(create=AsyncMock())
+        self.orgbalance = MagicMock(create=AsyncMock())
+
+
+@pytest.fixture
+def fake_tx(mocker):
+    """Patch org_migration.transaction to yield a records-capturing fake tx."""
+    tx = _FakeTx()
+
+    class _CM:
+        async def __aenter__(self):
+            return tx
+
+        async def __aexit__(self, *exc):
+            return False
+
+    mocker.patch("backend.data.org_migration.transaction", lambda *a, **k: _CM())
+    return tx
+
+
+class TestCreatePersonalOrg:
+    @pytest.mark.asyncio
+    async def test_creates_full_record_shape_in_one_transaction(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        org = await create_personal_org("user-9", "alice", "Alice")
+
+        assert org is fake_tx.organization.create.return_value
+
+        org_data = fake_tx.organization.create.call_args[1]["data"]
+        assert org_data["isPersonal"] is True
+        assert org_data["bootstrapUserId"] == "user-9"
+        assert org_data["slug"] == "alice"
+
+        member_data = fake_tx.orgmember.create.call_args[1]["data"]
+        assert member_data["isOwner"] is True
+        assert member_data["isAdmin"] is True
+        assert member_data["status"] == "ACTIVE"
+        assert member_data["userId"] == "user-9"
+
+        ws_data = fake_tx.team.create.call_args[1]["data"]
+        assert ws_data["isDefault"] is True
+        assert ws_data["joinPolicy"] == "OPEN"
+
+        # A default team member, a profile, a FREE seat, and a zero balance
+        # must all be created in the same transaction.
+        fake_tx.teammember.create.assert_awaited_once()
+        fake_tx.organizationprofile.create.assert_awaited_once()
+        seat_data = fake_tx.organizationseatassignment.create.call_args[1]["data"]
+        assert seat_data["seatType"] == "FREE"
+        balance_data = fake_tx.orgbalance.create.call_args[1]["data"]
+        assert balance_data["balance"] == 0
+
+    @pytest.mark.asyncio
+    async def test_resolves_slug_collision_before_creating(self, mock_prisma, fake_tx):
+        from backend.data.org_migration import create_personal_org
+
+        async def org_find(where):
+            return MagicMock() if where.get("slug") == "taken" else None
+
+        mock_prisma.organization.find_unique = AsyncMock(side_effect=org_find)
+
+        await create_personal_org("user-9", "taken", "Taken")
+
+        assert fake_tx.organization.create.call_args[1]["data"]["slug"] == "taken-1"
+
+
+# ---------------------------------------------------------------------------
+# _derive_personal_org_identity
+# ---------------------------------------------------------------------------
+
+
+def _mock_named(name=None, **attrs):
+    """MagicMock with a real ``name`` attribute (constructor name= is special)."""
+    m = MagicMock(**attrs)
+    m.name = name
+    return m
+
+
+class TestDerivePersonalOrgIdentity:
+    @pytest.mark.asyncio
+    async def test_prefers_profile_username_then_profile_name(self, mock_prisma):
+        from backend.data.org_migration import _derive_personal_org_identity
+
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(name="User Name", email="a@b.com")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(
+            return_value=_mock_named(name="Cool Person", username="CoolHandle")
+        )
+
+        slug_base, display_name = await _derive_personal_org_identity("user-1")
+
+        assert slug_base == "coolhandle"
+        assert display_name == "Cool Person"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_email_local_part_without_profile(self, mock_prisma):
+        from backend.data.org_migration import _derive_personal_org_identity
+
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(email="bob@company.org")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+
+        slug_base, display_name = await _derive_personal_org_identity("user-2")
+
+        assert slug_base == "bob"
+        assert display_name == "bob"
+
+
+# ---------------------------------------------------------------------------
+# ensure_personal_org (idempotent, race-safe sign-up bootstrap)
+# ---------------------------------------------------------------------------
+
+
+class TestEnsurePersonalOrg:
+    @pytest.mark.asyncio
+    async def test_creates_org_when_user_has_none(self, mock_prisma, mocker):
+        from backend.data import org_migration
+
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(email="new@user.com")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+        create = mocker.patch.object(
+            org_migration, "create_personal_org", new_callable=AsyncMock
+        )
+
+        await org_migration.ensure_personal_org("user-new")
+
+        create.assert_awaited_once()
+        assert create.await_args.args[0] == "user-new"
+        assert create.await_args.args[1] == "new"  # email local-part slug
+
+    @pytest.mark.asyncio
+    async def test_is_noop_when_user_already_owns_personal_org(
+        self, mock_prisma, mocker
+    ):
+        from backend.data import org_migration
+
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        create = mocker.patch.object(
+            org_migration, "create_personal_org", new_callable=AsyncMock
+        )
+
+        await org_migration.ensure_personal_org("user-has-org")
+
+        create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_race_does_not_create_second_org(
+        self, mock_prisma, mocker
+    ):
+        """Two first-requests must not create two personal orgs: the loser hits
+        a slug UniqueViolation, re-checks, finds the winner's org, and returns."""
+        from prisma.errors import UniqueViolationError
+
+        from backend.data import org_migration
+
+        # First find_first: no org (pre-create). Second (after violation): the
+        # concurrent winner's org now exists.
+        mock_prisma.orgmember.find_first = AsyncMock(side_effect=[None, MagicMock()])
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(email="racer@user.com")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+        create = mocker.patch.object(
+            org_migration,
+            "create_personal_org",
+            new_callable=AsyncMock,
+            side_effect=UniqueViolationError({}),
+        )
+
+        await org_migration.ensure_personal_org("user-racer")
+
+        # Only one create attempt — the loser did not retry into a 2nd org.
+        create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_on_different_user_slug_collision(self, mock_prisma, mocker):
+        """A slug clash with a *different* user (re-check still finds no org for
+        us) must retry until the create succeeds with a fresh slug."""
+        from prisma.errors import UniqueViolationError
+
+        from backend.data import org_migration
+
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(email="dup@user.com")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+        create = mocker.patch.object(
+            org_migration,
+            "create_personal_org",
+            new_callable=AsyncMock,
+            side_effect=[UniqueViolationError({}), None],
+        )
+
+        await org_migration.ensure_personal_org("user-dup")
+
+        assert create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_raises_when_bootstrap_never_succeeds(self, mock_prisma, mocker):
+        """Persistent failure must raise (fail loud) — never a silent no-op."""
+        from prisma.errors import UniqueViolationError
+
+        from backend.data import org_migration
+
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.user.find_unique = AsyncMock(
+            return_value=_mock_named(email="stuck@user.com")
+        )
+        mock_prisma.profile.find_unique = AsyncMock(return_value=None)
+        mocker.patch.object(
+            org_migration,
+            "create_personal_org",
+            new_callable=AsyncMock,
+            side_effect=UniqueViolationError({}),
+        )
+
+        with pytest.raises(RuntimeError, match="no usable organization context"):
+            await org_migration.ensure_personal_org("user-stuck")
+
+
+# ---------------------------------------------------------------------------
 # migrate_org_balances
 # ---------------------------------------------------------------------------
 

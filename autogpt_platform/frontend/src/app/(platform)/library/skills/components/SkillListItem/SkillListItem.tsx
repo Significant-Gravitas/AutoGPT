@@ -4,7 +4,12 @@ import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSki
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { BookOpenIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  BookOpenIcon,
+  DownloadSimpleIcon,
+  EyeIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";
@@ -22,6 +27,8 @@ export function SkillListItem({ skill }: Props) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isDownloading,
+    handleDownload,
     isViewOpen,
     openView,
     closeView,
@@ -67,24 +74,32 @@ export function SkillListItem({ skill }: Props) {
 
       <div className="flex flex-shrink-0 items-center gap-2">
         <Button
-          variant="secondary"
-          size="small"
+          variant="icon"
+          size="icon"
           onClick={openView}
           data-testid="skill-view-button"
           aria-label="View skill"
         >
-          <EyeIcon className="mr-1 h-4 w-4" />
-          View
+          <EyeIcon className="h-4 w-4" />
         </Button>
         <Button
-          variant="secondary"
-          size="small"
+          variant="icon"
+          size="icon"
+          onClick={handleDownload}
+          loading={isDownloading}
+          data-testid="skill-download-button"
+          aria-label="Download skill"
+        >
+          <DownloadSimpleIcon className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="icon"
+          size="icon"
           onClick={openDelete}
           data-testid="skill-delete-button"
           aria-label="Delete skill"
         >
-          <TrashIcon className="mr-1 h-4 w-4" />
-          Delete
+          <TrashIcon className="h-4 w-4" />
         </Button>
       </div>
 

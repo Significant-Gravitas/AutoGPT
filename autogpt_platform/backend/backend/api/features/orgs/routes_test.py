@@ -377,10 +377,14 @@ class TestOrgDbConvertOrg:
         self.prisma = MagicMock()
         self.prisma.organization.update = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
-        mocker.patch(
-            "backend.api.features.orgs.db._resolve_unique_slug",
+        # Org creation is delegated to the shared data-layer helper; its exact
+        # record shape is covered by org_migration_test.TestCreatePersonalOrg.
+        self.create_personal_org = mocker.patch(
+            "backend.api.features.orgs.db.create_personal_org",
             new_callable=AsyncMock,
-            return_value="myorg-personal-1",
+            return_value=_make_org(
+                id="new-personal-org", isPersonal=True, slug="myorg-personal-1"
+            ),
         )
 
     @pytest.mark.asyncio
@@ -389,23 +393,11 @@ class TestOrgDbConvertOrg:
 
         personal_org = _make_org(isPersonal=True, slug="myorg")
         converted_org = _make_org(isPersonal=False, slug="myorg")
-        new_personal_org = _make_org(
-            id="new-personal-org", isPersonal=True, slug="myorg-personal-1"
-        )
 
         # find_unique calls: 1) convert check, 2) get_org at end
-        # (_resolve_unique_slug is mocked separately)
         self.prisma.organization.find_unique = AsyncMock(
             side_effect=[personal_org, converted_org]
         )
-        # New personal org creation chain
-        self.prisma.organization.create = AsyncMock(return_value=new_personal_org)
-        self.prisma.orgmember.create = AsyncMock()
-        self.prisma.team.create = AsyncMock(return_value=_make_workspace())
-        self.prisma.teammember.create = AsyncMock()
-        self.prisma.organizationprofile.create = AsyncMock()
-        self.prisma.organizationseatassignment.create = AsyncMock()
-        self.prisma.orgbalance.create = AsyncMock()
         # User lookup for display name
         self.prisma.user.find_unique = AsyncMock(
             return_value=MagicMock(name="Test User")
@@ -416,10 +408,9 @@ class TestOrgDbConvertOrg:
         # Should have flipped isPersonal on the old org
         update_calls = self.prisma.organization.update.call_args_list
         assert any(c[1]["data"].get("isPersonal") is False for c in update_calls)
-        # Should have created a new personal org
-        self.prisma.organization.create.assert_called_once()
-        create_data = self.prisma.organization.create.call_args[1]["data"]
-        assert create_data["isPersonal"] is True
+        # Should have spawned a new personal org for the user via the helper
+        self.create_personal_org.assert_awaited_once()
+        assert self.create_personal_org.await_args.args[0] == USER_ID
 
     @pytest.mark.asyncio
     async def test_convert_already_team_org_raises(self):
@@ -1910,28 +1901,20 @@ class TestConversionSpawnsNewPersonalOrg:
     def setup(self, mocker):
         self.prisma = MagicMock()
         self.prisma.organization.find_unique = AsyncMock(return_value=None)
-        self.prisma.organization.create = AsyncMock(
-            return_value=_make_org(
-                id="new-personal", isPersonal=True, slug="acme-personal-1"
-            )
-        )
         self.prisma.organization.update = AsyncMock()
-        self.prisma.orgmember.create = AsyncMock()
-        self.prisma.team.create = AsyncMock(return_value=_make_workspace(id="new-ws"))
-        self.prisma.teammember.create = AsyncMock()
-        self.prisma.organizationprofile.create = AsyncMock()
-        self.prisma.organizationseatassignment.create = AsyncMock()
-        self.prisma.orgbalance.create = AsyncMock()
-        self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
         self.prisma.user.find_unique = AsyncMock(
             return_value=MagicMock(name="Test User")
         )
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
-        # Also mock _resolve_unique_slug since it hits prisma
-        mocker.patch(
-            "backend.api.features.orgs.db._resolve_unique_slug",
+        # New personal org creation is delegated to the shared data-layer
+        # helper (create_personal_org); its full record shape + zero balance
+        # are covered by org_migration_test.TestCreatePersonalOrg.
+        self.create_personal_org = mocker.patch(
+            "backend.api.features.orgs.db.create_personal_org",
             new_callable=AsyncMock,
-            return_value="acme-personal-1",
+            return_value=_make_org(
+                id="new-personal", isPersonal=True, slug="acme-personal-1"
+            ),
         )
 
     @pytest.mark.asyncio
@@ -1949,15 +1932,14 @@ class TestConversionSpawnsNewPersonalOrg:
         # Old org should have isPersonal flipped
         update_calls = self.prisma.organization.update.call_args_list
         assert any(c[1]["data"].get("isPersonal") is False for c in update_calls)
-        # New personal org should be created
-        self.prisma.organization.create.assert_called_once()
-        create_data = self.prisma.organization.create.call_args[1]["data"]
-        assert create_data["isPersonal"] is True
-        assert create_data["bootstrapUserId"] == USER_ID
+        # New personal org should be spawned for the user via the helper
+        self.create_personal_org.assert_awaited_once()
+        assert self.create_personal_org.await_args.args[0] == USER_ID
 
     @pytest.mark.asyncio
-    async def test_convert_new_org_gets_all_records(self):
-        """Verify all 7 records are created for the new personal org."""
+    async def test_convert_delegates_new_org_creation_to_shared_helper(self):
+        """Conversion must delegate creation to create_personal_org (which
+        builds the full record set) rather than open-coding it here."""
         from backend.api.features.orgs.db import convert_personal_org
 
         personal_org = _make_org(isPersonal=True, slug="acme")
@@ -1968,30 +1950,21 @@ class TestConversionSpawnsNewPersonalOrg:
 
         await convert_personal_org(ORG_ID, USER_ID)
 
-        # Organization, OrgMember, Team, TeamMember,
-        # OrganizationProfile, OrganizationSeatAssignment, OrgBalance
-        self.prisma.organization.create.assert_called_once()
-        self.prisma.orgmember.create.assert_called_once()
-        self.prisma.team.create.assert_called_once()
-        self.prisma.teammember.create.assert_called_once()
-        self.prisma.organizationprofile.create.assert_called_once()
-        self.prisma.organizationseatassignment.create.assert_called_once()
-        self.prisma.orgbalance.create.assert_called_once()
+        self.create_personal_org.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_convert_new_org_gets_zero_balance(self):
+    async def test_convert_returns_the_converted_team_org(self):
         from backend.api.features.orgs.db import convert_personal_org
 
         personal_org = _make_org(isPersonal=True, slug="acme")
-        converted_org = _make_org(isPersonal=False)
+        converted_org = _make_org(isPersonal=False, slug="acme")
         self.prisma.organization.find_unique = AsyncMock(
             side_effect=[personal_org, converted_org]
         )
 
-        await convert_personal_org(ORG_ID, USER_ID)
+        result = await convert_personal_org(ORG_ID, USER_ID)
 
-        balance_data = self.prisma.orgbalance.create.call_args[1]["data"]
-        assert balance_data["balance"] == 0
+        assert result.is_personal is False
 
     @pytest.mark.asyncio
     async def test_convert_rolls_back_on_failure(self):
@@ -2000,10 +1973,8 @@ class TestConversionSpawnsNewPersonalOrg:
 
         personal_org = _make_org(isPersonal=True, slug="acme")
         self.prisma.organization.find_unique = AsyncMock(return_value=personal_org)
-        # Make the org creation fail
-        self.prisma.organization.create = AsyncMock(
-            side_effect=RuntimeError("DB connection lost")
-        )
+        # Make the delegated org creation fail
+        self.create_personal_org.side_effect = RuntimeError("DB connection lost")
 
         with pytest.raises(RuntimeError, match="DB connection lost"):
             await convert_personal_org(ORG_ID, USER_ID)
@@ -2042,9 +2013,9 @@ class TestConversionSpawnsNewPersonalOrg:
 
         await convert_personal_org(ORG_ID, USER_ID)
 
-        # Should use org name as display name for new personal org
-        create_data = self.prisma.organization.create.call_args[1]["data"]
-        assert create_data["name"] == "Acme Corp"
+        # Should use org name as display name for the new personal org — passed
+        # as the display_name arg to the shared create_personal_org helper.
+        assert self.create_personal_org.await_args.args[2] == "Acme Corp"
 
 
 class TestSoftDeleteOrg:
@@ -2405,6 +2376,33 @@ class TestAuthErrorMessage:
 
         assert exc_info.value.status_code == 400
         assert "contact support" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_fresh_user_with_bootstrapped_personal_org_resolves(self, mocker):
+        """A freshly signed-up user whose personal org was bootstrapped at
+        creation resolves cleanly (no X-Org-Id header, no 400). This is the
+        state get_or_create_user's ensure_personal_org now guarantees."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        personal_member = _make_member(
+            orgId="org-personal", userId="fresh-user", isOwner=True, isAdmin=True
+        )
+
+        mock_prisma = MagicMock()
+        # No X-Org-Id header -> falls back to the user's personal org.
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=personal_member)
+        # OrgMember validation lookup for that org.
+        mock_prisma.orgmember.find_unique = AsyncMock(return_value=personal_member)
+        mocker.patch("backend.data.db.prisma", mock_prisma)
+
+        mock_request = MagicMock()
+        mock_request.headers = {}
+
+        ctx = await get_request_context(mock_request, {"sub": "fresh-user"})
+
+        assert ctx.org_id == "org-personal"
+        assert ctx.user_id == "fresh-user"
+        assert ctx.is_org_owner is True
 
 
 # ============================================================================

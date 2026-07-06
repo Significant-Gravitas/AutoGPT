@@ -343,3 +343,21 @@ export function buildPreviewRunMessage(needsCredentials: boolean): string {
     ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
     : "Please proceed with running the agent.";
 }
+
+/**
+ * Message variant for "trigger" mode (setup_agent_webhook_trigger): the chosen
+ * credential IDs are carried back so the webhook is registered under the
+ * account the user explicitly picked, rather than auto-matched on resume.
+ */
+export function buildTriggerSetupMessage(
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): string {
+  const selected: Record<string, string> = {};
+  for (const [field, cred] of Object.entries(inputCredentials)) {
+    if (cred?.id) selected[field] = cred.id;
+  }
+  return (
+    "I've selected the credentials to use. Call setup_agent_webhook_trigger " +
+    `with credentials=${JSON.stringify(selected)} to finish setting up the trigger.`
+  );
+}

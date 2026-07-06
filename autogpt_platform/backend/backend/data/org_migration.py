@@ -6,6 +6,11 @@ org profile, seat assignment, and org balance. Assigns all tenant-bound
 resources to the user's default workspace. Idempotent — safe to run repeatedly.
 
 Run automatically during server startup via rest_api.py lifespan.
+
+This module also owns ``ensure_personal_org`` / ``create_personal_org``, the
+single-user bootstrap used at sign-up (``data.user.get_or_create_user``) and by
+org conversion (``api.features.orgs.db``) so new accounts get a personal org the
+same moment the User row is created — not only when the backfill runs.
 """
 
 import logging
@@ -13,7 +18,10 @@ import re
 import time
 from typing import LiteralString
 
-from backend.data.db import prisma
+from prisma.errors import UniqueViolationError
+from prisma.models import Organization
+
+from backend.data.db import prisma, transaction
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -47,6 +55,181 @@ async def _resolve_unique_slug(desired: str) -> str:
 
     raise RuntimeError(
         f"Could not resolve a unique slug for '{desired}' after 10000 attempts"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Single-user personal-org bootstrap (sign-up + conversion)
+# ---------------------------------------------------------------------------
+
+
+async def create_personal_org(
+    user_id: str,
+    slug_base: str,
+    display_name: str,
+) -> Organization:
+    """Create a personal Organization for *user_id* with all baseline records.
+
+    Creates, in a single transaction: the Organization (``isPersonal``), an
+    owner ``OrgMember`` (owner + admin, ACTIVE), a default ``Team`` with an
+    owner ``TeamMember``, an ``OrganizationProfile``, a FREE seat assignment,
+    and a zero ``OrgBalance`` row. Shared by the sign-up bootstrap and by org
+    conversion so every path produces the exact same record shape the backfill
+    (``create_orgs_for_existing_users``) creates.
+
+    Wrapping everything in one transaction is what makes the sign-up race safe:
+    two concurrent first-requests for the same user resolve to the same
+    deterministic slug and collide on ``Organization.slug``'s unique
+    constraint. Because Postgres blocks the loser's insert until the winner
+    commits, by the time the loser sees ``UniqueViolationError`` the winner's
+    org *and* member (same tx) are already visible.
+
+    Raises:
+        UniqueViolationError: if the resolved slug was taken concurrently. The
+            caller decides whether that means "already bootstrapped" or "retry".
+    """
+    slug = await _resolve_unique_slug(slug_base)
+
+    async with transaction() as tx:
+        org = await tx.organization.create(
+            data={
+                "name": display_name,
+                "slug": slug,
+                "isPersonal": True,
+                "bootstrapUserId": user_id,
+                "settings": "{}",
+            }
+        )
+
+        await tx.orgmember.create(
+            data={
+                "orgId": org.id,
+                "userId": user_id,
+                "isOwner": True,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
+
+        workspace = await tx.team.create(
+            data={
+                "name": "Default",
+                "orgId": org.id,
+                "isDefault": True,
+                "joinPolicy": "OPEN",
+                "createdByUserId": user_id,
+            }
+        )
+
+        await tx.teammember.create(
+            data={
+                "teamId": workspace.id,
+                "userId": user_id,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
+
+        await tx.organizationprofile.create(
+            data={
+                "organizationId": org.id,
+                "username": slug,
+                "displayName": display_name,
+            }
+        )
+
+        await tx.organizationseatassignment.create(
+            data={
+                "organizationId": org.id,
+                "userId": user_id,
+                "seatType": "FREE",
+                "status": "ACTIVE",
+                "assignedByUserId": user_id,
+            }
+        )
+
+        # Zero-balance row so credit operations don't need an upsert.
+        await tx.orgbalance.create(data={"orgId": org.id, "balance": 0})
+
+    return org
+
+
+async def _derive_personal_org_identity(user_id: str) -> tuple[str, str]:
+    """Return ``(slug_base, display_name)`` for *user_id*'s personal org.
+
+    Mirrors the backfill's precedence so app- and migration-created orgs look
+    consistent: slug from Profile.username → User.name → email local-part →
+    ``user-{id[:8]}``; display name from Profile.name → User.name → local-part.
+    """
+    user = await prisma.user.find_unique(where={"id": user_id})
+    profile = await prisma.profile.find_unique(where={"userId": user_id})
+
+    email = (user.email if user else "") or ""
+    user_name = user.name if user else None
+    profile_username = profile.username if profile else None
+    profile_name = profile.name if profile else None
+    local_part = email.split("@")[0] if email else ""
+
+    if profile_username:
+        slug_base = _sanitize_slug(profile_username)
+    elif user_name:
+        slug_base = _sanitize_slug(user_name)
+    elif local_part:
+        slug_base = _sanitize_slug(local_part)
+    else:
+        slug_base = f"user-{user_id[:8]}"
+
+    display_name = profile_name or user_name or local_part or "user"
+    return slug_base, display_name
+
+
+async def _find_owned_personal_org(user_id: str):
+    """Return *user_id*'s owned, non-deleted personal-org membership, or None."""
+    return await prisma.orgmember.find_first(
+        where={
+            "userId": user_id,
+            "isOwner": True,
+            "Org": {"isPersonal": True, "deletedAt": None},
+        },
+    )
+
+
+async def ensure_personal_org(user_id: str) -> None:
+    """Ensure *user_id* owns a personal Organization; create one if missing.
+
+    Idempotent and race-safe. If the user already owns a personal org this is a
+    no-op. Otherwise it bootstraps one via ``create_personal_org``.
+
+    On ``UniqueViolationError`` there are two possibilities, distinguished by a
+    re-check (same pattern as ``data.user._ensure_user_profile``): a concurrent
+    first-request already bootstrapped this user (done), or the resolved slug
+    collided with a *different* user's org (loop and retry — ``_resolve_unique_slug``
+    now sees the taken slug and picks a fresh suffix).
+
+    Unlike the best-effort marketplace Profile, this must NOT be swallowed: a
+    user with no org cannot use any org-scoped endpoint, so a persistent failure
+    propagates and fails the request loudly rather than bricking the account.
+    """
+    if await _find_owned_personal_org(user_id) is not None:
+        return
+
+    slug_base, display_name = await _derive_personal_org_identity(user_id)
+
+    for _ in range(3):
+        try:
+            await create_personal_org(user_id, slug_base, display_name)
+            return
+        except UniqueViolationError:
+            existing = await _find_owned_personal_org(user_id)
+            if existing is not None:
+                # A concurrent request bootstrapped this user first.
+                logger.debug("Personal org for user %s created concurrently", user_id)
+                return
+            # Slug collided with a *different* user — retry with a fresh suffix.
+
+    raise RuntimeError(
+        f"Failed to bootstrap a personal organization for user {user_id} after "
+        "retries — the account has no usable organization context."
     )
 
 

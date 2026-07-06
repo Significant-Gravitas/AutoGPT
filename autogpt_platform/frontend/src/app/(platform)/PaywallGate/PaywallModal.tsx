@@ -142,6 +142,7 @@ export function PaywallModal() {
                     onSelect={() => handleSelectPlan(plan.key)}
                     loading={isPending && selectedTier === plan.key}
                     disabled={isPending && selectedTier !== plan.key}
+                    priceCaption="billing-period"
                   />
                 ))}
               </div>
