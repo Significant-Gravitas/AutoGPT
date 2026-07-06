@@ -102,7 +102,7 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-200 [&>svg]:size-5"
+            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
           >
             <Link href={link.href}>
               <link.icon className="size-5" />
@@ -176,7 +176,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]"
+      className="[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
     >
       <AppSidebarHeader />
 

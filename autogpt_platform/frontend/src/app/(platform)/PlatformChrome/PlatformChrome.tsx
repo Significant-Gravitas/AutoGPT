@@ -15,6 +15,7 @@ import { AdminImpersonationBanner } from "../admin/components/AdminImpersonation
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
+import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
@@ -34,12 +35,17 @@ export function PlatformChrome({ children }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <AppSidebar />
-        <SidebarInset className="bg-[#F8F8F9]">
-          <header className="flex h-12 shrink-0 items-center justify-end gap-2 px-4">
-            <div className="mr-auto md:hidden">
-              <SidebarTrigger />
+        <SidebarInset className="bg-[#f9f9f9]">
+          <header className="relative flex shrink-0 items-center pb-4 pt-6">
+            <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
+              <div className="md:hidden">
+                <SidebarTrigger />
+              </div>
+              <InsetHeaderTitle />
             </div>
-            <InsetHeaderActions />
+            <div className="absolute inset-y-0 right-4 flex items-center">
+              <InsetHeaderActions />
+            </div>
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
