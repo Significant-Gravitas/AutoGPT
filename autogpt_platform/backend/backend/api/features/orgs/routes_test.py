@@ -2441,6 +2441,12 @@ class TestAuthErrorMessage:
         mock_prisma = MagicMock()
         mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
         mocker.patch("backend.data.db.prisma", mock_prisma)
+        # The auth path now self-heals via bootstrap before 400ing — keep
+        # this unit test off the real DB/Redis by making bootstrap fail too.
+        mocker.patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            AsyncMock(return_value=(None, None)),
+        )
 
         mock_request = MagicMock()
         mock_request.headers = {}
@@ -2452,6 +2458,33 @@ class TestAuthErrorMessage:
 
         assert exc_info.value.status_code == 400
         assert "contact support" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_auth_fallback_bootstraps_missing_personal_org(self, mocker):
+        """A user with no personal-org membership (seeded test accounts,
+        direct DB inserts) gets one bootstrapped instead of a 400 — the e2e
+        QA accounts hit exactly this on every request."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        booted_member = _make_member(
+            orgId="org-booted", userId="seeded-user", isOwner=True, isAdmin=True
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.orgmember.find_unique = AsyncMock(return_value=booted_member)
+        mocker.patch("backend.data.db.prisma", mock_prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            AsyncMock(return_value=("org-booted", "ws-default")),
+        )
+
+        mock_request = MagicMock()
+        mock_request.headers = {}
+
+        ctx = await get_request_context(mock_request, {"sub": "seeded-user"})
+
+        assert ctx.org_id == "org-booted"
+        assert ctx.user_id == "seeded-user"
 
     @pytest.mark.asyncio
     async def test_fresh_user_with_bootstrapped_personal_org_resolves(self, mocker):

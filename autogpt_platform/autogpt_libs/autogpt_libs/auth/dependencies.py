@@ -184,18 +184,30 @@ async def get_request_context(
             },
             order={"createdAt": "asc"},
         )
-        if personal_org is None:
-            logger.warning(
-                f"User {user_id} has no personal org — account in inconsistent state"
+        if personal_org is not None:
+            org_id = personal_org.orgId
+        else:
+            # Self-heal: bootstrap the personal org. Sign-up and the startup
+            # backfill cover normal accounts, but users created outside
+            # get_or_create_user (e.g. seeded test accounts, direct DB
+            # inserts) would otherwise 400 on every request forever.
+            from backend.api.features.orgs.db import (  # deferred
+                get_user_default_team,
             )
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    "No organization context available. Your account may be in "
-                    "an inconsistent state — please contact support."
-                ),
-            )
-        org_id = personal_org.orgId
+
+            org_id, _ = await get_user_default_team(user_id)
+            if org_id is None:
+                logger.warning(
+                    f"User {user_id} has no personal org and bootstrap "
+                    "failed — account in inconsistent state"
+                )
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No organization context available. Your account may "
+                        "be in an inconsistent state — please contact support."
+                    ),
+                )
 
     # --- 3. validate OrgMember ------------------------------------------------
     org_member = await prisma.orgmember.find_unique(

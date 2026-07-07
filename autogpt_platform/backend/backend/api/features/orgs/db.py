@@ -444,6 +444,9 @@ async def add_org_member(
             data={
                 "teamId": default_ws.id,
                 "userId": user_id,
+                # Org admins get workspace admin on the default workspace,
+                # matching what org creation grants the owner.
+                "isAdmin": is_admin,
                 "status": "ACTIVE",
             }
         )
