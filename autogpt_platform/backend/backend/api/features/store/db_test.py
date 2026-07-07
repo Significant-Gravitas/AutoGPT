@@ -1079,6 +1079,20 @@ async def test_edit_store_submission_blocks_cross_org(mocker):
     mock_client.update.assert_not_called()
 
 
+def _patch_submission_stats(mocker):
+    """Stub the raw-SQL stats aggregate so where-clause unit tests stay
+    database-free."""
+    mocker.patch.object(
+        db,
+        "_get_submission_stats",
+        AsyncMock(
+            return_value=db.store_model.SubmissionStats(
+                total=0, approved=0, pending=0, total_runs=0, average_rating=None
+            )
+        ),
+    )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_submissions_org_visibility(mocker):
     """Org members see the org's submissions; tenant-less rows stay visible
@@ -1089,6 +1103,9 @@ async def test_get_store_submissions_org_visibility(mocker):
     mocker.patch.object(
         prisma.models.StoreSubmission, "prisma", return_value=mock_client
     )
+    # _get_submission_stats runs a raw SQL aggregate — patch it so this
+    # where-clause unit test never touches the database.
+    _patch_submission_stats(mocker)
 
     await db.get_store_submissions(
         user_id="user-1", organization_id="org-A", search_query="tool"
@@ -1116,6 +1133,7 @@ async def test_get_store_submissions_without_org_strict_ownership(mocker):
     mocker.patch.object(
         prisma.models.StoreSubmission, "prisma", return_value=mock_client
     )
+    _patch_submission_stats(mocker)
 
     await db.get_store_submissions(user_id="user-1")
 

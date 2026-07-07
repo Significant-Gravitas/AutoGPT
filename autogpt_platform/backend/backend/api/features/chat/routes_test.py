@@ -222,9 +222,12 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     """
     import types
 
+    # The route anchors turn tenancy on the session row
+    # (session.organization_id / session.team_id), so the stub must carry
+    # both — None exercises the legacy ctx-fallback path.
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
+        return_value=mocker.MagicMock(organization_id=None, team_id=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",

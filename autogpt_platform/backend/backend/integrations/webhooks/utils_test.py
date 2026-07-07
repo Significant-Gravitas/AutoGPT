@@ -49,9 +49,15 @@ async def test_get_manual_webhook_tags_webhook_with_parent_tenant(
     """A manual webhook created for a graph/preset must carry the parent
     resource's org/team (resource-follows-parent) down to the DB row."""
     from backend.data import integrations
+    from backend.integrations.webhooks import _base as webhooks_base
 
+    # _base has its own module-level Config() — get_manual_webhook checks
+    # that one, not utils.app_config, so patch both.
     monkeypatch.setattr(
         webhooks_utils.app_config, "platform_base_url", "https://example.com"
+    )
+    monkeypatch.setattr(
+        webhooks_base.app_config, "platform_base_url", "https://example.com"
     )
     manager = GithubWebhooksManager()
 

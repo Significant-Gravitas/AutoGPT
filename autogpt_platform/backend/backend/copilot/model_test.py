@@ -1330,6 +1330,7 @@ def test_chat_session_org_team_roundtrip_from_db():
         shareToken=None,
         sharedAt=None,
         autoShareExecutions=False,
+        isPinned=False,
         visibility=ResourceVisibility.PRIVATE,
         organizationId="org-1",
         teamId="team-1",
