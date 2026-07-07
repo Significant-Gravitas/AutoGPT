@@ -4,9 +4,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-import prisma.errors
+from prisma.errors import UniqueViolationError
 
-from backend.data.db import prisma
+from backend.data.db import prisma, transaction
 from backend.data.org_migration import _sanitize_slug, create_personal_org
 from backend.util.exceptions import NotFoundError
 
@@ -83,7 +83,25 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
         local_part = user.email.split("@")[0] if user.email else "user"
         slug_base = _sanitize_slug(local_part) or "user"
         display_name = user.name or local_part
-        org = await _create_personal_org_for_user(user_id, slug_base, display_name)
+        try:
+            org = await _create_personal_org_for_user(user_id, slug_base, display_name)
+        except UniqueViolationError:
+            # Lost a race with the sign-up path (ensure_personal_org doesn't
+            # take this Redis lock) — the org already exists; re-read the
+            # membership instead of surfacing a 500 to the first request.
+            member = await _find_personal_org_member(user_id)
+            if member is not None:
+                logger.info(
+                    f"Personal-org bootstrap for {user_id} lost creation race; "
+                    "using existing org"
+                )
+                return member.orgId
+            logger.error(
+                f"Personal-org bootstrap for {user_id} hit a unique violation "
+                "but no membership exists",
+                exc_info=True,
+            )
+            return None
         logger.info(f"Bootstrapped personal org {org.id} for new user {user_id}")
         return org.id
     finally:
@@ -163,66 +181,69 @@ async def create_org(
     if existing_alias:
         raise ValueError(f"Slug '{slug}' is already in use as an alias")
 
-    org = await prisma.organization.create(
-        data={
-            "name": name,
-            "slug": slug,
-            "description": description,
-            "isPersonal": False,
-            "bootstrapUserId": user_id,
-            "settings": "{}",
-        }
-    )
+    # One transaction: a failure partway must not leave an org without its
+    # default workspace, owner membership, profile, seat, or balance row.
+    async with transaction() as tx:
+        org = await tx.organization.create(
+            data={
+                "name": name,
+                "slug": slug,
+                "description": description,
+                "isPersonal": False,
+                "bootstrapUserId": user_id,
+                "settings": "{}",
+            }
+        )
 
-    await prisma.orgmember.create(
-        data={
-            "orgId": org.id,
-            "userId": user_id,
-            "isOwner": True,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
+        await tx.orgmember.create(
+            data={
+                "orgId": org.id,
+                "userId": user_id,
+                "isOwner": True,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
 
-    workspace = await prisma.team.create(
-        data={
-            "name": "Default",
-            "orgId": org.id,
-            "isDefault": True,
-            "joinPolicy": "OPEN",
-            "createdByUserId": user_id,
-        }
-    )
+        workspace = await tx.team.create(
+            data={
+                "name": "Default",
+                "orgId": org.id,
+                "isDefault": True,
+                "joinPolicy": "OPEN",
+                "createdByUserId": user_id,
+            }
+        )
 
-    await prisma.teammember.create(
-        data={
-            "teamId": workspace.id,
-            "userId": user_id,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
+        await tx.teammember.create(
+            data={
+                "teamId": workspace.id,
+                "userId": user_id,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
 
-    await prisma.organizationprofile.create(
-        data={
-            "organizationId": org.id,
-            "username": slug,
-            "displayName": name,
-        }
-    )
+        await tx.organizationprofile.create(
+            data={
+                "organizationId": org.id,
+                "username": slug,
+                "displayName": name,
+            }
+        )
 
-    await prisma.organizationseatassignment.create(
-        data={
-            "organizationId": org.id,
-            "userId": user_id,
-            "seatType": "FREE",
-            "status": "ACTIVE",
-            "assignedByUserId": user_id,
-        }
-    )
+        await tx.organizationseatassignment.create(
+            data={
+                "organizationId": org.id,
+                "userId": user_id,
+                "seatType": "FREE",
+                "status": "ACTIVE",
+                "assignedByUserId": user_id,
+            }
+        )
 
-    # Create zero-balance row so credit operations don't need upsert
-    await prisma.orgbalance.create(data={"orgId": org.id, "balance": 0})
+        # Create zero-balance row so credit operations don't need upsert
+        await tx.orgbalance.create(data={"orgId": org.id, "balance": 0})
 
     return OrgResponse.from_db(org, member_count=1)
 
@@ -274,11 +295,17 @@ async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
         existing_alias = await prisma.organizationalias.find_unique(
             where={"aliasSlug": data.slug}
         )
-        if existing_alias:
+        # Only a DIFFERENT org's alias blocks the slug — after a rename the
+        # previous slug is stored as this org's own RENAME alias, and
+        # renaming back must promote it, not fail with "already in use".
+        if existing_alias and existing_alias.organizationId != org_id:
             raise ValueError(f"Slug '{data.slug}' is already in use as an alias")
 
         old_org = await prisma.organization.find_unique(where={"id": org_id})
         if old_org and old_org.slug != data.slug:
+            if existing_alias:
+                # Re-claiming our own alias as the primary slug.
+                await prisma.organizationalias.delete(where={"aliasSlug": data.slug})
             await prisma.organizationalias.create(
                 data={
                     "organizationId": org_id,
