@@ -26,6 +26,20 @@ WS_ID = "ws-default"
 FIXED_NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
+def _fake_transaction(client):
+    """create_org wraps its writes in ``transaction()``; route the tx through
+    the same mocked client so tests never open a real DB connection (a real
+    transaction from these test loops poisons the shared connection pool for
+    every later DB-backed test in the run)."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _tx():
+        yield client
+
+    return _tx
+
+
 def _make_org(
     *,
     id=ORG_ID,
@@ -179,6 +193,10 @@ class TestOrgDbCreateOrg:
         self.prisma.organizationseatassignment.create = AsyncMock()
         self.prisma.orgbalance.create = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_create_org_success(self):
@@ -294,6 +312,49 @@ class TestOrgDbUpdateOrg:
         assert alias_data["aliasSlug"] == "old-slug"
         assert alias_data["aliasType"] == "RENAME"
         assert alias_data["organizationId"] == ORG_ID
+
+    @pytest.mark.asyncio
+    async def test_update_org_rename_back_promotes_own_alias(self):
+        """Renaming back to a slug this org holds as a RENAME alias must
+        promote the alias (delete it, alias the current slug) — not fail
+        with "already in use as an alias"."""
+        from backend.api.features.orgs.db import update_org
+        from backend.api.features.orgs.model import UpdateOrgData
+
+        current = _make_org(slug="new-slug")
+        own_alias = MagicMock(aliasSlug="old-slug", organizationId=ORG_ID)
+        self.prisma.organization.find_unique = AsyncMock(
+            side_effect=[
+                None,  # slug uniqueness check (old-slug not a primary slug)
+                current,  # fetch current org for alias creation
+                current,  # get_org after update
+            ]
+        )
+        self.prisma.organizationalias.find_unique = AsyncMock(return_value=own_alias)
+        self.prisma.organizationalias.delete = AsyncMock()
+
+        await update_org(ORG_ID, UpdateOrgData(slug="old-slug"))
+
+        self.prisma.organizationalias.delete.assert_called_once_with(
+            where={"aliasSlug": "old-slug"}
+        )
+        alias_data = self.prisma.organizationalias.create.call_args[1]["data"]
+        assert alias_data["aliasSlug"] == "new-slug"
+
+    @pytest.mark.asyncio
+    async def test_update_org_foreign_alias_still_blocks_slug(self):
+        """An alias held by a DIFFERENT org still rejects the slug change."""
+        from backend.api.features.orgs.db import update_org
+        from backend.api.features.orgs.model import UpdateOrgData
+
+        foreign_alias = MagicMock(aliasSlug="taken", organizationId="other-org")
+        self.prisma.organization.find_unique = AsyncMock(return_value=None)
+        self.prisma.organizationalias.find_unique = AsyncMock(
+            return_value=foreign_alias
+        )
+
+        with pytest.raises(ValueError, match="already in use as an alias"):
+            await update_org(ORG_ID, UpdateOrgData(slug="taken"))
 
     @pytest.mark.asyncio
     async def test_update_org_slug_collision_raises_value_error(self):
@@ -2437,6 +2498,10 @@ class TestPRReviewBugs:
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     # --- Bug: invitation routes missing _verify_org_path ---
 
