@@ -6,15 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .chat import (
     ensure_chat_session,
+    evaluate_turn_gate,
     list_user_chats,
     start_chat_turn,
     upload_workspace_file,
 )
-from .models import BotChatRequest, Platform, WorkspaceUploadRequest
+from .models import BotChatRequest, Platform, TurnDenial, WorkspaceUploadRequest
 
 
 def _request(**overrides) -> BotChatRequest:
@@ -28,6 +30,16 @@ def _request(**overrides) -> BotChatRequest:
 
 
 class TestStartChatTurn:
+    @pytest.fixture(autouse=True)
+    def _allow_turn(self):
+        # The paywall/rate-limit gate is covered in TestEvaluateTurnGate; here
+        # default it to "allow" so these tests don't reach DB/Redis for it.
+        with patch(
+            "backend.platform_linking.chat.evaluate_turn_gate",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
         db_mock = MagicMock()
@@ -380,6 +392,17 @@ class TestUploadWorkspaceFile:
 
 
 class TestEnsureChatSession:
+    @pytest.fixture(autouse=True)
+    def _allow_turn(self):
+        # Gate behaviour is covered in TestEvaluateTurnGate and the dedicated
+        # denial test below; default to "allow" so the happy-path tests don't
+        # reach DB/Redis for it.
+        with patch(
+            "backend.platform_linking.chat.evaluate_turn_gate",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_reuses_valid_cached_session(self):
         db = MagicMock()
@@ -394,9 +417,10 @@ class TestEnsureChatSession:
                 "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
             ) as mock_create,
         ):
-            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, "cached")
+            result = await ensure_chat_session(Platform.DISCORD, "pu1", None, "cached")
 
-        assert sid == "cached"
+        assert result.session_id == "cached"
+        assert result.denial is None
         mock_create.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -410,10 +434,34 @@ class TestEnsureChatSession:
                 new=AsyncMock(return_value=MagicMock(session_id="fresh")),
             ) as mock_create,
         ):
-            sid = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+            result = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
 
-        assert sid == "fresh"
+        assert result.session_id == "fresh"
         assert mock_create.await_args.kwargs["source_platform"] == "discord"
+
+    @pytest.mark.asyncio
+    async def test_denied_user_gets_denial_and_no_session(self):
+        # A capped/paywalled user is refused BEFORE any session is created —
+        # the caller then skips the file upload entirely (nothing scanned or
+        # stored for a denied user).
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        denial = TurnDenial(reason="rate_limited", message="limit reached")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.evaluate_turn_gate",
+                new=AsyncMock(return_value=denial),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
+            ) as mock_create,
+        ):
+            result = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+        assert result.session_id is None
+        assert result.denial == denial
+        mock_create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unlinked_dm_raises_not_found(self):
@@ -424,3 +472,93 @@ class TestEnsureChatSession:
         ):
             with pytest.raises(NotFoundError):
                 await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+
+class TestEvaluateTurnGate:
+    _PATH = "backend.platform_linking.chat"
+
+    @pytest.mark.asyncio
+    async def test_paywalled_returns_denial_with_button(self):
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=True)),
+            patch(
+                f"{self._PATH}._billing_url",
+                return_value="https://app/settings/billing",
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "paywalled"
+        assert denial.button_url == "https://app/settings/billing"
+        assert denial.button_label == "Subscribe"
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_returns_window_and_reset_message(self):
+        from datetime import timedelta, timezone
+
+        resets_at = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(
+                f"{self._PATH}.check_rate_limit",
+                AsyncMock(side_effect=RateLimitExceeded("daily", resets_at)),
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "rate_limited"
+        assert "daily usage limit" in denial.message
+        assert "Resets in" in denial.message
+
+    @pytest.mark.asyncio
+    async def test_rate_unavailable_returns_transient_message_no_button(self):
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(
+                f"{self._PATH}.check_rate_limit",
+                AsyncMock(side_effect=RateLimitUnavailable()),
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
+        assert denial.button_url is None
+
+    @pytest.mark.asyncio
+    async def test_paywall_lookup_failure_fails_closed_as_unavailable(self):
+        # A transient tier-lookup error must NOT let the turn through unmetered;
+        # fail closed with a retry message (mirrors the web route's 503).
+        with patch(
+            f"{self._PATH}.is_user_paywalled",
+            AsyncMock(side_effect=RuntimeError("supabase down")),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
+        assert denial.button_url is None
+
+    @pytest.mark.asyncio
+    async def test_within_limits_returns_none(self):
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(f"{self._PATH}.check_rate_limit", AsyncMock(return_value=None)),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is None

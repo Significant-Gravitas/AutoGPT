@@ -221,13 +221,46 @@ class DeleteLinkResponse(BaseModel):
     success: bool
 
 
+class TurnDenial(BaseModel):
+    """Why a copilot turn was refused before it ran, with the message (and
+    optional CTA button) the bot should show the user.
+
+    Lets ``start_chat_turn`` enforce the same subscription paywall + usage
+    rate limits the web UI applies, since the bot bypasses both by enqueuing
+    directly into the executor.
+    """
+
+    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    message: str
+    button_label: str | None = None
+    button_url: str | None = None
+
+
+class EnsureSessionResult(BaseModel):
+    """Result of resolving a session ahead of attachment uploads.
+
+    When ``denial`` is set the turn gate refused the user before anything was
+    uploaded — the bot renders the denial and skips both the upload and the
+    turn, so a capped/paywalled user's files are never scanned or stored.
+    """
+
+    session_id: str | None = None
+    denial: TurnDenial | None = None
+
+
 class ChatTurnHandle(BaseModel):
-    """Subscribe keys for a pending copilot turn."""
+    """Subscribe keys for a pending copilot turn.
+
+    When ``denial`` is set the turn was refused (paywall / rate limit) and
+    nothing was enqueued — the caller surfaces the denial instead of
+    subscribing to a stream.
+    """
 
     session_id: str
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+    denial: TurnDenial | None = None
 
 
 class ChatSessionSummary(BaseModel):
