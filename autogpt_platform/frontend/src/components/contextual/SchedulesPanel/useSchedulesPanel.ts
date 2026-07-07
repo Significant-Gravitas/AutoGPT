@@ -60,6 +60,6 @@ export function useSchedulesPanel() {
     // settled and there is nothing to show; a partial failure keeps the
     // loaded list visible and surfaces a non-blocking warning instead.
     error: !isLoading && schedules.length === 0 ? fetchError : null,
-    partialError: schedules.length > 0 ? fetchError : null,
+    partialError: !isLoading && schedules.length > 0 ? fetchError : null,
   };
 }
