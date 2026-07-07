@@ -39,6 +39,24 @@ describe("Tour chat scripted demo", () => {
     vi.useRealTimers();
   });
 
+  test("auto-plays the first turn without pressing Enter", async () => {
+    render(<TourChatPage />);
+
+    expect(
+      screen.getByText(/Watch a competitor's pricing page/i),
+    ).toBeDefined();
+
+    // After the auto-start delay the first scripted turn streams in on its own.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    // getByText throws on multiple matches, so this also guards against the
+    // turn double-firing.
+    expect(screen.getByText(/break that down/i)).toBeDefined();
+    expect(screen.getByText(/build and run it for me/i)).toBeDefined();
+  });
+
   test("prefills the prompt, plays both turns, and opens the upsell", async () => {
     render(<TourChatPage />);
 
@@ -86,6 +104,15 @@ describe("Tour chat scripted demo", () => {
     // The prompt bar now prefills the second chat's opening prompt.
     expect(
       screen.getByText(/Summarize my unread emails every morning/i),
+    ).toBeDefined();
+
+    // The newly selected chat auto-plays its first turn too.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(
+      screen.getByText(/Love it\. Here's how I'll set that up/i),
     ).toBeDefined();
   });
 });

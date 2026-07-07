@@ -9,6 +9,8 @@ import type { TourScript } from "./script/types";
 
 type TourStatus = "ready" | "submitted" | "streaming";
 
+const AUTO_START_DELAY_MS = 1000;
+
 interface Args {
   sessionId: string;
   script: TourScript;
@@ -36,6 +38,9 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
   function onSend(text: string) {
     const turn = script[stepIndex.current];
     if (status !== "ready" || !turn) return;
+
+    // A manual send cancels the pending auto-start so the turn can't fire twice.
+    clearTimers();
 
     commit([
       ...messagesRef.current,
@@ -67,18 +72,30 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
     );
   }
 
+  function scheduleAutoStart() {
+    timers.current.push(
+      setTimeout(() => {
+        const turn = script[stepIndex.current];
+        if (turn) onSend(turn.userPrompt);
+      }, AUTO_START_DELAY_MS),
+    );
+  }
+
   function reset() {
     clearTimers();
     stepIndex.current = 0;
     commit([]);
     setStatus("ready");
+    scheduleAutoStart();
   }
 
   // Fresh slate when this chat mounts. TourChatHost is keyed by sessionId, so a
   // sidebar switch remounts this hook — clear any prior snapshot so the messages
-  // reflect the newly-selected chat.
+  // reflect the newly-selected chat, then auto-play its first turn after a short
+  // beat (pressing Enter still works and just skips the wait).
   useMountEffect(() => {
     useCopilotStreamStore.getState().setMessageSnapshot(sessionId, []);
+    scheduleAutoStart();
     return clearTimers;
   });
 
