@@ -6826,7 +6826,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/InvitationResponse"
+                    "$ref": "#/components/schemas/UserInvitationResponse"
                   },
                   "type": "array",
                   "title": "Response Getv2List Pending Invitations For Current User"
@@ -24541,6 +24541,44 @@
         "required": ["history", "pagination"],
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
+      },
+      "UserInvitationResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "token": { "type": "string", "title": "Token" },
+          "org_id": { "type": "string", "title": "Org Id" },
+          "org_name": { "type": "string", "title": "Org Name" },
+          "org_slug": { "type": "string", "title": "Org Slug" },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "token",
+          "org_id",
+          "org_name",
+          "org_slug",
+          "is_admin",
+          "is_billing_manager",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "UserInvitationResponse",
+        "description": "Invitation as seen by the INVITEE (GET /invitations/pending).\n\nIncludes the accept/decline token — safe here because the list is\nfiltered to the caller's own email — and the inviting org's display\ninfo, without which the invitee can't tell who is inviting them."
       },
       "UserOnboarding": {
         "properties": {

@@ -8,6 +8,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
+import { getOrgContextHeaders } from "@/services/org-team/headers";
 import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
@@ -74,6 +75,9 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    // Active org/team context — the backend scopes tenancy by these headers
+    // (personal-org fallback when absent).
+    Object.assign(headers, getOrgContextHeaders());
   }
 
   const isFormData = data instanceof FormData;

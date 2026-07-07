@@ -1,9 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { CreateOrgDialog } from "@/components/contextual/CreateOrgDialog/CreateOrgDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,15 +22,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CaretUpDownIcon, CheckIcon } from "@phosphor-icons/react";
+import {
+  CaretUpDownIcon,
+  CheckIcon,
+  GearSixIcon,
+  PlusIcon,
+} from "@phosphor-icons/react";
 
 import { useOrgTeamSwitcher } from "@/components/layout/Navbar/components/OrgTeamSwitcher/useOrgTeamSwitcher";
 
 // Sidebar-width variant of the OrgTeamSwitcher (the Navbar renders the compact
 // top-bar variant). Reuses the same useOrgTeamSwitcher hook so both layouts
-// share behavior. "Create organization" is intentionally omitted until the org
-// management frontend ships — same as the Navbar switcher.
+// share behavior.
 export function SidebarOrgSwitcher() {
+  const router = useRouter();
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const {
     orgs,
     teams,
@@ -132,10 +142,29 @@ export function SidebarOrgSwitcher() {
                   ))}
                 </>
               ) : null}
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => router.push("/settings/organization")}
+                className="gap-2"
+                data-testid="sidebar-org-switcher-manage"
+              >
+                <GearSixIcon className="size-4 text-zinc-500" />
+                <span>Manage organization</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setIsCreateOpen(true)}
+                className="gap-2"
+                data-testid="sidebar-org-switcher-create"
+              >
+                <PlusIcon className="size-4 text-zinc-500" />
+                <span>Create organization</span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
+      <CreateOrgDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
     </SidebarFooter>
   );
 }

@@ -27,6 +27,10 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "baggage",
   "x-datafast-visitor-id",
   "x-datafast-session-id",
+  // Org/team tenancy context — the backend validates membership server-side,
+  // so forwarding these is scoping, not trust.
+  "x-org-id",
+  "x-team-id",
 ];
 
 // Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)
