@@ -479,6 +479,20 @@ async def update_org_member(
             where={"orgId_userId": {"orgId": org_id, "userId": user_id}},
             data=update_data,
         )
+
+    # Keep the default-workspace admin flag in step with the org role —
+    # add_org_member grants it at add time, so promotion/demotion via PATCH
+    # must sync it too or promoted admins stay denied on team-scoped checks.
+    if is_admin is not None:
+        default_ws = await prisma.team.find_first(
+            where={"orgId": org_id, "isDefault": True}
+        )
+        if default_ws:
+            await prisma.teammember.update_many(
+                where={"teamId": default_ws.id, "userId": user_id},
+                data={"isAdmin": is_admin},
+            )
+
     members = await list_org_members(org_id)
     match = next((m for m in members if m.user_id == user_id), None)
     if match is None:
