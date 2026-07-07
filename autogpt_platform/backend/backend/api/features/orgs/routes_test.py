@@ -1377,18 +1377,33 @@ class TestOrgCreditsSpend:
         assert exc_info.value.amount == 100
 
     @pytest.mark.asyncio
-    async def test_spend_zero_raises_value_error(self):
+    async def test_spend_zero_is_noop_returning_balance(self):
         from backend.data.org_credit import spend_org_credits
 
-        with pytest.raises(ValueError, match="must be positive"):
-            await spend_org_credits(org_id=ORG_ID, user_id=USER_ID, amount=0)
+        self.prisma.orgbalance.find_unique = AsyncMock(
+            return_value=MagicMock(balance=100)
+        )
+        self.prisma.orgcredittransaction.create = AsyncMock()
+
+        result = await spend_org_credits(org_id=ORG_ID, user_id=USER_ID, amount=0)
+
+        assert result == 100
+        self.prisma.orgcredittransaction.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_spend_negative_raises_value_error(self):
+    async def test_spend_negative_credits_refund_back(self):
+        """Reconciliation refunds (negative amounts) credit the overcharge
+        back instead of raising — a raise here silently dropped refunds."""
         from backend.data.org_credit import spend_org_credits
 
-        with pytest.raises(ValueError, match="must be positive"):
-            await spend_org_credits(org_id=ORG_ID, user_id=USER_ID, amount=-5)
+        self.prisma.query_raw = AsyncMock(return_value=[{"balance": 105}])
+        self.prisma.orgcredittransaction.create = AsyncMock()
+
+        result = await spend_org_credits(org_id=ORG_ID, user_id=USER_ID, amount=-5)
+
+        assert result == 105
+        tx_data = self.prisma.orgcredittransaction.create.call_args[1]["data"]
+        assert tx_data["amount"] == 5
 
     @pytest.mark.asyncio
     async def test_spend_credits_with_metadata_and_workspace(self):

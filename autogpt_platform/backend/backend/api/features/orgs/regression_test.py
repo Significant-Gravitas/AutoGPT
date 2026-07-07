@@ -2672,13 +2672,39 @@ class TestPR16Transfers:
         result = await execute_transfer(
             transfer_id="tr-1",
             user_id=USER_ID,
+            org_id="org-1",
         )
 
         assert result.status == "COMPLETED"
-        # Verify the resource was moved to target org
+        # Verify the resource was moved to target org, ALL versions, landing
+        # at org-home (teamId=None) so it's visible in the target org.
         self.mock_prisma.agentgraph.update_many.assert_called_once()
-        move_data = self.mock_prisma.agentgraph.update_many.call_args.kwargs["data"]
-        assert move_data["organizationId"] == "org-2"
+        move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
+        assert move_call["data"]["organizationId"] == "org-2"
+        assert move_call["data"]["teamId"] is None
+        assert move_call["where"] == {"id": GRAPH_ID}
+
+    @pytest.mark.asyncio
+    async def test_execute_rejects_non_party_org(self):
+        """A caller whose active org is neither source nor target cannot
+        execute the transfer — every personal-org owner holds
+        TRANSFER_RESOURCES, so this is the only thing standing between an
+        unrelated user and someone else's approved transfer."""
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="not a party"):
+            await execute_transfer(
+                transfer_id="tr-1",
+                user_id="user-outsider",
+                org_id="org-unrelated",
+            )
 
     @pytest.mark.asyncio
     async def test_execute_requires_both_approvals(self):
@@ -2699,6 +2725,7 @@ class TestPR16Transfers:
             await execute_transfer(
                 transfer_id="tr-1",
                 user_id=USER_ID,
+                org_id="org-1",
             )
 
     @pytest.mark.asyncio
