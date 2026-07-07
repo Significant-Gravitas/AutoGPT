@@ -3,8 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotModal } from "../../../../useCopilotModal";
 import { ComposerPlusMenu } from "../ComposerPlusMenu";
 
+let mockWorkspaceFilesFlag = false;
+vi.mock("@/services/feature-flags/use-get-flag", () => ({
+  Flag: { CHAT_WORKSPACE_FILES: "chat-workspace-files" },
+  useGetFlag: () => mockWorkspaceFilesFlag,
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
+  mockWorkspaceFilesFlag = false;
 });
 
 function ModalProbe() {
@@ -66,28 +73,39 @@ describe("ComposerPlusMenu", () => {
     expect(screen.getByTestId("modal-probe").textContent).toBe("integrations");
   });
 
-  it("nests both upload sources under Attach file when the workspace option is enabled", async () => {
+  it("adds a flat workspace option after Attach file when its flag is enabled", async () => {
+    mockWorkspaceFilesFlag = true;
     const onUseWorkspaceFile = vi.fn();
     render(
       <ComposerPlusMenu
         onFilesSelected={vi.fn()}
         onUseWorkspaceFile={onUseWorkspaceFile}
-        showWorkspaceOption={true}
       />,
     );
     openMenu();
 
-    const attachTrigger = await screen.findByRole("menuitem", {
-      name: /attach file/i,
-    });
-    fireEvent.click(attachTrigger);
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Attach file",
+      "Use File from Workspace",
+      "Integrations",
+      "Skills",
+      "Scheduled",
+    ]);
 
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: /use file from workspace/i }),
+      screen.getByRole("menuitem", { name: /use file from workspace/i }),
     );
     expect(onUseWorkspaceFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the workspace option when its flag is disabled", async () => {
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
+    openMenu();
+
+    await screen.findByRole("menuitem", { name: /attach file/i });
     expect(
-      screen.queryByRole("menuitem", { name: /upload from computer/i }),
+      screen.queryByRole("menuitem", { name: /use file from workspace/i }),
     ).toBeNull();
   });
 });

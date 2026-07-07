@@ -302,7 +302,6 @@ export function ChatInput({
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
-              showWorkspaceOption={showWorkspaceFiles}
               disabled={isBusy}
             />
             {/* Mode and model are per-message settings sent with each stream request,

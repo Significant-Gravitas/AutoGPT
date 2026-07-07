@@ -5,12 +5,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   BookOpenIcon,
   CalendarDotsIcon,
@@ -18,7 +16,6 @@ import {
   PaperclipIcon,
   PlugsConnectedIcon,
   PlusIcon,
-  UploadSimpleIcon,
 } from "@phosphor-icons/react";
 import { useRef } from "react";
 import { useCopilotModal } from "../../../useCopilotModal";
@@ -26,18 +23,17 @@ import { useCopilotModal } from "../../../useCopilotModal";
 interface Props {
   onFilesSelected: (files: File[]) => void;
   onUseWorkspaceFile?: () => void;
-  showWorkspaceOption?: boolean;
   disabled?: boolean;
 }
 
 export function ComposerPlusMenu({
   onFilesSelected,
   onUseWorkspaceFile,
-  showWorkspaceOption = false,
   disabled,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { openModal } = useCopilotModal();
+  const showWorkspaceOption = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
 
   function openFilePicker() {
     fileInputRef.current?.click();
@@ -80,27 +76,14 @@ export function ComposerPlusMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
-          {showWorkspaceOption ? (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <PaperclipIcon className="mr-2 h-4 w-4" />
-                Attach file
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onSelect={openFilePicker}>
-                  <UploadSimpleIcon className="mr-2 h-4 w-4" />
-                  Upload from Computer
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onUseWorkspaceFile?.()}>
-                  <FolderOpenIcon className="mr-2 h-4 w-4" />
-                  Use File from Workspace
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          ) : (
-            <DropdownMenuItem onSelect={openFilePicker}>
-              <PaperclipIcon className="mr-2 h-4 w-4" />
-              Attach file
+          <DropdownMenuItem onSelect={openFilePicker}>
+            <PaperclipIcon className="mr-2 h-4 w-4" />
+            Attach file
+          </DropdownMenuItem>
+          {showWorkspaceOption && (
+            <DropdownMenuItem onSelect={() => onUseWorkspaceFile?.()}>
+              <FolderOpenIcon className="mr-2 h-4 w-4" />
+              Use File from Workspace
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onSelect={() => openModal("integrations")}>
