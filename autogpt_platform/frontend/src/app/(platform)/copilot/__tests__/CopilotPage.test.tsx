@@ -93,7 +93,10 @@ let mockSessionIdForQueryState: string | null = null;
 vi.mock("nuqs", () => ({
   parseAsString: {},
   parseAsStringLiteral: () => ({}),
-  useQueryState: () => [mockSessionIdForQueryState, vi.fn()],
+  useQueryState: (key: string) =>
+    key === "sessionId"
+      ? [mockSessionIdForQueryState, vi.fn()]
+      : [null, vi.fn()],
 }));
 
 // Build the base mock return value for useCopilotPage

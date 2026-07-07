@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
-  const { schedules, isLoading, error } = useSchedulesPanel();
+  const { schedules, isLoading, error, partialError } = useSchedulesPanel();
 
   return (
     <section className="space-y-6">
@@ -43,6 +43,17 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           </Button>
         </div>
       </header>
+
+      {partialError && (
+        <Text
+          variant="body"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 !text-amber-700"
+          data-testid="schedules-partial-error"
+        >
+          Some scheduled items couldn&apos;t be loaded — showing the ones that
+          did. Refresh to try again.
+        </Text>
+      )}
 
       {error ? (
         <ErrorCard

@@ -7,6 +7,7 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   fireEvent,
   render,
@@ -458,5 +459,39 @@ describe("FollowupsPage", () => {
     // Sooner graph schedule comes first; later followup second.
     expect(within(items[0]).getByText("Sooner agent")).toBeDefined();
     expect(within(items[1]).getByText("Later followup")).toBeDefined();
+  });
+
+  test("one failed source keeps the other's schedules visible with a partial-error warning", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "Still visible followup" }),
+      ]),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText("Still visible followup")).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
+  });
+
+  test("shows the full error state only when both sources fail", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.error(),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText(/scheduled items/i)).toBeDefined();
+    expect(screen.queryByTestId("followups-list")).toBeNull();
+    expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
   });
 });

@@ -28,6 +28,11 @@ const mockSetCopilotLlmModel = vi.fn((model: string) => {
   mockCopilotLlmModel = model;
 });
 
+let mockInitialPrompt: string | null = null;
+const mockSetInitialPrompt = vi.fn((value: string | null) => {
+  mockInitialPrompt = value;
+});
+
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
     copilotMode: mockCopilotMode,
@@ -38,8 +43,8 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     setCopilotLlmModel: mockSetCopilotLlmModel,
     isDryRun: false,
     setIsDryRun: vi.fn(),
-    initialPrompt: null,
-    setInitialPrompt: vi.fn(),
+    initialPrompt: mockInitialPrompt,
+    setInitialPrompt: mockSetInitialPrompt,
   }),
 }));
 
@@ -177,6 +182,7 @@ afterEach(() => {
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
   mockFlagValue = false;
+  mockInitialPrompt = null;
 });
 
 describe("ChatInput mode toggle", () => {
@@ -451,6 +457,24 @@ describe("ChatInput model toggle", () => {
         title: expect.stringMatching(/switched to balanced model/i),
       }),
     );
+  });
+});
+
+describe("ChatInput guided prompt prefill", () => {
+  it("prefills the composer and focuses it when an initial prompt arrives after mount", async () => {
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    textarea.blur();
+    expect(document.activeElement).not.toBe(textarea);
+
+    mockInitialPrompt = "Teach me a new skill";
+    rerender(<ChatInput onSend={mockOnSend} />);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Teach me a new skill");
+    });
+    expect(document.activeElement).toBe(textarea);
+    expect(mockSetInitialPrompt).toHaveBeenCalledWith(null);
   });
 });
 

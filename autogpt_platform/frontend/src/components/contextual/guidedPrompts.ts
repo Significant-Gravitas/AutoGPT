@@ -1,4 +1,4 @@
-export const NEW_SKILL_PROMPT = `I want to teach you a new skill, with the goal being that you fully learn and understand my process, including it's edge-cases and gotchas. When you have all the info needed from me (without making assumptions), I want you to run the tool to create a new skill with all this information.
+export const NEW_SKILL_PROMPT = `I want to teach you a new skill, with the goal being that you fully learn and understand my process, including its edge-cases and gotchas. When you have all the info needed from me (without making assumptions), I want you to run the tool to create a new skill with all this information.
 
 To start, ask me what I want to teach you.`;
 

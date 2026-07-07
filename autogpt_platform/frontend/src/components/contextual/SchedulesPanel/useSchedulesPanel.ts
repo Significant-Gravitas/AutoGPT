@@ -46,6 +46,8 @@ export function useSchedulesPanel() {
     (a, b) => nextRunMs(a.item) - nextRunMs(b.item),
   );
 
+  const fetchError = copilotQuery.error ?? graphQuery.error;
+
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
     // collection name before unification.  Existing tests still
@@ -53,6 +55,10 @@ export function useSchedulesPanel() {
     followups: copilotQuery.data ?? [],
     schedules,
     isLoading: copilotQuery.isLoading || graphQuery.isLoading,
-    error: copilotQuery.error ?? graphQuery.error,
+    // The two sources are independent — only hard-fail when there is
+    // nothing to show; a partial failure keeps the loaded list visible
+    // and surfaces a non-blocking warning instead.
+    error: schedules.length === 0 ? fetchError : null,
+    partialError: schedules.length > 0 ? fetchError : null,
   };
 }
