@@ -394,6 +394,7 @@ async def migrate_org_balances() -> int:
         WHERE NOT EXISTS (
             SELECT 1 FROM "OrgBalance" ob WHERE ob."orgId" = o."id"
         )
+        ON CONFLICT ("orgId") DO NOTHING
         """
     )
     logger.info(f"Org migration: migrated {result} org balances")
@@ -423,6 +424,7 @@ async def migrate_credit_transactions() -> int:
             SELECT 1 FROM "OrgCreditTransaction" oct
             WHERE oct."transactionKey" = ct."transactionKey" AND oct."orgId" = o."id"
         )
+        ON CONFLICT ("transactionKey", "orgId") DO NOTHING
         """
     )
     logger.info(f"Org migration: migrated {result} credit transactions")
@@ -615,27 +617,40 @@ async def create_store_listing_aliases() -> int:
 
     Returns the number of aliases created.
     """
+    # DISTINCT ON dedupes within the statement (a user with several approved
+    # listings yields the same alias N times — NOT EXISTS only checks the
+    # table, not this statement's own rows), and ON CONFLICT covers the race
+    # when several services run the backfill concurrently at startup. Either
+    # duplicate previously raised a unique violation that crashed the whole
+    # lifespan on any boot after listings existed.
     result = await prisma.execute_raw(
         """
         INSERT INTO "OrganizationAlias"
             ("id", "organizationId", "aliasSlug", "aliasType", "createdByUserId", "isRemovable")
         SELECT
             gen_random_uuid(),
-            o."id",
-            p."username",
+            sub."orgId",
+            sub."username",
             'MIGRATION',
-            o."bootstrapUserId",
+            sub."bootstrapUserId",
             false
-        FROM "StoreListing" sl
-        JOIN "Organization" o ON o."id" = sl."owningOrgId"
-        JOIN "Profile" p ON p."userId" = sl."owningUserId"
-        WHERE sl."owningOrgId" IS NOT NULL
-          AND sl."hasApprovedVersion" = true
-          AND o."slug" != p."username"
-          AND NOT EXISTS (
-              SELECT 1 FROM "OrganizationAlias" oa
-              WHERE oa."aliasSlug" = p."username"
-          )
+        FROM (
+            SELECT DISTINCT ON (p."username")
+                o."id" AS "orgId",
+                p."username" AS "username",
+                o."bootstrapUserId" AS "bootstrapUserId"
+            FROM "StoreListing" sl
+            JOIN "Organization" o ON o."id" = sl."owningOrgId"
+            JOIN "Profile" p ON p."userId" = sl."owningUserId"
+            WHERE sl."owningOrgId" IS NOT NULL
+              AND sl."hasApprovedVersion" = true
+              AND o."slug" != p."username"
+        ) sub
+        WHERE NOT EXISTS (
+            SELECT 1 FROM "OrganizationAlias" oa
+            WHERE oa."aliasSlug" = sub."username"
+        )
+        ON CONFLICT ("aliasSlug") DO NOTHING
         """
     )
     if result > 0:
