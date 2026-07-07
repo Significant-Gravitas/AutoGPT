@@ -17,7 +17,12 @@ from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
 from . import db as org_db
-from .model import CreateInvitationRequest, InvitationCreateResponse, InvitationResponse
+from .model import (
+    CreateInvitationRequest,
+    InvitationCreateResponse,
+    InvitationResponse,
+    UserInvitationResponse,
+)
 from .rollout import require_org_collaboration
 
 logger = logging.getLogger(__name__)
@@ -383,7 +388,7 @@ async def decline_invitation(
 )
 async def list_pending_for_user(
     user_id: Annotated[str, Security(get_user_id)],
-) -> list[InvitationResponse]:
+) -> list[UserInvitationResponse]:
     await require_org_collaboration(user_id)
     # Get user's email
     user = await prisma.user.find_unique(where={"id": user_id})
@@ -397,6 +402,7 @@ async def list_pending_for_user(
             "revokedAt": None,
             "expiresAt": {"gt": datetime.now(timezone.utc)},
         },
+        include={"Org": True},
         order={"createdAt": "desc"},
     )
-    return [InvitationResponse.from_db(inv) for inv in invitations]
+    return [UserInvitationResponse.from_db(inv) for inv in invitations]
