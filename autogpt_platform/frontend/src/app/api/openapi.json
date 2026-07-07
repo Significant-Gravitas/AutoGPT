@@ -17876,6 +17876,14 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "webhook": {
             "anyOf": [
               { "$ref": "#/components/schemas/Webhook" },
