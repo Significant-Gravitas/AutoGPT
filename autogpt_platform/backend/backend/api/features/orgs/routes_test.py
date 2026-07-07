@@ -2678,6 +2678,8 @@ class TestPRReviewBugsRound2:
         member = _make_member(userId=OTHER_USER_ID, isOwner=False)
         self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
         self.prisma.orgmember.update = AsyncMock()
+        # Default-workspace admin sync runs before the re-fetch
+        self.prisma.team.find_first = AsyncMock(return_value=None)
         # list_org_members returns empty — member was deleted concurrently
         self.prisma.orgmember.find_many = AsyncMock(return_value=[])
 
@@ -2685,6 +2687,29 @@ class TestPRReviewBugsRound2:
             await update_org_member(
                 ORG_ID, OTHER_USER_ID, is_admin=True, is_billing_manager=None
             )
+
+    @pytest.mark.asyncio
+    async def test_update_org_member_promotion_syncs_default_team_admin(self):
+        """Promoting an org admin mirrors isAdmin onto the default-workspace
+        TeamMember — otherwise team-scoped permission checks stay denied."""
+        from backend.api.features.orgs.db import update_org_member
+
+        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        self.prisma.orgmember.update = AsyncMock()
+        self.prisma.team.find_first = AsyncMock(return_value=MagicMock(id=WS_ID))
+        self.prisma.teammember.update_many = AsyncMock()
+        promoted = _make_member(userId=OTHER_USER_ID, isAdmin=True)
+        self.prisma.orgmember.find_many = AsyncMock(return_value=[promoted])
+
+        await update_org_member(
+            ORG_ID, OTHER_USER_ID, is_admin=True, is_billing_manager=None
+        )
+
+        self.prisma.teammember.update_many.assert_called_once_with(
+            where={"teamId": WS_ID, "userId": OTHER_USER_ID},
+            data={"isAdmin": True},
+        )
 
     # --- Bug: test_assign_seat asserts wrong seat type ---
 
