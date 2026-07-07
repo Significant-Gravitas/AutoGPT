@@ -1,6 +1,6 @@
 # Tavily Crawl
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for crawling a website and extracting page content with Tavily.
 <!-- END MANUAL -->
 
 ## Tavily Crawl
@@ -10,7 +10,9 @@ Crawls a website with Tavily, following links from the root URL and extracting p
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Starting from a root URL, the block follows links up to `max_depth` and extracts the content of each page it visits, stopping at `limit` pages. Optional natural-language `instructions` steer which pages to follow (for example, "Find all the API reference pages"), and `extract_depth` and `format` control how much content is captured and whether it comes back as markdown or text.
+
+Each crawled page is returned on `results` (and one at a time on `result`) with its extracted content. A crawl combines mapping and extraction, so its credit cost is the sum of both per Tavily's schedule; actual spend is read from the API's usage report.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Documentation Ingestion**: Crawl a docs site and extract every page to build a knowledge base or RAG pipeline.
+
+**Targeted Site Harvesting**: Use `instructions` to gather only pricing, product, or reference pages from a large site.
+
+**Competitive Content Snapshots**: Capture the content of a section of a site in one pass for analysis or change tracking.
 <!-- END MANUAL -->
 
 ---

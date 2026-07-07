@@ -1,6 +1,6 @@
 # Tavily Search
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching the web with Tavily's AI-native search API.
 <!-- END MANUAL -->
 
 ## Tavily Search
@@ -10,7 +10,9 @@ Searches the web using Tavily's AI-native search API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block sends your query to Tavily's search endpoint and returns ranked web results, each with a relevance score and a query-relevant content snippet. You can scope the search by `topic` (general, news, or finance), `time_range`, and domain include/exclude lists, and trade cost for quality with `search_depth` (basic/fast/ultra-fast at 1 credit, advanced at 2).
+
+Beyond the raw `results` list (also emitted one `result` at a time), the block can return an LLM-generated `answer` synthesized from the results when `include_answer` is enabled, and always emits a `context` string — the results formatted as markdown, ready to feed straight into an LLM block. Actual credit spend is read from the API's usage report and reported to the platform's cost tracking.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -39,7 +41,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Research Automation**: Pull current, ranked sources on a topic and feed the `context` output directly into an LLM block for summarization or synthesis.
+
+**Grounded Q&A**: Enable `include_answer` to get a concise, source-backed answer for chatbots or agents that need up-to-date facts.
+
+**News & Market Monitoring**: Set `topic` to news or finance and narrow `time_range` to recent windows to track breaking developments.
 <!-- END MANUAL -->
 
 ---
