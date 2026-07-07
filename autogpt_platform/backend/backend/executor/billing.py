@@ -301,6 +301,7 @@ async def charge_reconciled_usage(
                 cost=delta,
                 metadata=reconcile_metadata,
                 team_id=node_exec.execution_context.team_id,
+                fail_insufficient_credits=False,
             )
         else:
             remaining_balance = await db_client.spend_credits(
@@ -310,10 +311,14 @@ async def charge_reconciled_usage(
                 fail_insufficient_credits=False,
             )
         # Refunds can't push the balance below the threshold — skip.
-        # Only fire user-level low-balance handling when NOT using org
-        # billing — otherwise the user's personal auto-top-up would trigger
-        # even though the deduction came from OrgBalance.
-        if delta > 0 and not org_id:
+        # Only fire user-level low-balance handling when the spend landed on
+        # the USER ledger: no org context, or a personal org (which bills
+        # the owner's wallet). Real-org deductions come from OrgBalance, so
+        # the user's personal auto-top-up must not trigger for those.
+        user_ledger = not org_id or (
+            await db_client.get_personal_org_owner(org_id) is not None
+        )
+        if delta > 0 and user_ledger:
             # handle_low_balance is sync + does a blocking RPC; dispatch to
             # thread so we don't block the event loop. Rare path (threshold
             # crossings only).

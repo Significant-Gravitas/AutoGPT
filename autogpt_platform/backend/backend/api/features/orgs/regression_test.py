@@ -1699,20 +1699,24 @@ class TestPR10WebhookTenancy:
 
     @pytest.mark.asyncio
     async def test_preset_execution_passes_org_team(self):
-        """execute_preset passes ctx.org_id and ctx.team_id from
-        RequestContext to add_graph_execution."""
+        """execute_preset anchors the run on the PRESET's org/team
+        (resource-follows-parent) — the caller's header context must not
+        override a tagged preset's tenancy."""
         mock_preset = MagicMock()
         mock_preset.graph_id = GRAPH_ID
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.organization_id = "org-preset"
+        mock_preset.team_id = "team-preset"
 
         mock_db_get_preset = AsyncMock(return_value=mock_preset)
         mock_add_exec = AsyncMock(return_value=MagicMock(id="exec-preset"))
 
+        # Deliberately different from the preset's tenancy — the preset wins.
         mock_ctx = MagicMock()
-        mock_ctx.org_id = "org-preset"
-        mock_ctx.team_id = "team-preset"
+        mock_ctx.org_id = "org-ctx"
+        mock_ctx.team_id = "team-ctx"
 
         with (
             patch(
@@ -1739,6 +1743,49 @@ class TestPR10WebhookTenancy:
         assert call_kwargs["organization_id"] == "org-preset"
         assert call_kwargs["team_id"] == "team-preset"
         assert call_kwargs["user_id"] == USER_ID
+
+    @pytest.mark.asyncio
+    async def test_preset_execution_falls_back_to_ctx_when_untagged(self):
+        """A pre-backfill preset (organizationId null) anchors the run on the
+        caller's request context instead."""
+        mock_preset = MagicMock()
+        mock_preset.graph_id = GRAPH_ID
+        mock_preset.graph_version = GRAPH_VERSION
+        mock_preset.inputs = {"key": "value"}
+        mock_preset.credentials = {}
+        mock_preset.organization_id = None
+        mock_preset.team_id = None
+
+        mock_db_get_preset = AsyncMock(return_value=mock_preset)
+        mock_add_exec = AsyncMock(return_value=MagicMock(id="exec-preset"))
+
+        mock_ctx = MagicMock()
+        mock_ctx.org_id = "org-ctx"
+        mock_ctx.team_id = "team-ctx"
+
+        with (
+            patch(
+                "backend.api.features.library.routes.presets.db.get_preset",
+                mock_db_get_preset,
+            ),
+            patch(
+                "backend.api.features.library.routes.presets.add_graph_execution",
+                mock_add_exec,
+            ),
+        ):
+            from backend.api.features.library.routes.presets import execute_preset
+
+            await execute_preset(
+                preset_id="preset-1",
+                user_id=USER_ID,
+                ctx=mock_ctx,
+                inputs={},
+                credential_inputs={},
+            )
+
+        call_kwargs = mock_add_exec.call_args.kwargs
+        assert call_kwargs["organization_id"] == "org-ctx"
+        assert call_kwargs["team_id"] == "team-ctx"
 
     @pytest.mark.asyncio
     async def test_pending_human_review_gets_org_team_on_create(self):

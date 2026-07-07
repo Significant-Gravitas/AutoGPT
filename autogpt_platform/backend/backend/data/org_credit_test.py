@@ -20,6 +20,17 @@ from backend.util.exceptions import InsufficientBalanceError
 
 
 @pytest.fixture(autouse=True)
+def mock_personal_org_lookup(mocker):
+    """These tests exercise the REAL-org ledger paths. Patch the cached
+    personal-org lookup directly (not via prisma) so the @cached decorator
+    can't leak results between tests."""
+    mocker.patch(
+        "backend.data.org_credit._personal_org_owner",
+        AsyncMock(return_value=None),
+    )
+
+
+@pytest.fixture(autouse=True)
 def mock_prisma(mocker):
     mock = MagicMock()
     mock.orgbalance.find_unique = AsyncMock(return_value=MagicMock(balance=1000))
@@ -81,14 +92,20 @@ class TestSpendOrgCredits:
         mock_prisma.orgcredittransaction.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_spend_zero_amount_raises(self):
-        with pytest.raises(ValueError, match="positive"):
-            await spend_org_credits("org-1", "user-1", 0)
+    async def test_spend_zero_amount_is_noop_returning_balance(self, mock_prisma):
+        result = await spend_org_credits("org-1", "user-1", 0)
+        assert result == 1000
+        mock_prisma.orgcredittransaction.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_spend_negative_amount_raises(self):
-        with pytest.raises(ValueError, match="positive"):
-            await spend_org_credits("org-1", "user-1", -5)
+    async def test_spend_negative_amount_credits_refund_back(self, mock_prisma):
+        # Refund path: unguarded upsert credits the overcharge back.
+        mock_prisma.query_raw = AsyncMock(return_value=[{"balance": 1005}])
+
+        result = await spend_org_credits("org-1", "user-1", -5)
+        assert result == 1005
+        tx_data = mock_prisma.orgcredittransaction.create.call_args[1]["data"]
+        assert tx_data["amount"] == 5
 
     @pytest.mark.asyncio
     async def test_spend_records_workspace_attribution(self, mock_prisma):

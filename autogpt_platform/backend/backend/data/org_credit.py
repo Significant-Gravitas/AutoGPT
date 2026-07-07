@@ -46,6 +46,11 @@ async def _personal_org_owner(org_id: str) -> str | None:
     return member.userId if member else None
 
 
+async def get_personal_org_owner(org_id: str) -> str | None:
+    """Public accessor for the cached personal-org owner lookup."""
+    return await _personal_org_owner(org_id)
+
+
 async def get_org_credits(org_id: str) -> int:
     """Get the current credit balance for an organization.
 
@@ -66,6 +71,7 @@ async def spend_org_credits(
     amount: int,
     team_id: str | None = None,
     metadata: dict | None = None,
+    fail_insufficient_credits: bool = True,
 ) -> int:
     """Atomically spend credits from the org balance.
 
@@ -74,6 +80,12 @@ async def spend_org_credits(
     top-ups don't exist yet), so debiting the migration-seeded OrgBalance
     copy would drift the two ledgers apart — a paying user's runs would
     fail on a stale org balance no payment can replenish.
+
+    ``amount < 0`` is a refund (post-flight reconciliation crediting an
+    overcharge back); ``amount == 0`` is a no-op returning the balance.
+    ``fail_insufficient_credits=False`` lets a positive spend push the
+    balance negative instead of raising — reconciliation records real
+    provider debt rather than leaking it.
 
     Uses a single UPDATE ... WHERE balance >= $amount to prevent race
     conditions. If the UPDATE affects 0 rows, the balance is insufficient.
@@ -84,9 +96,9 @@ async def spend_org_credits(
     Raises:
         InsufficientBalanceError: If the org doesn't have enough credits.
     """
-    if amount <= 0:
-        raise ValueError("Spend amount must be positive")
-
+    # Personal-org delegation runs BEFORE the amount checks — the user
+    # ledger handles refunds/zero natively, and guarding first would drop
+    # reconciliation refunds for every personal-org (i.e. ordinary) user.
     owner_id = await _personal_org_owner(org_id)
     if owner_id is not None:
         credit_model = await get_user_credit_model(owner_id)
@@ -94,21 +106,41 @@ async def spend_org_credits(
             user_id=owner_id,
             cost=amount,
             metadata=UsageTransactionMetadata.model_validate(metadata or {}),
+            fail_insufficient_credits=fail_insufficient_credits,
         )
 
-    # Atomic deduct — only succeeds if balance >= amount.
-    # Uses RETURNING to get the new balance in the same statement,
-    # avoiding a stale read from a separate query.
-    result = await prisma.query_raw(
-        """
-        UPDATE "OrgBalance"
-        SET "balance" = "balance" - $1, "updatedAt" = NOW()
-        WHERE "orgId" = $2 AND "balance" >= $1
-        RETURNING "balance"
-        """,
-        amount,
-        org_id,
-    )
+    if amount == 0:
+        return await get_org_credits(org_id)
+
+    if amount > 0 and fail_insufficient_credits:
+        # Atomic deduct — only succeeds if balance >= amount.
+        # Uses RETURNING to get the new balance in the same statement,
+        # avoiding a stale read from a separate query.
+        result = await prisma.query_raw(
+            """
+            UPDATE "OrgBalance"
+            SET "balance" = "balance" - $1, "updatedAt" = NOW()
+            WHERE "orgId" = $2 AND "balance" >= $1
+            RETURNING "balance"
+            """,
+            amount,
+            org_id,
+        )
+    else:
+        # Refund (amount < 0) or debt-permitted spend: unguarded upsert so
+        # the adjustment always lands, creating the balance row if needed.
+        result = await prisma.query_raw(
+            """
+            INSERT INTO "OrgBalance" ("orgId", "balance", "updatedAt")
+            VALUES ($2, $1, NOW())
+            ON CONFLICT ("orgId")
+            DO UPDATE SET "balance" = "OrgBalance"."balance" + $1,
+                          "updatedAt" = NOW()
+            RETURNING "balance"
+            """,
+            -amount,
+            org_id,
+        )
 
     if not result:
         # No row matched — insufficient balance
@@ -357,7 +389,11 @@ class OrgCreditModel(UserCreditBase):
         fail_insufficient_credits: bool = True,
     ) -> int:
         return await spend_org_credits(
-            self._org_id, user_id, cost, metadata=metadata.model_dump()
+            self._org_id,
+            user_id,
+            cost,
+            metadata=metadata.model_dump(),
+            fail_insufficient_credits=fail_insufficient_credits,
         )
 
     async def top_up_credits(

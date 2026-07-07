@@ -113,6 +113,7 @@ from backend.data.notifications import (
 )
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
+from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
 from backend.data.push_subscription import (
@@ -194,6 +195,7 @@ async def _spend_org_credits(
     cost: int,
     metadata: UsageTransactionMetadata,
     team_id: str | None = None,
+    fail_insufficient_credits: bool = True,
 ) -> int:
     return await _spend_org_credits_raw(
         org_id=org_id,
@@ -201,6 +203,7 @@ async def _spend_org_credits(
         amount=cost,
         team_id=team_id,
         metadata=metadata.model_dump(),
+        fail_insufficient_credits=fail_insufficient_credits,
     )
 
 
@@ -296,6 +299,7 @@ class DatabaseManager(AppService):
     get_credits = _(_get_credits, name="get_credits")
     spend_org_credits = _(_spend_org_credits, name="spend_org_credits")
     get_org_credits = _(_get_org_credits, name="get_org_credits")
+    get_personal_org_owner = _(get_personal_org_owner)
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
@@ -510,6 +514,7 @@ class DatabaseManagerClient(AppServiceClient):
     get_credits = _(d.get_credits)
     spend_org_credits = _(d.spend_org_credits)
     get_org_credits = _(d.get_org_credits)
+    get_personal_org_owner = _(d.get_personal_org_owner)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -676,6 +681,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_credits = d.get_credits
     spend_org_credits = d.spend_org_credits
     get_org_credits = d.get_org_credits
+    get_personal_org_owner = d.get_personal_org_owner
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding

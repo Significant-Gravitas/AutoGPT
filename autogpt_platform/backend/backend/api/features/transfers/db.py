@@ -148,15 +148,21 @@ async def reject_transfer(
 async def execute_transfer(
     transfer_id: str,
     user_id: str,
+    org_id: str,
 ) -> TransferResponse:
     """Execute an approved transfer -- move the resource to the target org.
 
-    Requires both source and target approvals. Updates the resource's
-    organization ownership and creates AuditLog entries for both orgs.
+    Requires both source and target approvals, and the caller's active org
+    must be a party to the transfer — TRANSFER_RESOURCES is granted to every
+    personal-org owner, so without this check any authenticated user could
+    execute an approved transfer between two unrelated orgs.
     """
     tr = await prisma.transferrequest.find_unique(where={"id": transfer_id})
     if tr is None:
         raise NotFoundError(f"Transfer request {transfer_id} not found")
+
+    if org_id not in (tr.sourceOrganizationId, tr.targetOrganizationId):
+        raise ValueError("Your organization is not a party to this transfer request")
 
     if tr.sourceApprovedByUserId is None or tr.targetApprovedByUserId is None:
         raise ValueError(
@@ -222,9 +228,13 @@ async def _move_resource(
 ) -> None:
     """Move the resource to the target organization."""
     if resource_type == "AgentGraph":
+        # Move ALL versions, not just the active one, and land the graph at
+        # org-home (teamId=None) — a stale source-org teamId would fail every
+        # clause of the target org's visibility_filter, making the graph
+        # invisible to all target-org members.
         await prisma.agentgraph.update_many(
-            where={"id": resource_id, "isActive": True},
-            data={"organizationId": target_org_id},
+            where={"id": resource_id},
+            data={"organizationId": target_org_id, "teamId": None},
         )
 
     elif resource_type == "StoreListing":

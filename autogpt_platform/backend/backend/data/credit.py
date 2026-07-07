@@ -1453,16 +1453,24 @@ async def get_credit_model(
 ) -> UserCreditBase:
     """Return the appropriate credit model based on context.
 
-    When an ``organization_id`` is supplied, billing operations are routed
-    to the org-level credit tables via ``OrgCreditModel``.  Otherwise falls
-    back to the standard per-user credit model.
+    When a non-personal ``organization_id`` is supplied, billing operations
+    are routed to the org-level credit tables via ``OrgCreditModel``.
+    Personal orgs (and no org context) use the standard per-user model.
     """
     if not settings.config.enable_credit:
         return DisabledUserCredit()
     if organization_id:
-        from backend.data.org_credit import OrgCreditModel
+        from backend.data.org_credit import OrgCreditModel, get_personal_org_owner
 
-        return OrgCreditModel(organization_id)
+        # Personal orgs bill the owner's user wallet (single-ledger), so use
+        # the full-featured user model — OrgCreditModel has no Stripe
+        # top-up/refund/checkout, and ctx.org_id falls back to the personal
+        # org for every ordinary request.
+        # TODO(org-billing): route personal orgs through OrgCreditModel once
+        # org-level Stripe (top_up_intent/fulfill_checkout/top_up_refund)
+        # rolls out.
+        if await get_personal_org_owner(organization_id) is None:
+            return OrgCreditModel(organization_id)
     return UserCredit()
 
 

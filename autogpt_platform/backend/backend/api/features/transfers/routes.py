@@ -102,4 +102,5 @@ async def execute_transfer(
     return await transfer_db.execute_transfer(
         transfer_id=transfer_id,
         user_id=ctx.user_id,
+        org_id=ctx.org_id,
     )
