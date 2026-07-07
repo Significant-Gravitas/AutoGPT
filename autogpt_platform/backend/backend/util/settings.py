@@ -155,6 +155,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
     )
+    stripe_max_network_retries: int = Field(
+        default=2,
+        description="Number of automatic Stripe SDK retries on transient failures; Stripe attaches idempotency keys to retried writes.",
+    )
+    stripe_client_timeout_seconds: int = Field(
+        default=20,
+        description="HTTP timeout for Stripe API calls; SDK default is ~80s which can hang requests.",
+    )
     execution_cost_count_threshold: int = Field(
         default=100,
         description="Number of executions after which the cost is calculated.",

@@ -55,6 +55,12 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+# Reliability: retry transient Stripe failures (idempotency keys are attached to
+# retried writes) and cap the HTTP timeout so slow calls don't hang (~80s default).
+stripe.max_network_retries = settings.config.stripe_max_network_retries
+stripe.default_http_client = stripe.RequestsClient(
+    timeout=settings.config.stripe_client_timeout_seconds
+)
 if settings.secrets.posthog_api_key:
     posthog.api_key = settings.secrets.posthog_api_key
     posthog.host = settings.secrets.posthog_host
