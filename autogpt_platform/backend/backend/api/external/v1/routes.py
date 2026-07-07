@@ -166,9 +166,20 @@ async def create_graph(
     # and library agent half-saved.
     graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
 
-    await graph_db.create_graph(graph_model, user_id=auth.user_id)
+    # Dual-write org/team tenancy to BOTH the graph and the library entry,
+    # matching the internal create route. An org- or team-scoped API key must
+    # not leave the graph untenanted while its library row is org-tagged.
+    await graph_db.create_graph(
+        graph_model,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
+    )
     await library_db.create_library_agent(
-        graph_model, auth.user_id, organization_id=auth.organization_id
+        graph_model,
+        auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
     )
 
     return graph_model
