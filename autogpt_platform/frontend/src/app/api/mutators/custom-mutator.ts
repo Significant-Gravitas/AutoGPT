@@ -135,8 +135,23 @@ export const customMutator = async <
       responseData = { error: "Failed to parse response" };
     }
 
+    const rawDetail = responseData?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail
+          .map((e: unknown) =>
+            e && typeof e === "object" && "msg" in e
+              ? String((e as { msg: unknown }).msg)
+              : JSON.stringify(e),
+          )
+          .join("; ")
+      : typeof rawDetail === "string"
+        ? rawDetail
+        : rawDetail != null
+          ? JSON.stringify(rawDetail)
+          : undefined;
+
     const errorMessage =
-      responseData?.detail ||
+      detail ||
       responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;
