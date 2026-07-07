@@ -20,7 +20,6 @@ export enum Flag {
   AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
-  TOUR_APP_SHELL = "tour-app-shell",
   TASK_PROGRESS_BAR = "task-progress-bar",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
@@ -54,7 +53,6 @@ const defaultFlags = {
   [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
-  [Flag.TOUR_APP_SHELL]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
@@ -112,8 +110,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
-    case Flag.TOUR_APP_SHELL:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_TOUR_APP_SHELL;
     case Flag.TASK_PROGRESS_BAR:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.GRAPHITI_MEMORY:

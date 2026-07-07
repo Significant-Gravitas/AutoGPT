@@ -17,8 +17,6 @@ vi.mock("@/app/(platform)/copilot/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
-const flagState = vi.hoisted(() => ({ tourAppShell: true }));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -26,8 +24,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.TOUR_APP_SHELL ? flagState.tourAppShell : false,
+    useGetFlag: () => false,
   };
 });
 
@@ -62,10 +59,9 @@ async function pressEnterToSend() {
   }
 }
 
-describe("Tour chat app shell (tour-app-shell flag)", () => {
+describe("Tour chat app shell", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    flagState.tourAppShell = true;
     // Both stores are module-level state — reset between tests.
     useTourStore.setState({ activeScenarioId: DEFAULT_SCENARIO_ID });
     useCopilotUIStore.getState().clearArtifactPreview();
@@ -150,16 +146,4 @@ describe("Tour chat app shell (tour-app-shell flag)", () => {
     // store holds the artifact.
     expect(screen.getByText("competitor-pricing-report.md")).toBeDefined();
   }, 30_000);
-
-  test("flag off keeps the scenario pills layout", () => {
-    flagState.tourAppShell = false;
-    render(<TourChatPage />);
-
-    expect(
-      screen
-        .getByRole("button", { name: "Competitor watch" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(screen.queryByText("Recent chats")).toBeNull();
-  });
 });
