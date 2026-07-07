@@ -46,6 +46,7 @@ export function useSchedulesPanel() {
     (a, b) => nextRunMs(a.item) - nextRunMs(b.item),
   );
 
+  const isLoading = copilotQuery.isLoading || graphQuery.isLoading;
   const fetchError = copilotQuery.error ?? graphQuery.error;
 
   return {
@@ -54,11 +55,11 @@ export function useSchedulesPanel() {
     // reference it.
     followups: copilotQuery.data ?? [],
     schedules,
-    isLoading: copilotQuery.isLoading || graphQuery.isLoading,
-    // The two sources are independent — only hard-fail when there is
-    // nothing to show; a partial failure keeps the loaded list visible
-    // and surfaces a non-blocking warning instead.
-    error: schedules.length === 0 ? fetchError : null,
+    isLoading,
+    // The two sources are independent — only hard-fail once both have
+    // settled and there is nothing to show; a partial failure keeps the
+    // loaded list visible and surfaces a non-blocking warning instead.
+    error: !isLoading && schedules.length === 0 ? fetchError : null,
     partialError: schedules.length > 0 ? fetchError : null,
   };
 }
