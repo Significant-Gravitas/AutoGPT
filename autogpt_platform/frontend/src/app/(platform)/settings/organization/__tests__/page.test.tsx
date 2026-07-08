@@ -16,6 +16,9 @@ import {
   getPostV2AcceptInvitationMockHandler,
   getPostV2CreateInvitationMockHandler,
 } from "@/app/api/__generated__/endpoints/invitations/invitations.msw";
+import type { InvitationResponse } from "@/app/api/__generated__/models/invitationResponse";
+import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
+import type { UserInvitationResponse } from "@/app/api/__generated__/models/userInvitationResponse";
 
 import OrganizationSettingsPage from "../page";
 
@@ -85,11 +88,17 @@ function seedActiveOrg(orgID: string) {
   });
 }
 
+interface MockTeamOrgArgs {
+  members?: OrgMemberResponse[];
+  myInvitations?: UserInvitationResponse[];
+  orgInvitations?: InvitationResponse[];
+}
+
 function mockTeamOrg({
   members = [OWNER_MEMBER, PLAIN_MEMBER],
   myInvitations = [],
   orgInvitations = [],
-} = {}) {
+}: MockTeamOrgArgs = {}) {
   server.use(
     getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
     getGetV2ListOrganizationMembersMockHandler(members),
@@ -250,9 +259,7 @@ describe("OrganizationSettingsPage", () => {
     const nameInput = await screen.findByLabelText("Name");
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Acme Corp");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Save changes" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(patchSpy).toHaveBeenCalledTimes(1);
