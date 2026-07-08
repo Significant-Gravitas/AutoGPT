@@ -1,3 +1,4 @@
+import { renderHook } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStop } from "../useCopilotStop";
@@ -56,18 +57,20 @@ function makeHarness({
     },
   );
 
-  const stop = useCopilotStop({
-    sessionId,
-    sdkStop,
-    setMessages: setMessages as never,
-    isUserStoppingRef,
-    setIsUserStopping,
-    isCancelInFlightRef,
-    refetchSession,
-  });
+  const { result } = renderHook(() =>
+    useCopilotStop({
+      sessionId,
+      sdkStop,
+      setMessages: setMessages as never,
+      isUserStoppingRef,
+      setIsUserStopping,
+      isCancelInFlightRef,
+      refetchSession,
+    }),
+  );
 
   return {
-    stop,
+    stop: result.current,
     isUserStoppingRef,
     isCancelInFlightRef,
     setIsUserStopping,
@@ -174,7 +177,9 @@ describe("useCopilotStop", () => {
   });
 
   it("clears the user-stop flag once the refetch confirms no active stream", async () => {
-    const refetchSession = vi.fn(() => Promise.resolve(activeStreamResult(false)));
+    const refetchSession = vi.fn(() =>
+      Promise.resolve(activeStreamResult(false)),
+    );
     const h = makeHarness({ refetchSession });
 
     await h.stop();
@@ -186,7 +191,9 @@ describe("useCopilotStop", () => {
   });
 
   it("keeps the user-stop flag set while the backend still reports an active stream", async () => {
-    const refetchSession = vi.fn(() => Promise.resolve(activeStreamResult(true)));
+    const refetchSession = vi.fn(() =>
+      Promise.resolve(activeStreamResult(true)),
+    );
     const h = makeHarness({ refetchSession });
 
     await h.stop();
