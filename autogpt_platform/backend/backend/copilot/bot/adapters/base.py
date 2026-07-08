@@ -1,14 +1,18 @@
 """Abstract base for platform adapters.
 
-Each chat platform (Discord, Telegram, Slack, etc.) implements this interface.
-The core bot logic in handler.py is platform-agnostic — it only speaks through
-these methods.
+``PlatformAdapter`` is the outbound contract the platform-agnostic core handler
+(``handler.py``) speaks through — it never names a platform. Concrete adapters
+extend one of two subtypes depending on how inbound events arrive:
+``SocketAdapter`` (owns a long-lived connection — Discord Gateway, Slack Socket
+Mode) or ``WebhookAdapter`` (receives inbound HTTPS POSTs — Slack Events API,
+Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
@@ -135,7 +139,12 @@ class MessageContext:
 
 
 class PlatformAdapter(ABC):
-    """Interface that each chat platform must implement."""
+    """Outbound contract shared by every platform adapter.
+
+    The core handler only ever holds a ``PlatformAdapter`` — it speaks through
+    these methods and never cares whether events arrive over a socket or a
+    webhook. Inbound wiring lives on the two subtypes below.
+    """
 
     @property
     @abstractmethod
@@ -143,12 +152,6 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None: ...
-
-    @abstractmethod
-    async def start(self) -> None: ...
-
-    @abstractmethod
-    async def stop(self) -> None: ...
 
     @abstractmethod
     async def send_message(
@@ -292,5 +295,35 @@ class PlatformAdapter(ABC):
         "Standalone" = not anchored to a pre-existing message (unlike
         ``create_thread``). Returns the thread's ``PostedRef``, or ``None`` if
         the platform/channel doesn't support it.
+        """
+        ...
+
+
+class SocketAdapter(PlatformAdapter):
+    """Adapter that owns a long-lived connection (Discord Gateway, Slack Socket
+    Mode). The connection is a per-token singleton held open for the process's
+    lifetime, so each socket adapter runs in the ``copilot-bot`` pod and is
+    driven by ``start``/``stop``.
+    """
+
+    @abstractmethod
+    async def start(self) -> None: ...
+
+    @abstractmethod
+    async def stop(self) -> None: ...
+
+
+class WebhookAdapter(PlatformAdapter):
+    """Adapter driven by inbound HTTPS webhooks (Slack Events API, Telegram,
+    Teams, WhatsApp). Stateless — its routes mount on the main backend API and
+    ride the existing N-replica deployment, so no dedicated pod is needed.
+    """
+
+    @abstractmethod
+    def register_routes(self, app: FastAPI) -> None:
+        """Mount this adapter's inbound webhook route(s) onto ``app``.
+
+        The adapter owns its own request signature verification and must ACK
+        within the platform's timeout, scheduling the real work off-request.
         """
         ...

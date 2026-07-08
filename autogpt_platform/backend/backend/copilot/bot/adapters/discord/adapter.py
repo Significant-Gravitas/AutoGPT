@@ -25,9 +25,9 @@ from ..base import (
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
-    PlatformAdapter,
     PostedRef,
     ReferencedConversation,
+    SocketAdapter,
 )
 from . import commands, config, intro
 from .references import (
@@ -64,7 +64,7 @@ MAX_INBOUND_ATTACHMENTS = 10
 REFERENCED_MESSAGE_CONTEXT = 15
 
 
-class DiscordAdapter(PlatformAdapter):
+class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
