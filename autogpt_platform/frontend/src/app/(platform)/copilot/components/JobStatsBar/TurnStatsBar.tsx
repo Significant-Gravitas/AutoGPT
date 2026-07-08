@@ -79,7 +79,13 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
 
   const showTimeLabel =
     displaySeconds !== undefined && displaySeconds > 0 ? displaySeconds : null;
-  if (counters.length === 0 && showTimeLabel === null) return null;
+  const tokens =
+    stats?.totalTokens && Number.isFinite(stats.totalTokens) && stats.totalTokens > 0
+      ? stats.totalTokens
+      : null;
+  if (counters.length === 0 && showTimeLabel === null && tokens === null) {
+    return null;
+  }
 
   return (
     <div className="mt-2 flex items-center gap-1.5 text-xs opacity-50 transition-opacity group-hover:opacity-100">
@@ -99,6 +105,16 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
           </span>
         );
       })}
+      {tokens !== null && (
+        <span className="flex items-center gap-1">
+          {(showTimeLabel !== null || counters.length > 0) && (
+            <span className="text-xs text-neutral-300">&middot;</span>
+          )}
+          <span className="text-[11px] tabular-nums text-neutral-500">
+            {tokens.toLocaleString()} tokens
+          </span>
+        </span>
+      )}
     </div>
   );
 }

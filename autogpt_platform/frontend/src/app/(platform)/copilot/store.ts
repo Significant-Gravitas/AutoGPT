@@ -182,6 +182,12 @@ interface CopilotUIState {
   copilotLlmModel: CopilotLlmModel;
   setCopilotLlmModel: (model: CopilotLlmModel) => void;
 
+  /** Two-phase planner/executor architecture switch. On = force the split
+   *  (backend still checks the request is multi-step); off = old single-model
+   *  loop. */
+  isPlannerSplitEnabled: boolean;
+  setPlannerSplitEnabled: (enabled: boolean) => void;
+
   /** Developer dry-run mode: sessions created with dry_run=true. */
   isDryRun: boolean;
   setIsDryRun: (enabled: boolean) => void;
@@ -494,6 +500,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ copilotLlmModel: model });
   },
 
+  isPlannerSplitEnabled:
+    isClient && storage.get(Key.COPILOT_PLANNER_SPLIT) === "true",
+  setPlannerSplitEnabled: (enabled) => {
+    if (enabled) {
+      storage.set(Key.COPILOT_PLANNER_SPLIT, "true");
+    } else {
+      storage.clean(Key.COPILOT_PLANNER_SPLIT);
+    }
+    set({ isPlannerSplitEnabled: enabled });
+  },
+
   isDryRun: isClient && storage.get(Key.COPILOT_DRY_RUN) === "true",
   setIsDryRun: (enabled) => {
     if (enabled) {
@@ -521,6 +538,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_DRY_RUN);
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
+    storage.clean(Key.COPILOT_PLANNER_SPLIT);
     set({
       completedSessionIDs: new Set<string>(),
       contextPanelWidth: DEFAULT_PANEL_WIDTH,
@@ -536,6 +554,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
+      isPlannerSplitEnabled: false,
       isDryRun: false,
     });
     if (isClient) {

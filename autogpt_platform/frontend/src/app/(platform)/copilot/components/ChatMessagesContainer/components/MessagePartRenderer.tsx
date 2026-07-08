@@ -23,6 +23,8 @@ import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
+import { PlanCard } from "../../PlanCard/PlanCard";
+import { parsePlanPartData } from "../../PlanCard/helpers";
 import {
   extractWorkspaceArtifacts,
   parseSpecialMarkers,
@@ -134,6 +136,14 @@ export function MessagePartRenderer({
   readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
+
+  if (part.type === "data-plan") {
+    const planData = parsePlanPartData(
+      (part as { data?: unknown }).data,
+    );
+    if (!planData) return null;
+    return <PlanCard key={key} data={planData} />;
+  }
 
   switch (part.type) {
     case "reasoning": {

@@ -21,6 +21,7 @@ export enum Key {
   COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
+  COPILOT_PLANNER_SPLIT = "copilot-planner-split",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",

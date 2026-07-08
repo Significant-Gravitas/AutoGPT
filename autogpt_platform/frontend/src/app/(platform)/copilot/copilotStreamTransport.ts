@@ -20,6 +20,9 @@ interface CreateTransportArgs {
   copilotModeRef: MutableValue<CopilotMode | undefined>;
   /** Ref to the current model tier. See `copilotModeRef` for rationale. */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  /** Ref to the planner/executor architecture switch. See `copilotModeRef`
+   *  for rationale. `undefined` = let the backend flag decide. */
+  plannerSplitRef: MutableValue<boolean | undefined>;
 }
 
 /**
@@ -38,6 +41,7 @@ export function createCopilotTransport({
   sessionId,
   copilotModeRef,
   copilotModelRef,
+  plannerSplitRef,
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
@@ -78,6 +82,7 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
+          force_planner_split: plannerSplitRef.current ?? null,
           message_id: crypto.randomUUID(),
         },
         headers: await getCopilotAuthHeaders(),

@@ -12,6 +12,12 @@ export enum Flag {
   ARTIFACTS = "artifacts",
   ARTIFACTS_PAGE = "artifacts-page",
   CHAT_MODE_OPTION = "chat-mode-option",
+  // Mirror of the backend ``copilot-planner-executor`` flag. Gates the
+  // copilot header switch that forces the two-phase planner/executor
+  // architecture on/off per request. Default false (fail-closed): when the
+  // flag is off the switch is hidden and the client defers to the backend
+  // flag entirely.
+  COPILOT_PLANNER_EXECUTOR = "copilot-planner-executor",
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
@@ -45,6 +51,7 @@ const defaultFlags = {
   [Flag.ARTIFACTS]: false,
   [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
+  [Flag.COPILOT_PLANNER_EXECUTOR]: true,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: true,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
@@ -94,6 +101,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
+    case Flag.COPILOT_PLANNER_EXECUTOR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_PLANNER_EXECUTOR;
     case Flag.BUILDER_CHAT_PANEL:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
     case Flag.AGENT_BRIEFING:

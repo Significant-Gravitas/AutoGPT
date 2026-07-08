@@ -19,6 +19,7 @@ function makeRefs() {
   return {
     copilotModeRef: { current: undefined },
     copilotModelRef: { current: undefined },
+    plannerSplitRef: { current: undefined },
   };
 }
 
@@ -100,4 +101,25 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
     },
   );
+
+  it("forwards the planner-split ref as force_planner_split on the body", async () => {
+    const refs = makeRefs();
+    const transport = createCopilotTransport({ sessionId: "sess-1", ...refs });
+    const prep = (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: ReturnType<typeof lastMessage>;
+        }) => Promise<{ body: { force_planner_split?: boolean | null } }>;
+      }
+    ).prepareSendMessagesRequest;
+
+    // Undefined ref → null (defer to the backend flag).
+    const deferred = await prep({ messages: lastMessage("hi") });
+    expect(deferred.body.force_planner_split).toBeNull();
+
+    // Ref flipped on → forwarded verbatim so the backend forces the split.
+    refs.plannerSplitRef.current = true as never;
+    const forced = await prep({ messages: lastMessage("hi") });
+    expect(forced.body.force_planner_split).toBe(true);
+  });
 });

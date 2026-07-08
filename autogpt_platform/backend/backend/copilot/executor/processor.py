@@ -542,6 +542,7 @@ class CoPilotProcessor:
                 file_ids=entry.file_ids,
                 mode=effective_mode,
                 model=entry.model,
+                force_planner_split=entry.force_planner_split,
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
             )

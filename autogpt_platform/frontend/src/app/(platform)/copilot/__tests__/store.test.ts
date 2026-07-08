@@ -255,6 +255,7 @@ describe("useCopilotUIStore", () => {
       showNotificationDialog: false,
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
+      isPlannerSplitEnabled: false,
     });
   });
 
@@ -442,6 +443,27 @@ describe("useCopilotUIStore", () => {
     });
   });
 
+  describe("isPlannerSplitEnabled", () => {
+    it("defaults to false", () => {
+      expect(useCopilotUIStore.getState().isPlannerSplitEnabled).toBe(false);
+    });
+
+    it("enables and persists to localStorage", () => {
+      useCopilotUIStore.getState().setPlannerSplitEnabled(true);
+      expect(useCopilotUIStore.getState().isPlannerSplitEnabled).toBe(true);
+      expect(window.localStorage.getItem("copilot-planner-split")).toBe("true");
+    });
+
+    it("disabling clears the localStorage key", () => {
+      useCopilotUIStore.getState().setPlannerSplitEnabled(true);
+      useCopilotUIStore.getState().setPlannerSplitEnabled(false);
+      expect(useCopilotUIStore.getState().isPlannerSplitEnabled).toBe(false);
+      expect(
+        window.localStorage.getItem("copilot-planner-split"),
+      ).toBeNull();
+    });
+  });
+
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
       useCopilotUIStore.getState().setSearchOpen(true);
@@ -509,5 +531,12 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     vi.resetModules();
     const { useCopilotUIStore: fresh } = await import("../store");
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
+  });
+
+  it("reads the planner-split preference from localStorage on store creation", async () => {
+    window.localStorage.setItem("copilot-planner-split", "true");
+    vi.resetModules();
+    const { useCopilotUIStore: fresh } = await import("../store");
+    expect(fresh.getState().isPlannerSplitEnabled).toBe(true);
   });
 });

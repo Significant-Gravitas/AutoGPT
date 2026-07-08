@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
+import { ArchitectureToggle } from "./components/ArchitectureToggle/ArchitectureToggle";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
 import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
@@ -134,6 +135,7 @@ function MainArea({
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}
+          <ArchitectureToggle className="absolute right-3 top-3 z-20" />
           <div className="flex flex-col gap-3 px-4 pt-4 empty:hidden">
             <LowCreditBanner />
             <NotificationBanner />

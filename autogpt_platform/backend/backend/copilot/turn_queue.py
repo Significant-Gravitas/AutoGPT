@@ -101,6 +101,7 @@ async def try_enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    force_planner_split: bool | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
 ) -> ChatMessage:
@@ -124,6 +125,7 @@ async def try_enqueue_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        force_planner_split=force_planner_split,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
     )
@@ -140,6 +142,7 @@ async def enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    force_planner_split: bool | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
 ) -> ChatMessage:
@@ -161,6 +164,8 @@ async def enqueue_turn(
         metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
+    if force_planner_split is not None:
+        metadata["force_planner_split"] = force_planner_split
     if permissions is not None:
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
@@ -335,6 +340,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             file_ids=metadata.get("file_ids"),
             mode=metadata.get("mode"),
             model=metadata.get("model"),
+            force_planner_split=metadata.get("force_planner_split"),
             permissions=metadata.get("permissions"),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
         )

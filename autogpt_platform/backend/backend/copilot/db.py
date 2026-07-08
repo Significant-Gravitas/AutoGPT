@@ -22,7 +22,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _parse_json_field,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -772,6 +778,42 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
             for msg in reversed(session.messages):
                 if msg.role == "assistant":
                     msg.duration_ms = duration_ms
+                    break
+            await cache_chat_session(session)
+
+
+async def set_turn_tokens(session_id: str, total_tokens: int) -> None:
+    """Merge the per-turn total token count into the last assistant message.
+
+    Written into the generic ``metadata`` JSON bag (key
+    ``turn_total_tokens``) rather than a dedicated column, so no migration
+    is needed.  Existing metadata keys are preserved.  Updates the Redis
+    cache in-place instead of invalidating it — invalidation would open a
+    race window where a concurrent ``get_chat_session`` re-populates the
+    cache with stale DB data (see ``set_turn_duration``).
+    """
+    last_msg = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "assistant"},
+        order={"sequence": "desc"},
+    )
+    if last_msg:
+        existing = _parse_json_field(last_msg.metadata) or {}
+        merged = {**existing, "turn_total_tokens": total_tokens}
+        await PrismaChatMessage.prisma().update(
+            where={"id": last_msg.id},
+            data={"metadata": SafeJson(merged)},
+        )
+        # Update cache in-place rather than invalidating to avoid a
+        # race window where the empty cache gets re-populated with
+        # stale data by a concurrent get_chat_session call.
+        session = await get_chat_session_cached(session_id)
+        if session and session.messages:
+            for msg in reversed(session.messages):
+                if msg.role == "assistant":
+                    msg.metadata = {
+                        **(msg.metadata or {}),
+                        "turn_total_tokens": total_tokens,
+                    }
                     break
             await cache_chat_session(session)
 

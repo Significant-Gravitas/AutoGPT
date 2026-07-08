@@ -220,6 +220,13 @@ class StreamChatRequest(BaseModel):
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
     )
+    force_planner_split: bool | None = Field(
+        default=None,
+        description="Per-request override for the two-phase planner/executor "
+        "split on the baseline path. True forces it on (still gated by the "
+        "multi-step heuristic), False forces the plain single-loop path, "
+        "None defers to the 'copilot-planner-executor' flag.",
+    )
     message_id: str | None = Field(
         default=None,
         max_length=64,
@@ -1244,6 +1251,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            force_planner_split=request.force_planner_split,
             permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -1266,6 +1274,7 @@ async def stream_chat_post(
                 file_ids=sanitized_file_ids,
                 mode=request.mode,
                 model=request.model,
+                force_planner_split=request.force_planner_split,
                 permissions=(
                     builder_permissions.model_dump(exclude_none=True)
                     if builder_permissions

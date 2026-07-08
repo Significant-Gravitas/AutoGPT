@@ -235,7 +235,14 @@ export function splitReasoningAndResponse(parts: MessagePart[]): {
     // parse, so isInteractiveToolPart can't recognize them, but hiding them
     // in the steps modal would silently swallow a lost sign-in/setup card.
     // Pinning lets the tool renderer surface a visible error instead.
-    if (isInteractiveToolPart(part) || isCorruptedCardToolPart(part)) {
+    // The planner/executor plan card is pinned too so the decided plan and
+    // its executor prompt stay visible after the turn finalizes instead of
+    // being buried inside the collapsed "Show steps" modal.
+    if (
+      part.type === "data-plan" ||
+      isInteractiveToolPart(part) ||
+      isCorruptedCardToolPart(part)
+    ) {
       pinnedParts.push(part);
     } else {
       // Reasoning / thinking parts stay inside the outer "Show steps" modal

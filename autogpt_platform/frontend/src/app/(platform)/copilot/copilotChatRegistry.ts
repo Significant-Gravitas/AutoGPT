@@ -13,6 +13,7 @@ interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
   copilotModeRef: MutableValue<CopilotMode | undefined>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  plannerSplitRef: MutableValue<boolean | undefined>;
   onFinish?: (args: {
     isDisconnect?: boolean;
     isAbort?: boolean;
@@ -78,6 +79,9 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
+  const plannerSplitRef: MutableValue<boolean | undefined> = {
+    current: undefined,
+  };
   const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError"> = {};
   const chat = new Chat<UIMessage>({
     id: sessionId,
@@ -85,6 +89,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
       sessionId,
       copilotModeRef,
       copilotModelRef,
+      plannerSplitRef,
     }),
     onFinish: (args) => {
       if (args.isDisconnect) {
@@ -103,6 +108,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
     chat,
     copilotModeRef,
     copilotModelRef,
+    plannerSplitRef,
     get onFinish() {
       return callbacks.onFinish;
     },

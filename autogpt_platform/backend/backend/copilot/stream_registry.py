@@ -48,6 +48,7 @@ from .response_model import (
     StreamFinishStep,
     StreamHeartbeat,
     StreamPendingDrained,
+    StreamPlan,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -1167,6 +1168,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
         ResponseType.STATUS.value: StreamStatus,
+        ResponseType.PLAN.value: StreamPlan,
         ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
         ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
     }

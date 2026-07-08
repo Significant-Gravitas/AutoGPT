@@ -10,8 +10,9 @@ pure of any streaming/session plumbing so it can be unit-tested in isolation.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from typing import Any, Literal, Sequence
+
+from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.planner.models import Plan
@@ -62,8 +63,7 @@ def evaluate_replan_trigger(
     return None
 
 
-@dataclass
-class ReplanOutcome:
+class ReplanOutcome(BaseModel):
     """Result of one :meth:`ReplanController.maybe_revise` call.
 
     ``action``:
@@ -84,7 +84,7 @@ class ReplanOutcome:
     reason: str | None = None
     system_message: str | None = None
     plan: Plan | None = None
-    usage: PlannerUsage = field(default_factory=PlannerUsage)
+    usage: PlannerUsage = Field(default_factory=PlannerUsage)
 
 
 class ReplanController:
@@ -126,17 +126,17 @@ class ReplanController:
         failure is only acted on once.  Enforces :data:`MAX_REPLANS`.
         """
         if self.plan is None or self.capped:
-            return ReplanOutcome("none")
+            return ReplanOutcome(action="none")
 
         new_text = executor_text[self._scan_pos :]
         self._scan_pos = len(executor_text)
         reason = evaluate_replan_trigger(new_text, consecutive_tool_errors)
         if reason is None:
-            return ReplanOutcome("none")
+            return ReplanOutcome(action="none")
 
         if self.replans_used >= MAX_REPLANS:
             self.capped = True
-            return ReplanOutcome("capped", reason=reason)
+            return ReplanOutcome(action="capped", reason=reason)
 
         revised, usage = await revise_plan(
             plan=self.plan,
@@ -148,12 +148,12 @@ class ReplanController:
             session_id=self._session_id,
         )
         if revised is None:
-            return ReplanOutcome("revision_failed", reason=reason, usage=usage)
+            return ReplanOutcome(action="revision_failed", reason=reason, usage=usage)
 
         self.plan = revised
         self.replans_used += 1
         return ReplanOutcome(
-            "revised",
+            action="revised",
             reason=reason,
             system_message=plan_to_executor_prompt(revised, revised=True),
             plan=revised,

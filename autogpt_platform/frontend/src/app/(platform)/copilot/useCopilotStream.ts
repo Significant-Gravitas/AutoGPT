@@ -51,6 +51,8 @@ interface UseCopilotStreamArgs {
   copilotMode: CopilotMode | undefined;
   /** Model tier override. `undefined` = let backend decide. */
   copilotModel: CopilotLlmModel | undefined;
+  /** Planner/executor architecture switch. `undefined` = let backend decide. */
+  plannerSplit: boolean | undefined;
 }
 
 export function useCopilotStream({
@@ -60,6 +62,7 @@ export function useCopilotStream({
   refetchSession,
   copilotMode,
   copilotModel,
+  plannerSplit,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
@@ -77,6 +80,7 @@ export function useCopilotStream({
   if (chatRuntime) {
     chatRuntime.copilotModeRef.current = copilotMode;
     chatRuntime.copilotModelRef.current = copilotModel;
+    chatRuntime.plannerSplitRef.current = plannerSplit;
   }
 
   // Transient per-mount flags. The parent keys this subtree by sessionId,

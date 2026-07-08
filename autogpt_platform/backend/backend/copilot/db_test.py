@@ -15,6 +15,7 @@ from backend.copilot.db import (
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
+    set_turn_tokens,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
@@ -531,6 +532,52 @@ async def test_set_turn_duration_no_assistant_message(setup_test_user, test_user
     assert cached is not None
     # User message should not have durationMs
     assert cached.messages[0].duration_ms is None
+
+
+# ---------- Turn tokens (integration tests) ----------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_set_turn_tokens_merges_into_metadata(setup_test_user, test_user_id):
+    """set_turn_tokens writes turn_total_tokens while preserving other keys."""
+    session = ChatSession.new(user_id=test_user_id, dry_run=False)
+    session.messages = [
+        CopilotChatMessage(role="user", content="hello"),
+        CopilotChatMessage(
+            role="assistant",
+            content="hi there",
+            metadata={"existing_key": "keep-me"},
+        ),
+    ]
+    session = await upsert_chat_session(session)
+
+    await set_turn_tokens(session.session_id, 4321)
+
+    updated = await get_chat_session(session.session_id, test_user_id)
+    assert updated is not None
+    assistant_msgs = [m for m in updated.messages if m.role == "assistant"]
+    assert len(assistant_msgs) == 1
+    metadata = assistant_msgs[0].metadata or {}
+    assert metadata.get("turn_total_tokens") == 4321
+    # Pre-existing metadata keys must be preserved.
+    assert metadata.get("existing_key") == "keep-me"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_set_turn_tokens_no_assistant_message(setup_test_user, test_user_id):
+    """set_turn_tokens is a no-op when there are no assistant messages."""
+    session = ChatSession.new(user_id=test_user_id, dry_run=False)
+    session.messages = [
+        CopilotChatMessage(role="user", content="hello"),
+    ]
+    session = await upsert_chat_session(session)
+
+    # Should not raise
+    await set_turn_tokens(session.session_id, 100)
+
+    cached = await get_chat_session(session.session_id, test_user_id)
+    assert cached is not None
+    assert (cached.messages[0].metadata or {}).get("turn_total_tokens") is None
 
 
 # ---------- update_message_content_by_sequence ----------

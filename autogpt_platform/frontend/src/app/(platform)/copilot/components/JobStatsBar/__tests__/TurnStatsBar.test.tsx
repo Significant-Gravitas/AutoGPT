@@ -121,6 +121,28 @@ describe("TurnStatsBar", () => {
     expect(bar?.textContent).toMatch(/2\s*agents run/);
     expect(bar?.textContent).toMatch(/1\s*action/);
   });
+
+  it("renders the per-turn token count when present", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={EMPTY}
+        stats={{ durationMs: 3_000, totalTokens: 1234 }}
+      />,
+    );
+    expect(screen.getByText(/1,234 tokens/)).toBeDefined();
+  });
+
+  it("renders the token count even when it's the only stat present", () => {
+    render(<TurnStatsBar turnMessages={EMPTY} stats={{ totalTokens: 500 }} />);
+    expect(screen.getByText(/500 tokens/)).toBeDefined();
+  });
+
+  it("renders nothing when the token count is zero", () => {
+    const { container } = render(
+      <TurnStatsBar turnMessages={EMPTY} stats={{ totalTokens: 0 }} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
 });
 
 describe("TurnStatsBar — live elapsed timer", () => {

@@ -3,6 +3,9 @@ import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
 export interface TurnStats {
   durationMs?: number;
+  /** Total tokens billed for the turn (billed prompt + completion), read
+   *  from the last assistant message's ``metadata.turn_total_tokens``. */
+  totalTokens?: number;
   createdAt?: string;
   /** Raw ChatMessage.id (UUID).  Carried for the badge's cancel handler. */
   rawMessageId?: string | null;
@@ -23,6 +26,18 @@ interface SessionChatMessage {
   sequence: number | null;
   duration_ms: number | null;
   created_at: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/** Read the persisted per-turn total token count from an assistant
+ *  message's metadata bag, returning it only when it's a positive finite
+ *  number. */
+function extractTurnTotalTokens(
+  metadata: Record<string, unknown> | null,
+): number | undefined {
+  const raw = metadata?.turn_total_tokens;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  return undefined;
 }
 
 function coerceSessionChatMessages(
@@ -63,6 +78,10 @@ function coerceSessionChatMessages(
             : msg.created_at instanceof Date
               ? msg.created_at.toISOString()
               : null,
+        metadata:
+          msg.metadata && typeof msg.metadata === "object"
+            ? (msg.metadata as Record<string, unknown>)
+            : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -464,6 +483,10 @@ export function convertChatSessionMessagesToUiMessages(
       if (msg.duration_ms != null) {
         patchStats(prevUI.id, { durationMs: msg.duration_ms });
       }
+      const mergedTokens = extractTurnTotalTokens(msg.metadata);
+      if (mergedTokens !== undefined) {
+        patchStats(prevUI.id, { totalTokens: mergedTokens });
+      }
       // Advance createdAt to the latest row in the merge so the live
       // "Thinking Xs" counter anchors to the most recent sub-step rather
       // than the turn's first assistant row.
@@ -493,6 +516,10 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
       patch.durationMs = msg.duration_ms;
+    }
+    if (uiRole === "assistant") {
+      const totalTokens = extractTurnTotalTokens(msg.metadata);
+      if (totalTokens !== undefined) patch.totalTokens = totalTokens;
     }
     if (uiRole === "user") {
       // Queue badge consumes ``rawMessageId`` for its cancel handler and

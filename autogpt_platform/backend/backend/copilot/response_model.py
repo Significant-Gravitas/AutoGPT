@@ -54,6 +54,9 @@ class ResponseType(str, Enum):
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
     CURSOR = "data-cursor"
+    # Two-phase planner/executor progress (planning started, plan ready,
+    # re-plan events). Emitted by the baseline path when the split is active.
+    PLAN = "data-plan"
     # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
     # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
     DREAM_OPERATIONS = "data-dream-operations"
@@ -357,6 +360,73 @@ class StreamStatus(StreamBaseResponse):
         data = {
             "type": self.type.value,
             "data": {"message": self.message},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamPlanStep(BaseModel):
+    """One plan step as surfaced to the frontend plan card."""
+
+    id: str
+    description: str
+    expectedTools: list[str] = Field(default_factory=list)
+    successCriteria: str = ""
+
+
+class StreamPlan(StreamBaseResponse):
+    """Two-phase planner/executor progress event.
+
+    Emitted by the baseline path when the planner split is active so the
+    frontend can render a live plan card: ``planning`` (planner call in
+    flight), ``planned`` (plan ready, executor starting), ``replanned`` /
+    ``replan_capped`` / ``replan_failed`` (mid-turn re-plan outcomes),
+    ``skipped`` (user forced the split on but the request wasn't
+    multi-step) and ``failed`` (planner produced no usable plan; the turn
+    fell back to the single-loop path).
+
+    All events of one turn share ``planId`` — the AI SDK reconciles data
+    parts by ``id``, so the card updates in place instead of stacking.
+    """
+
+    type: ResponseType = ResponseType.PLAN
+    planId: str = Field(..., description="Stable per-turn id for part reconciliation")
+    phase: str = Field(
+        ...,
+        description=(
+            "planning | planned | replanned | replan_capped | replan_failed "
+            "| skipped | failed"
+        ),
+    )
+    steps: list[StreamPlanStep] = Field(default_factory=list)
+    plannerModel: str | None = None
+    executorModel: str | None = None
+    revision: int = Field(default=0, description="0 = initial plan, 1+ = re-plans")
+    reason: str | None = Field(
+        default=None, description="Re-plan trigger or skip/failure reason"
+    )
+    executorPrompt: str | None = Field(
+        default=None,
+        description="Exact <execution_plan> system-prompt block given to the executor",
+    )
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part (``type='data-plan'``).
+
+        The ``id`` field makes the SDK replace the previous part with the
+        same id, so one card tracks the whole planning lifecycle.
+        """
+        data = {
+            "type": self.type.value,
+            "id": self.planId,
+            "data": {
+                "phase": self.phase,
+                "steps": [s.model_dump() for s in self.steps],
+                "plannerModel": self.plannerModel,
+                "executorModel": self.executorModel,
+                "revision": self.revision,
+                "reason": self.reason,
+                "executorPrompt": self.executorPrompt,
+            },
         }
         return f"data: {json.dumps(data)}\n\n"
 

@@ -39,8 +39,10 @@ function hasAssistantTail(messages: UIMessage[]) {
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isPlannerToggleEnabled = useGetFlag(Flag.COPILOT_PLANNER_EXECUTOR);
 
-  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotChatMode, copilotLlmModel, isPlannerSplitEnabled, isDryRun } =
+    useCopilotUIStore();
 
   const {
     sessionId,
@@ -80,6 +82,10 @@ export function useCopilotPage() {
     refetchSession,
     copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+    // Only force the split when the toggle is available to this user;
+    // otherwise send `undefined` so the backend flag stays authoritative
+    // (a blanket `false` would pin the split off for everyone).
+    plannerSplit: isPlannerToggleEnabled ? isPlannerSplitEnabled : undefined,
   });
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =

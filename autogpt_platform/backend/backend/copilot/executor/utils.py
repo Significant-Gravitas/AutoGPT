@@ -205,6 +205,12 @@ class CoPilotExecutionEntry(BaseModel):
     model: CopilotLlmModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
+    force_planner_split: bool | None = None
+    """Per-request override for the two-phase planner/executor split on the
+    baseline path. True forces it on (still gated by the multi-step
+    heuristic), False forces the plain single-loop path, None defers to the
+    ``copilot-planner-executor`` flag / config default."""
+
     permissions: CopilotPermissions | None = None
     """Capability filter inherited from a parent run (e.g. ``run_sub_session``
     forwards its parent's permissions so the sub can't escalate). ``None``
@@ -240,6 +246,7 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    force_planner_split: bool | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -270,6 +277,7 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        force_planner_split=force_planner_split,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
     )
@@ -295,6 +303,7 @@ async def schedule_turn(
     file_ids: list[str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    force_planner_split: bool | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -357,6 +366,7 @@ async def schedule_turn(
             file_ids=file_ids,
             mode=mode,
             model=model,
+            force_planner_split=force_planner_split,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -376,6 +386,7 @@ async def dispatch_turn(
     file_ids: list[str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    force_planner_split: bool | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -425,6 +436,7 @@ async def dispatch_turn(
             file_ids=file_ids,
             mode=mode,
             model=model,
+            force_planner_split=force_planner_split,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -454,6 +466,7 @@ async def schedule_chat_turn(
     file_ids: list[str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    force_planner_split: bool | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> str | None:
@@ -516,6 +529,7 @@ async def schedule_chat_turn(
             file_ids=file_ids,
             mode=mode,
             model=model,
+            force_planner_split=force_planner_split,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )

@@ -89,6 +89,8 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamPlan,
+    StreamPlanStep,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -131,6 +133,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.llm.providers import call_provider_stream
@@ -1629,6 +1632,19 @@ async def _upload_final_transcript(
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
 
+def _stream_plan_steps(plan: Plan) -> list[StreamPlanStep]:
+    """Convert a planner :class:`Plan` into ``StreamPlan`` wire steps."""
+    return [
+        StreamPlanStep(
+            id=step.id,
+            description=step.description,
+            expectedTools=list(step.expected_tools),
+            successCriteria=step.success_criteria,
+        )
+        for step in plan.steps
+    ]
+
+
 async def stream_chat_completion_baseline(
     session_id: str,
     message: str | None = None,
@@ -1641,6 +1657,7 @@ async def stream_chat_completion_baseline(
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
+    force_planner_split: bool | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -1759,11 +1776,19 @@ async def stream_chat_completion_baseline(
     plan: Plan | None = None
     planner_model = ""
     planner_usage = PlannerUsage()
+    # Per-request override from the frontend architecture switch beats the
+    # LD flag / config default in BOTH directions: True forces the split on
+    # (still subject to the multi-step heuristic below), False pins the
+    # plain single-loop path, None keeps today's flag-driven behaviour.
+    if force_planner_split is not None:
+        planner_split_enabled = force_planner_split
+    else:
+        planner_split_enabled = await is_planner_executor_enabled(
+            user_id, config=config
+        )
+    is_multi_step = bool(message) and is_multi_step_request(message or "")
     use_planner_split = bool(
-        is_user_message
-        and message
-        and await is_planner_executor_enabled(user_id, config=config)
-        and is_multi_step_request(message)
+        is_user_message and message and planner_split_enabled and is_multi_step
     )
 
     # Propagate user/session context to Langfuse AND open one root span for
@@ -1792,9 +1817,24 @@ async def stream_chat_completion_baseline(
     except Exception:
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
+    # Open the AI SDK message envelope BEFORE the planner phase so the
+    # ``StreamPlan`` progress events below reach the client while the
+    # planner call is still in flight ("Planning…" card) instead of being
+    # buffered behind a silent multi-second gap.
+    message_id = str(uuid.uuid4())
+    yield StreamStart(messageId=message_id, sessionId=session_id)
+    # Stable per-turn id — the AI SDK reconciles data parts by id, so every
+    # phase update replaces the same plan card in place.
+    plan_part_id = f"plan-{message_id}"
+
     if use_planner_split and message:
         planner_model = await resolve_role_model("planner", user_id, config=config)
         executor_model = await resolve_role_model("executor", user_id, config=config)
+        yield StreamPlan(
+            planId=plan_part_id,
+            phase="planning",
+            plannerModel=planner_model,
+        )
         plan, planner_usage = await generate_plan(
             message=message,
             conversation=[
@@ -1820,6 +1860,14 @@ async def stream_chat_completion_baseline(
                     active_model,
                 )
             session.metadata.plan = plan
+            yield StreamPlan(
+                planId=plan_part_id,
+                phase="planned",
+                steps=_stream_plan_steps(plan),
+                plannerModel=planner_model,
+                executorModel=active_model,
+                executorPrompt=plan_to_executor_prompt(plan),
+            )
             logger.info(
                 "[Baseline] [%s] planner/executor ON: plan=%d steps "
                 "planner=%s executor=%s",
@@ -1829,11 +1877,26 @@ async def stream_chat_completion_baseline(
                 active_model,
             )
         else:
+            yield StreamPlan(
+                planId=plan_part_id,
+                phase="failed",
+                plannerModel=planner_model,
+                reason="Planner produced no usable plan — using the standard loop",
+            )
             logger.info(
                 "[Baseline] [%s] planner/executor ON but no plan produced — "
                 "falling back to the single-loop path",
                 session_id[:12],
             )
+    elif force_planner_split and is_user_message and message and not is_multi_step:
+        # The user forced the split on but the request didn't look
+        # multi-step — tell them the planner was intentionally skipped so
+        # the switch doesn't feel ignored.
+        yield StreamPlan(
+            planId=plan_part_id,
+            phase="skipped",
+            reason="Simple request — answered directly without a plan",
+        )
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
@@ -1917,8 +1980,6 @@ async def stream_chat_completion_baseline(
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
-
-    message_id = str(uuid.uuid4())
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
     graphiti_enabled = await is_enabled_for_user(user_id)
@@ -2215,8 +2276,6 @@ async def stream_chat_completion_baseline(
         permissions=permissions,
     )
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
-
     _stream_error = False  # Track whether an error occurred during streaming
     state = _BaselineStreamState(model=active_model)
 
@@ -2356,6 +2415,19 @@ async def stream_chat_completion_baseline(
                         openai_messages.append(
                             {"role": "system", "content": outcome.system_message}
                         )
+                    if outcome.plan is not None:
+                        state.pending_events.put_nowait(
+                            StreamPlan(
+                                planId=plan_part_id,
+                                phase="replanned",
+                                steps=_stream_plan_steps(outcome.plan),
+                                plannerModel=planner_model,
+                                executorModel=active_model,
+                                revision=replan.replans_used,
+                                reason=outcome.reason,
+                                executorPrompt=outcome.system_message,
+                            )
+                        )
                     logger.info(
                         "[Baseline] [%s] re-plan %d/%d (%s): %d steps",
                         session_id[:12],
@@ -2366,6 +2438,21 @@ async def stream_chat_completion_baseline(
                     )
                 elif outcome.action == "capped":
                     state.consecutive_tool_errors = 0
+                    # Same-id data parts replace wholesale — carry the current
+                    # plan steps so the card keeps showing them under the notice.
+                    state.pending_events.put_nowait(
+                        StreamPlan(
+                            planId=plan_part_id,
+                            phase="replan_capped",
+                            steps=(
+                                _stream_plan_steps(replan.plan) if replan.plan else []
+                            ),
+                            plannerModel=planner_model,
+                            executorModel=active_model,
+                            revision=replan.replans_used,
+                            reason=outcome.reason,
+                        )
+                    )
                     logger.info(
                         "[Baseline] [%s] re-plan cap (%d) reached — continuing "
                         "best-effort in the plain loop",
@@ -2374,6 +2461,19 @@ async def stream_chat_completion_baseline(
                     )
                 elif outcome.action == "revision_failed":
                     state.consecutive_tool_errors = 0
+                    state.pending_events.put_nowait(
+                        StreamPlan(
+                            planId=plan_part_id,
+                            phase="replan_failed",
+                            steps=(
+                                _stream_plan_steps(replan.plan) if replan.plan else []
+                            ),
+                            plannerModel=planner_model,
+                            executorModel=active_model,
+                            revision=replan.replans_used,
+                            reason=outcome.reason,
+                        )
+                    )
                     logger.warning(
                         "[Baseline] [%s] re-plan requested (%s) but revision "
                         "failed — continuing best-effort",
@@ -2751,6 +2851,19 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+        # Persist the per-turn total token count on the last assistant
+        # message so the frontend TurnStatsBar can surface it for A/B eyeballing
+        # of planner/executor vs baseline cost.  ``uncached_prompt`` is the
+        # billed prompt (cache buckets already subtracted, computed above).
+        turn_total = uncached_prompt + state.turn_completion_tokens
+        if turn_total > 0:
+            try:
+                await chat_db().set_turn_tokens(session_id, turn_total)
+            except Exception as e:
+                logger.warning(
+                    "[Baseline] Failed to save turn tokens for %s: %s", session_id, e
+                )
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:

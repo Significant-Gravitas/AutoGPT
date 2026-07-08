@@ -534,3 +534,62 @@ def test_reconstruct_chunk_round_trips_pending_drained():
 
     assert isinstance(chunk, StreamPendingDrained)
     assert chunk.drainedCount == 3
+
+
+def test_reconstruct_chunk_round_trips_plan():
+    """``data-plan`` progress events must survive stream replay so a client
+    that reconnects mid-turn still renders the plan card instead of
+    silently dropping it."""
+    import orjson
+
+    from backend.copilot.response_model import StreamPlan, StreamPlanStep
+
+    stored = orjson.loads(
+        StreamPlan(
+            planId="plan-msg-1",
+            phase="planned",
+            steps=[
+                StreamPlanStep(
+                    id="step-1",
+                    description="Fetch issues",
+                    expectedTools=["github_search_issues"],
+                    successCriteria="Issues retrieved",
+                )
+            ],
+            plannerModel="anthropic/claude-opus-4.7",
+            executorModel="anthropic/claude-sonnet-4-6",
+            executorPrompt="<execution_plan>…</execution_plan>",
+        ).model_dump_json()
+    )
+
+    chunk = stream_registry._reconstruct_chunk(stored)
+
+    assert isinstance(chunk, StreamPlan)
+    assert chunk.planId == "plan-msg-1"
+    assert chunk.phase == "planned"
+    assert chunk.steps[0].expectedTools == ["github_search_issues"]
+
+
+def test_stream_plan_sse_is_ai_sdk_data_part():
+    """``StreamPlan.to_sse`` must emit an AI SDK v5 data part — ``type``
+    ``data-plan``, reconciliation ``id``, payload under ``data`` — or the
+    client parser drops it as an unknown chunk type."""
+    import json as _json
+
+    from backend.copilot.response_model import StreamPlan, StreamPlanStep
+
+    sse = StreamPlan(
+        planId="plan-msg-2",
+        phase="replanned",
+        steps=[StreamPlanStep(id="step-1", description="Retry with new tool")],
+        revision=1,
+        reason="[[REPLAN]] signalled",
+    ).to_sse()
+
+    assert sse.startswith("data: ")
+    payload = _json.loads(sse[len("data: ") :])
+    assert payload["type"] == "data-plan"
+    assert payload["id"] == "plan-msg-2"
+    assert payload["data"]["phase"] == "replanned"
+    assert payload["data"]["revision"] == 1
+    assert payload["data"]["steps"][0]["id"] == "step-1"

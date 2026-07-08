@@ -20581,6 +20581,11 @@
             "title": "Model",
             "description": "Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. If None, the server applies per-user LD targeting then falls back to config."
           },
+          "force_planner_split": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Force Planner Split",
+            "description": "Per-request override for the two-phase planner/executor split on the baseline path. True forces it on (still gated by the multi-step heuristic), False forces the plain single-loop path, None defers to the 'copilot-planner-executor' flag."
+          },
           "message_id": {
             "anyOf": [
               { "type": "string", "maxLength": 64 },
