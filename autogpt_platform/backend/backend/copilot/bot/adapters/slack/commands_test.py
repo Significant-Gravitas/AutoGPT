@@ -38,6 +38,18 @@ async def test_setup_without_team_is_rejected():
 
 
 @pytest.mark.asyncio
+async def test_setup_already_linked_gets_friendly_message():
+    from backend.util.exceptions import LinkAlreadyExistsError
+
+    api = MagicMock()
+    api.create_link_token = AsyncMock(side_effect=LinkAlreadyExistsError("linked"))
+    resp = await commands.handle(
+        api, {"command": "/setup", "team_id": "T1", "user_id": "U1"}
+    )
+    assert "already linked" in _body(resp)["text"]
+
+
+@pytest.mark.asyncio
 async def test_setup_link_failure_is_graceful():
     api = MagicMock()
     api.create_link_token = AsyncMock(side_effect=RuntimeError("boom"))

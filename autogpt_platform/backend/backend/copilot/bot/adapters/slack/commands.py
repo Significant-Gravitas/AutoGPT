@@ -7,6 +7,7 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,11 @@ async def _setup(api: BotBackend, form: dict[str, str]) -> Response:
             platform_username=user_name,
             server_name=team_domain,
             channel_id=channel_id,
+        )
+    except LinkAlreadyExistsError:
+        return _ephemeral(
+            "This workspace is already linked to an AutoGPT account — just "
+            "mention me or DM me to chat. Run /unlink to manage the link."
         )
     except Exception:
         logger.exception("Slack /setup link token creation failed")

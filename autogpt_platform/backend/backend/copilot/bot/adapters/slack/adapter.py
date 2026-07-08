@@ -107,8 +107,12 @@ class SlackAdapter(WebhookAdapter):
             return JSONResponse({"challenge": payload.get("challenge", "")})
         if payload.get("type") == "event_callback":
             event = payload.get("event") or {}
+            # The workspace (team) ID lives at the top level of the Events API
+            # payload — it isn't reliably inside the event object — so thread it
+            # through for server_id resolution.
+            team_id = payload.get("team_id")
             # Fire-and-forget so we ACK within Slack's 3s window.
-            task = asyncio.create_task(self._dispatch_event(event))
+            task = asyncio.create_task(self._dispatch_event(event, team_id))
             self._event_tasks.add(task)
             task.add_done_callback(self._event_tasks.discard)
         return PlainTextResponse("ok")
@@ -125,7 +129,9 @@ class SlackAdapter(WebhookAdapter):
         }
         return await commands.handle(self._api, form)
 
-    async def _dispatch_event(self, event: dict[str, Any]) -> None:
+    async def _dispatch_event(
+        self, event: dict[str, Any], team_id: Optional[str] = None
+    ) -> None:
         if self._on_message_callback is None:
             return
         # Skip bot messages (including our own) to avoid reply loops.
@@ -135,9 +141,11 @@ class SlackAdapter(WebhookAdapter):
         channel_type = event.get("channel_type")
         ctx: Optional[MessageContext] = None
         if event_type == "app_mention":
-            ctx = await self._build_context(event, bot_mentioned=True)
+            ctx = await self._build_context(event, team_id, bot_mentioned=True)
         elif event_type == "message" and channel_type == "im":
-            ctx = await self._build_context(event, bot_mentioned=True, is_dm=True)
+            ctx = await self._build_context(
+                event, team_id, bot_mentioned=True, is_dm=True
+            )
         elif (
             event_type == "message"
             and channel_type == "channel"
@@ -145,7 +153,7 @@ class SlackAdapter(WebhookAdapter):
         ):
             # Reply in a channel thread without an @mention — the handler checks
             # thread-subscription state and ignores it if it isn't ours.
-            ctx = await self._build_context(event, bot_mentioned=False)
+            ctx = await self._build_context(event, team_id, bot_mentioned=False)
         if ctx is None:
             return
         try:
@@ -154,7 +162,12 @@ class SlackAdapter(WebhookAdapter):
             logger.exception("Slack event handler failed")
 
     async def _build_context(
-        self, event: dict[str, Any], *, bot_mentioned: bool, is_dm: bool = False
+        self,
+        event: dict[str, Any],
+        team_id: Optional[str] = None,
+        *,
+        bot_mentioned: bool,
+        is_dm: bool = False,
     ) -> Optional[MessageContext]:
         channel = event.get("channel")
         ts = event.get("ts")
@@ -180,7 +193,8 @@ class SlackAdapter(WebhookAdapter):
         return MessageContext(
             platform="slack",
             channel_type=channel_type,
-            server_id=event.get("team") or None,
+            # DMs bill to the user (no server); channel/thread need the workspace.
+            server_id=None if is_dm else (event.get("team") or team_id),
             channel_id=target_channel_id,
             message_id=ts,
             user_id=user,

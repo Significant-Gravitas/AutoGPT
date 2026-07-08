@@ -100,6 +100,50 @@ class TestInboundRouting:
         assert ctx.channel_id == "C1|1.0"
 
     @pytest.mark.asyncio
+    async def test_channel_uses_top_level_team_id_for_server(self, adapter):
+        # The event has no "team" — server_id must come from the payload's
+        # top-level team_id (threaded via _dispatch_event).
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "app_mention",
+                "channel": "C1",
+                "ts": "1.2",
+                "user": "U1",
+                "text": "hi",
+            },
+            "T99",
+        )
+        assert captured["ctx"].server_id == "T99"
+
+    @pytest.mark.asyncio
+    async def test_dm_has_no_server_id(self, adapter):
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "message",
+                "channel_type": "im",
+                "channel": "D1",
+                "ts": "1",
+                "user": "U1",
+                "text": "hi",
+            },
+            "T99",
+        )
+        assert captured["ctx"].channel_type == "dm"
+        assert captured["ctx"].server_id is None
+
+    @pytest.mark.asyncio
     async def test_bot_messages_are_skipped(self, adapter):
         called = []
 
