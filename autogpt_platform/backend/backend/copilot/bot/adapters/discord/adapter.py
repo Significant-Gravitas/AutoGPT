@@ -14,6 +14,12 @@ import discord
 from discord import app_commands
 
 from backend.copilot.bot import threads
+from backend.copilot.bot.adapters.shared import (
+    InboundFile,
+    budget_history,
+    collect_attachments,
+    should_ignore,
+)
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
@@ -30,7 +36,6 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from ..shared import InboundFile, budget_history, collect_attachments, should_ignore
 from . import commands, config, intro
 from .references import (
     ReferenceTarget,

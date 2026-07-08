@@ -96,6 +96,13 @@ class TestBudgetHistory:
         assert len(result[0].text) <= 30
 
     @pytest.mark.asyncio
+    async def test_tiny_budget_below_marker_width_still_respects_budget(self):
+        # A budget smaller than the truncation marker must not overrun.
+        result = await budget_history(_stream([_entry("x" * 100)]), char_budget=5)
+        assert len(result) == 1
+        assert len(result[0].text) <= 5
+
+    @pytest.mark.asyncio
     async def test_empty_stream_returns_empty(self):
         assert await budget_history(_stream([]), char_budget=100) == ()
 

@@ -79,8 +79,15 @@ async def budget_history(
     *,
     char_budget: int,
 ) -> tuple[MessageHistoryEntry, ...]:
-    """Drain a newest-first entry stream into chronological order, capped at
-    ``char_budget`` chars (most-recent kept when over budget).
+    """Budget a message history down to ``char_budget`` chars, returning it in
+    chronological order.
+
+    **Precondition — ``entries`` MUST be yielded newest-first.** Keeping the
+    *most recent* messages under budget is only possible by consuming from the
+    newest end (a `MessageHistoryEntry` has no timestamp to sort by), so the
+    adapter must stream its history newest→oldest; the result is reversed back
+    to chronological for the prompt. Passing oldest-first would keep the wrong
+    end of the conversation.
 
     The adapter yields entries already normalized for its platform (its own
     messages skipped, mentions stripped, empties dropped); this owns only the
@@ -123,7 +130,12 @@ def _truncate_to_budget(text: str, limit: int) -> str:
     """
     if len(text) <= limit:
         return text
-    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
+    # Below the marker's own width there's no room for a head + marker; hard-cut
+    # so the result still respects the budget (matters for adapters that pass a
+    # small budget — the marker is ~22 chars).
+    if limit <= len(_HISTORY_TRUNCATION_MARKER):
+        return text[:limit]
+    keep = limit - len(_HISTORY_TRUNCATION_MARKER)
     return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
 
 
