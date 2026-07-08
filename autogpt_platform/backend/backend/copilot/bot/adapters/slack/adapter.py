@@ -441,21 +441,20 @@ class SlackAdapter(WebhookAdapter):
     async def _ensure_identity(self) -> None:
         """Resolve the bot's own user_id + team_id from auth_test, once.
 
-        On a transient failure the fields stay unset (not cached as "") so the
-        next event retries — otherwise a single blip would permanently break
-        self-mention stripping and channel/team lookups.
+        Only a truthy result is cached — on a transient failure *or* a falsy
+        response the fields stay ``None`` so the next event retries. Otherwise a
+        single blip would permanently break self-mention stripping and channel/
+        team lookups.
         """
-        if self._bot_user_id is not None and self._team_id is not None:
+        if self._bot_user_id and self._team_id:
             return
         try:
             resp = await self._client.auth_test()
         except Exception:
             logger.warning("Failed to fetch Slack identity (auth_test)", exc_info=True)
             return
-        if self._bot_user_id is None:
-            self._bot_user_id = resp.get("user_id") or ""
-        if self._team_id is None:
-            self._team_id = resp.get("team_id") or ""
+        self._bot_user_id = self._bot_user_id or resp.get("user_id") or None
+        self._team_id = self._team_id or resp.get("team_id") or None
 
     async def _bot_user_id_cached(self) -> str:
         await self._ensure_identity()

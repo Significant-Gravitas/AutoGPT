@@ -205,6 +205,18 @@ class TestIdentityCaching:
         assert await adapter._bot_user_id_cached() == "UBOT"
         assert adapter._team_id == "T1"
 
+    @pytest.mark.asyncio
+    async def test_empty_auth_response_is_not_cached_and_retries(self, adapter):
+        adapter._client.auth_test = AsyncMock(
+            side_effect=[
+                {"user_id": "", "team_id": ""},
+                {"user_id": "UBOT", "team_id": "T1"},
+            ]
+        )
+        assert await adapter._bot_user_id_cached() == ""
+        assert adapter._bot_user_id is None  # falsy response not cached
+        assert await adapter._bot_user_id_cached() == "UBOT"
+
 
 def test_target_encode_decode_roundtrip():
     assert _decode_target(_encode_target("C1", "1.2")) == ("C1", "1.2")
