@@ -93,6 +93,176 @@ function runForceHydrate({
   return captured;
 }
 
+const CANCELLED_MARKER_TEXT = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
+
+function markerPart() {
+  return { type: "text", text: CANCELLED_MARKER_TEXT, state: "done" } as const;
+}
+
+function messageHasCancelMarker(message: UIMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      part.type === "text" &&
+      "text" in part &&
+      part.text === CANCELLED_MARKER_TEXT,
+  );
+}
+
+/**
+ * Drive the hook through a user-stop: hydration is deferred while
+ * `isUserStoppingRef` is set, then applied once it clears. Returns the messages
+ * the eventual apply produced (or null if never applied).
+ */
+function runDeferredUserStop({
+  prev,
+  staleWindow,
+  freshWindow,
+}: {
+  prev: Messages;
+  staleWindow: Messages;
+  freshWindow: Messages;
+}): Messages | null {
+  let captured: Messages | null = null;
+  const setMessages = vi.fn(
+    (updater: Messages | ((p: Messages) => Messages)) => {
+      captured = typeof updater === "function" ? updater(prev) : updater;
+    },
+  );
+
+  const isUserStoppingRef = { current: true };
+
+  type Props = Parameters<typeof useHydrateOnStreamEnd>[0];
+  const baseProps = {
+    sessionId: SESSION_ID,
+    isReconnectScheduled: false,
+    hasActiveStream: false,
+    isUserStoppingRef,
+    setMessages,
+  };
+
+  const { rerender } = renderHook<void, Props>(
+    (props) => useHydrateOnStreamEnd(props),
+    {
+      initialProps: {
+        ...baseProps,
+        status: "streaming",
+        hydratedMessages: staleWindow,
+      },
+    },
+  );
+
+  // Stream ends → arms force-hydrate. The apply is deferred because the stop
+  // is still in flight, so setMessages must NOT run yet.
+  rerender({
+    ...baseProps,
+    status: "ready",
+    hydratedMessages: staleWindow,
+  } satisfies Props);
+
+  // Backend confirms the stop → flag clears and the fresh window applies,
+  // reattaching the locally-painted cancellation marker.
+  isUserStoppingRef.current = false;
+  rerender({
+    ...baseProps,
+    status: "ready",
+    hydratedMessages: freshWindow,
+  } satisfies Props);
+
+  return captured;
+}
+
+describe("useHydrateOnStreamEnd — user-stop marker preservation", () => {
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  it("defers hydration while a user stop is in flight", () => {
+    const setMessages = vi.fn();
+    const isUserStoppingRef = { current: true };
+    type Props = Parameters<typeof useHydrateOnStreamEnd>[0];
+    const baseProps = {
+      sessionId: SESSION_ID,
+      isReconnectScheduled: false,
+      hasActiveStream: false,
+      isUserStoppingRef,
+      setMessages,
+    };
+
+    const { rerender } = renderHook<void, Props>(
+      (props) => useHydrateOnStreamEnd(props),
+      {
+        initialProps: {
+          ...baseProps,
+          status: "streaming",
+          hydratedMessages: range(1, 2),
+        },
+      },
+    );
+
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(1, 2),
+    } satisfies Props);
+
+    expect(setMessages).not.toHaveBeenCalled();
+  });
+
+  it("reattaches the local cancellation marker when the hydrated window lacks one", () => {
+    // prev's trailing assistant carries the just-painted marker; the refetched
+    // window is the pre-marker DB state.
+    const prevBase = range(1, 2);
+    const markedAssistant: UIMessage = {
+      ...prevBase[prevBase.length - 1],
+      parts: [...prevBase[prevBase.length - 1].parts, markerPart()],
+    };
+    const prev = [...prevBase.slice(0, -1), markedAssistant];
+
+    const result = runDeferredUserStop({
+      prev,
+      staleWindow: range(1, 2),
+      freshWindow: range(1, 2),
+    });
+
+    expect(result).not.toBeNull();
+    expect(messageHasCancelMarker(result![result!.length - 1])).toBe(true);
+  });
+
+  it("does not duplicate the marker when the hydrated window already carries one", () => {
+    const prevBase = range(1, 2);
+    const markedAssistant: UIMessage = {
+      ...prevBase[prevBase.length - 1],
+      parts: [...prevBase[prevBase.length - 1].parts, markerPart()],
+    };
+    const prev = [...prevBase.slice(0, -1), markedAssistant];
+
+    // The fresh window's trailing assistant already has the backend-persisted
+    // marker, so preserveLocalStopMarker must be a no-op.
+    const freshBase = range(1, 2);
+    const freshMarked: UIMessage = {
+      ...freshBase[freshBase.length - 1],
+      parts: [...freshBase[freshBase.length - 1].parts, markerPart()],
+    };
+    const freshWindow = [...freshBase.slice(0, -1), freshMarked];
+
+    const result = runDeferredUserStop({
+      prev,
+      staleWindow: range(1, 2),
+      freshWindow,
+    });
+
+    expect(result).not.toBeNull();
+    const markerCount = result![result!.length - 1].parts.filter(
+      (part) =>
+        part.type === "text" &&
+        "text" in part &&
+        part.text === CANCELLED_MARKER_TEXT,
+    ).length;
+    expect(markerCount).toBe(1);
+  });
+});
+
 describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424)", () => {
   afterEach(() => {
     _resetInterruptedToastLedgerForTests();
