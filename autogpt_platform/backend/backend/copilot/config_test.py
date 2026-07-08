@@ -552,6 +552,10 @@ class TestLocalAuxModels:
         # local transport so the misconfig wouldn't surface until the
         # first advanced-tier turn.
         assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
+        # planner/executor cells (default cloud slugs) must inherit too, so
+        # enabling the split under local transport doesn't 404 on Ollama.
+        assert cfg.planner_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.executor_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_explicit_aux_model_wins(self):
         """Operators who genuinely want a different aux model (e.g.
@@ -601,6 +605,31 @@ class TestLocalAuxModels:
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
         assert cfg.fast_advanced_model == "anthropic/claude-opus-4.7"
+        # Cloud transports keep the per-role planner/executor cloud defaults.
+        assert cfg.planner_model == "anthropic/claude-opus-4.7"
+        assert cfg.executor_model == "anthropic/claude-sonnet-4-6"
+
+
+class TestPlannerExecutorConfig:
+    """New per-role model cells + the enable flag for the two-phase
+    planner/executor split (baseline path, default ON while testing)."""
+
+    def test_defaults(self):
+        cfg = ChatConfig()
+        assert cfg.planner_model == "anthropic/claude-opus-4.7"
+        assert cfg.executor_model == "anthropic/claude-sonnet-4-6"
+        # Default ON while the split is under active testing; the LD flag
+        # still controls per-user rollout when LD is reachable.
+        assert cfg.planner_executor_enabled is True
+
+    def test_env_aliases_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_PLANNER_MODEL", "anthropic/claude-opus-4.8")
+        monkeypatch.setenv("CHAT_EXECUTOR_MODEL", "anthropic/claude-haiku-4-5")
+        monkeypatch.setenv("CHAT_PLANNER_EXECUTOR_ENABLED", "false")
+        cfg = ChatConfig()
+        assert cfg.planner_model == "anthropic/claude-opus-4.8"
+        assert cfg.executor_model == "anthropic/claude-haiku-4-5"
+        assert cfg.planner_executor_enabled is False
 
 
 class TestLocalRequirementsValidator:

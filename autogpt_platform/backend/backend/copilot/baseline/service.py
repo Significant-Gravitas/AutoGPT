@@ -21,6 +21,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
+from langfuse import get_client as get_langfuse_client
 from langfuse import propagate_attributes
 from openai import APIConnectionError
 from openai import omit as openai_omit
@@ -56,8 +57,13 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import resolve_model
+from backend.copilot.model_router import (
+    is_planner_executor_enabled,
+    resolve_model,
+    resolve_role_model,
+)
 from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.observability import langfuse_span, update_span
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -68,6 +74,14 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
+from backend.copilot.planner.models import Plan, TurnTokenBreakdown
+from backend.copilot.planner.replan import MAX_REPLANS, ReplanController
+from backend.copilot.planner.service import (
+    PlannerUsage,
+    generate_plan,
+    plan_to_executor_prompt,
+)
+from backend.copilot.planner.triggering import is_multi_step_request
 from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
@@ -449,6 +463,18 @@ class _BaselineStreamState:
     # the usage chunk this stream, so non-OpenRouter providers don't
     # generate one warning per streaming call.
     cost_missing_logged: bool = False
+    # Running count of consecutive failed tool executions (hard errors or
+    # ``success=False`` results), reset on the first success. Read only by
+    # the planner/executor re-plan escalation; a behaviour-neutral counter
+    # when the two-phase split is off.
+    consecutive_tool_errors: int = 0
+    # Per-phase token/cost accounting for the two-phase split so a test / the
+    # ``planner_executor`` eval suite can see planner vs executor vs re-plan
+    # spend.  Both stay empty (and ``token_breakdown`` attributes everything to
+    # the executor) when the split is off — the totals still match
+    # ``turn_prompt_tokens`` / ``turn_completion_tokens`` / ``cost_usd``.
+    planner_usage: PlannerUsage = field(default_factory=PlannerUsage)
+    replan_usage: PlannerUsage = field(default_factory=PlannerUsage)
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     # MUTATE in place only — ``__post_init__`` hands this list reference to
     # ``BaselineReasoningEmitter`` so reasoning rows can be appended as
@@ -480,6 +506,46 @@ class _BaselineStreamState:
         self.reasoning_emitter = BaselineReasoningEmitter(
             self.session_messages,
             render_in_ui=config.render_reasoning_in_ui,
+        )
+
+    def token_breakdown(self) -> TurnTokenBreakdown:
+        """Split the turn totals into planner / executor / re-plan buckets.
+
+        ``turn_*`` totals already include the planner + re-plan spend (seeded /
+        folded in for billing), so the executor bucket is the remainder.
+        Clamped at zero so a provider token under-report can't flip a bucket
+        negative.
+        """
+        exec_prompt = max(
+            0,
+            self.turn_prompt_tokens
+            - self.planner_usage.prompt_tokens
+            - self.replan_usage.prompt_tokens,
+        )
+        exec_completion = max(
+            0,
+            self.turn_completion_tokens
+            - self.planner_usage.completion_tokens
+            - self.replan_usage.completion_tokens,
+        )
+        executor_cost: float | None = None
+        if self.cost_usd is not None:
+            executor_cost = max(
+                0.0,
+                self.cost_usd
+                - (self.planner_usage.cost_usd or 0.0)
+                - (self.replan_usage.cost_usd or 0.0),
+            )
+        return TurnTokenBreakdown(
+            planner_prompt_tokens=self.planner_usage.prompt_tokens,
+            planner_completion_tokens=self.planner_usage.completion_tokens,
+            executor_prompt_tokens=exec_prompt,
+            executor_completion_tokens=exec_completion,
+            replan_prompt_tokens=self.replan_usage.prompt_tokens,
+            replan_completion_tokens=self.replan_usage.completion_tokens,
+            planner_cost_usd=self.planner_usage.cost_usd,
+            executor_cost_usd=executor_cost,
+            replan_cost_usd=self.replan_usage.cost_usd,
         )
 
 
@@ -1027,6 +1093,7 @@ async def _baseline_tool_executor(
     except orjson.JSONDecodeError as parse_err:
         parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
         logger.warning("[Baseline] %s", parse_error)
+        state.consecutive_tool_errors += 1
         _emit(
             state,
             StreamToolOutputAvailable(
@@ -1069,46 +1136,62 @@ async def _baseline_tool_executor(
     # will append at round end.
     session.announce_inflight_tool_call(tool_name, tool_args)
 
-    try:
-        result: StreamToolOutputAvailable = await execute_tool(
-            tool_name=tool_name,
-            parameters=tool_args,
-            user_id=user_id,
-            session=session,
-            tool_call_id=tool_call_id,
-        )
-        _emit(state, result)
-        tool_output = (
-            result.output if isinstance(result.output, str) else str(result.output)
-        )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=tool_output,
-        )
-    except Exception as e:
-        error_output = f"Tool execution error: {e}"
-        logger.error(
-            "[Baseline] Tool %s failed: %s",
-            tool_name,
-            error_output,
-            exc_info=True,
-        )
-        _emit(
-            state,
-            StreamToolOutputAvailable(
-                toolCallId=tool_call_id,
-                toolName=tool_name,
-                output=error_output,
-                success=False,
-            ),
-        )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=error_output,
-            is_error=True,
-        )
+    # Named Langfuse span per tool call so each trace shows every tool
+    # invocation with args, output, duration, and success — required for the
+    # planner/executor A/B token-and-behaviour comparison.
+    with langfuse_span(f"tool:{tool_name}", input=tool_args) as tool_span:
+        try:
+            result: StreamToolOutputAvailable = await execute_tool(
+                tool_name=tool_name,
+                parameters=tool_args,
+                user_id=user_id,
+                session=session,
+                tool_call_id=tool_call_id,
+            )
+            _emit(state, result)
+            tool_output = (
+                result.output if isinstance(result.output, str) else str(result.output)
+            )
+            update_span(
+                tool_span, output=tool_output, metadata={"success": result.success}
+            )
+            # Reset the streak on success; a ``success=False`` result (e.g. a tool
+            # returning an ErrorResponse without raising) still counts as a failure
+            # for the re-plan heuristic.
+            if result.success:
+                state.consecutive_tool_errors = 0
+            else:
+                state.consecutive_tool_errors += 1
+            return ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=tool_output,
+            )
+        except Exception as e:
+            error_output = f"Tool execution error: {e}"
+            logger.error(
+                "[Baseline] Tool %s failed: %s",
+                tool_name,
+                error_output,
+                exc_info=True,
+            )
+            update_span(tool_span, output=error_output, metadata={"success": False})
+            state.consecutive_tool_errors += 1
+            _emit(
+                state,
+                StreamToolOutputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    output=error_output,
+                    success=False,
+                ),
+            )
+            return ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=error_output,
+                is_error=True,
+            )
 
 
 def _mutate_openai_messages(
@@ -1662,6 +1745,96 @@ async def stream_chat_completion_baseline(
             active_model,
         )
 
+    # --- Phase 1: Planner (two-phase planner/executor split, flag-gated) ---
+    # When ``copilot-planner-executor`` is ON for this user AND the request
+    # looks multi-step, make ONE planner-model call to produce a structured
+    # plan, then run the normal tool-call loop below with the (cheaper)
+    # executor model consuming it.  Everything fails open to the plain
+    # single-loop path — an unset flag, a non-multi-step message, or any
+    # planner error all leave ``plan`` as ``None`` and the path stays
+    # byte-identical to today.  ``plan`` / ``planner_model`` are read later
+    # by the re-plan escalation inside ``_run_tool_call_loop``.  ``planner_usage``
+    # is seeded into the turn's ``state`` below so the planner call's tokens/cost
+    # surface in ``StreamUsage`` (frontend) and get billed like the executor's.
+    plan: Plan | None = None
+    planner_model = ""
+    planner_usage = PlannerUsage()
+    use_planner_split = bool(
+        is_user_message
+        and message
+        and await is_planner_executor_enabled(user_id, config=config)
+        and is_multi_step_request(message)
+    )
+
+    # Propagate user/session context to Langfuse AND open one root span for
+    # the whole turn so the planner call, every executor LLM round, every
+    # tool call, and any re-plan all land in a SINGLE trace per user message.
+    # Entered here — BEFORE the planner phase — so the planner generation is
+    # captured too; exited in the outer ``finally`` below.  The
+    # ``planner-split`` tag marks turns where the two-phase split was
+    # attempted, so same-message traces can be compared side by side
+    # (tokens, cost, tool calls) against plain ``baseline`` turns.
+    _trace_ctx: Any = None
+    _turn_span_ctx: Any = None
+    _turn_span: Any = None
+    try:
+        _trace_ctx = propagate_attributes(
+            user_id=user_id,
+            session_id=session_id,
+            trace_name="copilot-baseline",
+            tags=(["baseline", "planner-split"] if use_planner_split else ["baseline"]),
+        )
+        _trace_ctx.__enter__()
+        _turn_span_ctx = get_langfuse_client().start_as_current_span(
+            name="baseline-turn", input={"message": message or ""}
+        )
+        _turn_span = _turn_span_ctx.__enter__()
+    except Exception:
+        logger.warning("[Baseline] Langfuse trace context setup failed")
+
+    if use_planner_split and message:
+        planner_model = await resolve_role_model("planner", user_id, config=config)
+        executor_model = await resolve_role_model("executor", user_id, config=config)
+        plan, planner_usage = await generate_plan(
+            message=message,
+            conversation=[
+                {"role": m.role, "content": m.content}
+                for m in session.messages
+                if m.role in ("user", "assistant") and m.content
+            ],
+            tools=get_available_tools(),
+            planner_model=planner_model,
+            user_id=user_id,
+            config=config,
+            session_id=session_id,
+        )
+        if plan is not None:
+            try:
+                active_model = normalize_model_for_transport(executor_model, config)
+            except ValueError:
+                logger.warning(
+                    "[Baseline] [%s] executor model %r invalid for transport; "
+                    "running the plan on %s instead",
+                    session_id[:12],
+                    executor_model,
+                    active_model,
+                )
+            session.metadata.plan = plan
+            logger.info(
+                "[Baseline] [%s] planner/executor ON: plan=%d steps "
+                "planner=%s executor=%s",
+                session_id[:12],
+                len(plan.steps),
+                planner_model,
+                active_model,
+            )
+        else:
+            logger.info(
+                "[Baseline] [%s] planner/executor ON but no plan produced — "
+                "falling back to the single-loop path",
+                session_id[:12],
+            )
+
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
     e2b_api_key = config.active_e2b_api_key
@@ -1763,6 +1936,14 @@ async def stream_chat_completion_baseline(
         + graphiti_supplement
         + builder_session_suffix
     )
+
+    # Phase 2: inject the plan into the executor's system prompt (current +
+    # remaining steps + success criteria).  Appended after the session-stable
+    # suffix so it lands outside the cross-user cached prefix — the plan is
+    # per-session and would otherwise bust the shared prompt cache.  Only
+    # present when the planner phase above produced a plan.
+    if plan is not None:
+        system_prompt = system_prompt + "\n\n" + plan_to_executor_prompt(plan)
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
     # Use the pre-drain count so pending messages drained at turn start
@@ -2036,22 +2217,20 @@ async def stream_chat_completion_baseline(
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
-    # Propagate user/session context to Langfuse so all LLM calls within
-    # this request are grouped under a single trace with proper attribution.
-    _trace_ctx: Any = None
-    try:
-        _trace_ctx = propagate_attributes(
-            user_id=user_id,
-            session_id=session_id,
-            trace_name="copilot-baseline",
-            tags=["baseline"],
-        )
-        _trace_ctx.__enter__()
-    except Exception:
-        logger.warning("[Baseline] Langfuse trace context setup failed")
-
     _stream_error = False  # Track whether an error occurred during streaming
     state = _BaselineStreamState(model=active_model)
+
+    # Seed the planner call's tokens/cost into the turn state so it flows
+    # through the same StreamUsage (frontend token display) and
+    # persist_and_record_usage (billing + rate limits) paths as the executor
+    # loop.  Recorded separately in ``state.planner_usage`` too so
+    # ``token_breakdown()`` can report planner vs executor spend.  Zero when
+    # the planner phase didn't run.
+    state.planner_usage = planner_usage
+    state.turn_prompt_tokens += planner_usage.prompt_tokens
+    state.turn_completion_tokens += planner_usage.completion_tokens
+    if planner_usage.cost_usd is not None:
+        state.cost_usd = (state.cost_usd or 0.0) + planner_usage.cost_usd
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2106,6 +2285,16 @@ async def stream_chat_completion_baseline(
         # the outer ``session: ChatSession | None`` through a nested scope,
         # but the holder is typed non-optional after the preflight guard
         # above.
+        # Re-plan escalation controller (two-phase split). All a no-op when the
+        # executor is running without a plan (``plan is None``) — i.e. the flag
+        # is off or the turn wasn't multi-step.
+        replan = ReplanController(
+            plan,
+            planner_model=planner_model,
+            user_id=user_id,
+            session_id=session_id,
+            config=config,
+        )
         try:
             max_tool_rounds = config.agent_max_turns
             async for loop_result in tool_call_loop(
@@ -2140,6 +2329,58 @@ async def stream_chat_completion_baseline(
                 )
                 if is_final_yield:
                     continue
+
+                # --- Re-plan escalation (Phase 2, bounded per turn) ---
+                # Between rounds, ask the controller whether the executor got
+                # stuck (explicit ``[[REPLAN]]`` signal, or a run of tool
+                # failures) and, if so and under the per-turn cap, revise the
+                # plan and feed it back in as a system message so the executor
+                # resumes on it.  A no-op when there is no active plan.
+                outcome = await replan.maybe_revise(
+                    executor_text=state.assistant_text,
+                    consecutive_tool_errors=state.consecutive_tool_errors,
+                    tools=tools,
+                )
+                # Bill any re-plan LLM call the same way as the planner /
+                # executor (zero for the no-call actions), and record it in the
+                # re-plan bucket for ``token_breakdown()``.
+                state.replan_usage = state.replan_usage.merged_with(outcome.usage)
+                state.turn_prompt_tokens += outcome.usage.prompt_tokens
+                state.turn_completion_tokens += outcome.usage.completion_tokens
+                if outcome.usage.cost_usd is not None:
+                    state.cost_usd = (state.cost_usd or 0.0) + outcome.usage.cost_usd
+                if outcome.action == "revised":
+                    state.consecutive_tool_errors = 0
+                    _session_holder[0].metadata.plan = outcome.plan
+                    if outcome.system_message:
+                        openai_messages.append(
+                            {"role": "system", "content": outcome.system_message}
+                        )
+                    logger.info(
+                        "[Baseline] [%s] re-plan %d/%d (%s): %d steps",
+                        session_id[:12],
+                        replan.replans_used,
+                        MAX_REPLANS,
+                        outcome.reason,
+                        len(outcome.plan.steps) if outcome.plan else 0,
+                    )
+                elif outcome.action == "capped":
+                    state.consecutive_tool_errors = 0
+                    logger.info(
+                        "[Baseline] [%s] re-plan cap (%d) reached — continuing "
+                        "best-effort in the plain loop",
+                        session_id[:12],
+                        MAX_REPLANS,
+                    )
+                elif outcome.action == "revision_failed":
+                    state.consecutive_tool_errors = 0
+                    logger.warning(
+                        "[Baseline] [%s] re-plan requested (%s) but revision "
+                        "failed — continuing best-effort",
+                        session_id[:12],
+                        outcome.reason,
+                    )
+
                 # Non-final yield: the next round may be the last one, so
                 # record where ``assistant_text`` ends now.  If that next
                 # round hits the budget without adding any text, the outer
@@ -2364,6 +2605,30 @@ async def stream_chat_completion_baseline(
                         span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
             except Exception:
                 logger.debug("[Baseline] Failed to set OTEL cost attributes")
+            # Stamp the planner/executor/re-plan breakdown on the turn's root
+            # span so a Langfuse trace shows per-phase tokens + cost directly —
+            # the numbers the planner-split A/B comparison reads.
+            _bd = state.token_breakdown()
+            update_span(
+                _turn_span,
+                output=state.assistant_text[:4000],
+                metadata={
+                    "planner_split_attempted": use_planner_split,
+                    "planner_split_active": plan is not None,
+                    "plan_steps": len(plan.steps) if plan is not None else 0,
+                    "planner_model": planner_model or None,
+                    "executor_model": active_model,
+                    "turn_prompt_tokens": state.turn_prompt_tokens,
+                    "turn_completion_tokens": state.turn_completion_tokens,
+                    "turn_cost_usd": state.cost_usd,
+                    "token_breakdown": _bd.model_dump(),
+                },
+            )
+            if _turn_span_ctx is not None:
+                try:
+                    _turn_span_ctx.__exit__(None, None, None)
+                except Exception:
+                    logger.warning("[Baseline] Langfuse turn span teardown failed")
             try:
                 _trace_ctx.__exit__(None, None, None)
             except Exception:
@@ -2439,6 +2704,26 @@ async def stream_chat_completion_baseline(
                 else config.transport.cost_log_provider
             ),
         )
+
+        # Per-phase token breakdown for the two-phase split — lets a test / the
+        # ``planner_executor`` eval suite compare planner vs executor vs re-plan
+        # spend against a flag-OFF (single-loop) run.  Only emitted when the
+        # planner actually ran, so flag-OFF turns stay byte-identical.
+        if state.planner_usage.prompt_tokens or state.planner_usage.completion_tokens:
+            _bd = state.token_breakdown()
+            logger.info(
+                "[Baseline] [%s] planner/executor token breakdown: "
+                "planner=%d executor=%d replan=%d total=%d "
+                "(planner_cost=%s executor_cost=%s replan_cost=%s)",
+                session_id[:12],
+                _bd.planner_tokens,
+                _bd.executor_tokens,
+                _bd.replan_tokens,
+                _bd.total_tokens,
+                _bd.planner_cost_usd,
+                _bd.executor_cost_usd,
+                _bd.replan_cost_usd,
+            )
 
         # Persist structured tool-call history (assistant + tool messages)
         # collected by the conversation updater, then the final text response.

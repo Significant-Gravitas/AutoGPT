@@ -30,6 +30,7 @@ from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
 from .config import ChatConfig
+from .planner.models import Plan
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -82,6 +83,13 @@ class ChatSessionMetadata(BaseModel):
     # When ``kind == "dream"``, the originating pass id so the session
     # links back to the orchestrator run that produced it.
     dream_pass_id: str | None = None
+
+    # Persisted output of the two-phase planner/executor split (baseline
+    # path, gated by ``copilot-planner-executor``). Stored here — a JSON
+    # column field with a default — so the executor loop and subsequent
+    # turns can see the plan without a migration. ``None`` when the split
+    # is off or the turn wasn't multi-step. See ``copilot.planner``.
+    plan: Plan | None = None
 
 
 class ChatMessage(BaseModel):

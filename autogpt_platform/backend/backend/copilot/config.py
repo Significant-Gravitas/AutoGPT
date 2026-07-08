@@ -54,6 +54,14 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4.7"
+# Defaults for the two-phase planner/executor split on the baseline path
+# (gated by ``copilot-planner-executor`` — default OFF). The planner is the
+# expensive up-front planning call (advanced/Opus by default); the executor is
+# the cheaper tool-call loop that consumes the plan (standard/Sonnet). Kept as
+# module constants so the field defaults and ``_apply_local_aux_models`` (which
+# rewrites cloud slugs to the local model under Ollama) can't drift.
+_DEFAULT_PLANNER_MODEL = _DEFAULT_FAST_ADVANCED_MODEL
+_DEFAULT_EXECUTOR_MODEL = "anthropic/claude-sonnet-4-6"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 
@@ -263,6 +271,40 @@ class ChatConfig(BaseSettings):
         "platform OR cost low. Auto-overridden to match "
         "``fast_standard_model`` under ``use_local`` when left at the "
         "cloud default — see ``_apply_local_aux_models``.",
+    )
+    # Two-phase planner/executor split (baseline path only).  Per-role model
+    # cells following the ``title_model`` / ``simulation_model`` precedent.
+    # Both are overridable per-user via ``copilot-model-routing[planner]`` /
+    # ``[executor]`` (see ``copilot/model_router.py``); these are the fallbacks.
+    planner_model: str = Field(
+        default=_DEFAULT_PLANNER_MODEL,
+        validation_alias=AliasChoices("CHAT_PLANNER_MODEL"),
+        description="Planner-phase model for the two-phase planner/executor "
+        "split (gated by ``copilot-planner-executor``, default OFF). The "
+        "expensive up-front planning call — defaults to the advanced model "
+        "(Opus). LD override: ``copilot-model-routing[planner]``. Auto-"
+        "overridden to ``fast_standard_model`` under ``use_local`` when left "
+        "at the cloud default — see ``_apply_local_aux_models``.",
+    )
+    executor_model: str = Field(
+        default=_DEFAULT_EXECUTOR_MODEL,
+        validation_alias=AliasChoices("CHAT_EXECUTOR_MODEL"),
+        description="Executor-phase model for the two-phase planner/executor "
+        "split. The cheaper tool-call loop that consumes the plan — defaults "
+        "to the standard model (Sonnet). LD override: "
+        "``copilot-model-routing[executor]``. Auto-overridden to "
+        "``fast_standard_model`` under ``use_local`` when left at the cloud "
+        "default — see ``_apply_local_aux_models``.",
+    )
+    planner_executor_enabled: bool = Field(
+        default=True,
+        description="Enable the two-phase planner/executor split on the "
+        "baseline path (default ON while under active testing). Env/local "
+        "fallback for the ``copilot-planner-executor`` LaunchDarkly flag: "
+        "when LD is unreachable this value is the per-user default (see "
+        "``model_router.is_planner_executor_enabled``). The LD flag still "
+        "governs per-user rollout when LD is reachable. Override via "
+        "``CHAT_PLANNER_EXECUTOR_ENABLED``.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -1114,6 +1156,8 @@ class ChatConfig(BaseSettings):
             ("title_model", _DEFAULT_TITLE_MODEL),
             ("simulation_model", _DEFAULT_SIMULATION_MODEL),
             ("fast_advanced_model", _DEFAULT_FAST_ADVANCED_MODEL),
+            ("planner_model", _DEFAULT_PLANNER_MODEL),
+            ("executor_model", _DEFAULT_EXECUTOR_MODEL),
         ):
             current = getattr(self, field_name)
             if _is_cloud_default(current, default):

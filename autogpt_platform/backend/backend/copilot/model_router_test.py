@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.model_router import _config_default, resolve_model
+from backend.copilot.model_router import (
+    _config_default,
+    _role_config_default,
+    is_planner_executor_enabled,
+    resolve_model,
+    resolve_role_model,
+)
 
 
 def _make_config() -> ChatConfig:
@@ -314,3 +320,189 @@ class TestResolveModel:
             await resolve_model("thinking", "advanced", "u", config=cfg)
 
         assert calls == ["copilot-model-routing"] * 4
+
+
+class TestRoleConfigDefault:
+    def test_planner(self):
+        cfg = _make_config()
+        assert _role_config_default(cfg, "planner") == cfg.planner_model
+
+    def test_executor(self):
+        cfg = _make_config()
+        assert _role_config_default(cfg, "executor") == cfg.executor_model
+
+
+class TestResolveRoleModel:
+    @pytest.mark.asyncio
+    async def test_missing_user_returns_fallback(self):
+        """No user_id → no LD context; skip the lookup entirely."""
+        cfg = _make_config()
+        with patch("backend.copilot.model_router.get_feature_flag_value") as mock_flag:
+            result = await resolve_role_model("planner", None, config=cfg)
+        assert result == cfg.planner_model
+        mock_flag.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_missing_user_strips_whitespace_from_fallback(self):
+        cfg = ChatConfig(
+            planner_model="anthropic/claude-opus-4.7  ",  # trailing ws
+            executor_model="anthropic/claude-sonnet-4-6",
+        )
+        result = await resolve_role_model("planner", None, config=cfg)
+        assert result == "anthropic/claude-opus-4.7"
+
+    @pytest.mark.asyncio
+    async def test_payload_none_falls_back(self):
+        cfg = _make_config()
+        with patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        ):
+            assert (
+                await resolve_role_model("planner", "u", config=cfg)
+                == cfg.planner_model
+            )
+            assert (
+                await resolve_role_model("executor", "u", config=cfg)
+                == cfg.executor_model
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "role, expected",
+        [
+            ("planner", "planner-override"),
+            ("executor", "executor-override"),
+        ],
+    )
+    async def test_payload_routes_each_role(self, role, expected):
+        cfg = _make_config()
+        payload = {"planner": "planner-override", "executor": "executor-override"}
+        with patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=payload),
+        ):
+            result = await resolve_role_model(role, "user-1", config=cfg)
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_matrix_only_payload_falls_back_backward_compatible(self):
+        """A legacy payload with only ``fast``/``thinking`` (no role keys)
+        still serves the config defaults for planner/executor — proves the
+        role cells are additive and backward compatible."""
+        cfg = _make_config()
+        with patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=_FULL_PAYLOAD),
+        ):
+            assert (
+                await resolve_role_model("planner", "u", config=cfg)
+                == cfg.planner_model
+            )
+            assert (
+                await resolve_role_model("executor", "u", config=cfg)
+                == cfg.executor_model
+            )
+
+    @pytest.mark.asyncio
+    async def test_whitespace_is_stripped(self):
+        cfg = _make_config()
+        payload = {"executor": "  xai/grok-4  "}
+        with patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=payload),
+        ):
+            result = await resolve_role_model("executor", "user-1", config=cfg)
+        assert result == "xai/grok-4"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", [42, ["x"], True, {"nested": "dict"}])
+    async def test_non_string_cell_value_falls_back_with_warning(self, caplog, value):
+        cfg = _make_config()
+        payload = {"planner": value}
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
+            with patch(
+                "backend.copilot.model_router.get_feature_flag_value",
+                new=AsyncMock(return_value=payload),
+            ):
+                result = await resolve_role_model("planner", "user-1", config=cfg)
+        assert result == cfg.planner_model
+        assert any("non-string" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_empty_string_cell_falls_back_with_empty_in_warning(self, caplog):
+        cfg = _make_config()
+        payload = {"executor": ""}
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
+            with patch(
+                "backend.copilot.model_router.get_feature_flag_value",
+                new=AsyncMock(return_value=payload),
+            ):
+                result = await resolve_role_model("executor", "user-1", config=cfg)
+        assert result == cfg.executor_model
+        messages = [r.message for r in caplog.records]
+        assert any("empty string" in m for m in messages)
+        assert not any("non-string" in m for m in messages)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("bogus_payload", ["a-string", ["a-list"], 42, True])
+    async def test_non_dict_payload_falls_back_with_warning(
+        self, caplog, bogus_payload
+    ):
+        cfg = _make_config()
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
+            with patch(
+                "backend.copilot.model_router.get_feature_flag_value",
+                new=AsyncMock(return_value=bogus_payload),
+            ):
+                result = await resolve_role_model("planner", "user-1", config=cfg)
+        assert result == cfg.planner_model
+        assert any("expected a JSON object" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_ld_exception_falls_back_with_warning(self, caplog):
+        cfg = _make_config()
+        with caplog.at_level(logging.WARNING, logger="backend.copilot.model_router"):
+            with patch(
+                "backend.copilot.model_router.get_feature_flag_value",
+                new=AsyncMock(side_effect=RuntimeError("LD down")),
+            ):
+                result = await resolve_role_model("executor", "user-1", config=cfg)
+        assert result == cfg.executor_model
+        records = [r for r in caplog.records if "LD lookup failed" in r.message]
+        assert records, "expected an LD-failure warning"
+        assert records[0].exc_info is not None
+
+
+class TestIsPlannerExecutorEnabled:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("default", [True, False])
+    async def test_missing_user_returns_config_default(self, default):
+        """No user_id can't be targeted by LD → serve the config default
+        without an LD call."""
+        cfg = ChatConfig(planner_executor_enabled=default)
+        with patch("backend.copilot.model_router.is_feature_enabled") as mock_flag:
+            result = await is_planner_executor_enabled(None, config=cfg)
+        assert result is default
+        mock_flag.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("ld_value", [True, False])
+    async def test_delegates_to_ld_with_config_default(self, ld_value):
+        cfg = ChatConfig(planner_executor_enabled=False)
+        captured: dict[str, object] = {}
+
+        async def _fake(flag_key, user_id, default):
+            captured["flag_key"] = flag_key
+            captured["default"] = default
+            return ld_value
+
+        with patch(
+            "backend.copilot.model_router.is_feature_enabled",
+            new=AsyncMock(side_effect=_fake),
+        ):
+            result = await is_planner_executor_enabled("user-1", config=cfg)
+        assert result is ld_value
+        assert captured["flag_key"].value == "copilot-planner-executor"
+        # Config default is threaded through as the LD-unreachable fallback.
+        assert captured["default"] is False

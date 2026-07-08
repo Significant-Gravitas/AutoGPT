@@ -154,6 +154,13 @@ class Flag(str, Enum):
     # targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
+    # Boolean per-user gate for the two-phase planner/executor split on the
+    # baseline copilot path. Default OFF (fail-closed) — when the flag is off
+    # the baseline path is byte-identical to today. ``ChatConfig``'s
+    # ``planner_executor_enabled`` supplies the env/local fallback default when
+    # LaunchDarkly is unreachable (see ``copilot.model_router``).
+    COPILOT_PLANNER_EXECUTOR = "copilot-planner-executor"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""
