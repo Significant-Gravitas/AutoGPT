@@ -192,6 +192,20 @@ class TestChannelIdGrammar:
         assert not adapter.looks_like_channel_id("announcements")
 
 
+class TestIdentityCaching:
+    @pytest.mark.asyncio
+    async def test_auth_failure_is_not_cached_and_retries(self, adapter):
+        adapter._client.auth_test = AsyncMock(
+            side_effect=[RuntimeError("blip"), {"user_id": "UBOT", "team_id": "T1"}]
+        )
+        # First call fails → not cached as "".
+        assert await adapter._bot_user_id_cached() == ""
+        assert adapter._bot_user_id is None
+        # Next call recovers.
+        assert await adapter._bot_user_id_cached() == "UBOT"
+        assert adapter._team_id == "T1"
+
+
 def test_target_encode_decode_roundtrip():
     assert _decode_target(_encode_target("C1", "1.2")) == ("C1", "1.2")
     assert _decode_target("D1") == ("D1", None)

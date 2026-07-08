@@ -70,6 +70,18 @@ async def test_unlink_points_at_settings():
 
 
 @pytest.mark.asyncio
+async def test_unlink_without_base_url_returns_error():
+    settings = MagicMock()
+    settings.config.frontend_base_url = ""
+    settings.config.platform_base_url = ""
+    with patch(
+        "backend.copilot.bot.adapters.slack.commands.Settings", return_value=settings
+    ):
+        resp = await commands.handle(MagicMock(), {"command": "/unlink"})
+    assert "FRONTEND_BASE_URL" in _body(resp)["text"]
+
+
+@pytest.mark.asyncio
 async def test_unknown_command():
     resp = await commands.handle(MagicMock(), {"command": "/wat"})
     assert "Unknown command" in _body(resp)["text"]

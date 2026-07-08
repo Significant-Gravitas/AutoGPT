@@ -213,7 +213,7 @@ class SlackAdapter(WebhookAdapter):
         # Slack file URLs are private — download needs the bot token as a
         # bearer credential (files:read scope), unlike Discord's public CDN.
         url = file_obj.get("url_private_download") or file_obj.get("url_private") or ""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 url, headers={"Authorization": f"Bearer {config.get_bot_token()}"}
             )
@@ -438,29 +438,32 @@ class SlackAdapter(WebhookAdapter):
                 pairs.append(pair)
         return tuple(pairs)
 
-    async def _bot_user_id_cached(self) -> str:
-        if self._bot_user_id is not None:
-            return self._bot_user_id
+    async def _ensure_identity(self) -> None:
+        """Resolve the bot's own user_id + team_id from auth_test, once.
+
+        On a transient failure the fields stay unset (not cached as "") so the
+        next event retries — otherwise a single blip would permanently break
+        self-mention stripping and channel/team lookups.
+        """
+        if self._bot_user_id is not None and self._team_id is not None:
+            return
         try:
             resp = await self._client.auth_test()
-            self._bot_user_id = resp.get("user_id") or ""
-            self._team_id = self._team_id or resp.get("team_id") or ""
         except Exception:
-            logger.warning("Failed to fetch Slack bot user_id", exc_info=True)
-            self._bot_user_id = ""
-        return self._bot_user_id
+            logger.warning("Failed to fetch Slack identity (auth_test)", exc_info=True)
+            return
+        if self._bot_user_id is None:
+            self._bot_user_id = resp.get("user_id") or ""
+        if self._team_id is None:
+            self._team_id = resp.get("team_id") or ""
+
+    async def _bot_user_id_cached(self) -> str:
+        await self._ensure_identity()
+        return self._bot_user_id or ""
 
     async def _team_id_cached(self) -> str:
-        if self._team_id is not None:
-            return self._team_id
-        try:
-            resp = await self._client.auth_test()
-            self._team_id = resp.get("team_id") or ""
-            self._bot_user_id = self._bot_user_id or resp.get("user_id") or ""
-        except Exception:
-            logger.warning("Failed to fetch Slack team_id", exc_info=True)
-            self._team_id = ""
-        return self._team_id
+        await self._ensure_identity()
+        return self._team_id or ""
 
 
 def _verify_signature(request: Request, body: bytes) -> bool:
