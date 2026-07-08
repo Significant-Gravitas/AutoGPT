@@ -63,6 +63,10 @@ MAX_INBOUND_ATTACHMENTS = 10
 # conversation leading up to it (rather than the channel's latest activity).
 REFERENCED_MESSAGE_CONTEXT = 15
 
+# Discord IDs are numeric snowflakes — used to tell a raw channel ID from a
+# channel name in the proactive-post resolver (see ``looks_like_channel_id``).
+_SNOWFLAKE = re.compile(r"^\d{15,21}$")
+
 
 class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
@@ -98,6 +102,17 @@ class DiscordAdapter(SocketAdapter):
     @property
     def max_attachment_bytes(self) -> int:
         return config.MAX_ATTACHMENT_BYTES
+
+    @property
+    def max_thread_name_length(self) -> int:
+        return config.MAX_THREAD_NAME_LENGTH
+
+    @property
+    def typing_refresh_interval(self) -> float:
+        return config.TYPING_REFRESH_SECONDS
+
+    def looks_like_channel_id(self, ref: str) -> bool:
+        return bool(_SNOWFLAKE.match(ref))
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
