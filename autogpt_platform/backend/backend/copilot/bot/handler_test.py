@@ -789,6 +789,10 @@ class TestThreadNames:
     def test_clamp_thread_name_falls_back_when_blank(self):
         assert clamp_thread_name("   ", 100) == "AutoPilot Chat"
 
+    def test_clamp_thread_name_never_overruns_a_tiny_cap(self):
+        # A tiny adapter cap must not make the slice index go negative.
+        assert len(clamp_thread_name("x" * 50, 2)) <= 2
+
 
 # ── Workspace artifact extraction & delivery ────────────────────────────
 

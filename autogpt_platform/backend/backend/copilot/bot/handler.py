@@ -909,9 +909,14 @@ def build_thread_name(text: str, username: str, max_length: int) -> str:
 
 def clamp_thread_name(name: str, max_length: int) -> str:
     cleaned = " ".join(name.split()) or "AutoPilot Chat"
-    if len(cleaned) > max_length:
-        return cleaned[: max_length - 3].rstrip() + "..."
-    return cleaned
+    if len(cleaned) <= max_length:
+        return cleaned
+    # Below the ellipsis width a tiny adapter cap can't fit "…", and a
+    # negative slice index would overrun the limit — hard-cut instead.
+    ellipsis = "..."
+    if max_length <= len(ellipsis):
+        return cleaned[:max_length]
+    return cleaned[: max_length - len(ellipsis)].rstrip() + ellipsis
 
 
 def _copilot_session_url(session_id: str) -> str | None:

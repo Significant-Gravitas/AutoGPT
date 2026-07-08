@@ -29,7 +29,7 @@ def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
     for adapter in adapters:
         adapter.on_message(handler.handle)
         adapter.register_routes(app)
-    logger.info("Mounted %d webhook adapter(s) on the main backend API", len(adapters))
+    logger.info(f"Mounted {len(adapters)} webhook adapter(s) on the main backend API")
 
 
 def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
