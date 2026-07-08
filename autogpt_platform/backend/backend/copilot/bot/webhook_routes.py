@@ -12,6 +12,8 @@ import logging
 from fastapi import FastAPI
 
 from .adapters.base import WebhookAdapter
+from .adapters.slack import config as slack_config
+from .adapters.slack.adapter import SlackAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 
@@ -40,4 +42,7 @@ def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     mounts nothing.
     """
     adapters: list[WebhookAdapter] = []
+    if slack_config.get_bot_token() and slack_config.get_signing_secret():
+        adapters.append(SlackAdapter(api))
+        logger.info("Slack adapter enabled")
     return adapters
