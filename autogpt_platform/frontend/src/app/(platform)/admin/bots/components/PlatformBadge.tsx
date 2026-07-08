@@ -1,9 +1,13 @@
 import Image from "next/image";
 
-const PLATFORM_LABELS: Record<string, string> = {
-  DISCORD: "Discord",
-  SLACK: "Slack",
-};
+import { PLATFORM_OPTIONS } from "./helpers";
+
+const PLATFORM_LABELS: Record<string, string> = Object.fromEntries(
+  PLATFORM_OPTIONS.filter((option) => option.value !== "all").map((option) => [
+    option.value.toUpperCase(),
+    option.label,
+  ]),
+);
 
 interface Props {
   platform: string;

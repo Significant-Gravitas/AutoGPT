@@ -4080,30 +4080,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/copilot-webhooks/slack/commands": {
-      "post": {
-        "summary": " Handle Command Request",
-        "operationId": "_handle_command_request",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          }
-        }
-      }
-    },
-    "/api/copilot-webhooks/slack/events": {
-      "post": {
-        "summary": " Handle Event Request",
-        "operationId": "_handle_event_request",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          }
-        }
-      }
-    },
     "/api/copilot/admin/rate_limit": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
