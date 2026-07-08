@@ -8,9 +8,18 @@ _REG = "backend.api.features.platform_linking.registry"
 
 
 def _slack_off():
-    # Slack disabled unless a test opts in — keeps the Discord assertions from
-    # depending on whatever Slack creds happen to be in the environment.
-    return patch(f"{_REG}.slack_config.get_bot_token", return_value="")
+    # Slack disabled unless a test opts in — enabled always requires the signing
+    # secret, so clearing it hides Slack regardless of whatever token / OAuth
+    # creds happen to be in the environment.
+    return patch(f"{_REG}.slack_config.get_signing_secret", return_value="")
+
+
+def _slack_oauth_off():
+    # Force single-workspace mode: no "Add to Slack" URL even when Slack is on.
+    return (
+        patch(f"{_REG}.slack_config.get_client_id", return_value=""),
+        patch(f"{_REG}.slack_config.get_client_secret", return_value=""),
+    )
 
 
 def _discord_off():
@@ -51,11 +60,16 @@ def test_discord_appears_without_invite_url_when_client_id_missing():
     assert platforms[0].add_bot_url is None
 
 
-def test_slack_appears_when_token_and_signing_secret_set():
+def test_slack_appears_in_single_workspace_mode_without_install_url():
+    # Static token + signing secret only (no OAuth app creds) → Slack is enabled
+    # but there's no multi-workspace "Add to Slack" button.
+    oauth_id_off, oauth_secret_off = _slack_oauth_off()
     with (
         _discord_off(),
         patch(f"{_REG}.slack_config.get_bot_token", return_value="xoxb-x"),
         patch(f"{_REG}.slack_config.get_signing_secret", return_value="secret"),
+        oauth_id_off,
+        oauth_secret_off,
     ):
         platforms = enabled_platforms()
 
@@ -64,8 +78,28 @@ def test_slack_appears_when_token_and_signing_secret_set():
     assert slack.enabled is True
     assert slack.display_name == "Slack"
     assert slack.icon == "slack.png"
-    # Slack has no one-click invite for a self-hosted app.
     assert slack.add_bot_url is None
+
+
+def test_slack_add_to_slack_url_when_oauth_configured():
+    with (
+        _discord_off(),
+        patch(f"{_REG}.slack_config.get_bot_token", return_value=""),
+        patch(f"{_REG}.slack_config.get_signing_secret", return_value="secret"),
+        patch(f"{_REG}.slack_config.get_client_id", return_value="cid"),
+        patch(f"{_REG}.slack_config.get_client_secret", return_value="csecret"),
+        patch(f"{_REG}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://backend.example"
+        platforms = enabled_platforms()
+
+    assert [p.platform for p in platforms] == ["SLACK"]
+    slack = platforms[0]
+    assert slack.enabled is True
+    assert (
+        slack.add_bot_url
+        == "https://backend.example/api/copilot-webhooks/slack/install"
+    )
 
 
 def test_slack_hidden_when_signing_secret_missing():
@@ -78,11 +112,14 @@ def test_slack_hidden_when_signing_secret_missing():
 
 
 def test_both_platforms_when_both_configured():
+    oauth_id_off, oauth_secret_off = _slack_oauth_off()
     with (
         patch(f"{_REG}.discord_config.get_bot_token", return_value="token"),
         patch(f"{_REG}.discord_config.get_client_id", return_value=""),
         patch(f"{_REG}.slack_config.get_bot_token", return_value="xoxb-x"),
         patch(f"{_REG}.slack_config.get_signing_secret", return_value="secret"),
+        oauth_id_off,
+        oauth_secret_off,
     ):
         platforms = enabled_platforms()
 

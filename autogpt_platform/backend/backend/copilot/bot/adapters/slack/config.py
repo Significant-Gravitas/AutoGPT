@@ -11,6 +11,14 @@ def get_signing_secret() -> str:
     return Settings().secrets.autopilot_bot_slack_signing_secret
 
 
+def get_client_id() -> str:
+    return Settings().secrets.autopilot_bot_slack_client_id
+
+
+def get_client_secret() -> str:
+    return Settings().secrets.autopilot_bot_slack_client_secret
+
+
 # Slack's hard cap is 40000 chars per message; 4000 is the practical ceiling
 # for readability.
 MAX_MESSAGE_LENGTH = 4000

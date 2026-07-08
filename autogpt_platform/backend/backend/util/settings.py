@@ -779,6 +779,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "signatures (HMAC-SHA256). Required alongside the token to enable the "
         "Slack adapter.",
     )
+    autopilot_bot_slack_client_id: str = Field(
+        default="",
+        description="Slack app OAuth client ID. Set together with the client "
+        "secret to enable the multi-workspace 'Add to Slack' install flow; each "
+        "workspace's bot token is then obtained via OAuth and stored per team.",
+    )
+    autopilot_bot_slack_client_secret: str = Field(
+        default="",
+        description="Slack app OAuth client secret — exchanged with the auth "
+        "code on the install callback for a per-workspace bot token.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")

@@ -11,6 +11,12 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
 from backend.copilot.bot.adapters.slack import config as slack_config
+from backend.util.settings import Settings
+
+# Backend route that starts the Slack "Add to Slack" OAuth install (kept in sync
+# with slack.oauth.INSTALL_PATH; hardcoded here to avoid importing the heavier
+# oauth module — which pulls in the Slack SDK + Prisma — into this metadata file).
+_SLACK_INSTALL_PATH = "/api/copilot-webhooks/slack/install"
 
 
 class PlatformMeta(BaseModel):
@@ -47,18 +53,29 @@ def _discord_meta() -> PlatformMeta:
 
 
 def _slack_meta() -> PlatformMeta:
-    # Slack has no Discord-style one-click invite for a self-hosted app — it's
-    # installed per-workspace via the app manifest, then linked with /setup — so
-    # there's no add_bot_url. Enabled once both the token and signing secret are
-    # set (the same gate the webhook adapter mounts on).
-    enabled = bool(slack_config.get_bot_token() and slack_config.get_signing_secret())
+    # Enabled once the signing secret plus credentials are set — the same gate
+    # the webhook adapter mounts on. "Add to Slack" needs the OAuth app creds
+    # (multi-workspace install); with only a static token there's no install URL
+    # (single-workspace mode), so the button is hidden.
+    oauth_ready = bool(
+        slack_config.get_client_id() and slack_config.get_client_secret()
+    )
+    has_credentials = oauth_ready or bool(slack_config.get_bot_token())
+    enabled = bool(slack_config.get_signing_secret() and has_credentials)
     return PlatformMeta(
         platform="SLACK",
         display_name="Slack",
         icon="slack.png",
         enabled=enabled,
-        add_bot_url=None,
+        add_bot_url=_slack_install_url() if (enabled and oauth_ready) else None,
     )
+
+
+def _slack_install_url() -> str | None:
+    base = Settings().config.platform_base_url.rstrip("/")
+    if not base:
+        return None
+    return f"{base}{_SLACK_INSTALL_PATH}"
 
 
 def _discord_invite_url() -> str | None:

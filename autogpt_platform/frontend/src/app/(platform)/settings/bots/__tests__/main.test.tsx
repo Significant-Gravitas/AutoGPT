@@ -75,6 +75,26 @@ describe("SettingsBotsPage", () => {
     ).toBeNull();
   });
 
+  test("renders an Add to Slack button when an install URL is provided", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const button = await screen.findByRole("link", {
+      name: /add bot to slack/i,
+    });
+    expect(button.getAttribute("href")).toBe(
+      "https://backend.example/api/copilot-webhooks/slack/install",
+    );
+  });
+
   test("shows the 'no bots enabled' empty state when no platforms are configured", async () => {
     server.use(getListBotPlatformsMockHandler([]));
 

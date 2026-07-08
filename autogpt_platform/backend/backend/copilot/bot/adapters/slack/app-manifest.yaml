@@ -37,6 +37,10 @@ features:
       should_escape: false
 
 oauth_config:
+  # Where Slack sends the auth code after a workspace clicks "Add to Slack".
+  # Required to activate public distribution (multi-workspace installs).
+  redirect_urls:
+    - <BASE_URL>/api/copilot-webhooks/slack/oauth/callback
   scopes:
     bot:
       - app_mentions:read   # @AutoPilot in any channel the app is in
@@ -60,6 +64,8 @@ settings:
       - app_mention       # @bot in any channel the app is in
       - message.im        # DMs to the bot
       - message.channels  # replies in channel threads the bot is part of
+      - app_uninstalled   # workspace removed the app → revoke its stored token
+      - tokens_revoked    # workspace revoked the bot token → revoke our copy
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
