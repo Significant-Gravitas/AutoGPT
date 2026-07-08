@@ -16,7 +16,7 @@ from discord import app_commands
 from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
-from backend.copilot.bot.text import split_at_boundary
+from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
     ChannelInfo,
@@ -30,7 +30,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from ..shared import InboundFile, collect_attachments, should_ignore
+from ..shared import InboundFile, budget_history, collect_attachments, should_ignore
 from . import commands, config, intro
 from .references import (
     ReferenceTarget,
@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 # messages when a thread is very long.
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
-_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
@@ -329,12 +328,8 @@ class DiscordAdapter(SocketAdapter):
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
-        remaining = text.strip()
         first: Optional[discord.Message] = None
-        while remaining:
-            chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
-            if not chunk:
-                break
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 msg = await channel.send(chunk, tts=False)
             except discord.HTTPException:
@@ -677,43 +672,29 @@ class DiscordAdapter(SocketAdapter):
     async def _budgeted_history(
         self, history, char_budget: int
     ) -> tuple[MessageHistoryEntry, ...]:
-        """Drain a newest-first message iterator into chronological entries,
-        capped at ``char_budget`` chars (most-recent kept when over budget).
+        """Normalize Discord history into entries, then char-budget them.
 
-        Skips the bot's own messages (copilot has its own transcript for those)
-        but keeps other bots' messages as context.
+        The Discord-specific part is the mapping — skip the bot's own messages
+        (copilot has its own transcript for those) but keep other bots' as
+        context, and strip Discord mention syntax. The budgeting/truncation is
+        shared (``budget_history``).
         """
-        entries: list[MessageHistoryEntry] = []
-        used_chars = 0
         bot_user_id = self._client.user.id if self._client.user else None
-        async for prior in history:
-            if bot_user_id is not None and prior.author.id == bot_user_id:
-                continue
-            text = self._strip_mentions(prior)
-            if not text:
-                continue
-            remaining = char_budget - used_chars
-            if remaining <= 0:
-                break
-            oversized = len(text) > remaining
-            if oversized and entries:
-                # No room for another whole message — keep what we have.
-                break
-            if oversized:
-                # Lone most-recent message is itself over budget: keep a head.
-                text = _truncate_to_budget(text, remaining)
-            used_chars += len(text)
-            entries.append(
-                MessageHistoryEntry(
+
+        async def _entries():
+            async for prior in history:
+                if bot_user_id is not None and prior.author.id == bot_user_id:
+                    continue
+                text = self._strip_mentions(prior)
+                if not text:
+                    continue
+                yield MessageHistoryEntry(
                     username=prior.author.display_name,
                     user_id=str(prior.author.id),
                     text=text,
                 )
-            )
-            if oversized:
-                break
-        entries.reverse()  # chronological order for the prompt
-        return tuple(entries)
+
+        return await budget_history(_entries(), char_budget=char_budget)
 
     async def _fetch_referenced_conversations(
         self, message: discord.Message, text: str
@@ -814,57 +795,28 @@ class DiscordAdapter(SocketAdapter):
         return True
 
 
-def _truncate_to_budget(text: str, limit: int) -> str:
-    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
-
-    Used only when a single thread message is itself larger than the history
-    budget — keep a head of it (with context that it was cut) rather than emit
-    an oversized payload or drop the message entirely.
-    """
-    if len(text) <= limit:
-        return text
-    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
-    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
-
-
 def _resolve_mentions(
     text: str,
     mentionable_users: tuple[tuple[str, str], ...],
 ) -> tuple[str, discord.AllowedMentions]:
-    """Substitute `@DisplayName` in `text` with `<@id>` markup for users on
-    the allowlist, and return an AllowedMentions that pings exactly those
-    users (and nobody else).
+    """Render allowlisted ``@DisplayName`` as Discord ``<@id>`` markup and
+    return an ``AllowedMentions`` that pings exactly those users.
 
-    Anyone not on the allowlist stays as plain text — even if the LLM produces
-    `@everyone`, `@here`, or `@SomeRandomUser`. This keeps the bot from
-    pinging users it learned about elsewhere or hallucinated entirely.
+    The allowlist policy (which names match, longest-first, word-bounded) is
+    shared in ``text.resolve_mentions``; here we only supply Discord's mention
+    token and turn the pinged IDs into Discord's ping-safety object.
     """
-    if not mentionable_users:
-        return text, discord.AllowedMentions.none()
-
-    rendered = text
+    rendered, pinged = resolve_mentions(
+        text, mentionable_users, lambda _name, uid: f"<@{uid}>"
+    )
     pinged_ids: list[int] = []
-    # Longest names first so e.g. "@John Smith" matches before "@John".
-    for display_name, user_id in sorted(
-        mentionable_users, key=lambda pair: -len(pair[0])
-    ):
-        # Word-bounded so "@Name" inside emails/URLs is left alone.
-        pattern = re.compile(
-            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
-            re.IGNORECASE,
-        )
-        if not pattern.search(rendered):
-            continue
-        # Callable replacement avoids backref interpretation of user_id.
-        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
+    for uid in pinged:
         try:
-            pinged_ids.append(int(user_id))
+            pinged_ids.append(int(uid))
         except ValueError:
             continue
-
     if not pinged_ids:
         return rendered, discord.AllowedMentions.none()
-
     return rendered, discord.AllowedMentions(
         everyone=False,
         users=[discord.Object(id=uid) for uid in pinged_ids],

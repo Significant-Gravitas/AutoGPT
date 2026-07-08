@@ -2,7 +2,73 @@
 
 from backend.data.sharing.workspace_refs import extract_artifact_links
 
-from .text import _balance_code_fences, format_batch, split_at_boundary
+from .text import (
+    _balance_code_fences,
+    format_batch,
+    iter_chunks,
+    resolve_mentions,
+    split_at_boundary,
+)
+
+
+def _token(_name: str, uid: str) -> str:
+    return f"<@{uid}>"
+
+
+class TestResolveMentions:
+    def test_allowlisted_name_is_rendered_and_pinged(self):
+        rendered, pinged = resolve_mentions(
+            "hey @Bently look", (("Bently", "U1"),), _token
+        )
+        assert rendered == "hey <@U1> look"
+        assert pinged == ["U1"]
+
+    def test_non_allowlisted_name_stays_plain_and_unpinged(self):
+        # @everyone / a name the LLM invented must never become a real ping.
+        rendered, pinged = resolve_mentions(
+            "@everyone and @Ghost", (("Bently", "U1"),), _token
+        )
+        assert rendered == "@everyone and @Ghost"
+        assert pinged == []
+
+    def test_longest_name_wins(self):
+        rendered, pinged = resolve_mentions(
+            "ping @John Smith now",
+            (("John", "U1"), ("John Smith", "U2")),
+            _token,
+        )
+        assert rendered == "ping <@U2> now"
+        assert pinged == ["U2"]
+
+    def test_name_inside_email_is_not_matched(self):
+        rendered, pinged = resolve_mentions(
+            "mail me@Bently.dev", (("Bently", "U1"),), _token
+        )
+        assert rendered == "mail me@Bently.dev"
+        assert pinged == []
+
+    def test_empty_allowlist_returns_text_unchanged(self):
+        rendered, pinged = resolve_mentions("hi @Bently", (), _token)
+        assert rendered == "hi @Bently"
+        assert pinged == []
+
+
+class TestIterChunks:
+    def test_short_text_is_one_chunk(self):
+        assert list(iter_chunks("hello", 100)) == ["hello"]
+
+    def test_long_text_splits_into_multiple_chunks_all_under_limit(self):
+        text = "\n\n".join(f"paragraph {i} " + "x" * 40 for i in range(10))
+        chunks = list(iter_chunks(text, 100))
+        assert len(chunks) > 1
+        assert all(len(c) <= 100 for c in chunks)
+        # Reassembling recovers the content (whitespace at cut points aside).
+        assert "".join(chunks).replace("\n", "").replace(" ", "") == text.replace(
+            "\n", ""
+        ).replace(" ", "")
+
+    def test_blank_text_yields_nothing(self):
+        assert list(iter_chunks("   ", 100)) == []
 
 
 class TestFormatBatch:

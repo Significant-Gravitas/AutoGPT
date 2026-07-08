@@ -10,11 +10,13 @@ rules in one place.
 
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Sequence
+from typing import AsyncIterable, Awaitable, Callable, Sequence
 
-from .base import InboundAttachment
+from .base import InboundAttachment, MessageHistoryEntry
 
 logger = logging.getLogger(__name__)
+
+_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 
 @dataclass
@@ -70,6 +72,59 @@ async def collect_attachments(
             )
         )
     return tuple(kept), tuple(skipped)
+
+
+async def budget_history(
+    entries: AsyncIterable[MessageHistoryEntry],
+    *,
+    char_budget: int,
+) -> tuple[MessageHistoryEntry, ...]:
+    """Drain a newest-first entry stream into chronological order, capped at
+    ``char_budget`` chars (most-recent kept when over budget).
+
+    The adapter yields entries already normalized for its platform (its own
+    messages skipped, mentions stripped, empties dropped); this owns only the
+    budgeting + truncation, which is identical for every platform and is
+    currently assembled in two places in the Discord adapter alone. The lone
+    most-recent entry, if itself over budget, keeps a truncated head rather
+    than being dropped or emitted oversized.
+    """
+    kept: list[MessageHistoryEntry] = []
+    used = 0
+    async for entry in entries:
+        remaining = char_budget - used
+        if remaining <= 0:
+            break
+        text = entry.text
+        oversized = len(text) > remaining
+        if oversized and kept:
+            # No room for another whole message — keep what we have.
+            break
+        if oversized:
+            # Lone most-recent message is itself over budget: keep a head.
+            text = _truncate_to_budget(text, remaining)
+            entry = MessageHistoryEntry(
+                username=entry.username, user_id=entry.user_id, text=text
+            )
+        used += len(text)
+        kept.append(entry)
+        if oversized:
+            break
+    kept.reverse()  # chronological order for the prompt
+    return tuple(kept)
+
+
+def _truncate_to_budget(text: str, limit: int) -> str:
+    """Trim ``text`` to at most ``limit`` chars, leaving a visible marker.
+
+    Used only when a single message is itself larger than the history budget —
+    keep a head of it (with a cut marker) rather than emit an oversized payload
+    or drop the message entirely.
+    """
+    if len(text) <= limit:
+        return text
+    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
+    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
 
 
 def should_ignore(*, is_self: bool, author_is_bot: bool, bot_mentioned: bool) -> bool:

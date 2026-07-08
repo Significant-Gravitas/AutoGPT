@@ -2,7 +2,17 @@
 
 import pytest
 
-from .shared import InboundFile, collect_attachments, should_ignore
+from .base import MessageHistoryEntry
+from .shared import InboundFile, budget_history, collect_attachments, should_ignore
+
+
+async def _stream(entries):
+    for entry in entries:
+        yield entry
+
+
+def _entry(text: str, uid: str = "1") -> MessageHistoryEntry:
+    return MessageHistoryEntry(username="u", user_id=uid, text=text)
 
 
 def _file(name="a.txt", size=10, mime="text/plain", content=b"data", fail=False):
@@ -60,6 +70,34 @@ class TestCollectAttachments:
         )
         assert kept[0].filename == "file"
         assert kept[0].mime_type == "application/octet-stream"
+
+
+class TestBudgetHistory:
+    @pytest.mark.asyncio
+    async def test_all_fit_returns_chronological_order(self):
+        # Input is newest-first; output is chronological (reversed).
+        result = await budget_history(
+            _stream([_entry("newest"), _entry("older")]), char_budget=1000
+        )
+        assert [e.text for e in result] == ["older", "newest"]
+
+    @pytest.mark.asyncio
+    async def test_over_budget_keeps_most_recent(self):
+        result = await budget_history(
+            _stream([_entry("a" * 30), _entry("b" * 30)]), char_budget=40
+        )
+        assert [e.text for e in result] == ["a" * 30]
+
+    @pytest.mark.asyncio
+    async def test_lone_oversized_head_is_truncated_with_marker(self):
+        result = await budget_history(_stream([_entry("x" * 100)]), char_budget=30)
+        assert len(result) == 1
+        assert result[0].text.endswith("… [message truncated]")
+        assert len(result[0].text) <= 30
+
+    @pytest.mark.asyncio
+    async def test_empty_stream_returns_empty(self):
+        assert await budget_history(_stream([]), char_budget=100) == ()
 
 
 class TestShouldIgnore:

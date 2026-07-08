@@ -1,6 +1,7 @@
 """Text formatting helpers — message batching and chunk splitting."""
 
 import re
+from typing import Callable, Iterator
 
 from backend.data.sharing.workspace_refs import cut_lands_inside_artifact_link
 
@@ -66,6 +67,59 @@ def split_at_boundary(text: str, flush_at: int) -> tuple[str, str]:
 
     cut = _guarded_cut(text, flush_at)
     return _balance_code_fences(text[:cut], text[cut:])
+
+
+def iter_chunks(text: str, flush_at: int) -> Iterator[str]:
+    """Yield ``text`` split into postable chunks, each under ``flush_at``.
+
+    Wraps the ``split_at_boundary`` drain loop so any adapter sending a whole
+    long message at once (proactive posts) shares one splitter instead of
+    re-implementing the loop.
+    """
+    remaining = text.strip()
+    while remaining:
+        chunk, remaining = split_at_boundary(remaining, flush_at)
+        if not chunk:
+            break
+        yield chunk
+
+
+def resolve_mentions(
+    text: str,
+    mentionable_users: tuple[tuple[str, str], ...],
+    render_token: Callable[[str, str], str],
+) -> tuple[str, list[str]]:
+    """Substitute ``@DisplayName`` with a platform mention token, but only for
+    users on ``mentionable_users``. Returns ``(rendered_text, pinged_user_ids)``.
+
+    Security-sensitive shared policy: only allowlisted names are ever
+    converted, so the bot never pings a user the LLM invented (``@everyone``,
+    ``@here``, a hallucinated or elsewhere-learned name) — those stay plain
+    text. Longest names first so ``@John Smith`` matches before ``@John``, and
+    the match is word-bounded so ``@Name`` inside an email/URL is left alone.
+    ``render_token(display_name, user_id)`` produces the platform's mention
+    markup; the adapter turns ``pinged_user_ids`` into its own ping-safety
+    object.
+    """
+    if not mentionable_users:
+        return text, []
+
+    rendered = text
+    pinged: list[str] = []
+    for display_name, user_id in sorted(
+        mentionable_users, key=lambda pair: -len(pair[0])
+    ):
+        pattern = re.compile(
+            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
+            re.IGNORECASE,
+        )
+        if not pattern.search(rendered):
+            continue
+        token = render_token(display_name, user_id)
+        # Callable replacement avoids backref interpretation of the token.
+        rendered = pattern.sub(lambda _m, t=token: t, rendered)
+        pinged.append(user_id)
+    return rendered, pinged
 
 
 def _guarded_cut(text: str, cut: int) -> int:
