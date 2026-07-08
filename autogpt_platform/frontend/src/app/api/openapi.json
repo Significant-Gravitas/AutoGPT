@@ -13143,6 +13143,12 @@
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Pass Id"
+          },
+          "plan": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Plan" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17781,6 +17787,49 @@
         "required": ["access_token"],
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
+      "Plan": {
+        "properties": {
+          "steps": {
+            "items": { "$ref": "#/components/schemas/PlanStep" },
+            "type": "array",
+            "title": "Steps",
+            "description": "Ordered list of plan steps."
+          }
+        },
+        "type": "object",
+        "required": ["steps"],
+        "title": "Plan",
+        "description": "An ordered, validated plan produced by the planner model."
+      },
+      "PlanStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable short id for the step, e.g. 'step-1'."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Short imperative description of the step, e.g. 'Fetch the latest issues from GitHub'."
+          },
+          "expected_tools": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Expected Tools",
+            "description": "Names of the tool(s) the executor is expected to use for this step. Advisory only — the executor is not forced to use them."
+          },
+          "success_criteria": {
+            "type": "string",
+            "title": "Success Criteria",
+            "description": "How to tell the step has succeeded, e.g. 'A non-empty list of issues is retrieved'."
+          }
+        },
+        "type": "object",
+        "required": ["id", "description", "success_criteria"],
+        "title": "PlanStep",
+        "description": "A single ordered step in a plan."
       },
       "Platform": {
         "type": "string",
