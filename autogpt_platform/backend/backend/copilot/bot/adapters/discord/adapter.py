@@ -15,6 +15,7 @@ from discord import app_commands
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import split_at_boundary
 
 from ..base import (
@@ -29,6 +30,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
+from ..shared import InboundFile, collect_attachments, should_ignore
 from . import commands, config, intro
 from .references import (
     ReferenceTarget,
@@ -56,9 +58,6 @@ MAX_REFERENCED_CONVERSATIONS = 3
 REFERENCED_HISTORY_LIMIT = 200
 REFERENCED_CHAR_BUDGET = 8000
 
-# Cap how many attachments we pull off a single message into the workspace, so
-# a message with dozens of files can't fan out into that many uploads/scans.
-MAX_INBOUND_ATTACHMENTS = 10
 # When a link names a specific message, fetch that message plus a little of the
 # conversation leading up to it (rather than the channel's latest activity).
 REFERENCED_MESSAGE_CONTEXT = 15
@@ -493,30 +492,20 @@ class DiscordAdapter(SocketAdapter):
         the per-message count, or a failed download) so the handler can tell
         the user and the model rather than silently dropping them.
         """
-        attachments: list[InboundAttachment] = []
-        skipped: list[tuple[str, str]] = []
-        extra = message.attachments[MAX_INBOUND_ATTACHMENTS:]
-        for attachment in extra:
-            skipped.append((attachment.filename or "file", "too many files attached"))
-        for attachment in message.attachments[:MAX_INBOUND_ATTACHMENTS]:
-            name = attachment.filename or "file"
-            if attachment.size > self.max_attachment_bytes:
-                skipped.append((name, "too large"))
-                continue
-            try:
-                content = await attachment.read()
-            except (discord.HTTPException, discord.NotFound):
-                logger.warning("Could not download attachment %s", name)
-                skipped.append((name, "couldn't be downloaded"))
-                continue
-            attachments.append(
-                InboundAttachment(
-                    filename=name,
-                    mime_type=attachment.content_type or "application/octet-stream",
-                    content=content,
-                )
+        files = [
+            InboundFile(
+                filename=a.filename,
+                size=a.size,
+                mime_type=a.content_type,
+                fetch=a.read,
             )
-        return tuple(attachments), tuple(skipped)
+            for a in message.attachments
+        ]
+        return await collect_attachments(
+            files,
+            max_count=MAX_INBOUND_ATTACHMENTS,
+            max_bytes=self.max_attachment_bytes,
+        )
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""
@@ -536,13 +525,12 @@ class DiscordAdapter(SocketAdapter):
             logger.exception("Failed to refresh display name for guild %s", guild.id)
 
     def _should_ignore_message(self, message: discord.Message) -> bool:
-        if self._client.user is not None and message.author.id == self._client.user.id:
-            return True
-        # Other bots reach us only by @mentioning us; without this gate two
-        # bots in a shared thread (our own dev + prod included) loop forever.
-        if message.author.bot:
-            return not self._is_mentioned(message)
-        return False
+        me = self._client.user
+        return should_ignore(
+            is_self=me is not None and message.author.id == me.id,
+            author_is_bot=message.author.bot,
+            bot_mentioned=self._is_mentioned(message),
+        )
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
