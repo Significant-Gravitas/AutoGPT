@@ -99,4 +99,23 @@ describe("BotsContent", () => {
     ).toBeGreaterThanOrEqual(3);
     expect(await screen.findByText("Slack")).toBeDefined();
   });
+
+  it("falls back to the raw platform name for an unknown platform", async () => {
+    mockAllEndpoints();
+    server.use(
+      getGetV2TopServersByActivityMockHandler200([
+        {
+          platform: "TELEGRAM",
+          server_id: "tg1",
+          name: "Mystery",
+          messages: 1,
+          commands: 0,
+        },
+      ]),
+    );
+    render(<BotsContent />);
+
+    // No label entry exists for TELEGRAM, so the badge shows the raw key.
+    expect(await screen.findByText("TELEGRAM")).toBeDefined();
+  });
 });
