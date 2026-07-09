@@ -28,6 +28,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -364,6 +365,10 @@ class GraphMeta(GraphBaseMeta):
     version: int  # type: ignore
     user_id: str
     created_at: datetime
+    # Org/team tenancy from the graph row. Resources bound to a graph
+    # (webhooks, presets) inherit THIS tenant, not the caller's active org.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @classmethod
     def from_db(cls, graph: "AgentGraph") -> Self:
@@ -379,6 +384,8 @@ class GraphMeta(GraphBaseMeta):
             forked_from_version=graph.forkedFromVersion,
             user_id=graph.userId,
             created_at=graph.createdAt,
+            organization_id=graph.organizationId,
+            team_id=graph.teamId,
         )
 
 
@@ -1060,6 +1067,8 @@ class GraphModel(Graph, GraphMeta):
             description=graph.description or "",
             instructions=graph.instructions,
             recommended_schedule_cron=graph.recommendedScheduleCron,
+            organization_id=graph.organizationId if not for_export else None,
+            team_id=graph.teamId if not for_export else None,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
@@ -1138,6 +1147,7 @@ async def list_graphs_paginated(
     page: int = 1,
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
+    organization_id: str | None = None,
 ) -> GraphsPaginated:
     """
     Retrieves paginated graph metadata objects.
@@ -1147,11 +1157,22 @@ async def list_graphs_paginated(
         page: Page number (1-based).
         page_size: Number of graphs per page.
         filter_by: An optional filter to either select graphs.
+        organization_id: Active org from a membership-verified
+            RequestContext. When set, org/team visibility rules apply
+            (own + org-home + member-team graphs); when None, plain
+            personal ownership.
 
     Returns:
         GraphsPaginated: Paginated list of graph metadata.
     """
-    where_clause: AgentGraphWhereInput = {"userId": user_id}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause = cast(
+            AgentGraphWhereInput,
+            visibility_filter(user_id, organization_id, team_ids),
+        )
+    else:
+        where_clause = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -1216,10 +1237,16 @@ async def get_graph(
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
+    team_id: str | None = None,
+    organization_id: str | None = None,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
+
+    With ``organization_id`` (from a membership-verified RequestContext),
+    org/team visibility rules apply — a member can open any graph the
+    list endpoints show them (own + org-home + member-team graphs).
 
     See also: `get_graph_as_admin()` which bypasses ownership and marketplace
     checks for admin-only routes.
@@ -1229,14 +1256,27 @@ async def get_graph(
     graph = None
 
     # Only search graph directly on owned graph (or access check is skipped)
-    if skip_access_check or user_id is not None:
+    if skip_access_check or user_id is not None or team_id is not None:
         graph_where_clause: AgentGraphWhereInput = {
             "id": graph_id,
         }
         if version is not None:
             graph_where_clause["version"] = version
-        if not skip_access_check and user_id is not None:
-            graph_where_clause["userId"] = user_id
+        # Scope to the caller's identity. teamId is a separate FK and only
+        # adds to the predicate when set.
+        if not skip_access_check:
+            if organization_id is not None and user_id is not None:
+                team_ids = await get_user_team_ids(user_id, organization_id)
+                graph_where_clause["AND"] = [
+                    cast(
+                        AgentGraphWhereInput,
+                        visibility_filter(user_id, organization_id, team_ids),
+                    )
+                ]
+            elif user_id is not None:
+                graph_where_clause["userId"] = user_id
+            if team_id is not None:
+                graph_where_clause["teamId"] = team_id
 
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,
@@ -1459,10 +1499,31 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
 
 
 async def get_graph_all_versions(
-    graph_id: str, user_id: str, limit: int = MAX_GRAPH_VERSIONS_FETCH
+    graph_id: str,
+    user_id: str,
+    limit: int = MAX_GRAPH_VERSIONS_FETCH,
+    team_id: str | None = None,
+    organization_id: str | None = None,
 ) -> list[GraphModel]:
+    where_clause: AgentGraphWhereInput = {"id": graph_id}
+    if organization_id is not None:
+        # Same membership predicate as get_graph/list_graphs — NOT a raw
+        # org match, which would expose other teams' versions to every
+        # org member.
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause["AND"] = [
+            cast(
+                AgentGraphWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    elif team_id is not None:
+        where_clause["teamId"] = team_id
+    else:
+        where_clause["userId"] = user_id
+
     graph_versions = await AgentGraph.prisma().find_many(
-        where={"id": graph_id, "userId": user_id},
+        where=where_clause,
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
         take=limit,
@@ -1474,10 +1535,20 @@ async def get_graph_all_versions(
     return [GraphModel.from_db(graph) for graph in graph_versions]
 
 
-async def delete_graph(graph_id: str, user_id: str) -> int:
-    entries_count = await AgentGraph.prisma().delete_many(
-        where={"id": graph_id, "userId": user_id}
-    )
+async def delete_graph(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
+    if organization_id is not None:
+        # Scope the delete to the caller's active org. Tenant-less rows
+        # (created before org tagging, not yet backfilled) stay deletable
+        # by their owner — only rows tagged with a DIFFERENT org are
+        # protected from cross-org deletion.
+        where["OR"] = [
+            {"organizationId": organization_id},
+            {"organizationId": None},
+        ]
+    entries_count = await AgentGraph.prisma().delete_many(where=where)
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count
@@ -1620,9 +1691,21 @@ async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -
     return marketplace_listing is not None
 
 
-async def create_graph(graph: Graph, user_id: str) -> GraphModel:
+async def create_graph(
+    graph: Graph,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> GraphModel:
     async with transaction() as tx:
-        await __create_graph(tx, graph, user_id)
+        await __create_graph(
+            tx,
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
     if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
         return created_graph
@@ -1630,7 +1713,14 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphModel:
+async def fork_graph(
+    graph_id: str,
+    graph_version: int,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> GraphModel:
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
@@ -1646,12 +1736,64 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     graph.validate_graph(for_run=False)
 
     async with transaction() as tx:
-        await __create_graph(tx, graph, user_id)
+        await __create_graph(
+            tx,
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
     return graph
 
 
-async def __create_graph(tx, graph: Graph, user_id: str):
+async def copy_graph(
+    graph_id: str,
+    graph_version: int,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    target_team_id: str | None = None,
+) -> GraphModel:
+    """
+    Copies a graph to a (possibly different) team within an org.
+
+    Unlike fork_graph, copy_graph preserves the original graph name
+    and accepts a target_team_id for cross-team copying.
+    """
+    graph = await get_graph(graph_id, graph_version, user_id=user_id, for_export=True)
+    if not graph:
+        raise ValueError(f"Graph {graph_id} v{graph_version} not found")
+
+    graph.forked_from_id = graph.id
+    graph.forked_from_version = graph.version
+    # Preserve the original graph name (no "Copy of" prefix)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
+
+    dest_team = target_team_id or team_id
+
+    async with transaction() as tx:
+        await __create_graph(
+            tx,
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=dest_team,
+        )
+
+    return graph
+
+
+async def __create_graph(
+    tx,
+    graph: Graph,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+):
     graphs = [graph] + graph.sub_graphs
 
     # Auto-increment version for any graph entry (parent or sub-graph) whose
@@ -1688,6 +1830,9 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
                 forkedFromVersion=graph.forked_from_version,
+                # Tenancy dual-write fields
+                organizationId=organization_id,
+                teamId=team_id,
             )
             for graph in graphs
         ]
