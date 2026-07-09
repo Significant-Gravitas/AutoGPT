@@ -452,9 +452,24 @@ async def migrate_credit_transactions() -> int:
     return result
 
 
-async def _assign_team_tenancy(table_sql: "LiteralString") -> int:
+async def _assign_team_tenancy(
+    table_sql: "LiteralString", renew_lock: _RenewLock | None = None
+) -> int:
     """Assign organizationId + teamId on a single table's unassigned rows."""
-    return await prisma.execute_raw(table_sql)
+    updated = await prisma.execute_raw(table_sql)
+    if renew_lock is not None:
+        await renew_lock()
+    return updated
+
+
+async def _assign_org_tenancy(
+    table_sql: "LiteralString", renew_lock: _RenewLock | None = None
+) -> int:
+    """Assign organizationId on a single table's unassigned rows."""
+    updated = await prisma.execute_raw(table_sql)
+    if renew_lock is not None:
+        await renew_lock()
+    return updated
 
 
 async def _assign_team_tenancy_batched(
@@ -477,11 +492,11 @@ async def _assign_team_tenancy_batched(
     total = 0
     while True:
         updated = await prisma.execute_raw(batch_sql)
+        if renew_lock is not None:
+            await renew_lock()
         if updated == 0:
             return total
         total += updated
-        if renew_lock is not None:
-            await renew_lock()
         logger.info(
             f"Org migration: assigned {total} {table_name} rows so far (batched)"
         )
@@ -508,7 +523,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["AgentGraphExecution"] = await _assign_team_tenancy_batched(
@@ -569,7 +585,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["LibraryAgent"] = await _assign_team_tenancy(
@@ -580,7 +597,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["LibraryFolder"] = await _assign_team_tenancy(
@@ -591,7 +609,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["IntegrationWebhook"] = await _assign_team_tenancy(
@@ -602,7 +621,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["APIKey"] = await _assign_team_tenancy(
@@ -613,7 +633,8 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["UserNotificationBatch"] = await _assign_team_tenancy(
@@ -624,32 +645,35 @@ async def assign_resources_to_teams(
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     # --- Tables needing only organizationId ---
 
-    results["BuilderSearchHistory"] = await prisma.execute_raw(
+    results["BuilderSearchHistory"] = await _assign_org_tenancy(
         """
         UPDATE "BuilderSearchHistory" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["PendingHumanReview"] = await prisma.execute_raw(
+    results["PendingHumanReview"] = await _assign_org_tenancy(
         """
         UPDATE "PendingHumanReview" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["StoreListingVersion"] = await prisma.execute_raw(
+    results["StoreListingVersion"] = await _assign_org_tenancy(
         """
         UPDATE "StoreListingVersion" slv
         SET "organizationId" = o."id"
@@ -658,7 +682,8 @@ async def assign_resources_to_teams(
         JOIN "OrgMember" om ON om."userId" = sl."owningUserId" AND om."isOwner" = true
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE slv."id" = v."id" AND slv."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     for table_name, count in results.items():

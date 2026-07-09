@@ -770,6 +770,17 @@ class TestAssignResources:
         assert '"AgentGraphExecution"' not in single_sql
         assert 'UPDATE "ChatSession"' not in single_sql
 
+    @pytest.mark.asyncio
+    async def test_renews_after_each_assignment_statement(self, mock_prisma):
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+        renew_lock = AsyncMock()
+
+        result = await assign_resources_to_teams(renew_lock=renew_lock)
+
+        assert len(result) == 12
+        assert mock_prisma.execute_raw.await_count == 12
+        assert renew_lock.await_count == 12
+
 
 class TestBatchedTenancy:
     @pytest.mark.asyncio
@@ -786,7 +797,7 @@ class TestBatchedTenancy:
         assert mock_prisma.execute_raw.await_count == 3
 
     @pytest.mark.asyncio
-    async def test_renews_lock_after_each_updated_batch(self, mock_prisma):
+    async def test_renews_lock_after_each_batch_statement(self, mock_prisma):
         from backend.data.org_migration import _assign_team_tenancy_batched
 
         mock_prisma.execute_raw = AsyncMock(side_effect=[3, 2, 0])
@@ -797,7 +808,7 @@ class TestBatchedTenancy:
         )
 
         assert total == 5
-        assert renew_lock.await_count == 2
+        assert renew_lock.await_count == 3
 
     @pytest.mark.asyncio
     async def test_empty_table_returns_zero_after_one_probe(self, mock_prisma):
