@@ -436,6 +436,32 @@ async def _assign_team_tenancy(table_sql: "LiteralString") -> int:
     return await prisma.execute_raw(table_sql)
 
 
+async def _assign_team_tenancy_batched(
+    table_name: str, batch_sql: "LiteralString"
+) -> int:
+    """Run a LIMIT-batched tenancy UPDATE until no assignable rows remain.
+
+    Large tables (executions, chat sessions) cannot be updated in one
+    statement: a full-table UPDATE exceeds the platform's statement timeout
+    (Supabase kills it at 2 minutes — this is what failed the dev deploy).
+    ``batch_sql`` must limit itself via a subquery that only selects rows
+    its own JOIN will match, so every selected row updates and the loop is
+    guaranteed to terminate — rows whose user has no personal org are never
+    selected and can't spin it. Each pass is idempotent
+    (``organizationId IS NULL`` filter), so an interrupted run resumes
+    cleanly on the next startup.
+    """
+    total = 0
+    while True:
+        updated = await prisma.execute_raw(batch_sql)
+        if updated == 0:
+            return total
+        total += updated
+        logger.info(
+            f"Org migration: assigned {total} {table_name} rows so far (batched)"
+        )
+
+
 async def assign_resources_to_teams() -> dict[str, int]:
     """Set organizationId and teamId on all tenant-bound rows that lack them.
 
@@ -458,26 +484,52 @@ async def assign_resources_to_teams() -> dict[str, int]:
         """
     )
 
-    results["AgentGraphExecution"] = await _assign_team_tenancy(
+    results["AgentGraphExecution"] = await _assign_team_tenancy_batched(
+        "AgentGraphExecution",
         """
         UPDATE "AgentGraphExecution" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
-        WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        WHERE t."userId" = om."userId" AND om."isOwner" = true
+          AND t."id" IN (
+              SELECT t2."id"
+              FROM "AgentGraphExecution" t2
+              JOIN "OrgMember" om2
+                ON om2."userId" = t2."userId" AND om2."isOwner" = true
+              JOIN "Organization" o2
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+              JOIN "Team" w2
+                ON w2."orgId" = o2."id" AND w2."isDefault" = true
+              WHERE t2."organizationId" IS NULL
+              LIMIT 10000
+          )
+        """,
     )
 
-    results["ChatSession"] = await _assign_team_tenancy(
+    results["ChatSession"] = await _assign_team_tenancy_batched(
+        "ChatSession",
         """
         UPDATE "ChatSession" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
-        WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        WHERE t."userId" = om."userId" AND om."isOwner" = true
+          AND t."id" IN (
+              SELECT t2."id"
+              FROM "ChatSession" t2
+              JOIN "OrgMember" om2
+                ON om2."userId" = t2."userId" AND om2."isOwner" = true
+              JOIN "Organization" o2
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+              JOIN "Team" w2
+                ON w2."orgId" = o2."id" AND w2."isDefault" = true
+              WHERE t2."organizationId" IS NULL
+              LIMIT 10000
+          )
+        """,
     )
 
     results["AgentPreset"] = await _assign_team_tenancy(

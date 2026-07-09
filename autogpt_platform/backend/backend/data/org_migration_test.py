@@ -709,6 +709,11 @@ class TestAssignResources:
             new_callable=AsyncMock,
             return_value=10,
         )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=10,
+        )
         mock_prisma.execute_raw = AsyncMock(return_value=10)
 
         result = await assign_resources_to_teams()
@@ -729,9 +734,67 @@ class TestAssignResources:
             new_callable=AsyncMock,
             return_value=0,
         )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
         mock_prisma.execute_raw = AsyncMock(return_value=0)
         result = await assign_resources_to_teams()
         assert all(v == 0 for v in result.values())
+
+    @pytest.mark.asyncio
+    async def test_big_tables_use_batched_updates(self, mock_prisma, mocker):
+        """AgentGraphExecution and ChatSession must go through the batched
+        path — a single full-table UPDATE exceeds the platform statement
+        timeout on production-sized data (this took down the dev deploy)."""
+        single = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        batched = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+
+        await assign_resources_to_teams()
+
+        batched_tables = {call.args[0] for call in batched.await_args_list}
+        assert batched_tables == {"AgentGraphExecution", "ChatSession"}
+        single_sql = " ".join(call.args[0] for call in single.await_args_list)
+        assert '"AgentGraphExecution"' not in single_sql
+        assert 'UPDATE "ChatSession"' not in single_sql
+
+
+class TestBatchedTenancy:
+    @pytest.mark.asyncio
+    async def test_loops_until_no_rows_remain(self, mock_prisma):
+        from backend.data.org_migration import _assign_team_tenancy_batched
+
+        mock_prisma.execute_raw = AsyncMock(side_effect=[3, 2, 0])
+
+        total = await _assign_team_tenancy_batched(
+            "SomeTable", 'UPDATE "SomeTable" SET x = 1'
+        )
+
+        assert total == 5
+        assert mock_prisma.execute_raw.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_table_returns_zero_after_one_probe(self, mock_prisma):
+        from backend.data.org_migration import _assign_team_tenancy_batched
+
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+
+        total = await _assign_team_tenancy_batched(
+            "SomeTable", 'UPDATE "SomeTable" SET x = 1'
+        )
+
+        assert total == 0
+        assert mock_prisma.execute_raw.await_count == 1
 
 
 # ---------------------------------------------------------------------------
