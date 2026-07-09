@@ -151,7 +151,17 @@ vi.mock("@/components/ui/input-group", () => ({
 }));
 
 vi.mock("../components/ComposerPlusMenu", () => ({
-  ComposerPlusMenu: () => <div data-testid="attachment-menu" />,
+  ComposerPlusMenu: ({
+    onClearGuidedPrompt,
+  }: {
+    onClearGuidedPrompt?: () => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="attachment-menu"
+      onClick={() => onClearGuidedPrompt?.()}
+    />
+  ),
 }));
 vi.mock("../components/FileChips", () => ({
   FileChips: () => null,
@@ -498,7 +508,7 @@ describe("ChatInput guided prompt prefill", () => {
     });
   });
 
-  it("clears an untouched guided prompt when picking Attach file", async () => {
+  it("clears an untouched guided prompt when the menu discards it", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
 
@@ -508,19 +518,14 @@ describe("ChatInput guided prompt prefill", () => {
       expect(textarea.value).toBe(NEW_SKILL_PROMPT);
     });
 
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /attach file/i }),
-    );
+    fireEvent.click(screen.getByTestId("attachment-menu"));
 
     await waitFor(() => {
       expect(textarea.value).toBe("");
     });
   });
 
-  it("keeps a user-edited draft when picking Attach file", async () => {
+  it("keeps a user-edited draft when the menu asks to discard", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
 
@@ -534,12 +539,7 @@ describe("ChatInput guided prompt prefill", () => {
       target: { value: `${NEW_SKILL_PROMPT} plus my edits` },
     });
 
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /attach file/i }),
-    );
+    fireEvent.click(screen.getByTestId("attachment-menu"));
 
     expect(textarea.value).toBe(`${NEW_SKILL_PROMPT} plus my edits`);
   });
