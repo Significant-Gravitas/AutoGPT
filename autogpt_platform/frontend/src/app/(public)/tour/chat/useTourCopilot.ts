@@ -31,10 +31,18 @@ export function useTourCopilot({
   const stepIndex = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const messagesRef = useRef<TourMessage[]>([]);
+  // onSend runs from setTimeout callbacks (auto-start), so it must read status
+  // through a ref — the closure's `status` is stale by the time a timer fires.
+  const statusRef = useRef<TourStatus>("ready");
 
   function commit(next: TourMessage[]) {
     messagesRef.current = next;
     setMessages(next);
+  }
+
+  function transition(next: TourStatus) {
+    statusRef.current = next;
+    setStatus(next);
   }
 
   function clearTimers() {
@@ -44,7 +52,7 @@ export function useTourCopilot({
 
   function onSend(text: string) {
     const turn = script[stepIndex.current];
-    if (status !== "ready" || !turn) return;
+    if (statusRef.current !== "ready" || !turn) return;
 
     // A manual send cancels the pending auto-start so the turn can't fire twice.
     clearTimers();
@@ -58,7 +66,7 @@ export function useTourCopilot({
       },
       { id: turn.assistantMessageId, role: "assistant", parts: [] },
     ]);
-    setStatus("streaming");
+    transition("streaming");
 
     let elapsed = 0;
     turn.steps.forEach((step) => {
@@ -74,7 +82,7 @@ export function useTourCopilot({
     timers.current.push(
       setTimeout(
         () => {
-          setStatus("ready");
+          transition("ready");
           stepIndex.current += 1;
           if (stepIndex.current >= script.length) onComplete();
         },
@@ -96,7 +104,7 @@ export function useTourCopilot({
     clearTimers();
     stepIndex.current = 0;
     commit([]);
-    setStatus("ready");
+    transition("ready");
     onReset?.();
     scheduleAutoStart();
   }
