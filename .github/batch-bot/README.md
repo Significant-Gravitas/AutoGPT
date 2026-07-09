@@ -81,7 +81,8 @@ suggestions:
    Postgres schema `pr_<n>`, and URLs — non-prod and per-PR isolated. Confirm those
    previews use non-prod secrets (they do by design). Nuance: isolation is
    schema-level within a shared preview Postgres cluster, not separate DB servers —
-   fine for non-prod previews. Optionally set `BATCH_REQUIRE_APPROVAL=1` to require
+   fine for non-prod previews. Optionally set the repository variable
+   `BATCH_REQUIRE_APPROVAL=1` (wired into `batch-command-handler.yml`) to require
    an approval before a PR can be added to the batch.
 4. **Pinned actions.** All actions are pinned to commit SHAs (`slash-command-dispatch`,
    `checkout`, `setup-node`); keep them pinned when bumping.

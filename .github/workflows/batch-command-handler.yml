@@ -24,6 +24,9 @@ concurrency:
 jobs:
   handle:
     runs-on: ubuntu-latest
+    # Cap the run so a stuck git/gh call can't hold the serialized `batch-bot`
+    # concurrency group (and every queued /batch* command) for the default 6h.
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.BATCH_BOT_TOKEN }}
       REPO: ${{ github.repository }}
@@ -31,6 +34,9 @@ jobs:
       COMMAND: ${{ github.event.action }}
       PR_NUMBER: ${{ github.event.client_payload.slash_command.args.named.pr }}
       ARG1: ${{ github.event.client_payload.slash_command.args.unnamed.arg1 }}
+      # Set repo variable BATCH_REQUIRE_APPROVAL=1 to gate `/batch` on an approval
+      # (it deploys pre-code-review); batch.mjs reads it, so it must be exported here.
+      BATCH_REQUIRE_APPROVAL: ${{ vars.BATCH_REQUIRE_APPROVAL }}
       BOT_NAME: ${{ vars.BATCH_BOT_NAME || 'autogpt-batch-bot' }}
       BOT_EMAIL: ${{ vars.BATCH_BOT_EMAIL || 'autogpt-batch-bot@users.noreply.github.com' }}
     steps:
