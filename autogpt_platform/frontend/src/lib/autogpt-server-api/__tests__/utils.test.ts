@@ -29,34 +29,35 @@ describe("validateGraphStructure", () => {
         },
       ],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors).toEqual([]);
   });
-​
+
   it("returns error when graph has no nodes", () => {
     const graph = {
       id: "test-graph",
       name: "Test",
       description: "Test",
       nodes: [],
+      links: [],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors).toContain("Graph has no nodes");
   });
-​
+
   it("returns error when nodes array is missing", () => {
     const graph = {
       id: "test-graph",
       name: "Test",
       description: "Test",
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
-    expect(errors).toContain("Graph has no nodes");
+    expect(errors).toContain("Graph 'nodes' must be an array");
   });
-​
+
   it("detects missing block_id on a node", () => {
     const graph = {
       id: "test-graph",
@@ -76,11 +77,11 @@ describe("validateGraphStructure", () => {
       ],
       links: [],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors.some((e) => e.includes("missing block_id"))).toBe(true);
   });
-​
+
   it("detects missing node id", () => {
     const graph = {
       id: "test-graph",
@@ -95,11 +96,11 @@ describe("validateGraphStructure", () => {
       ],
       links: [],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors.some((e) => e.includes("missing node id"))).toBe(true);
   });
-​
+
   it("detects missing link fields", () => {
     const graph = {
       id: "test-graph",
@@ -130,14 +131,14 @@ describe("validateGraphStructure", () => {
         },
       ],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors.some((e) => e.includes("missing source_id"))).toBe(true);
     expect(errors.some((e) => e.includes("missing sink_id"))).toBe(true);
     expect(errors.some((e) => e.includes("missing source_name"))).toBe(true);
     expect(errors.some((e) => e.includes("missing sink_name"))).toBe(true);
   });
-​
+
   it("returns all errors together rather than failing on first", () => {
     const graph = {
       id: "test-graph",
@@ -156,12 +157,12 @@ describe("validateGraphStructure", () => {
         },
       ],
     } as unknown as Graph;
-​
+
     const errors = validateGraphStructure(graph);
     expect(errors.length).toBeGreaterThanOrEqual(5);
   });
 });
-​
+
 describe("sanitizeImportedGraph", () => {
   it("is a no-op — does not modify credentials in the graph", () => {
     const graph = {
@@ -180,12 +181,12 @@ describe("sanitizeImportedGraph", () => {
       ],
       links: [],
     } as unknown as Graph;
-​
+
     const original = JSON.stringify(graph);
     sanitizeImportedGraph(graph);
     expect(JSON.stringify(graph)).toEqual(original);
   });
-​
+
   it("is a no-op — does not modify block IDs in the graph", () => {
     const graph = {
       id: "test-graph",

@@ -1036,8 +1036,17 @@ class GraphModel(Graph, GraphMeta):
 
                 # If the schema has no fields (dynamic sub-graph schemas),
                 # fall back to a permissive mode that allows any connection.
-                allow_any_field = not fields and block.block_type == BlockType.AGENT
-                if not allow_any_field and sanitized_name not in fields and not is_tool_pin(name):
+                # Also, allow any pin for AgentExecutorBlock when the pin is
+                # not in its schema — these are dynamic sub-graph connections
+                # whose fields are defined at runtime.
+                allow_any_field = block.block_type == BlockType.AGENT and (
+                    not fields or sanitized_name not in fields
+                )
+                if (
+                    not allow_any_field
+                    and sanitized_name not in fields
+                    and not is_tool_pin(name)
+                ):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -1777,7 +1786,7 @@ async def fix_llm_provider_credentials():
             ON        node."agentGraphId" = graph.id
             WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
             ORDER BY  graph."userId";
-            """
+            """,
         )
         logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
     except Exception as e:

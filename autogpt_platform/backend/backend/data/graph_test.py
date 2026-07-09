@@ -2333,11 +2333,16 @@ def test_agent_executor_block_link_validation_uses_schema():
         block_id=agent_block.id,
         input_default={},  # empty — was causing issues before
     )
+    # Verify that "inputs" is a real AgentExecutorBlock.Input field
+    assert (
+        "inputs" in AgentExecutorBlock.Input.get_fields()
+    ), f"Expected 'inputs' in AgentExecutorBlock.Input fields, got: {AgentExecutorBlock.Input.get_fields()}"
+
     link = Link(
         source_id="source-1",
         sink_id="agent-1",
         source_name="output",
-        sink_name="input",
+        sink_name="inputs",
     )
 
     graph = Graph(
@@ -2364,12 +2369,17 @@ def test_agent_executor_block_empty_schema_allows_any_link_pin_name():
 
     # Mock the schema so get_fields() returns empty — simulating a dynamic
     # sub-graph schema whose fields aren't known until runtime.
-    with patch.object(
-        AgentExecutorBlock.Input, 'get_fields',
-        return_value=[],
-    ), patch.object(
-        AgentExecutorBlock.Output, 'get_fields',
-        return_value=[],
+    with (
+        patch.object(
+            AgentExecutorBlock.Input,
+            "get_fields",
+            return_value=[],
+        ),
+        patch.object(
+            AgentExecutorBlock.Output,
+            "get_fields",
+            return_value=[],
+        ),
     ):
         agent_block = AgentExecutorBlock()
         agent_node = Node(
@@ -2400,6 +2410,6 @@ def test_agent_executor_block_empty_schema_allows_any_link_pin_name():
         assert isinstance(errors, dict)
         # Link errors should not contain our link
         for key, val in errors.items():
-            assert "some_runtime_field" not in str(val), (
-                f"Dynamic field 'some_runtime_field' should be permitted: {val}"
-            )
+            assert "some_runtime_field" not in str(
+                val
+            ), f"Dynamic field 'some_runtime_field' should be permitted: {val}"
