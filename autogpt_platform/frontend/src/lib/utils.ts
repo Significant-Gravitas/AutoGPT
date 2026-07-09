@@ -426,3 +426,14 @@ export function isValidUUID(value: string): boolean {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
 }
+
+export function getApprovedMarketplaceUrl(args: {
+  creatorUsername: string | null | undefined;
+  slug: string | null | undefined;
+  isApproved: boolean;
+}): string | undefined {
+  if (!args.isApproved || !args.creatorUsername || !args.slug) {
+    return undefined;
+  }
+  return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
+}

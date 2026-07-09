@@ -197,7 +197,9 @@ class TestRunValidation:
         async for _ in block.run(input_data, execution_context=ctx):
             pass
 
-        block.create_session.assert_called_once_with(ctx.user_id, dry_run=True)
+        block.create_session.assert_called_once_with(
+            ctx.user_id, dry_run=True, organization_id=None, team_id=None
+        )
 
     @pytest.mark.asyncio
     async def test_existing_session_id_skips_create(self, block):

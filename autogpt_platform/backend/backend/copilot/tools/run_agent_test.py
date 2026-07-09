@@ -822,6 +822,127 @@ async def test_run_agent_execution_structural_error_returns_error_response(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_attributes_execution_to_session_org(mocker):
+    """An agent launched from an org-scoped chat must attribute the execution
+    to the SESSION's org/team, not the user's default (personal) org.
+    Regression: ``_run_agent`` previously always resolved
+    ``get_user_default_team`` → runs/credits from an org chat were
+    misattributed to the personal org."""
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-from-session"
+    session.team_id = "team-from-session"
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    default_team = AsyncMock(return_value=("personal-org", "personal-team"))
+    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+
+    captured: dict = {}
+
+    async def fake_add(**kwargs):
+        captured.update(kwargs)
+        execution = MagicMock()
+        execution.id = "exec-1"
+        return execution
+
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+
+    response = await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+    )
+
+    assert response is not None
+    assert captured["organization_id"] == "org-from-session"
+    assert captured["team_id"] == "team-from-session"
+    default_team.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
+    """Sessions created before org tagging carry no org — the run must fall
+    back to the user's default team instead of executing tenant-blind."""
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    assert session.organization_id is None
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    default_team = AsyncMock(return_value=("personal-org", "personal-team"))
+    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+
+    captured: dict = {}
+
+    async def fake_add(**kwargs):
+        captured.update(kwargs)
+        execution = MagicMock()
+        execution.id = "exec-1"
+        return execution
+
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+
+    response = await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+    )
+
+    assert response is not None
+    assert captured["organization_id"] == "personal-org"
+    assert captured["team_id"] == "personal-team"
+    default_team.assert_awaited_once()
+
+
 async def test_run_agent_redirects_webhook_trigger_agent():
     """A webhook-trigger agent can't be run/scheduled — run_agent returns an
     AgentDetailsResponse (carrying trigger_info) that points AutoPilot to

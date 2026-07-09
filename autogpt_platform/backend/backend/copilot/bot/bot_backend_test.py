@@ -18,6 +18,8 @@ from backend.platform_linking.models import (
     LinkTokenResponse,
     Platform,
     ResolveResponse,
+    TurnDenial,
+    WorkspaceUploadResult,
 )
 from backend.util.exceptions import (
     DuplicateChatMessageError,
@@ -25,9 +27,11 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
+from .adapters.base import InboundAttachment
 from .bot_backend import (
     BotBackend,
     BotStreamError,
+    ChatTurnDeniedError,
     _extract_setup_requirements,
     _is_corrupted_setup_requirements,
 )
@@ -438,3 +442,98 @@ class TestIsCorruptedSetupRequirements:
     def test_plain_text_and_dict_outputs_are_not_corrupted(self):
         assert not _is_corrupted_setup_requirements("plain text tool result")
         assert not _is_corrupted_setup_requirements({"type": "setup_requirements"})
+
+
+class TestUploadWorkspaceFiles:
+    @pytest.mark.asyncio
+    async def test_forwards_each_attachment_and_returns_results(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                WorkspaceUploadResult(filename="a.png", file_id="f1"),
+                WorkspaceUploadResult(filename="b.exe", error="virus_detected"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id="g1",
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.exe", mime_type="application/octet-stream", content=b"y"
+                ),
+            ),
+        )
+
+        assert [r.file_id for r in results] == ["f1", None]
+        assert results[1].error == "virus_detected"
+        assert api._client.upload_workspace_file.await_count == 2
+        first = api._client.upload_workspace_file.await_args_list[0].kwargs["request"]
+        assert first.platform == Platform.DISCORD
+        assert first.filename == "a.png"
+        assert first.platform_server_id == "g1"
+
+    @pytest.mark.asyncio
+    async def test_one_upload_failure_does_not_abort_the_rest(self, api: BotBackend):
+        # A transport/RPC failure on one file becomes an upload_failed result;
+        # later files still upload (and the handler never crashes).
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                RuntimeError("connection reset"),
+                WorkspaceUploadResult(filename="b.png", file_id="f2"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.png", mime_type="image/png", content=b"y"
+                ),
+            ),
+        )
+
+        assert results[0].error == "upload_failed"
+        assert results[0].file_id is None
+        assert results[1].file_id == "f2"
+
+    @pytest.mark.asyncio
+    async def test_no_attachments_makes_no_calls(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock()
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(),
+        )
+        assert results == []
+        api._client.upload_workspace_file.assert_not_awaited()
+
+
+class TestStreamChatDenial:
+    @pytest.mark.asyncio
+    async def test_stream_chat_raises_chat_turn_denied_on_denial(self, api: BotBackend):
+        api._client.start_chat_turn = AsyncMock(
+            return_value=ChatTurnHandle(
+                session_id="",
+                turn_id="",
+                user_id="u1",
+                denial=TurnDenial(reason="paywalled", message="subscription required"),
+            )
+        )
+
+        with pytest.raises(ChatTurnDeniedError) as exc_info:
+            async for _ in api.stream_chat(
+                platform="discord", platform_user_id="pu1", message="hi"
+            ):
+                pass
+
+        assert exc_info.value.denial.reason == "paywalled"

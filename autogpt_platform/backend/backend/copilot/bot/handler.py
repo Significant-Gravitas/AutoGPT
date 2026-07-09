@@ -17,6 +17,7 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
+from backend.platform_linking.models import TurnDenial
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -31,7 +32,7 @@ from .adapters.base import (
     MessageHistoryEntry,
     PlatformAdapter,
 )
-from .bot_backend import BotBackend, BotStreamError
+from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
@@ -41,6 +42,11 @@ THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+# Cap on file IDs carried into a single turn — must stay <= the
+# ``BotChatRequest.file_ids`` ``max_length``. Batching several file-heavy
+# messages can accumulate more than that; cap so the turn runs (with a log)
+# instead of failing validation.
+MAX_TURN_FILE_IDS = 20
 
 
 @dataclass
@@ -55,17 +61,97 @@ class TargetState:
     processing: bool = False
     pending: list[tuple[str, str, str]] = field(default_factory=list)
     # Each entry: (username, user_id, text)
+    # Workspace file IDs uploaded for messages in `pending`, drained together
+    # with them so a batched turn carries every attached file.
+    pending_file_ids: list[str] = field(default_factory=list)
+    # Session the pending attachments were uploaded to, carried straight to the
+    # turn so it uses the same session (not a separate Redis read that could
+    # diverge). None for text-only batches, which resolve the session normally.
+    session_id: str | None = None
 
 
 class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
+        # Per-target lock serialising session resolution, so two attachment
+        # messages racing on a fresh target converge on ONE session instead of
+        # each creating its own and splitting the files across them.
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # Strong-ref set so the GC doesn't drop fire-and-forget rename tasks.
         self._rename_tasks: set[asyncio.Task[None]] = set()
 
+    def _session_lock(self, target_id: str) -> asyncio.Lock:
+        lock = self._session_locks.get(target_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[target_id] = lock
+        return lock
+
+    async def _resolve_session_for_attachments(
+        self, ctx: MessageContext, target_id: str
+    ) -> tuple[str | None, TurnDenial | None]:
+        """Resolve (or create) the session this message's attachments upload
+        into, so they land where the turn will read them (``/sessions/<id>/``).
+
+        Serialised per target so concurrent attachment messages converge on one
+        session instead of splitting the files. Returns ``(session_id, None)``
+        on success, ``(None, denial)`` when the turn gate refused the user
+        (the caller renders the denial and skips the upload + turn), and
+        ``(None, None)`` on failure — the caller then reports the files as
+        un-attachable rather than uploading them somewhere AutoPilot can't see.
+        """
+        async with self._session_lock(target_id):
+            try:
+                result = await self._api.ensure_session(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    platform_server_id=ctx.server_id,
+                    session_id=await sessions.get_session(ctx.platform, target_id),
+                )
+                if result.denial is not None:
+                    return None, result.denial
+                if result.session_id:
+                    await sessions.set_session(
+                        ctx.platform, target_id, result.session_id
+                    )
+                return result.session_id, None
+            except Exception:
+                logger.exception(
+                    "Failed to resolve session for uploads (user %s)", ctx.user_id
+                )
+                return None, None
+
+    async def _send_denial(
+        self,
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        denial: TurnDenial,
+    ) -> None:
+        """Render a turn denial: message plus CTA button when configured."""
+        logger.info("Turn denied (%s) for target %s", denial.reason, target_id)
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="turn_denied",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            error_kind=denial.reason,
+        )
+        if denial.button_url and denial.button_label:
+            await adapter.send_link(
+                target_id,
+                denial.message,
+                link_label=denial.button_label,
+                link_url=denial.button_url,
+            )
+        else:
+            await adapter.send_message(
+                target_id, denial.message, mentionable_users=ctx.mentionable_users
+            )
+
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        if not ctx.text.strip():
+        if not ctx.text.strip() and not ctx.attachments:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -104,8 +190,97 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        message_text = self._message_text(ctx, include_thread_history)
-        await self._enqueue_and_process(ctx, adapter, target_id, message_text)
+        # Attachments must be written into the turn's session folder so
+        # AutoPilot can read them (same as a web upload), and the turn must run
+        # in that same session — resolve it up front and thread it through.
+        session_id: str | None = None
+        file_ids: list[str]
+        upload_problems: list[tuple[str, str]]
+        if ctx.attachments:
+            session_id, denial = await self._resolve_session_for_attachments(
+                ctx, target_id
+            )
+            if denial is not None:
+                # The turn gate refused the user before anything was uploaded —
+                # render the denial and stop; no file is scanned or stored and
+                # no turn runs.
+                await self._send_denial(ctx, adapter, target_id, denial)
+                return
+            if session_id is None:
+                # Without a session the files can't be made readable to
+                # AutoPilot, so report them as failed rather than uploading
+                # them somewhere it can't see.
+                file_ids = []
+                upload_problems = [
+                    (a.filename, "couldn't be uploaded") for a in ctx.attachments
+                ]
+            else:
+                file_ids, upload_problems = await self._upload_attachments(
+                    ctx, session_id
+                )
+        else:
+            file_ids, upload_problems = await self._upload_attachments(ctx)
+
+        # Files that didn't make it: adapter-stage (too large / failed download)
+        # plus upload-stage (virus / quota). Tell the user AND, below, the model
+        # — so neither assumes a dropped file was actually read.
+        problems = list(ctx.skipped_attachments) + upload_problems
+        if problems:
+            await adapter.send_message(target_id, _format_attachment_problems(problems))
+
+        # Decide on NEW input only — typed text or a usable upload. Thread
+        # history (folded into the prompt below) is context, not a reason to
+        # respond, so don't let it keep an otherwise-empty turn alive.
+        if not ctx.text.strip() and not file_ids:
+            # The user already got the note. Don't enqueue a blank turn, and
+            # unsubscribe a thread we just created for a channel message so it
+            # doesn't linger orphaned-but-subscribed for 7 days.
+            if ctx.channel_type == "channel" and target_id != ctx.channel_id:
+                await threads.unsubscribe(ctx.platform, target_id)
+            return
+
+        # A file-only message gets a nudge so AutoPilot looks at the uploads
+        # instead of seeing an empty "[Current message]".
+        current_text = ctx.text if ctx.text.strip() else "(see the attached file(s))"
+        message_text = self._message_text(ctx, include_thread_history, current_text)
+        if problems:
+            message_text += "\n\n" + _model_attachment_note(problems)
+        await self._enqueue_and_process(
+            ctx, adapter, target_id, message_text, file_ids, session_id
+        )
+
+    async def _upload_attachments(
+        self, ctx: MessageContext, session_id: str | None = None
+    ) -> tuple[list[str], list[tuple[str, str]]]:
+        """Upload the user's attachments to the workspace.
+
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them. Returns ``(file_ids, problems)`` — the IDs that succeeded,
+        and ``(filename, reason)`` for the ones that were rejected — so the
+        caller can attach the successes and surface the failures.
+        """
+        if not ctx.attachments:
+            return [], []
+        try:
+            results = await self._api.upload_workspace_files(
+                platform=ctx.platform,
+                platform_user_id=ctx.user_id,
+                platform_server_id=ctx.server_id,
+                attachments=ctx.attachments,
+                session_id=session_id,
+            )
+        except Exception:
+            # The upload path itself failed (not a per-file rejection). Don't
+            # drop the message — surface it and let any text still go through.
+            logger.exception("Attachment upload failed for user %s", ctx.user_id)
+            return [], [(a.filename, "couldn't be uploaded") for a in ctx.attachments]
+        file_ids = [r.file_id for r in results if r.file_id]
+        problems = [
+            (r.filename, _UPLOAD_ERROR_TEXT.get(r.error or "", "couldn't be uploaded"))
+            for r in results
+            if not r.file_id
+        ]
+        return file_ids, problems
 
     # -- Target resolution --
 
@@ -131,14 +306,22 @@ class MessageHandler:
 
     # -- Batched streaming --
 
-    def _message_text(self, ctx: MessageContext, include_thread_history: bool) -> str:
+    def _message_text(
+        self,
+        ctx: MessageContext,
+        include_thread_history: bool,
+        current_text: str | None = None,
+    ) -> str:
+        # ``current_text`` overrides ``ctx.text`` as the "current message" body
+        # (e.g. a nudge for a file-only message); defaults to the raw text.
+        text = ctx.text if current_text is None else current_text
         # Referenced conversations (links/@-mentions the user pasted) are always
         # surfaced — that's the whole point of fetching them. Thread history is
         # only included on the first @-into a thread we don't own; a subscribed
         # thread's prior turns already live in the session.
         thread_history = ctx.thread_history if include_thread_history else ()
         if not thread_history and not ctx.referenced_conversations:
-            return ctx.text
+            return text
 
         platform_display = ctx.platform.capitalize()
         lines: list[str] = []
@@ -162,7 +345,7 @@ class MessageHandler:
             lines.append("\n[Recent thread context before this message]")
             for entry in thread_history:
                 lines.append(self._format_history_entry(entry, platform_display))
-        lines.append(f"\n[Current message]\n{ctx.text}")
+        lines.append(f"\n[Current message]\n{text}")
         return "\n".join(lines)
 
     @staticmethod
@@ -180,9 +363,17 @@ class MessageHandler:
         adapter: PlatformAdapter,
         target_id: str,
         message_text: str | None = None,
+        file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
+        if file_ids:
+            state.pending_file_ids.extend(file_ids)
+        # First attachment message in a batch pins the session; later ones
+        # resolved the same session (serialised by _session_lock), so keep it.
+        if session_id and state.session_id is None:
+            state.session_id = session_id
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick
@@ -193,8 +384,26 @@ class MessageHandler:
         try:
             while state.pending:
                 batch = list(state.pending)
+                batch_file_ids = list(state.pending_file_ids)
+                batch_session_id = state.session_id
                 state.pending.clear()
-                await self._stream_batch(batch, ctx, adapter, target_id)
+                state.pending_file_ids.clear()
+                state.session_id = None
+                if len(batch_file_ids) > MAX_TURN_FILE_IDS:
+                    logger.warning(
+                        "Dropping %d batched file(s) over the per-turn cap of %d",
+                        len(batch_file_ids) - MAX_TURN_FILE_IDS,
+                        MAX_TURN_FILE_IDS,
+                    )
+                    batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
+                await self._stream_batch(
+                    batch,
+                    ctx,
+                    adapter,
+                    target_id,
+                    file_ids=batch_file_ids,
+                    session_id=batch_session_id,
+                )
         finally:
             state.processing = False
             # Drop the empty state so the dict doesn't grow unbounded across
@@ -327,17 +536,24 @@ class MessageHandler:
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
+        file_ids: list[str] | None = None,
+        session_id: str | None = None,
     ) -> None:
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
-        cached_session_id = await redis.get(cache_key)
-        active_session_id = (
-            cached_session_id.decode()
-            if isinstance(cached_session_id, bytes)
-            else cached_session_id
-        )
+        if session_id is not None:
+            # Attachments were already uploaded to this session — use it
+            # directly so the turn can't diverge from where the files went.
+            active_session_id: str | None = session_id
+        else:
+            cached_session_id = await redis.get(cache_key)
+            active_session_id = (
+                cached_session_id.decode()
+                if isinstance(cached_session_id, bytes)
+                else cached_session_id
+            )
 
         async def _on_session_id(sid: str) -> None:
             nonlocal active_session_id
@@ -425,6 +641,7 @@ class MessageHandler:
                 message=prefixed,
                 session_id=active_session_id,
                 platform_server_id=ctx.server_id,
+                file_ids=file_ids,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
@@ -438,6 +655,11 @@ class MessageHandler:
                             adapter, target_id, post, ctx, active_session_id
                         ):
                             sent_any_content = True
+        except ChatTurnDeniedError as exc:
+            # Refused before running (paywall / rate limit). Show the message
+            # and, when present, a CTA button (Subscribe / Upgrade).
+            await self._send_denial(ctx, adapter, target_id, exc.denial)
+            return
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
             # stay quiet so the user doesn't get a double response.
@@ -641,6 +863,32 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         raise
     except Exception:
         logger.debug("Typing loop error", exc_info=True)
+
+
+_UPLOAD_ERROR_TEXT: dict[str, str] = {
+    "virus_detected": "failed a virus scan",
+    "scan_unavailable": "couldn't be virus-scanned right now — try again shortly",
+    "rejected": "was too large or would exceed your storage limit",
+    "upload_failed": "couldn't be uploaded",
+}
+
+
+def _format_attachment_problems(problems: list[tuple[str, str]]) -> str:
+    """User-facing note listing attachments that couldn't be attached and why."""
+    lines = ["⚠️ Some files couldn't be attached:"]
+    for filename, reason in problems:
+        lines.append(f"• `{filename}` {reason}")
+    return "\n".join(lines)
+
+
+def _model_attachment_note(problems: list[tuple[str, str]]) -> str:
+    """Note injected into the turn so AutoPilot knows which files it does NOT
+    have, instead of assuming a dropped attachment was read."""
+    listed = ", ".join(f"{filename} ({reason})" for filename, reason in problems)
+    return (
+        f"[Note: the following attachment(s) could NOT be attached and are "
+        f"unavailable to you — do not claim to have read them: {listed}]"
+    )
 
 
 def build_thread_name(text: str, username: str) -> str:
