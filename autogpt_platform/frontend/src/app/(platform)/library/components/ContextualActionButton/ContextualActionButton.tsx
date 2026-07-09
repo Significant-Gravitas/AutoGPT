@@ -4,7 +4,7 @@ import {
   EyeIcon,
   ArrowsClockwiseIcon,
   MonitorPlayIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import type { AgentStatus } from "../../types";

@@ -17,9 +17,23 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-geist-sans)"],
+        // Use the OS UI font (San Francisco on macOS/iOS, Segoe UI on Windows,
+        // Roboto on Android) so the platform feels native everywhere.
+        sans: [
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          "Roboto",
+          '"Helvetica Neue"',
+          "Arial",
+          "sans-serif",
+          '"Apple Color Emoji"',
+          '"Segoe UI Emoji"',
+        ],
         mono: ["var(--font-geist-mono)"],
         poppins: ["var(--font-poppins)"],
+        inter: ["var(--font-inter)"],
       },
       colors: {
         ...colors,

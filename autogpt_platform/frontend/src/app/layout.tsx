@@ -46,7 +46,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
+      className={`${fonts.poppins.variable} ${fonts.inter.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-screen">

@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import React from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, XIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
 
 interface GraphMenuSearchBarProps {

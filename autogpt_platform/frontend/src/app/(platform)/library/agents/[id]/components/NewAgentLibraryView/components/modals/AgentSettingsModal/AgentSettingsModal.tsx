@@ -6,7 +6,7 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { GearIcon } from "@phosphor-icons/react";
+import { GearIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 
 interface Props {

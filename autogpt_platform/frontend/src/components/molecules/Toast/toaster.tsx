@@ -1,32 +1,13 @@
 "use client";
 
-import { Toaster as SonnerToaster } from "sonner";
-import styles from "./styles.module.css";
+import { Toaster as HotToaster } from "react-hot-toast";
 
 export function Toaster() {
   return (
-    <SonnerToaster
+    <HotToaster
       position="bottom-center"
-      richColors
-      closeButton
-      toastOptions={{
-        classNames: {
-          toast: styles.toastDefault,
-          title: styles.toastTitle,
-          description: styles.toastDescription,
-          error: styles.toastError,
-          success: styles.toastSuccess,
-          warning: styles.toastWarning,
-          info: styles.toastInfo,
-        },
-      }}
-      className="custom__toast"
-      icons={{
-        success: null,
-        error: null,
-        warning: null,
-        info: null,
-      }}
+      gutter={8}
+      containerClassName="custom__toast"
     />
   );
 }

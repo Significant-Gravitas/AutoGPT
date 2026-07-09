@@ -5,7 +5,7 @@ import {
   CircleNotchIcon,
   MagnifyingGlassIcon,
   XIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 import { cn } from "@/lib/utils";
 

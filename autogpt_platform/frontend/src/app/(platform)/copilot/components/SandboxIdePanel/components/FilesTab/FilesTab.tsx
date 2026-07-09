@@ -2,80 +2,27 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, FileIcon, FolderIcon } from "@phosphor-icons/react";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { Tree, type NodeRendererProps } from "react-arborist";
+import {
+  CaretDownIcon,
+  CaretRightIcon,
+  FolderIcon,
+  SidebarSimpleIcon,
+  TerminalWindowIcon,
+  XIcon,
+} from "@/components/atoms/AGPTIcon/icons";
+import { TerminalConsoleIcon } from "@/components/icons/TerminalConsoleIcon";
+import { useState } from "react";
+import { useCopilotUIStore } from "../../../../store";
+import { ArtifactContent } from "../../../ArtifactPanel/components/ArtifactContent";
+import { useArtifactPanel } from "../../../ArtifactPanel/useArtifactPanel";
+import { basename } from "../../helpers";
+import { DownloadButton } from "../DownloadButton/DownloadButton";
 import { FileEditor } from "../FileEditor/FileEditor";
-import { type SandboxTreeNode, useFilesTab } from "./useFilesTab";
-
-interface FilesTabContextValue {
-  selectedFilePath: string | null;
-  selectFile: (path: string | null) => void;
-  statusByPath: Map<string, string>;
-  loadChildren: (path: string) => void;
-}
-
-const FilesTabContext = createContext<FilesTabContextValue | null>(null);
-
-function useFilesTabContext() {
-  const ctx = useContext(FilesTabContext);
-  if (!ctx) throw new Error("FileTreeRow must be used within FilesTab");
-  return ctx;
-}
-
-function FileTreeRow({ node, style }: NodeRendererProps<SandboxTreeNode>) {
-  const { selectedFilePath, selectFile, statusByPath, loadChildren } =
-    useFilesTabContext();
-  const status = statusByPath.get(node.data.id);
-
-  function handleClick() {
-    if (node.data.isDir) {
-      if (!node.isOpen) loadChildren(node.data.id);
-      node.toggle();
-    } else {
-      selectFile(node.data.id);
-    }
-  }
-
-  return (
-    <div
-      style={style}
-      onClick={handleClick}
-      className="flex h-full cursor-pointer items-center gap-1 rounded px-1 text-sm text-zinc-700 hover:bg-zinc-100"
-    >
-      {node.data.isDir ? (
-        <>
-          <CaretRightIcon
-            size={12}
-            className={cn(
-              "shrink-0 text-zinc-400 transition-transform",
-              node.isOpen && "rotate-90",
-            )}
-          />
-          <FolderIcon size={14} className="shrink-0 text-zinc-500" />
-        </>
-      ) : (
-        <>
-          <span className="w-3 shrink-0" />
-          <FileIcon size={14} className="shrink-0 text-zinc-400" />
-        </>
-      )}
-      <span
-        className={cn(
-          "truncate",
-          selectedFilePath === node.data.id && "font-medium text-purple-600",
-        )}
-      >
-        {node.data.name}
-      </span>
-      {status ? (
-        <span className="ml-auto shrink-0 pr-1 font-mono text-[0.6875rem] font-semibold text-zinc-400">
-          {status}
-        </span>
-      ) : null}
-    </div>
-  );
-}
+import { TerminalTab } from "../TerminalTab/TerminalTab";
+import { FileTree } from "./FileTree";
+import { FileTypeIcon } from "./FileTypeIcon";
+import { useArtifactTabs } from "./useArtifactTabs";
+import { useFilesTab } from "./useFilesTab";
 
 interface Props {
   sessionId: string;
@@ -86,22 +33,33 @@ export function FilesTab({ sessionId }: Props) {
     treeData,
     isLoading,
     selectedFilePath,
+    openFilePaths,
     selectFile,
+    openFile,
+    openArtifact,
+    closeFile,
     statusByPath,
     loadChildren,
   } = useFilesTab(sessionId);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [treeOpen, setTreeOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const closePanel = useCopilotUIStore((s) => s.closeSandboxIdePanel);
+  const { activeArtifact, classification, isSourceView, clearArtifactPreview } =
+    useArtifactPanel();
+  const { openArtifacts, activeArtifactId, selectArtifact, closeArtifact } =
+    useArtifactTabs();
 
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => {
-      setSize({ width: element.clientWidth, height: element.clientHeight });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  // Opening a sandbox file takes over the editor pane, so drop any artifact
+  // preview that was showing there.
+  function handleOpenFile(path: string) {
+    if (activeArtifact) clearArtifactPreview();
+    openFile(path);
+  }
+
+  function handleSelectFile(path: string) {
+    if (activeArtifact) clearArtifactPreview();
+    selectFile(path);
+  }
 
   if (isLoading) {
     return (
@@ -115,37 +73,180 @@ export function FilesTab({ sessionId }: Props) {
   }
 
   return (
-    <FilesTabContext.Provider
-      value={{ selectedFilePath, selectFile, statusByPath, loadChildren }}
-    >
-      <div className="flex h-full min-h-0 flex-col">
-        <div
-          ref={containerRef}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-1 px-2 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {openArtifacts.map((artifact) => (
+            <div
+              key={artifact.id}
+              onClick={() => selectArtifact(artifact)}
+              className={cn(
+                "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-sm",
+                artifact.id === activeArtifactId
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "text-zinc-700 hover:bg-zinc-50",
+              )}
+            >
+              <FileTypeIcon name={artifact.title} size={16} />
+              <span className="max-w-[10rem] truncate">{artifact.title}</span>
+              <button
+                type="button"
+                aria-label={`Close ${artifact.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeArtifact(artifact);
+                }}
+                className="rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-200 hover:text-zinc-900"
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          ))}
+          {openFilePaths.map((path) => {
+            return (
+              <div
+                key={path}
+                onClick={() => handleSelectFile(path)}
+                className={cn(
+                  "group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-sm",
+                  path === selectedFilePath && !activeArtifact
+                    ? "bg-zinc-100 text-zinc-900"
+                    : "text-zinc-700 hover:bg-zinc-50",
+                )}
+              >
+                <FileTypeIcon name={basename(path)} size={16} />
+                <span className="max-w-[10rem] truncate">{basename(path)}</span>
+                <button
+                  type="button"
+                  aria-label={`Close ${basename(path)}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeFile(path);
+                  }}
+                  className="rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-200 hover:text-zinc-900"
+                >
+                  <XIcon size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <DownloadButton sessionId={sessionId} />
+          <button
+            type="button"
+            aria-label={terminalOpen ? "Hide terminal" : "Show terminal"}
+            aria-pressed={terminalOpen}
+            onClick={() => setTerminalOpen((value) => !value)}
+            className={cn(
+              "rounded p-1 text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
+              terminalOpen && "bg-zinc-100 text-zinc-900",
+            )}
+          >
+            <TerminalConsoleIcon size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Close sandbox panel"
+            onClick={closePanel}
+            className="rounded p-1 text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          >
+            <SidebarSimpleIcon size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 border-b border-b-zinc-100 px-3 py-2 text-sm text-zinc-700">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {activeArtifact ? (
+            <span className="truncate text-zinc-700">
+              {activeArtifact.title}
+            </span>
+          ) : selectedFilePath ? (
+            selectedFilePath.split("/").map((segment, index) => (
+              <span
+                key={`${index}-${segment}`}
+                className="flex shrink-0 items-center gap-1"
+              >
+                {index > 0 ? (
+                  <CaretRightIcon size={10} className="text-zinc-300" />
+                ) : null}
+                <span>{segment}</span>
+              </span>
+            ))
+          ) : (
+            <span className="text-zinc-400">/</span>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label="Toggle file tree"
+          aria-pressed={treeOpen}
+          onClick={() => setTreeOpen((value) => !value)}
           className={cn(
-            "min-h-0 overflow-hidden",
-            selectedFilePath ? "h-2/5" : "flex-1",
+            "shrink-0 rounded p-1 text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
+            treeOpen && "bg-zinc-100 text-zinc-900",
           )}
         >
-          <Tree
-            data={treeData}
-            width={size.width || 320}
-            height={size.height || 400}
-            rowHeight={28}
-            indent={12}
-            openByDefault={false}
-            disableDrag
-            disableDrop
-            disableEdit
-          >
-            {FileTreeRow}
-          </Tree>
-        </div>
-        {selectedFilePath ? (
-          <div className="min-h-0 flex-1 border-t border-t-zinc-100">
-            <FileEditor sessionId={sessionId} path={selectedFilePath} />
-          </div>
-        ) : null}
+          <FolderIcon size={16} />
+        </button>
       </div>
-    </FilesTabContext.Provider>
+
+      <div className="relative flex min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {activeArtifact && classification ? (
+            <ArtifactContent
+              artifact={activeArtifact}
+              isSourceView={isSourceView}
+              classification={classification}
+            />
+          ) : selectedFilePath ? (
+            <FileEditor sessionId={sessionId} path={selectedFilePath} />
+          ) : (
+            <div className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-400">
+              Open a file from the tree
+            </div>
+          )}
+        </div>
+        {/* File tree overlays the editor (does not shift it) and slides in/out. */}
+        <div
+          className={cn(
+            "absolute right-0 top-0 h-full w-60 overflow-hidden border-l border-l-zinc-100 bg-white transition-transform duration-300 ease-out motion-reduce:transition-none",
+            treeOpen ? "translate-x-0" : "translate-x-full",
+          )}
+        >
+          <FileTree
+            treeData={treeData}
+            selectedFilePath={selectedFilePath}
+            openFile={handleOpenFile}
+            openArtifact={openArtifact}
+            statusByPath={statusByPath}
+            loadChildren={loadChildren}
+          />
+        </div>
+      </div>
+
+      {terminalOpen ? (
+        <div className="flex h-1/4 min-h-0 flex-col border-t border-t-zinc-100">
+          <div className="flex items-center justify-between px-3 py-1">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600">
+              <TerminalWindowIcon size={14} />
+              Terminal
+            </span>
+            <button
+              type="button"
+              aria-label="Hide terminal"
+              onClick={() => setTerminalOpen(false)}
+              className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800"
+            >
+              <CaretDownIcon size={14} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <TerminalTab sessionId={sessionId} />
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

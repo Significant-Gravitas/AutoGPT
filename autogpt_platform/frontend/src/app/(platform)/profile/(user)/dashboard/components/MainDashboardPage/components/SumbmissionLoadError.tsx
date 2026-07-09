@@ -1,4 +1,4 @@
-import { Tray } from "@phosphor-icons/react";
+import { Tray } from "@/components/atoms/AGPTIcon/icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 

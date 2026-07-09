@@ -3,10 +3,9 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import {
-  PlayCircleIcon,
   PlayIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
@@ -213,10 +212,6 @@ export function ToolIcon({
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
 
-export function AccordionIcon() {
-  return <PlayCircleIcon size={32} weight="light" />;
-}
-
 export function formatMaybeJson(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -224,76 +219,4 @@ export function formatMaybeJson(value: unknown): string {
   } catch {
     return String(value);
   }
-}
-
-export function getAccordionMeta(output: RunBlockToolOutput): {
-  icon: React.ReactNode;
-  title: string;
-  titleClassName?: string;
-  description?: string;
-} {
-  const icon = <AccordionIcon />;
-
-  if (isRunBlockBlockOutput(output)) {
-    const keys = Object.keys(output.outputs ?? {});
-    const outputCount =
-      keys.length > 0
-        ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
-        : output.message;
-    return {
-      icon,
-      title: output.block_name,
-      description: output.is_dry_run
-        ? `Simulated · ${outputCount}`
-        : outputCount,
-    };
-  }
-
-  if (isRunBlockDetailsOutput(output)) {
-    const inputKeys = Object.keys(
-      (output.block.inputs as { properties?: Record<string, unknown> })
-        ?.properties ?? {},
-    );
-    return {
-      icon,
-      title: output.block.name,
-      description:
-        inputKeys.length > 0
-          ? `${inputKeys.length} input field${inputKeys.length === 1 ? "" : "s"} available`
-          : output.message,
-    };
-  }
-
-  if (isRunBlockSetupRequirementsOutput(output)) {
-    const missingCredsCount = Object.keys(
-      (output.setup_info.user_readiness?.missing_credentials ?? {}) as Record<
-        string,
-        unknown
-      >,
-    ).length;
-    return {
-      icon,
-      title: output.setup_info.agent_name,
-      description:
-        missingCredsCount > 0
-          ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
-          : output.message,
-    };
-  }
-
-  if (isRunBlockReviewRequiredOutput(output)) {
-    return {
-      icon,
-      title: output.block_name,
-      description: "Sensitive action — awaiting review",
-    };
-  }
-
-  return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
-    title: "Error",
-    titleClassName: "text-red-500",
-  };
 }

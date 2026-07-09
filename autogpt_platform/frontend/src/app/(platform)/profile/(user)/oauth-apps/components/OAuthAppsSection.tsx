@@ -1,7 +1,11 @@
 "use client";
 
 import { useRef } from "react";
-import { UploadIcon, ImageIcon, PowerIcon } from "@phosphor-icons/react";
+import {
+  UploadIcon,
+  ImageIcon,
+  PowerIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { useOAuthApps } from "./useOAuthApps";

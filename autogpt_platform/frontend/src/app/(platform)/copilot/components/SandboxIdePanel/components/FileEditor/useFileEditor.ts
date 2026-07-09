@@ -4,6 +4,7 @@ import {
   useGetV2GetSandboxFile,
   usePutV2WriteSandboxFile,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { SandboxFileResponse } from "@/app/api/__generated__/models/sandboxFileResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -19,7 +20,7 @@ export function useFileEditor(sessionId: string, path: string) {
   } = useGetV2GetSandboxFile(
     sessionId,
     { path },
-    { query: { select: (res) => res.data } },
+    { query: { select: (res) => res.data as SandboxFileResponse } },
   );
 
   useEffect(() => {

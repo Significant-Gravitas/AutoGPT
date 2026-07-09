@@ -1,6 +1,6 @@
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { CubeIcon, PackageIcon } from "@phosphor-icons/react";
+import { PackageIcon } from "@/components/atoms/AGPTIcon/icons";
 import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
 
 export function parseOutput(output: unknown): BlockListResponse | null {
@@ -51,14 +51,16 @@ export function getAnimationText(part: FindBlockToolPart): string {
 export function ToolIcon({
   isStreaming,
   isError,
+  weight = "regular",
 }: {
   isStreaming?: boolean;
   isError?: boolean;
+  weight?: "regular" | "bold";
 }) {
   return (
     <PackageIcon
       size={14}
-      weight="regular"
+      weight={weight}
       className={
         isError
           ? "text-red-500"
@@ -68,8 +70,4 @@ export function ToolIcon({
       }
     />
   );
-}
-
-export function AccordionIcon() {
-  return <CubeIcon size={32} weight="light" />;
 }

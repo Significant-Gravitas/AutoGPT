@@ -59,7 +59,12 @@ class Flag(str, Enum):
     # current_session_id line stays regardless — only the followup
     # surface is gated.  Default-on.
     COPILOT_SCHEDULED_FOLLOWUPS = "copilot-scheduled-followups"
-    COPILOT_SANDBOX_IDE = "copilot-sandbox-ide"
+    # Gates the Sandbox IDE panel (filesystem/diff/download/terminal
+    # routes). Frontend-side this is a child of ``autogpt-new-layout`` — the
+    # IDE only surfaces when both are on — but the backend routes gate on
+    # this flag alone. Named to match the frontend so the pair can be
+    # retired together when the IDE is removed.
+    AUTOGPT_NEW_LAYOUT_IDE = "autogpt-new-layout-ide"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
@@ -471,6 +476,14 @@ def create_feature_flag_dependency(
         The user_id is automatically injected from JWT authentication if present,
         or None for anonymous access.
         """
+        # A ``FORCE_FLAG_<NAME>`` env override always wins — it's the local-dev
+        # bypass and must work even when LaunchDarkly is not configured.
+        override = _env_flag_override(flag_key)
+        if override is not None:
+            if not override:
+                raise HTTPException(status_code=404, detail="Feature not available")
+            return
+
         # For routes that don't require authentication, use anonymous context
         check_user_id = user_id or "anonymous"
 

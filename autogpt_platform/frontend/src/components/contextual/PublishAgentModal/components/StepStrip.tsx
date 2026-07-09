@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckIcon } from "@phosphor-icons/react";
+import { CheckIcon } from "@/components/atoms/AGPTIcon/icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 

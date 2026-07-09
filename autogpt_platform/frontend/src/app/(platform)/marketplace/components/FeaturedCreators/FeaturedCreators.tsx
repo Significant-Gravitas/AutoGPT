@@ -2,7 +2,7 @@
 
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 import { Text } from "@/components/atoms/Text/Text";
-import { UserCircleDashedIcon } from "@phosphor-icons/react";
+import { UserCircleDashedIcon } from "@/components/atoms/AGPTIcon/icons";
 import { CreatorCard } from "../CreatorCard/CreatorCard";
 import { useFeaturedCreators } from "./useFeaturedCreators";
 

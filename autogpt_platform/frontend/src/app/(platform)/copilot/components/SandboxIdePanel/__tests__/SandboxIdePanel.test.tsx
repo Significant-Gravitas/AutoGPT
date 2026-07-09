@@ -18,7 +18,10 @@ const { flagMock, toastMock, treePathSpy, writeSpy } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { COPILOT_SANDBOX_IDE: "copilot-sandbox-ide" },
+  Flag: {
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+    AUTOGPT_NEW_LAYOUT_IDE: "autogpt-new-layout-ide",
+  },
   useGetFlag: () => flagMock(),
 }));
 
@@ -30,11 +33,41 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   return { ...actual, toast: (...args: unknown[]) => toastMock(...args) };
 });
 
-vi.mock("@xterm/xterm", () => ({ Terminal: vi.fn() }));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: vi.fn() }));
+// The terminal now lives inside the Files tab, so it mounts by default.
+// happy-dom has no canvas/real WebSocket — provide functional stubs.
+vi.mock("@xterm/xterm", () => ({
+  Terminal: class {
+    cols = 80;
+    rows = 24;
+    loadAddon() {}
+    open() {}
+    onData() {}
+    write() {}
+    dispose() {}
+  },
+}));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit() {}
+  },
+}));
 vi.mock("@/lib/supabase/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "t" })),
+  getCurrentUser: vi.fn(async () => null),
+  validateSession: vi.fn(async () => null),
 }));
+
+class MockWebSocket {
+  static OPEN = 1;
+  binaryType = "";
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onmessage: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  send() {}
+  close() {}
+}
+vi.stubGlobal("WebSocket", MockWebSocket);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -46,7 +79,7 @@ vi.mock("next/navigation", () => ({
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 function Harness({ sessionId = "s1" }: { sessionId?: string }) {
-  const enabled = useGetFlag(Flag.COPILOT_SANDBOX_IDE);
+  const enabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT_IDE);
   return enabled ? <SandboxIdePanel sessionId={sessionId} /> : null;
 }
 
@@ -78,10 +111,17 @@ function changesHandler(files: { path: string; status: string }[]) {
 }
 
 function fileHandler() {
-  return http.get("*/api/chat/sessions/:sessionId/sandbox/file", ({ request }) => {
-    const path = new URL(request.url).searchParams.get("path") ?? "";
-    return HttpResponse.json({ path, content: "print('hi')", truncated: false });
-  });
+  return http.get(
+    "*/api/chat/sessions/:sessionId/sandbox/file",
+    ({ request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      return HttpResponse.json({
+        path,
+        content: "print('hi')",
+        truncated: false,
+      });
+    },
+  );
 }
 
 function writeHandler() {
@@ -100,10 +140,14 @@ beforeEach(() => {
   toastMock.mockClear();
   treePathSpy.mockClear();
   writeSpy.mockClear();
-  const store = useCopilotUIStore.getState();
-  store.openSandboxIde();
-  store.setSandboxIdeTab("files");
-  store.selectSandboxFile(null);
+  useCopilotUIStore.setState((state) => ({
+    sandboxIdePanel: {
+      ...state.sandboxIdePanel,
+      isOpen: true,
+      selectedFilePath: null,
+      openFilePaths: [],
+    },
+  }));
   server.use(treeHandler(), changesHandler([]), fileHandler(), writeHandler());
 });
 
@@ -111,7 +155,7 @@ describe("SandboxIdePanel", () => {
   test("renders nothing when the flag is off", () => {
     flagMock.mockReturnValue(false);
     render(<Harness />);
-    expect(screen.queryByText("Sandbox")).toBeNull();
+    expect(screen.queryByLabelText("Close sandbox panel")).toBeNull();
   });
 
   test("renders root tree entries and lazy-loads a directory on expand", async () => {
@@ -142,16 +186,26 @@ describe("SandboxIdePanel", () => {
     await waitFor(() => expect(fileSpy).toHaveBeenCalledWith("a.py"));
   });
 
-  test("changes tab lists changed files, and shows empty state when none", async () => {
-    server.use(changesHandler([{ path: "a.py", status: "M" }]));
+  test("opening a file adds it as a tab and loads its content", async () => {
+    const fileSpy = vi.fn();
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId/sandbox/file", ({ request }) => {
+        const path = new URL(request.url).searchParams.get("path") ?? "";
+        fileSpy(path);
+        return HttpResponse.json({
+          path,
+          content: "print('hi')",
+          truncated: false,
+        });
+      }),
+    );
     render(<Harness />);
-    fireEvent.click(screen.getByRole("tab", { name: /changes/i }));
-    expect(await screen.findByText("a.py")).toBeTruthy();
-
-    server.use(changesHandler([]));
-    useCopilotUIStore.getState().setSandboxIdeTab("files");
-    useCopilotUIStore.getState().setSandboxIdeTab("changes");
-    expect(await screen.findByText("No changes yet")).toBeTruthy();
+    fireEvent.click(await screen.findByText("a.py"));
+    // Tree row + newly-opened tab (+ breadcrumb) all show the name.
+    await waitFor(() =>
+      expect(screen.getAllByText("a.py").length).toBeGreaterThanOrEqual(2),
+    );
+    expect(fileSpy).toHaveBeenCalledWith("a.py");
   });
 
   test("Ctrl+S saves the edited file and toasts success", async () => {

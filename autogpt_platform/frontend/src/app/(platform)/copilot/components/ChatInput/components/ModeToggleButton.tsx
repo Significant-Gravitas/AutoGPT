@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Brain, Lightning } from "@phosphor-icons/react";
+import { Brain, Lightning } from "@/components/atoms/AGPTIcon/icons";
 import {
   Tooltip,
   TooltipContent,
@@ -29,7 +29,7 @@ export function ModeToggleButton({ mode, onToggle }: Props) {
           aria-pressed={isExtended}
           onClick={onToggle}
           className={cn(
-            "ml-2 inline-flex h-9 min-w-[6rem] items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
+            "ml-2 inline-flex h-8 min-w-[5.5rem] items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
             isExtended ? "text-purple-500" : "text-orange-600",
           )}
           aria-label={

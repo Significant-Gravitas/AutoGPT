@@ -4,7 +4,7 @@ import { Separator } from "@/components/__legacy__/ui/separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/atoms/AGPTIcon/icons";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { AgentImages } from "../AgentImages/AgentImage";
 import { AgentInfo } from "../AgentInfo/AgentInfo";

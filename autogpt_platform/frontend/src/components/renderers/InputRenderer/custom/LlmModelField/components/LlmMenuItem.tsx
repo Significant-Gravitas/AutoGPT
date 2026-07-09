@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, CheckIcon } from "@/components/atoms/AGPTIcon/icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 

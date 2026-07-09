@@ -7,6 +7,7 @@ import {
   useDeleteWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
@@ -15,7 +16,7 @@ import {
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { DownloadSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useCopilotUIStore } from "../../../../store";
 import { downloadArtifact } from "../../../ArtifactPanel/downloadArtifact";
 import { DeleteFileDialog } from "./components/DeleteFileDialog";
@@ -141,7 +142,20 @@ export function FilesTab({ sessionId }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-3">
+      <div
+        className="flex max-h-96 min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // White scroll fade: the "cover" layers scroll with the content and
+        // hide the fade at the very top/bottom, so a soft white fade only
+        // shows on the edge that still has more to scroll.
+        style={{
+          background:
+            "linear-gradient(#ffffff 30%, rgba(255,255,255,0)), linear-gradient(rgba(255,255,255,0), #ffffff 70%) 0 100%, linear-gradient(#ffffff, rgba(255,255,255,0)), linear-gradient(rgba(255,255,255,0), #ffffff) 0 100%",
+          backgroundColor: "#ffffff",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "100% 40px, 100% 40px, 100% 20px, 100% 20px",
+          backgroundAttachment: "local, local, scroll, scroll",
+        }}
+      >
         {uploaded.length > 0 && (
           <FileSection
             title="Uploaded files"
@@ -194,7 +208,9 @@ function FileSection({
   return (
     <section>
       <div className="flex items-center justify-between pb-1">
-        <h3 className="text-sm font-medium text-zinc-900">{title}</h3>
+        <Text variant="body-medium" as="h3" className="text-zinc-900">
+          {title}
+        </Text>
         {action}
       </div>
       <div className="flex flex-col">{children}</div>

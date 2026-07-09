@@ -8,7 +8,7 @@ import {
   FoldersIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import {
   File as TreeFile,
   Folder as TreeFolder,
@@ -240,24 +240,16 @@ function AccordionContent({ output }: { output: FolderToolOutput }) {
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-function getAccordionTitle(output: FolderToolOutput): string {
-  if (isFolderCreated(output)) return `Created "${output.folder.name}"`;
-  if (isFolderList(output))
-    return `${output.count} folder${output.count !== 1 ? "s" : ""}`;
-  if (isFolderUpdated(output)) return `Updated "${output.folder.name}"`;
-  if (isFolderMoved(output)) return `Moved "${output.folder.name}"`;
-  if (isFolderDeleted(output)) return "Folder deleted";
-  if (isAgentsMoved(output))
-    return `Moved ${output.count} agent${output.count !== 1 ? "s" : ""}`;
-  return "Folder operation";
-}
-
 function getAccordionIcon(output: FolderToolOutput) {
   if (isFolderCreated(output))
-    return <FolderPlusIcon size={32} weight="light" />;
-  if (isFolderList(output)) return <FoldersIcon size={32} weight="light" />;
-  if (isFolderDeleted(output)) return <TrashIcon size={32} weight="light" />;
-  return <FolderIcon size={32} weight="light" />;
+    return (
+      <FolderPlusIcon size={14} weight="bold" className="text-neutral-400" />
+    );
+  if (isFolderList(output))
+    return <FoldersIcon size={14} weight="bold" className="text-neutral-400" />;
+  if (isFolderDeleted(output))
+    return <TrashIcon size={14} weight="bold" className="text-neutral-400" />;
+  return <FolderIcon size={14} weight="bold" className="text-neutral-400" />;
 }
 
 export function FolderTool({ part }: Props) {
@@ -272,6 +264,23 @@ export function FolderTool({ part }: Props) {
   const hasContent =
     part.state === "output-available" && !!output && !isErrorOutput(output);
 
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasContent && output) {
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={getAccordionIcon(output)}
+          title={text}
+          defaultExpanded={isFolderList(output)}
+        >
+          <AccordionContent output={output} />
+        </ToolAccordion>
+      </div>
+    );
+  }
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -281,16 +290,6 @@ export function FolderTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
-
-      {hasContent && output && (
-        <ToolAccordion
-          icon={getAccordionIcon(output)}
-          title={getAccordionTitle(output)}
-          defaultExpanded={isFolderList(output)}
-        >
-          <AccordionContent output={output} />
-        </ToolAccordion>
-      )}
     </div>
   );
 }

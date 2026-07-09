@@ -14,7 +14,7 @@ import {
   CopyIcon,
   DotsThreeOutlineVerticalIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useReactFlow } from "@xyflow/react";
 
 type Props = {

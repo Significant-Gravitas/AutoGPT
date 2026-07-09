@@ -1,6 +1,6 @@
 "use client";
 
-import { RocketLaunchIcon } from "@phosphor-icons/react";
+import { RocketLaunchIcon } from "@/components/atoms/AGPTIcon/icons";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";

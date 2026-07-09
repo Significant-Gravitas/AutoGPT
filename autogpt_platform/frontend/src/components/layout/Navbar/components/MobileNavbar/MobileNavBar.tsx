@@ -12,7 +12,7 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
+import { CaretUpIcon, ListIcon } from "@/components/atoms/AGPTIcon/icons";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import * as React from "react";

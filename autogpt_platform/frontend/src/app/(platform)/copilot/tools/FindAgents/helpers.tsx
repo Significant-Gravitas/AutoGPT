@@ -4,11 +4,9 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
-  FolderOpenIcon,
   MagnifyingGlassIcon,
   SquaresFourIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { ToolUIPart } from "ai";
 
 export interface FindAgentInput {
@@ -178,10 +176,4 @@ export function ToolIcon({
       }
     />
   );
-}
-
-export function AccordionIcon({ toolType }: { toolType?: FindAgentsToolType }) {
-  const { source } = getSourceLabelFromToolType(toolType);
-  const IconComponent = source === "library" ? FolderOpenIcon : StorefrontIcon;
-  return <IconComponent size={32} weight="light" />;
 }

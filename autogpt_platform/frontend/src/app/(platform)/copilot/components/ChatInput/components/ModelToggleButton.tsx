@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Cpu } from "@phosphor-icons/react";
+import { Cpu } from "@/components/atoms/AGPTIcon/icons";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +24,7 @@ export function ModelToggleButton({ model, onToggle }: Props) {
           aria-pressed={isAdvanced}
           onClick={onToggle}
           className={cn(
-            "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
+            "inline-flex h-8 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
             isAdvanced ? "text-emerald-500" : "text-sky-600 hover:text-sky-700",
           )}
           aria-label={

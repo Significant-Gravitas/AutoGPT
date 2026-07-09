@@ -93,6 +93,15 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  // New layout uses a flat white chat surface; the classic layout keeps the
+  // `#fafafa` tint. Both literals are spelled out so Tailwind's JIT keeps them.
+  const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  const surfaceBgClass = isNewLayout ? "bg-white" : "bg-[#fafafa]";
+  const surfaceGradientToClass = isNewLayout ? "to-white" : "to-[#fafafa]";
+  const surfaceBlurClass = isNewLayout ? "bg-white/80" : "bg-[#fafafa]/80";
+  const surfaceBackdropClass = isNewLayout
+    ? "bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)]"
+    : "bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)]";
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -159,7 +168,9 @@ export const ChatContainer = ({
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
+            <div
+              className={`mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col ${surfaceBgClass}`}
+            >
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -184,7 +195,9 @@ export const ChatContainer = ({
                 transition={{ duration: 0.3 }}
                 className="relative px-3 pb-2 pt-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#fafafa]" />
+                <div
+                  className={`pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent ${surfaceGradientToClass}`}
+                />
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
@@ -193,9 +206,11 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      className={`absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] ${surfaceBackdropClass} backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]`}
                     >
-                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                      <div
+                        className={`absolute inset-x-10 bottom-0 h-28 rounded-full ${surfaceBlurClass} blur-2xl`}
+                      />
                       <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
                     <div className="pointer-events-auto relative px-3">

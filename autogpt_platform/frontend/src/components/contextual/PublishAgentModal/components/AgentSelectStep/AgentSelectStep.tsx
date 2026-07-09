@@ -7,7 +7,7 @@ import {
   CheckCircleIcon,
   PlusIcon,
   WarningCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";

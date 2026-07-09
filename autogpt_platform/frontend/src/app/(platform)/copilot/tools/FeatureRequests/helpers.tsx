@@ -1,9 +1,7 @@
 import {
-  CheckCircleIcon,
-  LightbulbIcon,
   MagnifyingGlassIcon,
   PlusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 
 /* ------------------------------------------------------------------ */
@@ -141,28 +139,6 @@ export function isErrorOutput(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Accordion metadata                                                 */
-/* ------------------------------------------------------------------ */
-
-export function getAccordionTitle(
-  toolType: FeatureRequestToolType,
-  output: FeatureRequestOutput,
-): string {
-  if (toolType === "tool-search_feature_requests") {
-    if (isSearchResultsOutput(output)) return "Feature requests";
-    if (isNoResultsOutput(output)) return "No feature requests found";
-    return "Feature request search error";
-  }
-  if (isCreatedOutput(output)) {
-    return output.is_new_issue
-      ? "Feature request created"
-      : "Added to feature request";
-  }
-  if (isErrorOutput(output)) return "Feature request error";
-  return "Feature request";
-}
-
-/* ------------------------------------------------------------------ */
 /*  Animation text                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -256,16 +232,4 @@ export function ToolIcon({
       }
     />
   );
-}
-
-export function AccordionIcon({
-  toolType,
-}: {
-  toolType: FeatureRequestToolType;
-}) {
-  const IconComponent =
-    toolType === "tool-create_feature_request"
-      ? CheckCircleIcon
-      : LightbulbIcon;
-  return <IconComponent size={32} weight="light" />;
 }

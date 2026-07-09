@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon } from "@/components/atoms/AGPTIcon/icons";
+import { MicIcon } from "@/components/icons/MicIcon";
 
 interface Props {
   isRecording: boolean;
@@ -28,7 +29,7 @@ export function RecordingButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
+        "!size-9 border-0 bg-transparent !p-0 text-zinc-500 hover:border-0 hover:bg-zinc-100 hover:text-zinc-700 focus-visible:ring-0",
         disabled && "opacity-40",
         isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
         isTranscribing && "bg-zinc-100 text-zinc-400",
@@ -38,7 +39,7 @@ export function RecordingButton({
       {isTranscribing ? (
         <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
       ) : (
-        <MicrophoneIcon className="h-4 w-4" weight="bold" />
+        <MicIcon className="h-4 w-4" />
       )}
     </Button>
   );

@@ -11,7 +11,7 @@ import {
   FrameCornersIcon,
   MinusIcon,
   PlusIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/AGPTIcon/icons";
 import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -105,7 +105,7 @@ export const CustomControls = memo(
     return (
       <div
         data-id="custom-controls"
-        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-white px-1 py-2 shadow-lg"
+        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full border border-zinc-200 bg-white px-1 py-2"
       >
         {controls.map((control) => (
           <Tooltip key={control.id} delayDuration={0}>

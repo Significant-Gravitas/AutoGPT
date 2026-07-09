@@ -2,7 +2,7 @@ import {
   BrainIcon,
   GaugeIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/AGPTIcon/icons";
 import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarketingPanel";
 
 export function LoginMarketingPanel() {

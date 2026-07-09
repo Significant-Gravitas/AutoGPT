@@ -12,7 +12,7 @@ import {
   FolderOpen as FolderOpenIcon,
   Plus as PlusIcon,
   UploadSimple as UploadSimpleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useRef } from "react";
 
 interface Props {
@@ -44,7 +44,7 @@ export function AttachmentMenu({
   }
 
   const buttonClassName = cn(
-    "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
+    "h-9 w-9 p-1.5 border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
     disabled && "opacity-40",
   );
 
@@ -69,7 +69,7 @@ export function AttachmentMenu({
               disabled={disabled}
               className={buttonClassName}
             >
-              <PlusIcon className="h-4 w-4" weight="bold" />
+              <PlusIcon className="h-5 w-5" weight="bold" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-[14rem]">
@@ -93,7 +93,7 @@ export function AttachmentMenu({
           onClick={openFilePicker}
           className={buttonClassName}
         >
-          <PlusIcon className="h-4 w-4" weight="bold" />
+          <PlusIcon className="h-5 w-5" weight="bold" />
         </Button>
       )}
     </>

@@ -5,7 +5,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { ShareIcon } from "@phosphor-icons/react";
+import { ShareIcon } from "@/components/atoms/AGPTIcon/icons";
 import { usePublishToMarketplace } from "./usePublishToMarketplace";
 
 interface Props {

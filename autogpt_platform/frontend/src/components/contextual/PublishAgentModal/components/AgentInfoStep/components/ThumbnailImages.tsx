@@ -7,7 +7,7 @@ import {
   MagicWandIcon,
   PlusIcon,
   XIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import Image from "next/image";
 import { useThumbnailImages } from "./useThumbnailImages";
 import { cn } from "@/lib/utils";

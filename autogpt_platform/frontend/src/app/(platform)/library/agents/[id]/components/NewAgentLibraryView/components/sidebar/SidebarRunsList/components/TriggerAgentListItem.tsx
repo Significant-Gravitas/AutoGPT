@@ -1,7 +1,7 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { RobotIcon } from "@phosphor-icons/react";
+import { RobotIcon } from "@/components/atoms/AGPTIcon/icons";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";

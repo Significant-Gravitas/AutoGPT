@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@/components/atoms/Input/Input";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useLibrarySearchbar } from "./useLibrarySearchbar";
 
 interface Props {

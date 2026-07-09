@@ -6,7 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { Pulse } from "@phosphor-icons/react";
+import { Pulse } from "@/components/atoms/AGPTIcon/icons";
 import { ActivityDropdown } from "./components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
 import { useAgentActivityDropdown } from "./useAgentActivityDropdown";

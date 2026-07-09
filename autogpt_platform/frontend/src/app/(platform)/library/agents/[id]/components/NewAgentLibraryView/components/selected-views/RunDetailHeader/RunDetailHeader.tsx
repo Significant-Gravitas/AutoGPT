@@ -1,7 +1,10 @@
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
-import { ClockClockwiseIcon, FlaskIcon } from "@phosphor-icons/react";
+import {
+  ClockClockwiseIcon,
+  FlaskIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";

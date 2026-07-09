@@ -17,7 +17,7 @@ import {
   CheckIcon,
   CopyIcon,
   DownloadIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import React, { FC } from "react";
 import { useNodeDataViewer } from "./useNodeDataViewer";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";

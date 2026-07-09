@@ -5,7 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ClockIcon } from "@phosphor-icons/react";
+import { ClockIcon } from "@/components/atoms/AGPTIcon/icons";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 import { useScheduleGraph } from "./useScheduleGraph";

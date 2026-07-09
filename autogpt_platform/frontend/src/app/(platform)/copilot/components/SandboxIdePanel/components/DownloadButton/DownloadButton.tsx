@@ -1,7 +1,10 @@
 "use client";
 
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { CircleNotchIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import {
+  CircleNotchIcon,
+  DownloadSimpleIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 
 interface Props {
@@ -46,7 +49,7 @@ export function DownloadButton({ sessionId }: Props) {
       aria-label="Download workspace"
       disabled={isDownloading}
       onClick={handleDownload}
-      className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50"
+      className="rounded p-1 text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
     >
       {isDownloading ? (
         <CircleNotchIcon size={16} className="animate-spin" />

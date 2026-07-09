@@ -15,7 +15,7 @@ import {
   CreditCardIcon,
   QuestionIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 type Link = {
   name: string;

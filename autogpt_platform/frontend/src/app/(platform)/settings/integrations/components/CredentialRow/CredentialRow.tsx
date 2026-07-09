@@ -5,7 +5,7 @@ import {
   SpinnerIcon,
   SquareIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 import {
   Tooltip,

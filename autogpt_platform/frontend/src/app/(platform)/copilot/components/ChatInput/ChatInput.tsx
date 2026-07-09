@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@/components/atoms/AGPTIcon/icons";
 import { ChangeEvent, KeyboardEvent, useEffect, useState } from "react";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import {
@@ -24,8 +24,10 @@ import {
   partitionAttachments,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
+import { formatCodeRef } from "../../helpers/codeRefs";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { BlockCaret } from "./components/BlockCaret";
+import { CodeRefChips } from "./components/CodeRefChips";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -83,10 +85,14 @@ export function ChatInput({
     setCopilotLlmModel,
     isDryRun,
     setIsDryRun,
+    pendingCodeRefs,
+    removeCodeRef,
+    clearCodeRefs,
   } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
@@ -144,6 +150,7 @@ export function ChatInput({
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasAttachments = attachments.length > 0;
+  const hasCodeRefs = pendingCodeRefs.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -159,16 +166,21 @@ export function ChatInput({
   } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      const codeContext = pendingCodeRefs.map(formatCodeRef).join("\n\n");
+      const fullMessage = codeContext
+        ? codeContext + (message ? `\n\n${message}` : "")
+        : message;
       await onSend(
-        message,
+        fullMessage,
         localFiles.length > 0 ? localFiles : undefined,
         workspaceFiles.length > 0 ? workspaceFiles : undefined,
       );
       // Only clear after successful send (onSend throws on failure)
       setAttachments([]);
+      clearCodeRefs();
     },
     disabled: isTextareaDisabled,
-    canSendEmpty: hasAttachments,
+    canSendEmpty: hasAttachments || hasCodeRefs,
     inputId,
   });
 
@@ -217,7 +229,7 @@ export function ChatInput({
 
   const canSend =
     !disabled &&
-    (!!value.trim() || hasAttachments) &&
+    (!!value.trim() || hasAttachments || hasCodeRefs) &&
     !isRecording &&
     !isTranscribing;
 
@@ -260,11 +272,14 @@ export function ChatInput({
       )}
       <InputGroup
         className={cn(
-          "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          isNewLayout
+            ? "overflow-hidden rounded-[2.5rem] border-zinc-100 shadow-sm [corner-shape:squircle] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+            : "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        <CodeRefChips refs={pendingCodeRefs} onRemove={removeCodeRef} />
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}

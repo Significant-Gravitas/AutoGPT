@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CookieIcon } from "@phosphor-icons/react/dist/ssr";
+import { CookieIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useCookieConsentBanner } from "./useCookieConsentBanner";
 import { CookieSettingsModal } from "./components/CookieSettingsModal/CookieSettingsModal";
 

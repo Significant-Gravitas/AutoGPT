@@ -8,7 +8,7 @@ import {
   CopyIcon,
   DotsThreeOutlineVerticalIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {

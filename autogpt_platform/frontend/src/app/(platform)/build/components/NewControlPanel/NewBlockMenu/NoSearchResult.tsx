@@ -1,4 +1,4 @@
-import { SmileySadIcon } from "@phosphor-icons/react";
+import { SmileySadIcon } from "@/components/atoms/AGPTIcon/icons";
 
 export const NoSearchResult = () => {
   return (

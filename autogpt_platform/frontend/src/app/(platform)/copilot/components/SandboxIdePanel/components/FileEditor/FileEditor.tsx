@@ -1,9 +1,19 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
-import { type KeyboardEvent } from "react";
-import { editorTheme, getLanguageExtension } from "../../helpers";
+import CodeMirror from "@uiw/react-codemirror";
+import { type KeyboardEvent, useState } from "react";
+import { useCopilotUIStore } from "../../../../store";
+import {
+  codeHighlighting,
+  editorTheme,
+  getLanguageExtension,
+} from "../../helpers";
+import { LineCommentPopover } from "./LineCommentPopover";
+import {
+  type LineCommentRequest,
+  lineCommentButton,
+} from "./lineCommentButton";
 import { useFileEditor } from "./useFileEditor";
 
 interface Props {
@@ -14,6 +24,23 @@ interface Props {
 export function FileEditor({ sessionId, path }: Props) {
   const { value, setValue, save, isLoading, isError, truncated } =
     useFileEditor(sessionId, path);
+  const insertIntoChatInput = useCopilotUIStore((s) => s.insertIntoChatInput);
+  const addCodeRef = useCopilotUIStore((s) => s.addCodeRef);
+  const [commentRequest, setCommentRequest] =
+    useState<LineCommentRequest | null>(null);
+
+  function handleAddCodeRef(instruction: string) {
+    if (!commentRequest) return;
+    addCodeRef({
+      id: crypto.randomUUID(),
+      path,
+      fromLine: commentRequest.fromLine,
+      toLine: commentRequest.toLine,
+      code: commentRequest.code,
+    });
+    if (instruction) insertIntoChatInput(instruction);
+    setCommentRequest(null);
+  }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
@@ -49,16 +76,23 @@ export function FileEditor({ sessionId, path }: Props) {
           onChange={setValue}
           editable={!truncated}
           readOnly={truncated}
-          theme="light"
           basicSetup={{ foldGutter: false, highlightActiveLine: !truncated }}
           extensions={[
             editorTheme,
-            EditorView.lineWrapping,
+            codeHighlighting,
+            lineCommentButton({ onRequestComment: setCommentRequest }),
             ...getLanguageExtension(path),
           ]}
-          className="h-full text-[13px]"
+          className="h-full p-2 text-[13px]"
         />
       </div>
+      {commentRequest ? (
+        <LineCommentPopover
+          request={commentRequest}
+          onSubmit={handleAddCodeRef}
+          onClose={() => setCommentRequest(null)}
+        />
+      ) : null}
     </div>
   );
 }

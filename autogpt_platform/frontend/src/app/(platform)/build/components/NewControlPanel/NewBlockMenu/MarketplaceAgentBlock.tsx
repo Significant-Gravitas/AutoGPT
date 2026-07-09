@@ -9,7 +9,7 @@ import {
   ArrowSquareOutIcon,
   CircleNotchIcon,
   PlusIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;

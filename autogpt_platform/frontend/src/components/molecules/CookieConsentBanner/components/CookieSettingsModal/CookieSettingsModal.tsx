@@ -5,7 +5,7 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { COOKIE_CATEGORIES } from "@/services/consent/cookies";
-import { CheckIcon } from "@phosphor-icons/react/dist/ssr";
+import { CheckIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useCookieSettingsModal } from "./useCookieSettingsModal";
 
 interface Props {

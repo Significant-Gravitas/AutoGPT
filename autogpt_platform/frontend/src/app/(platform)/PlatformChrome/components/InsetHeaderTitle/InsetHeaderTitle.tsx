@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { FolderIcon, type Icon } from "@phosphor-icons/react";
+import { FolderIcon, type Icon } from "@/components/atoms/AGPTIcon/icons";
 import { usePathname } from "next/navigation";
 
 const ROUTE_TITLES: Record<string, { title: string; icon: Icon }> = {
@@ -26,7 +26,7 @@ export function InsetHeaderTitle() {
 
   return (
     <div className="flex items-center gap-2">
-      <TitleIcon className="size-5 text-zinc-800" />
+      <TitleIcon className="size-[1.125rem] text-zinc-800" />
       <Text variant="large-medium">{entry.title}</Text>
     </div>
   );

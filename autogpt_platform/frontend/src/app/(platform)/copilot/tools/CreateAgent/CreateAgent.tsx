@@ -112,7 +112,7 @@ export function CreateAgentTool({ part }: Props) {
       {output &&
         !isError &&
         (isAgentPreviewOutput(output) || isSuggestedGoalOutput(output)) && (
-          <ToolAccordion {...getAccordionMeta(output)}>
+          <ToolAccordion variant="compact" {...getAccordionMeta(output)}>
             {isAgentPreviewOutput(output) && (
               <ContentGrid>
                 <ContentMessage>{output.message}</ContentMessage>

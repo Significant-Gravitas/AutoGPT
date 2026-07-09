@@ -1,6 +1,6 @@
 "use client";
 
-import { CurrencyDollarSimpleIcon } from "@phosphor-icons/react";
+import { CurrencyDollarSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 
 type Props = {
   tier?: number;

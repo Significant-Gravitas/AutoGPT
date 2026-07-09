@@ -2,7 +2,7 @@
 
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { cn } from "@/lib/utils";
-import { ArrowUpIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useRef } from "react";
 import { TourUpsellBanner } from "../TourUpsellBanner/TourUpsellBanner";
 

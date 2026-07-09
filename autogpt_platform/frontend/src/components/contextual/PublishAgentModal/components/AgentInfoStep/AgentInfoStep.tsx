@@ -23,7 +23,7 @@ import {
   SparkleIcon,
   StorefrontIcon,
   WarningCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import * as React from "react";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";

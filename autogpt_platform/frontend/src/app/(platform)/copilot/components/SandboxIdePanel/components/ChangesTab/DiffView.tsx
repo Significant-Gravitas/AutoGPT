@@ -35,5 +35,7 @@ export function DiffView({ path, original, modified }: Props) {
     return () => view.destroy();
   }, [path, original, modified]);
 
-  return <div ref={containerRef} className="h-full overflow-auto text-[13px]" />;
+  return (
+    <div ref={containerRef} className="h-full overflow-auto text-[13px]" />
+  );
 }

@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CheckIcon, StarIcon } from "@phosphor-icons/react";
+import { CheckIcon, StarIcon } from "@/components/atoms/AGPTIcon/icons";
 import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";

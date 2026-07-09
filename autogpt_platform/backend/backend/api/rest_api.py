@@ -534,8 +534,9 @@ class AgentServer(backend.util.service.AppProcess):
             http="httptools",
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
+            # Enable WebSockets: the chat sandbox terminal (sandbox_routes) serves
+            # a PTY over a WebSocket on this app.
+            ws="auto",
         )
 
     @staticmethod

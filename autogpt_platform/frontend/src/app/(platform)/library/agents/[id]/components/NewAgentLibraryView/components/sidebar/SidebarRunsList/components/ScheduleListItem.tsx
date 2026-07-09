@@ -2,7 +2,7 @@
 
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { ClockClockwiseIcon } from "@phosphor-icons/react";
+import { ClockClockwiseIcon } from "@/components/atoms/AGPTIcon/icons";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { ScheduleActionsDropdown } from "./ScheduleActionsDropdown";

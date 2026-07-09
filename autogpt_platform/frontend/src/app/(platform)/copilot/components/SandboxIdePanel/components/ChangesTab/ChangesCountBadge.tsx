@@ -1,6 +1,7 @@
 "use client";
 
 import { useGetV2GetSandboxChanges } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { SandboxChangesResponse } from "@/app/api/__generated__/models/sandboxChangesResponse";
 
 interface Props {
   sessionId: string;
@@ -8,7 +9,9 @@ interface Props {
 
 export function ChangesCountBadge({ sessionId }: Props) {
   const { data: count } = useGetV2GetSandboxChanges(sessionId, {
-    query: { select: (res) => res.data.files.length },
+    query: {
+      select: (res) => (res.data as SandboxChangesResponse).files.length,
+    },
   });
 
   if (!count) return null;

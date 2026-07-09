@@ -10,7 +10,7 @@ import {
   FlaskIcon,
   PlayIcon,
   StopIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useShallow } from "zustand/react/shallow";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 import { useRunGraph } from "./useRunGraph";

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
+import { UploadSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useUploadSkillButton } from "./useUploadSkillButton";
 
 export function UploadSkillButton() {

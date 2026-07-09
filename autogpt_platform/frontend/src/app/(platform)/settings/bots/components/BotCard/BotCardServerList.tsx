@@ -1,4 +1,8 @@
-import { TrashIcon, UsersIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import {
+  TrashIcon,
+  UsersIcon,
+  WarningCircleIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

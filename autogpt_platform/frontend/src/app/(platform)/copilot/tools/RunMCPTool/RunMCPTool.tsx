@@ -1,6 +1,5 @@
 "use client";
 
-import { PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -66,6 +65,23 @@ export function RunMCPToolComponent({ part }: Props) {
       ? (output as MCPErrorOutput)
       : null;
 
+  // Tool execution result: the accordion header IS the tool row — a single
+  // compact line (icon + summary + caret), matching the bash-style tools.
+  if (mcpToolOutput) {
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={<ToolIcon />}
+          title={text}
+          description={`from ${serverHost(mcpToolOutput.server_url)}`}
+        >
+          <MCPToolOutputCard output={mcpToolOutput} />
+        </ToolAccordion>
+      </div>
+    );
+  }
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -101,17 +117,6 @@ export function RunMCPToolComponent({ part }: Props) {
           output={setupRequirementsOutput}
           retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
         />
-      )}
-
-      {/* Tool execution result */}
-      {mcpToolOutput && (
-        <ToolAccordion
-          icon={<PlugsConnectedIcon size={32} weight="light" />}
-          title={mcpToolOutput.tool_name}
-          description={`from ${serverHost(mcpToolOutput.server_url)}`}
-        >
-          <MCPToolOutputCard output={mcpToolOutput} />
-        </ToolAccordion>
       )}
 
       {/* Discovery output: consumed by the agent automatically — no user-facing UI */}

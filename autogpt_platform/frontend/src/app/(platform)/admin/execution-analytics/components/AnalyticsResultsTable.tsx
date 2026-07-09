@@ -4,7 +4,11 @@ import React, { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { DownloadIcon, EyeIcon, CopyIcon } from "@phosphor-icons/react";
+import {
+  DownloadIcon,
+  EyeIcon,
+  CopyIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 

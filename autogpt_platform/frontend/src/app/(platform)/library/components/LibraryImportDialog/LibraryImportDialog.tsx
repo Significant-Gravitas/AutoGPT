@@ -6,7 +6,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
+import { UploadSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 import { useLibraryUploadAgentDialog } from "../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
 import AgentUploadTab from "./components/AgentUploadTab/AgentUploadTab";

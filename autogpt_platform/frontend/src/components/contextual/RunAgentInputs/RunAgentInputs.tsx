@@ -19,7 +19,7 @@ import {
   determineDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { PlusIcon, XIcon } from "@phosphor-icons/react";
+import { PlusIcon, XIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 
 /**

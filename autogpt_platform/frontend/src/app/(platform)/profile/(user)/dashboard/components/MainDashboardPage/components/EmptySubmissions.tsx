@@ -1,4 +1,4 @@
-import { Tray } from "@phosphor-icons/react/dist/ssr";
+import { Tray } from "@/components/atoms/AGPTIcon/icons";
 import { Text } from "@/components/atoms/Text/Text";
 
 export function EmptySubmissions() {

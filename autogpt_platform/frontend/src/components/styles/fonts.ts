@@ -1,4 +1,4 @@
-import { Poppins } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import { GeistSans as geistSans } from "geist/font/sans";
 import { GeistMono as geistMono } from "geist/font/mono";
 
@@ -10,8 +10,16 @@ const poppins = Poppins({
   preload: true,
 });
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+  preload: true,
+});
+
 export const fonts = {
   poppins,
+  inter,
   sans: geistSans,
   mono: geistMono,
 };

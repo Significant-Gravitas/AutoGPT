@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/atoms/AGPTIcon/icons";
 import { STATUS_LABELS } from "../../helpers";
 import { DiffView } from "./DiffView";
 import { useChangesTab } from "./useChangesTab";

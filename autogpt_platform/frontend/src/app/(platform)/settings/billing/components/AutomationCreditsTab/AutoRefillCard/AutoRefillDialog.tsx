@@ -1,6 +1,6 @@
 "use client";
 
-import { WarningIcon } from "@phosphor-icons/react";
+import { WarningIcon } from "@/components/atoms/AGPTIcon/icons";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";

@@ -2,7 +2,7 @@
 
 Everything here is lazy and on-demand — we never sync the whole sandbox
 folder. The E2B API key stays server-side; the browser only talks to these
-endpoints. All routes are gated behind the ``copilot-sandbox-ide`` flag.
+endpoints. All routes are gated behind the ``autogpt-new-layout-ide`` flag.
 """
 
 import asyncio
@@ -44,7 +44,7 @@ router = APIRouter()
 
 # Stored in a module-level variable so tests can override the exact
 # dependency object via ``app.dependency_overrides``.
-sandbox_flag_dependency = create_feature_flag_dependency(Flag.COPILOT_SANDBOX_IDE)
+sandbox_flag_dependency = create_feature_flag_dependency(Flag.AUTOGPT_NEW_LAYOUT_IDE)
 
 _MAX_FILE_BYTES = 1024 * 1024
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
@@ -342,7 +342,7 @@ async def sandbox_terminal(websocket: WebSocket, session_id: str) -> None:
         await websocket.close(code=4002, reason="Invalid token")
         return
 
-    if not await is_feature_enabled(Flag.COPILOT_SANDBOX_IDE, user_id):
+    if not await is_feature_enabled(Flag.AUTOGPT_NEW_LAYOUT_IDE, user_id):
         await websocket.close(code=4005, reason="Feature not available")
         return
 

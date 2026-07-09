@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/AGPTIcon/icons";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";

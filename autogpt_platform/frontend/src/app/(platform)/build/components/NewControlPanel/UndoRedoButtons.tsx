@@ -4,7 +4,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
+import {
+  ArrowUUpLeftIcon,
+  ArrowUUpRightIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { useHistoryStore } from "../../stores/historyStore";
 import { ControlPanelButton } from "./ControlPanelButton";
 
@@ -48,7 +51,7 @@ export const UndoRedoButtons = () => {
             disabled={!canUndo()}
             onClick={undo}
           >
-            <ArrowUUpLeftIcon className="size-5" />
+            <ArrowUUpLeftIcon className="size-4" />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
@@ -62,7 +65,7 @@ export const UndoRedoButtons = () => {
             disabled={!canRedo()}
             onClick={redo}
           >
-            <ArrowUUpRightIcon className="size-5" />
+            <ArrowUUpRightIcon className="size-4" />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Redo</TooltipContent>

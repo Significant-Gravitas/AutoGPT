@@ -19,7 +19,9 @@ export function useTerminalTab(sessionId: string) {
 
     function sendResize() {
       if (!term || !ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      ws.send(
+        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
+      );
     }
 
     async function start() {

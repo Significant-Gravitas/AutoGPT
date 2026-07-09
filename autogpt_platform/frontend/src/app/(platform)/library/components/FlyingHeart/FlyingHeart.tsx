@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { HeartIcon } from "@phosphor-icons/react";
+import { HeartIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useEffect, useState } from "react";
 
 interface FlyingHeartProps {
