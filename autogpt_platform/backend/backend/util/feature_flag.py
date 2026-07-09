@@ -501,19 +501,22 @@ def create_feature_flag_dependency(
                 logger.debug(
                     f"LaunchDarkly not initialized, using default {flag_key.value}={default}"
                 )
-                if not default:
-                    raise HTTPException(status_code=404, detail="Feature not available")
-                return
-
-            is_enabled = await is_feature_enabled(flag_key, check_user_id, default)
-
-            if not is_enabled:
-                raise HTTPException(status_code=404, detail="Feature not available")
+                is_enabled = default
+            else:
+                is_enabled = await is_feature_enabled(flag_key, check_user_id, default)
         except Exception as e:
+            # A LaunchDarkly hiccup (unknown flag, network/init error) must not
+            # take down the endpoint — fall back to the flag's default, matching
+            # the not-configured / not-initialized branches. Raising here also
+            # used to swallow the intended 404 below (HTTPException is an
+            # Exception), turning a disabled flag into a spurious 500.
             logger.warning(
                 f"LaunchDarkly error for flag {flag_key.value}: {e}, using default={default}"
             )
-            raise HTTPException(status_code=500, detail="Failed to check feature flag")
+            is_enabled = default
+
+        if not is_enabled:
+            raise HTTPException(status_code=404, detail="Feature not available")
 
     return check_feature_flag
 

@@ -540,7 +540,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     _autoOpenKnownIds.add(ref.id);
   },
   sandboxIdePanel: {
-    isOpen: true,
+    // Closed on load — the panel only opens on an explicit user action
+    // (the header toggle, or opening an artifact).
+    isOpen: false,
     activeTab: "files",
     selectedFilePath: null,
     openFilePaths: [],
