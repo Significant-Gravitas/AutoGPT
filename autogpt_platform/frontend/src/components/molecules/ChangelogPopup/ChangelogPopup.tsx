@@ -2,10 +2,21 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRight, ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChangelogModal } from "./components/ChangelogModal";
 import { useChangelog } from "./useChangelog";
 
 export function ChangelogPopup() {
+  // On the new sidebar layout the changelog lives at the bottom of the sidebar
+  // (SidebarChangelog), so the floating toast steps aside to avoid a duplicate
+  // entry point. Gating here (rather than mounting the toast) also stops its
+  // fetch/auto-dismiss timers from running — and from marking releases "seen".
+  const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  if (isNewLayout) return null;
+  return <ChangelogPopupToast />;
+}
+
+function ChangelogPopupToast() {
   const {
     isVisible,
     latestEntry,

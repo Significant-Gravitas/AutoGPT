@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { CHANGELOG_BASE_URL } from "../changelog-constants";
-import { ChangelogEntry } from "../useChangelog";
+import { ChangelogEntry } from "../helpers";
 
 const ChangelogMarkdownContent = dynamic(
   () =>
@@ -107,7 +107,9 @@ export function ChangelogModal({
                   className="max-w-[200px] truncate rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
                   value={selectedEntry?.slug || ""}
                   onChange={(e) => {
-                    const entry = entries.find((en) => en.slug === e.target.value);
+                    const entry = entries.find(
+                      (en) => en.slug === e.target.value,
+                    );
                     if (entry) onSelectEntry(entry);
                   }}
                 >

@@ -26,6 +26,7 @@ import {
   StorefrontIcon,
 } from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { SidebarChangelog } from "@/components/molecules/ChangelogPopup/SidebarChangelog";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
@@ -238,6 +239,8 @@ export function AppSidebar(props: Props) {
           </motion.div>
         </motion.div>
       </SidebarContent>
+
+      <SidebarChangelog />
 
       <SidebarOrgSwitcher />
 

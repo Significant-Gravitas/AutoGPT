@@ -3,38 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AUTO_DISMISS_MS,
-  CHANGELOG_BASE_URL,
   CHANGELOG_INDEX_MD_URL,
   STORAGE_KEY,
 } from "./changelog-constants";
-
-export interface ChangelogEntry {
-  slug: string;
-  dateRange: string;
-  highlights: string;
-  url: string;
-  mdUrl: string;
-}
-
-function parseChangelogIndex(md: string): ChangelogEntry[] {
-  const entries: ChangelogEntry[] = [];
-  const rowPattern =
-    /\|\s*\[([^\]]+)\]\((https?:\/\/[^)]+\/changelog\/changelog\/([a-z0-9-]+))\)\s*\|\s*([^|]+)\|/g;
-
-  let match;
-  while ((match = rowPattern.exec(md)) !== null) {
-    const [, dateRange, url, slug, highlights] = match;
-    entries.push({
-      slug,
-      dateRange: dateRange.trim(),
-      highlights: highlights.trim(),
-      url,
-      mdUrl: `${CHANGELOG_BASE_URL}/${slug}.md`,
-    });
-  }
-
-  return entries;
-}
+import {
+  ChangelogEntry,
+  cleanEntryMarkdown,
+  parseChangelogIndex,
+} from "./helpers";
 
 export function useChangelog() {
   const [isVisible, setIsVisible] = useState(false);
@@ -116,14 +92,7 @@ export function useChangelog() {
       .then((res) => (res.ok ? res.text() : ""))
       .then((md) => {
         if (controller.signal.aborted) return;
-        const cleaned = md
-          .replace(/\{%.*?%\}/gs, "")
-          .replace(/<figure>|<\/figure>/g, "")
-          .replace(/<figcaption>.*?<\/figcaption>/gs, "")
-          .replace(/<details>/g, "\n---\n")
-          .replace(/<\/details>/g, "")
-          .replace(/<summary>(.*?)<\/summary>/g, "### $1");
-        setEntryMarkdown(cleaned);
+        setEntryMarkdown(cleanEntryMarkdown(md));
       })
       .catch(() => {
         /* abort or network error — non-critical */

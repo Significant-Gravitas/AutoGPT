@@ -6,16 +6,11 @@ import remarkGfm from "remark-gfm";
 export function ChangelogMarkdownContent({ markdown }: { markdown: string }) {
   return (
     <ReactMarkdown
-      className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-accent prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-img:rounded-lg prose-img:shadow-md"
+      className="prose prose-sm prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-accent prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-img:rounded-lg prose-img:shadow-md max-w-none"
       remarkPlugins={[remarkGfm]}
       components={{
         a: ({ children, href, ...props }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            {...props}
-          >
+          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
             {children}
           </a>
         ),
