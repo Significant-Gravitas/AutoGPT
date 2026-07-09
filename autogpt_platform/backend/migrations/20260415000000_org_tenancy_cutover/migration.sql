@@ -1,66 +1,25 @@
 -- Org tenancy cutover migration
--- 1. Backfill NULL organizationId on AgentGraph, AgentGraphExecution, StoreListing
--- 2. Make organizationId NOT NULL on those tables
--- 3. Update unique constraint on StoreListing from (owningUserId, slug) to (owningOrgId, slug)
+-- 1. (REMOVED) Backfill of NULL organizationId — owned by the app-startup
+--    backfill (backend/data/org_migration.py), NOT this migration
+-- 2. Make organizationId NOT NULL on those tables (deferred)
+-- 3. Update unique constraint on StoreListing from (owningUserId, slug) to (owningOrgId, slug) (deferred)
 -- 4. Update views: StoreAgent (add owning_org_id), StoreSubmission (add organization_id),
 --    Creator → StoreCreator (add org_name)
 
 -- Prisma wraps each migration file in its own transaction.
 
 -- ==========================================================================
--- Step 1: Backfill NULL organizationId values
+-- Step 1: (REMOVED) Backfill NULL organizationId values
 -- ==========================================================================
-
--- AgentGraph: set organizationId from the user's personal org
-UPDATE "AgentGraph" ag
-SET "organizationId" = (
-    SELECT o.id
-    FROM "Organization" o
-    JOIN "OrgMember" om ON om."orgId" = o.id
-    WHERE om."userId" = ag."userId"
-      AND o."isPersonal" = true
-    LIMIT 1
-)
-WHERE ag."organizationId" IS NULL;
-
--- AgentGraphExecution: same strategy
-UPDATE "AgentGraphExecution" ex
-SET "organizationId" = (
-    SELECT o.id
-    FROM "Organization" o
-    JOIN "OrgMember" om ON om."orgId" = o.id
-    WHERE om."userId" = ex."userId"
-      AND o."isPersonal" = true
-    LIMIT 1
-)
-WHERE ex."organizationId" IS NULL;
-
--- StoreListing: backfill owningOrgId from user's personal org
-UPDATE "StoreListing" sl
-SET "owningOrgId" = (
-    SELECT o.id
-    FROM "Organization" o
-    JOIN "OrgMember" om ON om."orgId" = o.id
-    WHERE om."userId" = sl."owningUserId"
-      AND o."isPersonal" = true
-    LIMIT 1
-)
-WHERE sl."owningOrgId" IS NULL;
-
--- Safety: warn if any rows still have NULL (backfill missed them).
--- Uses WARNING instead of EXCEPTION so fresh CI databases (no data to backfill) don't abort.
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM "AgentGraph" WHERE "organizationId" IS NULL) THEN
-        RAISE WARNING 'AgentGraph has rows with NULL organizationId after backfill';
-    END IF;
-    IF EXISTS (SELECT 1 FROM "AgentGraphExecution" WHERE "organizationId" IS NULL) THEN
-        RAISE WARNING 'AgentGraphExecution has rows with NULL organizationId after backfill';
-    END IF;
-    IF EXISTS (SELECT 1 FROM "StoreListing" WHERE "owningOrgId" IS NULL) THEN
-        RAISE WARNING 'StoreListing has rows with NULL owningOrgId after backfill';
-    END IF;
-END $$;
+-- The backfill CANNOT do useful work at migration time: personal orgs are
+-- created by the app-startup backfill (org_migration.py), which runs AFTER
+-- migrations — so Organization/OrgMember are always empty here and the
+-- per-row subquery resolved to NULL for every row. On the dev database that
+-- meant a full-table rewrite of AgentGraphExecution setting NULL back to
+-- NULL, which blew the platform's 2-minute statement timeout and failed the
+-- whole deploy (SQLSTATE 57014). The startup backfill performs the real
+-- assignment in bounded batches once orgs exist; reads stay null-tolerant
+-- until then.
 
 -- ==========================================================================
 -- Step 2: (DEFERRED) Make organizationId NOT NULL

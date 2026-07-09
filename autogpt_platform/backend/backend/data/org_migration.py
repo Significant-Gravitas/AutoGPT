@@ -16,7 +16,9 @@ same moment the User row is created — not only when the backfill runs.
 import logging
 import re
 import time
-from typing import LiteralString
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, LiteralString
+from uuid import uuid4
 
 from prisma.errors import UniqueViolationError
 from prisma.models import Organization
@@ -24,7 +26,26 @@ from prisma.models import Organization
 from backend.data.db import prisma, transaction
 from backend.util.json import SafeJson
 
+if TYPE_CHECKING:
+    from backend.data.redis_client import AsyncRedisClient
+
 logger = logging.getLogger(__name__)
+
+_MIGRATION_LOCK_RENEW_SCRIPT: LiteralString = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("EXPIRE", KEYS[1], tonumber(ARGV[2]))
+end
+return 0
+"""
+
+_MIGRATION_LOCK_RELEASE_SCRIPT: LiteralString = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("DEL", KEYS[1])
+end
+return 0
+"""
+
+_RenewLock = Callable[[], Awaitable[None]]
 
 
 def _sanitize_slug(raw: str) -> str:
@@ -431,12 +452,59 @@ async def migrate_credit_transactions() -> int:
     return result
 
 
-async def _assign_team_tenancy(table_sql: "LiteralString") -> int:
+async def _assign_team_tenancy(
+    table_sql: "LiteralString", renew_lock: _RenewLock | None = None
+) -> int:
     """Assign organizationId + teamId on a single table's unassigned rows."""
-    return await prisma.execute_raw(table_sql)
+    updated = await prisma.execute_raw(table_sql)
+    if renew_lock is not None:
+        await renew_lock()
+    return updated
 
 
-async def assign_resources_to_teams() -> dict[str, int]:
+async def _assign_org_tenancy(
+    table_sql: "LiteralString", renew_lock: _RenewLock | None = None
+) -> int:
+    """Assign organizationId on a single table's unassigned rows."""
+    updated = await prisma.execute_raw(table_sql)
+    if renew_lock is not None:
+        await renew_lock()
+    return updated
+
+
+async def _assign_team_tenancy_batched(
+    table_name: str,
+    batch_sql: "LiteralString",
+    renew_lock: _RenewLock | None = None,
+) -> int:
+    """Run a LIMIT-batched tenancy UPDATE until no assignable rows remain.
+
+    Large tables (executions, chat sessions) cannot be updated in one
+    statement: a full-table UPDATE exceeds the platform's statement timeout
+    (Supabase kills it at 2 minutes — this is what failed the dev deploy).
+    ``batch_sql`` must limit itself via a subquery that only selects rows
+    its own JOIN will match, so every selected row updates and the loop is
+    guaranteed to terminate — rows whose user has no personal org are never
+    selected and can't spin it. Each pass is idempotent
+    (``organizationId IS NULL`` filter), so an interrupted run resumes
+    cleanly on the next startup.
+    """
+    total = 0
+    while True:
+        updated = await prisma.execute_raw(batch_sql)
+        if renew_lock is not None:
+            await renew_lock()
+        if updated == 0:
+            return total
+        total += updated
+        logger.info(
+            f"Org migration: assigned {total} {table_name} rows so far (batched)"
+        )
+
+
+async def assign_resources_to_teams(
+    renew_lock: _RenewLock | None = None,
+) -> dict[str, int]:
     """Set organizationId and teamId on all tenant-bound rows that lack them.
 
     Uses the user's personal org and its default workspace.
@@ -455,29 +523,58 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["AgentGraphExecution"] = await _assign_team_tenancy(
+    results["AgentGraphExecution"] = await _assign_team_tenancy_batched(
+        "AgentGraphExecution",
         """
         UPDATE "AgentGraphExecution" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
-        WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        WHERE t."userId" = om."userId" AND om."isOwner" = true
+          AND t."id" IN (
+              SELECT t2."id"
+              FROM "AgentGraphExecution" t2
+              JOIN "OrgMember" om2
+                ON om2."userId" = t2."userId" AND om2."isOwner" = true
+              JOIN "Organization" o2
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+              JOIN "Team" w2
+                ON w2."orgId" = o2."id" AND w2."isDefault" = true
+              WHERE t2."organizationId" IS NULL
+              LIMIT 10000
+          )
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["ChatSession"] = await _assign_team_tenancy(
+    results["ChatSession"] = await _assign_team_tenancy_batched(
+        "ChatSession",
         """
         UPDATE "ChatSession" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
-        WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        WHERE t."userId" = om."userId" AND om."isOwner" = true
+          AND t."id" IN (
+              SELECT t2."id"
+              FROM "ChatSession" t2
+              JOIN "OrgMember" om2
+                ON om2."userId" = t2."userId" AND om2."isOwner" = true
+              JOIN "Organization" o2
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+              JOIN "Team" w2
+                ON w2."orgId" = o2."id" AND w2."isDefault" = true
+              WHERE t2."organizationId" IS NULL
+              LIMIT 10000
+          )
+        """,
+        renew_lock=renew_lock,
     )
 
     results["AgentPreset"] = await _assign_team_tenancy(
@@ -488,7 +585,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["LibraryAgent"] = await _assign_team_tenancy(
@@ -499,7 +597,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["LibraryFolder"] = await _assign_team_tenancy(
@@ -510,7 +609,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["IntegrationWebhook"] = await _assign_team_tenancy(
@@ -521,7 +621,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["APIKey"] = await _assign_team_tenancy(
@@ -532,7 +633,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     results["UserNotificationBatch"] = await _assign_team_tenancy(
@@ -543,32 +645,35 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     # --- Tables needing only organizationId ---
 
-    results["BuilderSearchHistory"] = await prisma.execute_raw(
+    results["BuilderSearchHistory"] = await _assign_org_tenancy(
         """
         UPDATE "BuilderSearchHistory" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["PendingHumanReview"] = await prisma.execute_raw(
+    results["PendingHumanReview"] = await _assign_org_tenancy(
         """
         UPDATE "PendingHumanReview" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
-    results["StoreListingVersion"] = await prisma.execute_raw(
+    results["StoreListingVersion"] = await _assign_org_tenancy(
         """
         UPDATE "StoreListingVersion" slv
         SET "organizationId" = o."id"
@@ -577,7 +682,8 @@ async def assign_resources_to_teams() -> dict[str, int]:
         JOIN "OrgMember" om ON om."userId" = sl."owningUserId" AND om."isOwner" = true
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
         WHERE slv."id" = v."id" AND slv."organizationId" IS NULL
-        """
+        """,
+        renew_lock=renew_lock,
     )
 
     for table_name, count in results.items():
@@ -736,6 +842,39 @@ async def migrate_credentials_to_table() -> int:
     return created
 
 
+async def _renew_migration_lock(
+    redis: "AsyncRedisClient",
+    lock_key: str,
+    lock_token: str,
+    lock_timeout: int,
+) -> None:
+    renewed = await redis.execute_command(
+        "EVAL",
+        _MIGRATION_LOCK_RENEW_SCRIPT,
+        1,
+        lock_key,
+        lock_token,
+        str(lock_timeout),
+    )
+    if renewed != 1:
+        raise RuntimeError("Org migration lost the distributed bootstrap lock")
+
+
+async def _release_migration_lock(
+    redis: "AsyncRedisClient",
+    lock_key: str,
+    lock_token: str,
+) -> bool:
+    released = await redis.execute_command(
+        "EVAL",
+        _MIGRATION_LOCK_RELEASE_SCRIPT,
+        1,
+        lock_key,
+        lock_token,
+    )
+    return released == 1
+
+
 async def run_migration() -> None:
     """Orchestrate the full org bootstrap migration. Idempotent.
 
@@ -746,25 +885,36 @@ async def run_migration() -> None:
 
     redis = await get_redis_async()
     lock_key = "org-migration-bootstrap-lock"
+    lock_token = str(uuid4())
     lock_timeout = 300  # 5 min max
 
     # SET NX EX — acquire only if no other pod holds it
-    acquired = await redis.set(lock_key, "1", nx=True, ex=lock_timeout)
+    acquired = await redis.set(lock_key, lock_token, nx=True, ex=lock_timeout)
     if not acquired:
         logger.info("Org migration: another pod holds the lock, skipping")
         return
+
+    async def renew_lock() -> None:
+        await _renew_migration_lock(redis, lock_key, lock_token, lock_timeout)
 
     try:
         start = time.monotonic()
         logger.info("Org migration: starting personal org bootstrap")
 
         orgs_created = await create_orgs_for_existing_users()
+        await renew_lock()
         await migrate_org_balances()
+        await renew_lock()
         await migrate_credit_transactions()
-        resource_counts = await assign_resources_to_teams()
+        await renew_lock()
+        resource_counts = await assign_resources_to_teams(renew_lock=renew_lock)
+        await renew_lock()
         await migrate_store_listings()
+        await renew_lock()
         await create_store_listing_aliases()
+        await renew_lock()
         await migrate_credentials_to_table()
+        await renew_lock()
 
         total_resources = sum(resource_counts.values())
         elapsed = time.monotonic() - start
@@ -775,6 +925,6 @@ async def run_migration() -> None:
         )
     finally:
         try:
-            await redis.delete(lock_key)
+            await _release_migration_lock(redis, lock_key, lock_token)
         except Exception:
             pass

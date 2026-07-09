@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.data.org_migration import (
+    _release_migration_lock,
+    _renew_migration_lock,
     _resolve_unique_slug,
     _sanitize_slug,
     assign_resources_to_teams,
@@ -709,6 +711,11 @@ class TestAssignResources:
             new_callable=AsyncMock,
             return_value=10,
         )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=10,
+        )
         mock_prisma.execute_raw = AsyncMock(return_value=10)
 
         result = await assign_resources_to_teams()
@@ -729,9 +736,121 @@ class TestAssignResources:
             new_callable=AsyncMock,
             return_value=0,
         )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
         mock_prisma.execute_raw = AsyncMock(return_value=0)
         result = await assign_resources_to_teams()
         assert all(v == 0 for v in result.values())
+
+    @pytest.mark.asyncio
+    async def test_big_tables_use_batched_updates(self, mock_prisma, mocker):
+        """AgentGraphExecution and ChatSession must go through the batched
+        path — a single full-table UPDATE exceeds the platform statement
+        timeout on production-sized data (this took down the dev deploy)."""
+        single = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        batched = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+
+        await assign_resources_to_teams()
+
+        batched_tables = {call.args[0] for call in batched.await_args_list}
+        assert batched_tables == {"AgentGraphExecution", "ChatSession"}
+        single_sql = " ".join(call.args[0] for call in single.await_args_list)
+        assert '"AgentGraphExecution"' not in single_sql
+        assert 'UPDATE "ChatSession"' not in single_sql
+
+    @pytest.mark.asyncio
+    async def test_renews_after_each_assignment_statement(self, mock_prisma):
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+        renew_lock = AsyncMock()
+
+        result = await assign_resources_to_teams(renew_lock=renew_lock)
+
+        assert len(result) == 12
+        assert mock_prisma.execute_raw.await_count == 12
+        assert renew_lock.await_count == 12
+
+
+class TestBatchedTenancy:
+    @pytest.mark.asyncio
+    async def test_loops_until_no_rows_remain(self, mock_prisma):
+        from backend.data.org_migration import _assign_team_tenancy_batched
+
+        mock_prisma.execute_raw = AsyncMock(side_effect=[3, 2, 0])
+
+        total = await _assign_team_tenancy_batched(
+            "SomeTable", 'UPDATE "SomeTable" SET x = 1'
+        )
+
+        assert total == 5
+        assert mock_prisma.execute_raw.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_renews_lock_after_each_batch_statement(self, mock_prisma):
+        from backend.data.org_migration import _assign_team_tenancy_batched
+
+        mock_prisma.execute_raw = AsyncMock(side_effect=[3, 2, 0])
+        renew_lock = AsyncMock()
+
+        total = await _assign_team_tenancy_batched(
+            "SomeTable", 'UPDATE "SomeTable" SET x = 1', renew_lock=renew_lock
+        )
+
+        assert total == 5
+        assert renew_lock.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_table_returns_zero_after_one_probe(self, mock_prisma):
+        from backend.data.org_migration import _assign_team_tenancy_batched
+
+        mock_prisma.execute_raw = AsyncMock(return_value=0)
+
+        total = await _assign_team_tenancy_batched(
+            "SomeTable", 'UPDATE "SomeTable" SET x = 1'
+        )
+
+        assert total == 0
+        assert mock_prisma.execute_raw.await_count == 1
+
+
+class TestMigrationLock:
+    @pytest.mark.asyncio
+    async def test_renew_extends_owned_lock(self):
+        redis = AsyncMock()
+        redis.execute_command = AsyncMock(return_value=1)
+
+        await _renew_migration_lock(redis, "lock-key", "token", 300)
+
+        redis.execute_command.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_renew_fails_loud_when_lock_is_lost(self):
+        redis = AsyncMock()
+        redis.execute_command = AsyncMock(return_value=0)
+
+        with pytest.raises(RuntimeError, match="lost the distributed bootstrap lock"):
+            await _renew_migration_lock(redis, "lock-key", "token", 300)
+
+    @pytest.mark.asyncio
+    async def test_release_uses_token_safe_script(self):
+        redis = AsyncMock()
+        redis.execute_command = AsyncMock(return_value=0)
+
+        released = await _release_migration_lock(redis, "lock-key", "token")
+
+        assert released is False
+        redis.delete.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +875,16 @@ class TestRunMigration:
     @pytest.mark.asyncio
     async def test_calls_all_steps_in_order(self, mocker):
         calls: list[str] = []
+        redis = AsyncMock()
+        redis.set = AsyncMock(return_value=True)
+        redis.execute_command = AsyncMock(return_value=1)
+
+        mocker.patch(
+            "backend.data.redis_client.get_redis_async",
+            new_callable=AsyncMock,
+            return_value=redis,
+        )
+        mocker.patch("backend.data.org_migration.uuid4", return_value="lock-token")
 
         mocker.patch(
             "backend.data.org_migration.create_orgs_for_existing_users",
@@ -769,11 +898,15 @@ class TestRunMigration:
             "backend.data.org_migration.migrate_credit_transactions",
             new_callable=lambda: lambda: _track(calls, "credits", 0),
         )
+
+        async def assign_resources(renew_lock=None):
+            if renew_lock is not None:
+                await renew_lock()
+            return await _track(calls, "assign_resources", {"AgentGraph": 5})
+
         mocker.patch(
             "backend.data.org_migration.assign_resources_to_teams",
-            new_callable=lambda: lambda: _track(
-                calls, "assign_resources", {"AgentGraph": 5}
-            ),
+            new=assign_resources,
         )
         mocker.patch(
             "backend.data.org_migration.migrate_store_listings",
@@ -790,6 +923,10 @@ class TestRunMigration:
 
         await run_migration()
 
+        redis.set.assert_awaited_once_with(
+            "org-migration-bootstrap-lock", "lock-token", nx=True, ex=300
+        )
+        assert redis.execute_command.await_count == 9
         assert calls == [
             "create_orgs",
             "balances",
