@@ -8,6 +8,8 @@ import {
   FileText,
   Heartbeat,
   CalculatorIcon,
+  Brain,
+  RobotIcon,
 } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -51,9 +53,19 @@ const sidebarLinkGroups = [
         icon: <FileText className="h-6 w-6" />,
       },
       {
+        text: "Bot Analytics",
+        href: "/admin/bots",
+        icon: <RobotIcon className="h-6 w-6" />,
+      },
+      {
         text: "Block Cost Estimates",
         href: "/admin/block-cost-estimates",
         icon: <CalculatorIcon className="h-6 w-6" />,
+      },
+      {
+        text: "Memory Inspector",
+        href: "/admin/memory",
+        icon: <Brain className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",

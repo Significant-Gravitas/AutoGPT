@@ -211,3 +211,4 @@ test-screenshots/
 # (``.ign.testing.lock``), and any future ``.ign*`` variant.
 .ign*
 **/.ign*
+.claude/scheduled_tasks.lock

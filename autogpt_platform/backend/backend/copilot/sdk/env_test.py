@@ -475,3 +475,30 @@ class TestAutocompactPctOverrideConfigurable:
             result = build_sdk_env(model=None)
 
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+
+# ---------------------------------------------------------------------------
+# Defensive guard — local transport must never reach the SDK env builder
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSdkEnvLocalTransportGuard:
+    """``use_local=True`` is incompatible with the SDK CLI's Anthropic
+    wire protocol, so reaching ``build_sdk_env`` under that transport
+    indicates an upstream routing bug (the request layer should have
+    downgraded to baseline). The builder fails loudly rather than
+    constructing a doomed subprocess env."""
+
+    def test_local_transport_raises(self):
+        cfg = _make_config(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://host.docker.internal:11434/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(
+                RuntimeError, match=r"transport 'local'.*doesn't support the SDK"
+            ):
+                build_sdk_env()

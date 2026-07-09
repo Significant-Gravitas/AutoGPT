@@ -8,11 +8,17 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    invalidate_mcp_credential,
     normalize_mcp_url,
     parse_mcp_content,
     server_host,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.file_ref import (
+    FILE_REF_PREFIX,
+    FileRefExpansionError,
+    expand_file_refs_in_args,
+)
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
 from backend.util.request import HTTPClientError, validate_url_host
 
@@ -37,6 +43,21 @@ _AUTH_STATUS_CODES = {401, 403}
 def _service_name(host: str) -> str:
     """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
     return host[4:] if host.startswith("mcp.") else host
+
+
+def _args_contain_file_ref(value: Any) -> bool:
+    """True if any nested string in *value* holds an ``@@agptfile:`` token.
+
+    Cheap pre-check so we only pay the ``list_tools`` round-trip (for
+    type-aware expansion) when a reference is actually present.
+    """
+    if isinstance(value, str):
+        return FILE_REF_PREFIX in value
+    if isinstance(value, dict):
+        return any(_args_contain_file_ref(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_args_contain_file_ref(item) for item in value)
+    return False
 
 
 class RunMCPToolTool(BaseTool):
@@ -79,6 +100,16 @@ class RunMCPToolTool(BaseTool):
                     "type": "object",
                     "description": "Arguments matching the tool's input schema.",
                 },
+                "surface_connect_card": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, return only the sign-in card for this "
+                        "server (no MCPClient call). Use for 'connect to "
+                        "<service>' intent without an action — the card "
+                        "indicates connected/not-connected state and offers "
+                        "Reconnect."
+                    ),
+                },
             },
             "required": ["server_url"],
         }
@@ -94,6 +125,7 @@ class RunMCPToolTool(BaseTool):
         server_url: str = "",
         tool_name: str = "",
         tool_arguments: dict[str, Any] | None = None,
+        surface_connect_card: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         server_url = server_url.strip()
@@ -175,6 +207,67 @@ class RunMCPToolTool(BaseTool):
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
         auth_token = creds.access_token.get_secret_value() if creds else None
 
+        # "Just connect" intent: return only the setup card so the user
+        # gets a visible Connect/Reconnect affordance even when there's
+        # nothing else to render (previously: discovery succeeded
+        # silently and nothing rendered, so the model's "click Connect"
+        # promise mismatched the empty UI).
+        #
+        # When stored creds exist we still need to know whether they're
+        # *valid* before promising the user "Connected" — a stale row
+        # left over from a server-side revocation would mislead the UI
+        # into showing the Reconnect pill, then 401 on the next real
+        # tool call (see the John bug this PR also fixes).  Cheapest
+        # verification is ``MCPClient.initialize`` (one round-trip, no
+        # tool listing); on 401/403 we treat the cred as stale, drop the
+        # dead row, and surface the not-connected card so the user
+        # re-auths in one step.  Other HTTP errors (timeouts, 5xx) are
+        # treated as "unknown, optimistically connected" — the next
+        # real tool call will self-correct via the same invalidate path.
+        if surface_connect_card:
+            connected = creds is not None
+            if creds is not None:
+                probe_client = MCPClient(server_url, auth_token=auth_token)
+                try:
+                    try:
+                        await probe_client.initialize()
+                    except HTTPClientError as probe_err:
+                        if probe_err.status_code in _AUTH_STATUS_CODES:
+                            await invalidate_mcp_credential(user_id, creds.id)
+                            connected = False
+                        # Other HTTP statuses (5xx, redirects, etc.) →
+                        # leave the cred in place and report
+                        # "optimistically connected" — the user can
+                        # still try; the real tool call will surface
+                        # the actual error if it persists.
+                    except Exception:
+                        # Any non-HTTP failure (asyncio.TimeoutError,
+                        # network errors, MCPClientError, etc.) — also
+                        # treat as "unknown, optimistically connected".
+                        # Important: we MUST NOT let a transient server
+                        # outage delete the user's still-valid cred.
+                        # Catching ``Exception`` broadly here keeps the
+                        # surface_connect_card fast-path resilient
+                        # instead of propagating an uncaught exception
+                        # out of ``_execute``.
+                        logger.debug(
+                            "MCP probe for surface_connect_card failed for %s — "
+                            "reporting optimistically connected",
+                            server_host(server_url),
+                            exc_info=True,
+                        )
+                finally:
+                    # Terminate the probe session on the MCP server.
+                    # Without DELETE, every surface_connect_card call
+                    # leaks a session row server-side; under load this
+                    # accumulates (sentry MEDIUM bug-prediction).
+                    # ``close`` is best-effort and swallows its own
+                    # errors.
+                    await probe_client.close()
+            return self._build_setup_requirements(
+                server_url, session_id, connected=connected
+            )
+
         client = MCPClient(server_url, auth_token=auth_token)
 
         try:
@@ -186,12 +279,27 @@ class RunMCPToolTool(BaseTool):
             else:
                 # Stage 2: Execute the selected tool
                 return await self._execute_tool(
-                    client, server_url, tool_name, resolved_tool_arguments, session_id
+                    client,
+                    server_url,
+                    tool_name,
+                    resolved_tool_arguments,
+                    session_id,
+                    user_id,
+                    session,
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES and not creds:
-                # Server requires auth and user has no stored credentials
+            if e.status_code in _AUTH_STATUS_CODES:
+                # 401/403 → user needs to (re)authenticate.  Fire the setup
+                # card whether or not we have a stored credential row: when
+                # `creds` is None the user has never connected, and when it
+                # is non-None the stored token has been revoked / expired
+                # server-side without us knowing (refresh_if_needed only
+                # refreshes when local `access_token_expires_at` says so).
+                # If we have a stale row, delete it so the next attempt
+                # doesn't loop on the same dead token.
+                if creds is not None:
+                    await invalidate_mcp_credential(user_id, creds.id)
                 return self._build_setup_requirements(server_url, session_id)
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
@@ -258,8 +366,17 @@ class RunMCPToolTool(BaseTool):
         tool_name: str,
         tool_arguments: dict[str, Any],
         session_id: str,
+        user_id: str | None,
+        session: ChatSession,
     ) -> MCPToolOutputResponse | ErrorResponse:
         """Execute a specific tool on an already-initialized MCPClient.
+
+        Before dispatch, any ``@@agptfile:`` references in *tool_arguments* are
+        expanded inline so the external server receives the real file contents
+        rather than the literal token. The opaque ``tool_arguments`` object is
+        skipped by the SDK-level wrapper expansion (it has no declared
+        properties), so it must be expanded here using the tool's own schema —
+        mirroring how RunBlockTool expands block inputs.
 
         Parses the MCP content response into a plain Python value:
         - text items: parsed as JSON when possible, kept as str otherwise
@@ -268,6 +385,21 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        if _args_contain_file_ref(tool_arguments):
+            input_schema = await self._lookup_tool_schema(client, tool_name)
+            try:
+                tool_arguments = await expand_file_refs_in_args(
+                    tool_arguments, user_id, session, input_schema=input_schema
+                )
+            except FileRefExpansionError as exc:
+                return ErrorResponse(
+                    message=(
+                        f"Failed to resolve file reference: {exc}. "
+                        "Ensure the file exists before referencing it."
+                    ),
+                    session_id=session_id,
+                )
+
         result = await client.call_tool(tool_name, tool_arguments)
 
         if result.is_error:
@@ -292,12 +424,48 @@ class RunMCPToolTool(BaseTool):
             session_id=session_id,
         )
 
+    async def _lookup_tool_schema(
+        self,
+        client: MCPClient,
+        tool_name: str,
+    ) -> dict[str, Any] | None:
+        """Return the named tool's input schema for type-aware ref expansion.
+
+        Returns ``None`` if the tool can't be found or listing fails —
+        expansion still proceeds, just without schema-driven type coercion
+        (e.g. keeping a string field as raw text instead of parsing JSON).
+        """
+        try:
+            tools = await client.list_tools()
+        except Exception as exc:
+            # Schema lookup is best-effort — any failure (HTTP 4xx/5xx,
+            # timeouts, connection errors, protocol errors) degrades to
+            # schema-less expansion rather than failing the tool call.
+            logger.debug(
+                "Could not list tools on %s for schema lookup: %s",
+                server_host(client.server_url),
+                exc,
+            )
+            return None
+        return next(
+            (t.input_schema for t in tools if t.name == tool_name),
+            None,
+        )
+
     def _build_setup_requirements(
         self,
         server_url: str,
         session_id: str,
+        connected: bool = False,
     ) -> SetupRequirementsResponse | ErrorResponse:
-        """Build a SetupRequirementsResponse for a missing MCP server credential."""
+        """Build a SetupRequirementsResponse for an MCP server credential.
+
+        ``connected=True`` flips the response into the "already signed in"
+        shape — frontend renders "Connected to <service> — Reconnect"
+        instead of the bare Connect button.  Used by the
+        ``surface_connect_card`` path so the user always gets visible
+        feedback even when stored creds are still valid.
+        """
         mcp_block = MCPToolBlock()
         credentials_fields_info = mcp_block.input_schema.get_credentials_fields_info()
 
@@ -329,19 +497,27 @@ class RunMCPToolTool(BaseTool):
 
         host = server_host(server_url)
         service = _service_name(host)
+        message = (
+            f"You're connected to {service}. Use Reconnect to swap accounts."
+            if connected
+            else f"To continue, sign in to {service} and approve access."
+        )
         return SetupRequirementsResponse(
-            message=(f"To continue, sign in to {service} and approve access."),
+            message=message,
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=server_url,
                 agent_name=service,
                 user_readiness=UserReadiness(
-                    has_all_credentials=False,
-                    missing_credentials=missing_creds_dict,
-                    ready_to_run=False,
+                    has_all_credentials=connected,
+                    missing_credentials={} if connected else missing_creds_dict,
+                    ready_to_run=connected,
                 ),
                 requirements={
-                    "credentials": missing_creds_list,
+                    # Keep `requirements.credentials` in sync with
+                    # `user_readiness.missing_credentials` — when connected,
+                    # neither field should advertise a credential need.
+                    "credentials": [] if connected else missing_creds_list,
                     "inputs": [],
                     "execution_modes": ["immediate"],
                 },

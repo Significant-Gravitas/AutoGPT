@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+import sentry_sdk
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -65,11 +66,27 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     return ChatSessionInfo.from_db(session) if session else None
 
 
+def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
+    """AND-clause scoping a user's own sessions to the active org.
+
+    Includes untagged pre-backfill rows (``organizationId`` null) so sessions
+    created before the org migration stay visible and loadable in the user's
+    personal-org context. Mirrors library visibility
+    (``api/features/library/db.py``); exact ``organizationId`` equality would
+    silently hide them. Always paired with a ``userId`` filter, so it only
+    ever widens to the caller's own rows.
+    """
+    if organization_id is None:
+        return []
+    return [{"OR": [{"organizationId": organization_id}, {"organizationId": None}]}]
+
+
 async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
     before_sequence: int | None = None,
     user_id: str | None = None,
+    organization_id: str | None = None,
     *,
     after_sequence: int | None = None,
 ) -> PaginatedMessages | None:
@@ -98,6 +115,8 @@ async def get_chat_messages_paginated(
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
         session_where["userId"] = user_id
+    if org_scope := _own_org_scope(organization_id):
+        session_where["AND"] = org_scope
 
     msg_filter: dict = {}
     if before_sequence is not None:
@@ -244,6 +263,9 @@ async def _expand_for_visibility(
 async def create_chat_session(
     session_id: str,
     user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
@@ -253,6 +275,9 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
+        # Tenancy dual-write fields
+        **({"organizationId": organization_id} if organization_id else {}),
+        **({"teamId": team_id} if team_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
@@ -324,6 +349,29 @@ async def update_chat_session_title(
     result = await PrismaChatSession.prisma().update_many(
         where=where,
         data={"title": title, "updatedAt": datetime.now(UTC)},
+    )
+    return result > 0
+
+
+async def update_chat_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Always filters by (session_id, user_id) so callers cannot mutate another
+    user's session even when they know the session_id. Does not bump
+    ``updatedAt`` — pinning is not an activity event and should not reorder
+    the session within its pin bucket.
+
+    Returns True if a row was updated, False otherwise (session not found or
+    wrong user).
+    """
+    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
+    result = await PrismaChatSession.prisma().update_many(
+        where=where,
+        data={"isPinned": is_pinned},
     )
     return result > 0
 
@@ -525,23 +573,45 @@ async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    organization_id: str | None = None,
+    title_contains: str | None = None,
 ) -> list[ChatSessionInfo]:
-    """Get chat sessions for a user, ordered by most recent."""
+    """Get chat sessions for a user, ordered by most recent.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
+    """
+    where: ChatSessionWhereInput = {"userId": user_id}
+    if org_scope := _own_org_scope(organization_id):
+        where["AND"] = org_scope
+    if title_contains:
+        where["title"] = {"contains": title_contains, "mode": "insensitive"}
     prisma_sessions = await PrismaChatSession.prisma().find_many(
-        where={"userId": user_id},
-        order={"updatedAt": "desc"},
+        where=where,
+        order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
         take=limit,
         skip=offset,
     )
     return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
 
 
-async def get_user_session_count(user_id: str) -> int:
+async def get_user_session_count(
+    user_id: str,
+    organization_id: str | None = None,
+) -> int:
     """Get the total number of chat sessions for a user."""
-    return await PrismaChatSession.prisma().count(where={"userId": user_id})
+    where: ChatSessionWhereInput = {"userId": user_id}
+    if org_scope := _own_org_scope(organization_id):
+        where["AND"] = org_scope
+    return await PrismaChatSession.prisma().count(where=where)
 
 
-async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+async def delete_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+) -> bool:
     """Delete a chat session and all its messages.
 
     Args:
@@ -549,15 +619,52 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         user_id: If provided, validates that the session belongs to this user
             before deletion. This prevents unauthorized deletion of other
             users' sessions.
+        organization_id: If provided, scopes the deletion to sessions
+            belonging to this organization.
 
     Returns:
         True if deleted successfully, False otherwise.
     """
     try:
+        # If the session is currently shared, run the share-cascade
+        # FIRST so CHAT_LINK execution shares get revoked + their file
+        # allowlists cleared.  ``ChatLinkedShare.Session`` has
+        # ``onDelete: Cascade`` so a flat ``delete_many`` would erase
+        # the linkage rows but leave the per-execution share tokens
+        # live with no owner-visible path to revoke them — orphan
+        # public shares.  Lazy import to avoid the copilot→sharing→
+        # copilot import cycle.
+        if user_id is not None:
+            existing = await PrismaChatSession.prisma().find_first(
+                where={"id": session_id, "userId": user_id}
+            )
+            if existing and existing.isShared:
+                from backend.copilot.sharing.db import disable_chat_session_share
+
+                try:
+                    await disable_chat_session_share(
+                        session_id=session_id, user_id=user_id
+                    )
+                except Exception as cascade_exc:
+                    # Cascade failure must not block the deletion path —
+                    # log + Sentry so an operator can manually clean up
+                    # the per-execution shares.  Better to delete the
+                    # chat (the user's clear intent) and leave a known
+                    # orphan to chase than to refuse the delete.
+                    logger.error(
+                        "Share cascade failed during chat delete for "
+                        "session=%s; deletion will proceed",
+                        session_id,
+                        exc_info=True,
+                    )
+                    sentry_sdk.capture_exception(cascade_exc)
+
         # Build typed where clause with optional user_id validation
         where_clause: ChatSessionWhereInput = {"id": session_id}
         if user_id is not None:
             where_clause["userId"] = user_id
+        if org_scope := _own_org_scope(organization_id):
+            where_clause["AND"] = org_scope
 
         result = await PrismaChatSession.prisma().delete_many(where=where_clause)
         if result == 0:

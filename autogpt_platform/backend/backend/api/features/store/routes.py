@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
@@ -10,12 +11,12 @@ from pydantic import BaseModel
 
 import backend.data.graph
 import backend.util.json
+from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
 from . import db as store_db
-from . import hybrid_search as store_hybrid_search
 from . import image_gen as store_image_gen
 from . import media as store_media
 from . import model as store_model
@@ -23,6 +24,9 @@ from . import model as store_model
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
+SubmissionSortKey = Literal["submitted", "runs"]
+SubmissionSortDir = Literal["asc", "desc"]
 
 
 ##############################################
@@ -91,7 +95,7 @@ async def unified_search(
     """
 
     # Perform unified hybrid search
-    results, total = await store_hybrid_search.unified_hybrid_search(
+    results, total = await search_engine.unified_hybrid_search(
         query=query,
         content_types=content_types,
         user_id=user_id,
@@ -334,6 +338,7 @@ async def get_my_unpublished_agents(
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
+    search_query: str | None = Query(default=None, max_length=100),
 ) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
     agents = await store_db.get_my_agents(
@@ -341,6 +346,7 @@ async def get_my_unpublished_agents(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
+        search_query=search_query,
     )
     return agents
 
@@ -354,11 +360,15 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
         submission_id=submission_id,
+        organization_id=getattr(ctx, "org_id", None),
     )
     return result
 
@@ -371,16 +381,50 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    search_query: str | None = Query(default=None, max_length=100),
+    statuses: str | None = Query(default=None),
+    sort_key: SubmissionSortKey | None = Query(default=None),
+    sort_dir: SubmissionSortDir = Query(default="desc"),
 ) -> store_model.StoreSubmissionsResponse:
     """List the authenticated user's marketplace listing submissions"""
+    parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
+        organization_id=getattr(ctx, "org_id", None),
         page=page,
         page_size=page_size,
+        search_query=search_query,
+        statuses=parsed_statuses,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
     )
     return listings
+
+
+def _parse_status_filter(
+    raw: str | None,
+) -> list[prisma.enums.SubmissionStatus] | None:
+    """Parse a comma-separated `statuses` query value into a typed list.
+
+    Orval's fetch client serializes array query params with `value.toString()`,
+    which produces a single comma-joined string (`?statuses=PENDING,APPROVED`)
+    instead of the FastAPI-default repeated form. Accept that shape here and
+    surface invalid enum members as a 422.
+    """
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    try:
+        return [prisma.enums.SubmissionStatus(p) for p in parts]
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(
@@ -392,8 +436,16 @@ async def get_submissions(
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
+    # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
+    # this function is invoked outside FastAPI's dependency-injection path
+    # (e.g. some integration tests). ``getattr`` with a default returns
+    # None instead of raising AttributeError on the sentinel.
+    org_id = getattr(ctx, "org_id", None)
     result = await store_db.create_store_submission(
         user_id=user_id,
         graph_id=submission_request.graph_id,
@@ -409,6 +461,7 @@ async def create_submission(
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary or "Initial Submission",
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
+        organization_id=org_id,
     )
     return result
 
@@ -423,11 +476,15 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
+        organization_id=getattr(ctx, "org_id", None),
         name=submission_request.name,
         video_url=submission_request.video_url,
         agent_output_demo_url=submission_request.agent_output_demo_url,
@@ -531,9 +588,13 @@ async def get_cache_metrics():
         info = cache_func.cache_info()
         # Cache size metric (dynamic - changes as items are cached/expired)
         metrics.append(f'store_cache_entries{{cache="{cache_name}"}} {info["size"]}')
-        # Cache utilization percentage (dynamic - useful for monitoring)
+        # Cache utilization percentage (dynamic - useful for monitoring).
+        # An unbounded cache reports maxsize=None → utilization is undefined
+        # (0), and comparing None > 0 would raise, 500-ing the endpoint.
         utilization = (
-            (info["size"] / info["maxsize"] * 100) if info["maxsize"] > 0 else 0
+            (info["size"] / info["maxsize"] * 100)
+            if info["maxsize"] and info["maxsize"] > 0
+            else 0
         )
         metrics.append(
             f'store_cache_utilization_percent{{cache="{cache_name}"}} {utilization:.2f}'

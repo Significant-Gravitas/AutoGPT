@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
+  COPILOT_COMPLETION_NOTIFICATION,
   ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
@@ -51,6 +52,16 @@ describe("formatNotificationTitle", () => {
     expect(formatNotificationTitle(1)).toBe(
       `(1) AutoPilot is ready - ${ORIGINAL_TITLE}`,
     );
+  });
+});
+
+describe("COPILOT_COMPLETION_NOTIFICATION", () => {
+  it("matches the copy hardcoded in public/push-sw.js", () => {
+    expect(COPILOT_COMPLETION_NOTIFICATION).toEqual({
+      title: "AutoGPT",
+      body: "Task completed",
+      icon: "/notification-icon-192.png",
+    });
   });
 });
 

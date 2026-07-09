@@ -48,6 +48,19 @@ def build_sdk_env(
     vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
     Moonshot since the cache-cost rationale doesn't apply there).
     """
+    # Transports that don't run the SDK at all (currently: ``local`` —
+    # Ollama et al. don't implement Anthropic's wire protocol) must not
+    # reach this builder. The processor downgrades extended_thinking →
+    # fast for those transports, so an entry here indicates a bug
+    # upstream.  Fail loudly rather than constructing a doomed env.
+    if not config.transport.supports_sdk:
+        raise RuntimeError(
+            f"build_sdk_env() called under transport "
+            f"{config.transport.name!r}, which doesn't support the SDK. "
+            "The request should have been downgraded to the baseline "
+            "path — see executor.processor.resolve_use_sdk_for_mode."
+        )
+
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
         validate_subscription()

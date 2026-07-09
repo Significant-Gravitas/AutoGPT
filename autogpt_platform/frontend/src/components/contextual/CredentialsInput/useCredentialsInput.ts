@@ -9,6 +9,7 @@ import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/
 import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_FLOW_TIMED_OUT,
+  OAUTH_ERROR_POPUP_BLOCKED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
 } from "@/lib/oauth-popup";
@@ -55,6 +56,7 @@ export function useCredentialsInput({
   const [isCredentialTypeSelectorOpen, setCredentialTypeSelectorOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
+  const [oAuthPopupBlocked, setOAuthPopupBlocked] = useState(false);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
@@ -196,15 +198,31 @@ export function useCredentialsInput({
       }
 
       setOAuth2FlowInProgress(true);
+      setOAuthPopupBlocked(false);
 
-      const { promise, cleanup } = openOAuthPopup(login_url, {
+      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
         stateToken: state_token,
-        useCrossOriginListeners: isMCP,
-        // Standard OAuth uses "oauth_popup_result", MCP uses "mcp_oauth_result"
+        // Always enable BroadcastChannel + localStorage listeners — they are
+        // the only path that works when the popup is blocked and we fall back
+        // to a new tab (window.opener can be severed by cross-origin COOP).
+        useCrossOriginListeners: true,
         acceptMessageTypes: isMCP
           ? ["mcp_oauth_result"]
           : ["oauth_popup_result"],
       });
+
+      // The blank popup window was rejected by the browser — the helper has
+      // already fallen back to opening the login URL in a new tab, but that
+      // tab is easy to miss. Track the state so the waiting modal can
+      // change its copy and direct the user to the right place, and emit a
+      // toast in case they've already dismissed the modal.
+      if (popupBlocked) {
+        setOAuthPopupBlocked(true);
+        toast({
+          title: "Popup blocked",
+          description: OAUTH_ERROR_POPUP_BLOCKED,
+        });
+      }
 
       oauthAbortRef.current = cleanup.abort;
 
@@ -385,6 +403,7 @@ export function useCredentialsInput({
     isHostScopedCredentialsModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
+    oAuthPopupBlocked,
     cancelOAuthFlow,
     credentialToDelete,
     deleteWarningMessage,

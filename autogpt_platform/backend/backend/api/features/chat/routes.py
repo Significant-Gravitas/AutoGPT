@@ -34,6 +34,7 @@ from backend.copilot.model import (
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
+    update_session_pinned,
     update_session_title,
 )
 from backend.copilot.pending_message_helpers import (
@@ -42,8 +43,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
 )
-from backend.copilot.pending_messages import peek_pending_messages
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.pending_messages import (
+    clear_pending_messages_unsafe,
+    peek_pending_messages,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -68,6 +71,11 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_presets import (
+    PresetDeletedResponse,
+    PresetListResponse,
+    PresetUpdatedResponse,
+)
 from backend.copilot.tools.manage_schedules import (
     ScheduleDeletedResponse,
     ScheduleListResponse,
@@ -97,6 +105,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TaskDecompositionResponse,
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
@@ -324,6 +333,8 @@ class SessionSummaryResponse(BaseModel):
     title: str | None = None
     chat_status: str = "idle"
     is_processing: bool
+    source_platform: str | None = None
+    is_pinned: bool = False
 
 
 class ListSessionsResponse(BaseModel):
@@ -354,6 +365,12 @@ class UpdateSessionTitleRequest(BaseModel):
         return stripped
 
 
+class UpdateSessionPinnedRequest(BaseModel):
+    """Request model for pinning/unpinning a session."""
+
+    is_pinned: bool
+
+
 # ========== Routes ==========
 
 
@@ -363,6 +380,7 @@ class UpdateSessionTitleRequest(BaseModel):
 )
 async def list_sessions(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ListSessionsResponse:
@@ -370,7 +388,7 @@ async def list_sessions(
     List chat sessions for the authenticated user.
 
     Returns a paginated list of chat sessions belonging to the current user,
-    ordered by most recently updated.
+    with pinned sessions first and most-recently-updated as the tiebreaker.
 
     Args:
         user_id: The authenticated user's ID.
@@ -380,7 +398,9 @@ async def list_sessions(
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
-    sessions, total_count = await get_user_sessions(user_id, limit, offset)
+    sessions, total_count = await get_user_sessions(
+        user_id, limit, offset, organization_id=ctx.org_id
+    )
 
     # Batch-check Redis for active stream status on each session
     processing_set: set[str] = set()
@@ -416,6 +436,8 @@ async def list_sessions(
                 title=session.title,
                 chat_status=session.chat_status,
                 is_processing=session.session_id in processing_set,
+                source_platform=session.metadata.source_platform,
+                is_pinned=session.is_pinned,
             )
             for session in sessions
         ],
@@ -425,9 +447,11 @@ async def list_sessions(
 
 @router.post(
     "/sessions",
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
     """Create (or get-or-create) a chat session.
@@ -464,9 +488,19 @@ async def create_session(
     )
 
     if builder_graph_id:
-        session = await get_or_create_builder_session(user_id, builder_graph_id)
+        session = await get_or_create_builder_session(
+            user_id,
+            builder_graph_id,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        )
     else:
-        session = await create_chat_session(user_id, dry_run=dry_run)
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        )
 
     return CreateSessionResponse(
         id=session.session_id,
@@ -485,6 +519,7 @@ async def create_session(
 async def delete_session(
     session_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> Response:
     """
     Delete a chat session.
@@ -502,7 +537,7 @@ async def delete_session(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
-    deleted = await delete_chat_session(session_id, user_id)
+    deleted = await delete_chat_session(session_id, user_id, organization_id=ctx.org_id)
 
     if not deleted:
         raise HTTPException(
@@ -582,12 +617,51 @@ async def update_session_title_route(
     return {"status": "ok"}
 
 
+@router.patch(
+    "/sessions/{session_id}/pinned",
+    summary="Update session pinned",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_pinned_route(
+    session_id: str,
+    request: UpdateSessionPinnedRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Pin or unpin a chat session.
+
+    Pinned sessions surface at the top of the user's sidebar list ahead of
+    unpinned ones, regardless of recency.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new pin state.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    success = await update_session_pinned(session_id, user_id, request.is_pinned)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
+
+
 @router.get(
     "/sessions/{session_id}",
 )
 async def get_session(
     session_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     limit: int = Query(default=50, ge=1, le=200),
     before_sequence: int | None = Query(default=None, ge=0),
 ) -> SessionDetailResponse:
@@ -598,7 +672,11 @@ async def get_session(
     When no pagination params are provided, returns the most recent messages.
     """
     page = await get_chat_messages_paginated(
-        session_id, limit, before_sequence, user_id=user_id
+        session_id,
+        limit,
+        before_sequence,
+        user_id=user_id,
+        organization_id=ctx.org_id,
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
@@ -874,6 +952,22 @@ async def reset_copilot_usage(
     )
 
 
+async def _clear_pending_best_effort(session_id: str) -> None:
+    """Drop the session's pending buffer, swallowing Redis errors.
+
+    Cancel cleanup must never block the cancel itself, so a transient
+    Redis failure is logged and ignored rather than raised.
+    """
+    try:
+        await clear_pending_messages_unsafe(session_id)
+    except Exception:
+        logger.warning(
+            "[CANCEL] Failed to clear pending buffer for session ...%s",
+            session_id[-8:],
+            exc_info=True,
+        )
+
+
 @router.post(
     "/sessions/{session_id}/cancel",
     status_code=200,
@@ -894,6 +988,23 @@ async def cancel_session_task(
       task status flips out of ``running`` or a 5 s timeout is hit.
     """
     await _validate_and_get_session(session_id, user_id)
+
+    # Cancelling discards any follow-ups the user queued for this turn:
+    # Stop means stop.  The pending buffer only exists to feed the
+    # *running* turn (drained at tool boundaries); once that turn is
+    # cancelled there is nothing left to feed it, so leaving entries
+    # behind would silently inject them into the next unrelated turn
+    # (up to the 1h buffer TTL).
+    #
+    # This first clear shrinks the window but doesn't close it: the HTTP
+    # pending-write path CAS-gates on stream meta ``status == "running"``
+    # (``push_pending_message_if_session_running``), so a follow-up queued
+    # after this clear but before the turn actually stops would still land.
+    # The running path below clears again once the turn is confirmed
+    # stopped — at which point the CAS gate rejects every new write, so the
+    # buffer stays empty.  Best-effort throughout: a Redis hiccup must not
+    # block the cancel itself, so we swallow and log.
+    await _clear_pending_best_effort(session_id)
 
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.
@@ -933,12 +1044,19 @@ async def cancel_session_task(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
             )
+            # Re-clear now the turn is no longer running: the CAS gate rejects
+            # any further pending writes, so this drops anything queued during
+            # the cancel window and closes the cross-turn leak for good.
+            await _clear_pending_best_effort(session_id)
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
     )
     await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # Status is now force-flipped out of "running"; re-clear to drop any
+    # follow-up that landed during the poll window.
+    await _clear_pending_best_effort(session_id)
     return CancelSessionResponse(cancelled=True)
 
 
@@ -999,6 +1117,7 @@ async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
+    ctx: auth.RequestContext = Security(auth.get_request_context),
 ):
     """Start a new turn and return an AI SDK UI message stream.
 
@@ -1035,6 +1154,13 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
+
+    # Session-anchored tenancy: the ChatSession row is the authoritative
+    # org/team for every turn in it — a user whose active header org
+    # differs still charges/attributes turns to the session's org.
+    # Untagged legacy sessions fall back to the request context.
+    turn_org_id = session.organization_id or ctx.org_id
+    turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
         turn_in_flight = (
@@ -1144,6 +1270,8 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             context=request.context,
             file_ids=sanitized_file_ids,
+            organization_id=turn_org_id,
+            team_id=turn_team_id,
             mode=request.mode,
             model=request.model,
             permissions=builder_permissions,
@@ -1651,8 +1779,12 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
+    | PresetListResponse
+    | PresetUpdatedResponse
+    | PresetDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

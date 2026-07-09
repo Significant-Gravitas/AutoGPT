@@ -11,6 +11,8 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 
+import { getOAuthErrorMessage } from "./helpers";
+
 interface Args {
   provider: string;
   onSuccess: () => void;
@@ -23,6 +25,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   const isUnmountedRef = useRef(false);
 
   useEffect(() => {
+    isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
       abortRef.current?.();
@@ -63,8 +66,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       if (isUnmountedRef.current) return;
       toast({
         title: "OAuth connection failed",
-        description:
-          error instanceof Error ? error.message : "Unexpected error",
+        description: getOAuthErrorMessage(error),
         variant: "destructive",
       });
     } finally {

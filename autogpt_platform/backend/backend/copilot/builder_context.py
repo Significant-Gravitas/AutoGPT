@@ -73,6 +73,40 @@ _BUILDER_RUN_AGENT_GUIDANCE = (
 )
 
 
+# Steers the model toward edit_agent on the bound graph. Empty builder
+# graphs (version=1, no nodes) tempt the model to reach for create_agent;
+# that tool is hidden in builder sessions and the model has no UI to ask
+# the user for permission — without explicit guidance it would otherwise
+# narrate a phantom Claude-Code-style approval prompt.
+def _format_blocked_tool_list(tools: tuple[str, ...]) -> str:
+    """Render BUILDER_BLOCKED_TOOLS as ``a`, ``b`, and ``c``
+    so the prose stays in sync with the tuple."""
+    quoted = [f"`{name}`" for name in tools]
+    if len(quoted) <= 1:
+        return quoted[0] if quoted else ""
+    if len(quoted) == 2:
+        return f"{quoted[0]} and {quoted[1]}"
+    return f"{', '.join(quoted[:-1])}, and {quoted[-1]}"
+
+
+_BUILDER_TOOL_GUIDANCE = (
+    "This builder panel is bound to the graph shown in <builder_context>. "
+    "Use `edit_agent` against that graph id for every modification, "
+    "including populating an empty graph (version=1, no nodes) — "
+    "`edit_agent` accepts the same node/link payload that `create_agent` "
+    "would, so there is no reason to reach for `create_agent` here. "
+    "Typical sequence for a new request: call `find_block` to discover "
+    "the block ids and input schemas you need, then call `edit_agent` "
+    "once with the full set of nodes and links. "
+    "Never ask the user to approve or allow a tool — there is no "
+    "permission prompt UI in the builder chat, so any 'click Allow' "
+    "narration will leave the user stuck. "
+    f"The tools {_format_blocked_tool_list(BUILDER_BLOCKED_TOOLS)} are "
+    "intentionally unavailable in builder sessions (the building guide "
+    "is already embedded in <building_guide> below)."
+)
+
+
 def _sanitize_for_xml(value: Any) -> str:
     """Escape XML special chars — mirrors ``sanitizeForXml`` in
     ``BuilderChatPanel/helpers.ts``."""
@@ -164,6 +198,9 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
     # code fences, and example JSON.
     return (
         f"\n\n<{BUILDER_SESSION_TAG}>\n"
+        f"<tool_usage>\n"
+        f"{_BUILDER_TOOL_GUIDANCE}\n"
+        f"</tool_usage>\n"
         f"<run_agent_dispatch_mode>\n"
         f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
         f"</run_agent_dispatch_mode>\n"

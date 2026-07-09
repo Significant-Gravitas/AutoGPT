@@ -134,6 +134,50 @@ class TestResolveUseSdkForMode:
                 is False
             )
 
+    @pytest.mark.asyncio
+    async def test_thinking_unavailable_forces_baseline(self, caplog):
+        """When the SDK transport can't run (use_local=true), every mode
+        routes to baseline — including an explicit extended_thinking
+        request, which is logged at WARNING for visibility."""
+        caplog.set_level(logging.WARNING, logger="backend.copilot.executor.processor")
+        with patch(
+            "backend.copilot.executor.processor.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ):
+            for mode in ("fast", "extended_thinking", None):
+                assert (
+                    await resolve_use_sdk_for_mode(
+                        mode,
+                        "user-1",
+                        use_claude_code_subscription=True,
+                        config_default=True,
+                        thinking_available=False,
+                    )
+                    is False
+                )
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "extended_thinking" in warnings[0].message
+
+    @pytest.mark.asyncio
+    async def test_thinking_available_default_preserves_legacy_behaviour(self):
+        """The new ``thinking_available`` kwarg defaults to True, so
+        existing call sites (and existing tests in this class) continue
+        to work without explicit opt-in."""
+        with patch(
+            "backend.copilot.executor.processor.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ):
+            assert (
+                await resolve_use_sdk_for_mode(
+                    "extended_thinking",
+                    "user-1",
+                    use_claude_code_subscription=False,
+                    config_default=False,
+                )
+                is True
+            )
+
 
 class TestResolveEffectiveMode:
     """Tests for the CHAT_MODE_OPTION server-side gate."""

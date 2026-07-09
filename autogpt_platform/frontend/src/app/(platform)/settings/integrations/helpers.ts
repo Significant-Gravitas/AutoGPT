@@ -43,6 +43,7 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   d_id: "D-ID",
   ideogram: "Ideogram",
   jina: "Jina",
+  mcp: "MCP",
   twitter: "X",
   zerobounce: "ZeroBounce",
 };
@@ -68,12 +69,26 @@ export function formatMaskedValue(credential: CredentialView): string {
   return "Configured";
 }
 
+function stripProviderPrefix(title: string, provider: string): string {
+  // The row already lives under the provider group, so any leading
+  // ``<ProviderName>: `` in the per-credential title doubles up.  Strip
+  // it generically (case-insensitive) so e.g. ``"MCP: mcp.sentry.dev"``
+  // collapses to ``"mcp.sentry.dev"`` without a per-provider branch.
+  const displayName = formatProviderName(provider);
+  if (!displayName) return title;
+  const prefix = `${displayName}: `;
+  return title.toLowerCase().startsWith(prefix.toLowerCase())
+    ? title.slice(prefix.length)
+    : title;
+}
+
 function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
+  const rawTitle = cred.title ?? formatProviderName(cred.provider);
   return {
     id: cred.id,
     provider: cred.provider,
     type: cred.type,
-    title: cred.title ?? formatProviderName(cred.provider),
+    title: stripProviderPrefix(rawTitle, cred.provider),
     username: cred.username ?? null,
     host: cred.host ?? null,
     isManaged: cred.is_managed ?? false,

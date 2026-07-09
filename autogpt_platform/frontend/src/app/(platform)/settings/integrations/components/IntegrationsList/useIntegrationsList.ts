@@ -14,7 +14,7 @@ import {
   useDeleteIntegration,
   type DeleteIntegrationTarget,
 } from "../hooks/useDeleteIntegration";
-import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
 export function useIntegrationsList() {

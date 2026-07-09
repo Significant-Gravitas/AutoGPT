@@ -119,6 +119,11 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
+    block_name_override: str | None = None,
+    extra_metadata: dict | None = None,
+    graph_exec_id_override: str | None = None,
+    skip_daily: bool = False,
+    execution_path: str = "sync",
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -222,6 +227,7 @@ async def persist_and_record_usage(
         await record_cost_usage(
             user_id=user_id,
             cost_microdollars=cost_microdollars,
+            skip_daily=skip_daily,
         )
 
     # Log to PlatformCostLog for admin cost dashboard.
@@ -229,7 +235,11 @@ async def persist_and_record_usage(
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
     if user_id and (total_tokens > 0 or cost_float is not None):
-        session_id = session.session_id if session else None
+        session_id = (
+            graph_exec_id_override
+            if graph_exec_id_override is not None
+            else (session.session_id if session else None)
+        )
 
         if cost_float is not None:
             tracking_type = "cost_usd"
@@ -238,12 +248,35 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
+        metadata: dict = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
+        }
+        if extra_metadata:
+            # Caller-supplied keys override base keys (dream pass uses this
+            # to mark source="dream_pass"); base keys it doesn't touch stay.
+            metadata.update(extra_metadata)
+
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,
                 block_id=COPILOT_BLOCK_ID,
-                block_name=_copilot_block_name(log_prefix),
+                block_name=(
+                    block_name_override
+                    if block_name_override is not None
+                    else _copilot_block_name(log_prefix)
+                ),
                 provider=provider,
                 credential_id=COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
@@ -254,13 +287,7 @@ async def persist_and_record_usage(
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+                metadata=metadata,
             )
         )
 

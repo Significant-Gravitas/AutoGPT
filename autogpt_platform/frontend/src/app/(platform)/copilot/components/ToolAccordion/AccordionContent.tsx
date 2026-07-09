@@ -151,7 +151,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "whitespace-pre-wrap rounded-lg border bg-black p-3 text-xs text-neutral-200",
+        "whitespace-pre-wrap rounded-lg border bg-neutral-100 p-3 text-xs text-neutral-800",
         className,
       )}
     >

@@ -41,6 +41,7 @@ class TestManagerWiring:
             "create_user_link_token",
             "get_link_token_status",
             "start_chat_turn",
+            "list_user_server_ids",
         }
         for name in expected:
             assert hasattr(
@@ -155,6 +156,20 @@ class TestManagerWiring:
             result = await manager.start_chat_turn(req)
         stub.assert_awaited_once_with(req)
         assert result is fake_response
+
+    @pytest.mark.asyncio
+    async def test_refresh_server_link_name_delegates(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.refresh_server_link_name = AsyncMock()
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            await manager.refresh_server_link_name(Platform.DISCORD, "g1", "AutoGPT HQ")
+        db_mock.refresh_server_link_name.assert_awaited_once_with(
+            "DISCORD", "g1", "AutoGPT HQ"
+        )
 
 
 class TestAdversarialConfirmRace:

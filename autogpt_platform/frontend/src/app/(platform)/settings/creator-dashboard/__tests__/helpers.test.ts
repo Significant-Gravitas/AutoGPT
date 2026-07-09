@@ -5,6 +5,7 @@ import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmis
 
 import {
   applyFiltersAndSort,
+  buildEditPayload,
   EMPTY_DASHBOARD_STATS,
   filterSubmissions,
   formatRuns,
@@ -53,7 +54,6 @@ describe("creator-dashboard helpers", () => {
     test("starts with no filters and descending sort direction", () => {
       expect(INITIAL_FILTER_STATE).toEqual({
         statuses: [],
-        nameQuery: "",
         sortKey: null,
         sortDir: "desc",
       });
@@ -71,15 +71,6 @@ describe("creator-dashboard helpers", () => {
         statuses: [SubmissionStatus.APPROVED],
       };
       expect(isFiltered(state)).toBe(true);
-    });
-
-    test("returns true if name query is non-empty after trim", () => {
-      expect(isFiltered({ ...INITIAL_FILTER_STATE, nameQuery: "foo" })).toBe(
-        true,
-      );
-      expect(isFiltered({ ...INITIAL_FILTER_STATE, nameQuery: "   " })).toBe(
-        false,
-      );
     });
 
     test("returns true if sortKey is set", () => {
@@ -129,23 +120,6 @@ describe("creator-dashboard helpers", () => {
         statuses: [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED],
       });
       expect(result.map((s) => s.listing_version_id)).toEqual(["a", "c"]);
-    });
-
-    test("filters by case-insensitive name query", () => {
-      const result = applyFiltersAndSort(items, {
-        ...INITIAL_FILTER_STATE,
-        nameQuery: "BETA",
-      });
-      expect(result).toHaveLength(1);
-      expect(result[0].listing_version_id).toBe("b");
-    });
-
-    test("ignores whitespace-only name query", () => {
-      const result = applyFiltersAndSort(items, {
-        ...INITIAL_FILTER_STATE,
-        nameQuery: "   ",
-      });
-      expect(result).toHaveLength(3);
     });
 
     test("sorts by runs descending", () => {
@@ -373,6 +347,41 @@ describe("creator-dashboard helpers", () => {
       const unknown = "ARCHIVED" as unknown as SubmissionStatus;
       expect(getStatusVisual(unknown)).toBe(
         STATUS_VISUAL[SubmissionStatus.DRAFT],
+      );
+    });
+  });
+
+  describe("buildEditPayload", () => {
+    test("maps a submission to an edit request payload", () => {
+      const submission = makeSubmission({
+        name: "My Agent",
+        sub_heading: "Does things",
+        description: "A description",
+        image_urls: ["a.png", "b.png"],
+        video_url: "https://youtu.be/x",
+        categories: ["Productivity"],
+        changes_summary: "Fixed a bug",
+        listing_version_id: "lv-42",
+        graph_id: "graph-42",
+      });
+
+      expect(buildEditPayload(submission)).toEqual({
+        name: "My Agent",
+        sub_heading: "Does things",
+        description: "A description",
+        image_urls: ["a.png", "b.png"],
+        video_url: "https://youtu.be/x",
+        categories: ["Productivity"],
+        changes_summary: "Fixed a bug",
+        store_listing_version_id: "lv-42",
+        graph_id: "graph-42",
+      });
+    });
+
+    test("defaults an empty changes summary to 'Update Submission'", () => {
+      const submission = makeSubmission({ changes_summary: null });
+      expect(buildEditPayload(submission).changes_summary).toBe(
+        "Update Submission",
       );
     });
   });

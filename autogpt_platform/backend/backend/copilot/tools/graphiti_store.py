@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.ingest import enqueue_episode
+from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -214,22 +214,51 @@ class MemoryStoreTool(BaseTool):
         except ValueError:
             resolved_kind = MemoryKind.fact
 
+        # Richer provenance grain so the ratification loop can find the
+        # originating message, not just the originating session
+        # (audit §6.12 / §6.15 #6).  The latest message in the session
+        # is the user turn that triggered the tool call.
+        latest_seq: int | None = None
+        if session.messages:
+            latest_seq = session.messages[-1].sequence
+        if latest_seq is not None:
+            provenance = f"session:{session.session_id}#msg:{latest_seq}"
+        else:
+            provenance = f"session:{session.session_id}"
+
         envelope = MemoryEnvelope(
             content=content,
             source_kind=resolved_source,
             scope=scope,
             memory_kind=resolved_kind,
             status=MemoryStatus.active,
-            provenance=session.session_id,
+            provenance=provenance,
             rule=rule_model,
             procedure=procedure_model,
         )
+
+        episode_body = envelope.model_dump_json()
+
+        # ``enqueue_episode`` returns False for BOTH the oversized-body
+        # rejection (permanent) and a full queue (transient). Pre-check
+        # the size here so the LLM gets an actionable, non-retryable
+        # message instead of the retryable queue-full one — retrying an
+        # oversized store_memory call can never succeed.
+        if len(episode_body.encode("utf-8")) > MAX_EPISODE_BODY_BYTES:
+            return ErrorResponse(
+                message=(
+                    "Memory content is too large to store. Do not retry with "
+                    "the same content — split it into smaller, more focused "
+                    "memories and store each one separately."
+                ),
+                session_id=session.session_id,
+            )
 
         queued = await enqueue_episode(
             user_id,
             session.session_id,
             name=name,
-            episode_body=envelope.model_dump_json(),
+            episode_body=episode_body,
             source_description=source_description,
             is_json=True,
         )

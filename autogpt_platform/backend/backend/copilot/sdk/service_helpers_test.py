@@ -430,10 +430,7 @@ class TestNormalizeModelName:
             _normalize_model_name("google/gemini-2.5-flash")
 
     def test_already_normalized_unchanged(self, _direct_anthropic_config):
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
     def test_empty_string_unchanged(self, _direct_anthropic_config):
         assert _normalize_model_name("") == ""

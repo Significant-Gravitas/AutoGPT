@@ -33,6 +33,23 @@ def test_guide_contains_trigger_agents_heading():
     assert f"\n### {_TRIGGER_AGENTS_HEADING}" in guide
 
 
+def test_guide_mandates_separate_trigger_and_action_agents():
+    """OPEN-3155: the trigger-agents guidance must tell the model to split
+    polling and action into two separate agents (not one scheduled agent that
+    runs every poll). If this phrase is reworded, update the sentinel here —
+    but keep the two-agent-separation guidance present."""
+    guide = _load_guide()
+    assert "TWO SEPARATE agents" in guide
+
+
+def test_guide_warns_against_over_splitting_scheduled_agents():
+    """OPEN-3155: the guidance must also warn against over-splitting — a plain
+    'do X on a schedule' agent that acts every run should stay a single agent.
+    Guards the boundary clause from being dropped in future edits."""
+    guide = _load_guide()
+    assert "do NOT over-split" in guide
+
+
 def test_strip_h3_section_preserves_following_sections():
     """A future H3 section appended after the gated one must survive
     the strip — that's the whole reason the gating is section-aware

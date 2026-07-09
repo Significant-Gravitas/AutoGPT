@@ -1,10 +1,13 @@
 """Route tests: domain exceptions → HTTPException status codes."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
+from backend.api.features.platform_linking.registry import PlatformMeta
+from backend.platform_linking.models import PlatformLinkInfo, PlatformUserLinkInfo
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -20,6 +23,18 @@ def _db_mock(**method_configs):
     for name, mock in method_configs.items():
         setattr(db, name, mock)
     return db
+
+
+def _discord_meta(
+    *, enabled: bool = True, add_bot_url: str | None = "https://invite"
+) -> PlatformMeta:
+    return PlatformMeta(
+        platform="DISCORD",
+        display_name="Discord",
+        icon="discord.png",
+        enabled=enabled,
+        add_bot_url=add_bot_url,
+    )
 
 
 class TestTokenInfoRouteTranslation:
@@ -262,3 +277,137 @@ class TestAdversarialDeleteLinkId:
             for link_id in ("'; DROP TABLE links;--", "../../etc/passwd", ""):
                 response = client.delete(f"/api/platform-linking/links/{link_id}")
                 assert response.status_code in (404, 405)
+
+
+class TestListBotPlatforms:
+    @pytest.mark.asyncio
+    async def test_returns_enabled_platforms_with_no_links(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[_discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert len(result) == 1
+        assert result[0].platform == "DISCORD"
+        assert result[0].add_bot_url == "https://invite"
+        assert result[0].dm_link is None
+        assert result[0].server_links == []
+
+    @pytest.mark.asyncio
+    async def test_attaches_callers_dm_and_server_links(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        dm_link = PlatformUserLinkInfo(
+            id="dm-1",
+            platform="DISCORD",
+            platform_user_id="discord-user-1",
+            platform_username="bently",
+            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+        server_a = PlatformLinkInfo(
+            id="srv-a",
+            platform="DISCORD",
+            platform_server_id="111",
+            owner_platform_user_id="discord-user-1",
+            server_name="Server A",
+            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+        server_b = PlatformLinkInfo(
+            id="srv-b",
+            platform="DISCORD",
+            platform_server_id="222",
+            owner_platform_user_id="discord-user-1",
+            server_name="Server B",
+            linked_at=datetime(2026, 5, 2, tzinfo=timezone.utc),
+        )
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[dm_link]),
+            list_server_links=AsyncMock(return_value=[server_a, server_b]),
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[_discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="discord-user-1")
+
+        assert result[0].dm_link is not None
+        assert result[0].dm_link.id == "dm-1"
+        assert [s.id for s in result[0].server_links] == ["srv-a", "srv-b"]
+
+    @pytest.mark.asyncio
+    async def test_picks_newest_dm_link_when_multiple_for_same_platform(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        newer = PlatformUserLinkInfo(
+            id="dm-new",
+            platform="DISCORD",
+            platform_user_id="discord-user-2",
+            platform_username="newer-handle",
+            linked_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        older = PlatformUserLinkInfo(
+            id="dm-old",
+            platform="DISCORD",
+            platform_user_id="discord-user-1",
+            platform_username="older-handle",
+            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[newer, older]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[_discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result[0].dm_link is not None
+        assert result[0].dm_link.id == "dm-new"
+
+    @pytest.mark.asyncio
+    async def test_omits_platforms_whose_adapter_isnt_configured(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result == []

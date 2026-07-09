@@ -1,8 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-
-import { IntegrationsMarquee } from "./components/IntegrationsMarquee";
+import { IntegrationsMarquee } from "@/components/molecules/IntegrationsMarquee/IntegrationsMarquee";
 
 interface Props {
   query: string;

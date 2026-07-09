@@ -69,16 +69,16 @@ export const createRunSteps = (tour: any): StepOptions[] => [
       on: "top",
     },
     beforeShowPromise: () =>
-      new Promise((resolve) => {
-        setTimeout(() => {
-          waitForElement(TUTORIAL_SELECTORS.FIRST_CALCULATOR_NODE_OUTPUT, 5000)
-            .then(() => {
-              fitViewToScreen();
-              resolve(undefined);
-            })
-            .catch(resolve);
-        }, 300);
-      }),
+      waitForElement(TUTORIAL_SELECTORS.FIRST_CALCULATOR_NODE_OUTPUT, 20000)
+        .then(async () => {
+          fitViewToScreen();
+          // fitView animates the viewport over 800ms. Wait for it to settle so
+          // Shepherd measures the output at its final position before opening
+          // the overlay — otherwise the spotlight lands where the output used
+          // to be and the output stays hidden under the dimmed overlay.
+          await new Promise((resolve) => setTimeout(resolve, 900));
+        })
+        .catch(() => {}),
     when: {
       show: () => {
         highlightElement(TUTORIAL_SELECTORS.FIRST_CALCULATOR_NODE_OUTPUT);

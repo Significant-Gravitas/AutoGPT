@@ -17,32 +17,42 @@ from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
 import backend.api.features.admin.block_cost_admin_routes
+import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.orgs.invitation_routes
+import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
+import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
@@ -56,6 +66,7 @@ from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -138,6 +149,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
 
     with launch_darkly_context():
         yield
@@ -303,6 +315,7 @@ async def validation_error_handler(
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -366,7 +379,17 @@ app.include_router(
     prefix="/api/admin",
 )
 app.include_router(
+    backend.api.features.admin.bot_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
     backend.api.features.admin.block_cost_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.memory_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api",
 )
@@ -393,7 +416,22 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
-    workspace_routes.router,
+    chat_share.owner_router,
+    tags=["v2", "chat", "share"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_share.public_router,
+    tags=["v2", "chat", "share", "public"],
+    prefix="/api/public/shared/chats",
+)
+app.include_router(
+    team_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -408,9 +446,39 @@ app.include_router(
     prefix="/api/oauth",
 )
 app.include_router(
+    org_routes.router,
+    tags=["v2", "orgs"],
+    prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.team_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.org_router,
+    tags=["v2", "orgs", "invitations"],
+    prefix="/api/orgs/{org_id}/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.router,
+    tags=["v2", "invitations"],
+    prefix="/api/invitations",
+)
+app.include_router(
+    transfer_routes.router,
+    tags=["v2", "transfers"],
+    prefix="/api/transfers",
+)
+app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
+)
+app.include_router(
+    search_routes.router,
+    tags=["search"],
+    prefix="/api/search",
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,
@@ -471,8 +539,26 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -486,8 +572,25 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         for_export: bool = False,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.get_graph(
-            graph_id, user_id, graph_version, for_export
+            graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
@@ -495,7 +598,26 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.create_new_graph(
+            create_graph, user_id, ctx
+        )
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -511,10 +633,27 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
+        from autogpt_libs.auth.models import RequestContext
+
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id)
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
@@ -559,9 +698,23 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         inputs: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.library.routes.presets.execute_preset(
             preset_id=preset_id,
             user_id=user_id,
+            ctx=ctx,
             inputs=inputs or {},
             credential_inputs={},
         )

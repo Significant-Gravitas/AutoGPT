@@ -28,6 +28,21 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
     return true;
   }
 
+  // api/public/shared/chats/{token}/files/{id}/download
+  if (
+    path.length === 8 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    path[3] === "chats" &&
+    UUID_RE.test(path[4]) &&
+    path[5] === "files" &&
+    UUID_RE.test(path[6]) &&
+    path[7] === "download"
+  ) {
+    return true;
+  }
+
   return false;
 }
 
