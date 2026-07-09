@@ -54,7 +54,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading } = useSupabase();
+  const { isLoggedIn, isUserLoading, supabase, refreshSession } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -209,7 +209,17 @@ export function useOnboardingPage() {
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep]);
+
+    // Also store the chosen name in auth user_metadata so the copilot
+    // greeting (getGreetingName) uses it; refresh the cached session user
+    // so the new name shows up right after onboarding without a reload.
+    supabase?.auth
+      .updateUser({ data: { preferred_name: name } })
+      .then(() => refreshSession())
+      .catch(() => {
+        // Best effort — the greeting falls back to existing metadata
+      });
+  }, [currentStep, preparingStep, supabase, refreshSession]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
