@@ -24,6 +24,9 @@ router = APIRouter(
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
@@ -69,6 +72,7 @@ async def list_library_agents(
         folder_id=folder_id,
         include_root_only=include_root_only,
         is_hidden=is_hidden,
+        organization_id=getattr(ctx, "org_id", None),
     )
 
 
@@ -213,6 +217,11 @@ async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
+    # `library_db.fork_library_agent` activates the forked graph (validates
+    # node credentials) after the fork's own DB write. A GraphActivationError
+    # raised by that activation propagates to the app-level handler in
+    # rest_api.py and becomes a 400. Making the save itself atomic is a
+    # follow-up.
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,

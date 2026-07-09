@@ -2033,9 +2033,22 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        # Pin the OpenRouter transport so ``extra_body`` is always built:
+        # ``openrouter_active`` needs a non-empty ``api_key``, which on fork-PR
+        # CI is absent (secrets — incl. ``OPENAI_API_KEY`` — aren't exposed),
+        # flipping the transport to ``direct_anthropic`` and dropping
+        # ``extra_body`` entirely. Without this the assertion KeyErrors in CI.
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2172,6 +2185,10 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
+        # Pin the OpenRouter transport so ``extra_body`` is always built (and
+        # the kill switch's suppression is observable on a populated dict) —
+        # fork-PR CI has no LLM creds, which would otherwise drop the transport
+        # to direct_anthropic and omit ``extra_body``, KeyErroring the assert.
         with (
             patch(
                 "backend.copilot.baseline.service._get_main_client",
@@ -2180,6 +2197,12 @@ class TestBaselineReasoningStreaming:
             patch(
                 "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
                 0,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
             ),
         ):
             await _baseline_llm_caller(

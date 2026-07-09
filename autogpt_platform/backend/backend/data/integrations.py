@@ -37,6 +37,10 @@ class Webhook(BaseDbModel):
     events: list[str]
     config: dict = Field(default_factory=dict)
     secret: str
+    # Tenant of the graph/preset this webhook triggers — inherited from the
+    # parent resource at creation, not from the caller's active org.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     provider_webhook_id: str
 
@@ -58,6 +62,8 @@ class Webhook(BaseDbModel):
             config=dict(webhook.config),
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
+            organization_id=webhook.organizationId,
+            team_id=webhook.teamId,
         )
 
 
@@ -95,20 +101,23 @@ class WebhookWithRelations(Webhook):
 
 
 async def create_webhook(webhook: Webhook) -> Webhook:
-    created_webhook = await IntegrationWebhook.prisma().create(
-        data=IntegrationWebhookCreateInput(
-            id=webhook.id,
-            userId=webhook.user_id,
-            provider=webhook.provider.value,
-            credentialsId=webhook.credentials_id,
-            webhookType=webhook.webhook_type,
-            resource=webhook.resource,
-            events=webhook.events,
-            config=SafeJson(webhook.config),
-            secret=webhook.secret,
-            providerWebhookId=webhook.provider_webhook_id,
-        )
+    create_input = IntegrationWebhookCreateInput(
+        id=webhook.id,
+        userId=webhook.user_id,
+        provider=webhook.provider.value,
+        credentialsId=webhook.credentials_id,
+        webhookType=webhook.webhook_type,
+        resource=webhook.resource,
+        events=webhook.events,
+        config=SafeJson(webhook.config),
+        secret=webhook.secret,
+        providerWebhookId=webhook.provider_webhook_id,
     )
+    if webhook.organization_id:
+        create_input["organizationId"] = webhook.organization_id
+    if webhook.team_id:
+        create_input["teamId"] = webhook.team_id
+    created_webhook = await IntegrationWebhook.prisma().create(data=create_input)
     return Webhook.from_db(created_webhook)
 
 

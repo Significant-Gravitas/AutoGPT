@@ -791,6 +791,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             block_name=self.name,
             editable=True,
             is_graph_execution=is_graph_execution,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
         )
 
         if decision is None:

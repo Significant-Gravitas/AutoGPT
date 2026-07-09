@@ -14,7 +14,6 @@ import {
 } from "@phosphor-icons/react";
 
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -26,13 +25,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 
+import type { EditPayload } from "../../helpers";
 import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "../SubmissionItem/useSubmissionItem";
-
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
-  graph_id: string;
-}
 
 interface Props {
   submission: StoreSubmission;

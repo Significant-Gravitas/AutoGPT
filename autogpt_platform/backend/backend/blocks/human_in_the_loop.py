@@ -151,6 +151,8 @@ class HumanInTheLoopBlock(Block):
             graph_version=graph_version,
             block_name=input_data.name,  # Use user-provided name instead of block type
             editable=input_data.editable,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
         )
 
         if decision is None:
