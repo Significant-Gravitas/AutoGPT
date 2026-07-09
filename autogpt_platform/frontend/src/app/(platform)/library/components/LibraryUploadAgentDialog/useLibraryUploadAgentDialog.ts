@@ -2,7 +2,10 @@ import { usePostV1CreateNewGraph } from "@/app/api/__generated__/endpoints/graph
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { sanitizeImportedGraph, validateGraphStructure } from "@/lib/autogpt-server-api";
+import {
+  sanitizeImportedGraph,
+  validateGraphStructure,
+} from "@/lib/autogpt-server-api";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -33,20 +36,23 @@ export function useLibraryUploadAgentDialog(options?: {
         onError: (error: Error) => {
           // Try to extract backend error detail from the API response.
           // Use a type predicate so we never cast through `any` or `unknown`.
-          const _isApiError = (e: unknown): e is {
+          const _isApiError = (
+            e: unknown,
+          ): e is {
             response?: { data?: { detail?: string } };
             body?: { detail?: string };
           } => typeof e === "object" && e !== null;
 
           const apiError = _isApiError(error)
-            ? error.response?.data?.detail ?? error.body?.detail
+            ? (error.response?.data?.detail ?? error.body?.detail)
             : undefined;
 
-          const description = typeof apiError === "string"
-            ? apiError
-            : error instanceof Error
-              ? error.message
-              : "Error Uploading agent. The server did not provide additional details.";
+          const description =
+            typeof apiError === "string"
+              ? apiError
+              : error instanceof Error
+                ? error.message
+                : "Error Uploading agent. The server did not provide additional details.";
           toast({
             title: "Error Uploading Agent",
             description,

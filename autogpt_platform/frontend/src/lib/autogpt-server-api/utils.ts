@@ -44,8 +44,9 @@ export function formatEdgeID(conn: Link | Connection): string {
  * - removeCredentials was too aggressive, stripping legitimate input data
  */
 export function sanitizeImportedGraph(_graph: Graph): void {
-  // No-op — backend handles credential validation and block ID resolution.
-  // See validate_graph() and on_graph_activate() in the backend.
+  void _graph;
+  // Intentionally no-op: importing should not mutate user-provided graph
+  // payloads. Backend validation is the source of truth.
 }
 
 /**
