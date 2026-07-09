@@ -21,12 +21,14 @@ import { useComposerPlusMenu } from "./useComposerPlusMenu";
 interface Props {
   onFilesSelected: (files: File[]) => void;
   onUseWorkspaceFile?: () => void;
+  onClearGuidedPrompt?: () => void;
   disabled?: boolean;
 }
 
 export function ComposerPlusMenu({
   onFilesSelected,
   onUseWorkspaceFile,
+  onClearGuidedPrompt,
   disabled,
 }: Props) {
   const {
@@ -53,7 +55,7 @@ export function ComposerPlusMenu({
             type="button"
             variant="icon"
             size="icon"
-            aria-label="Open composer menu"
+            aria-label="Add files and more"
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
@@ -65,17 +67,32 @@ export function ComposerPlusMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
-          <DropdownMenuItem onSelect={openFilePicker}>
+          <DropdownMenuItem
+            onSelect={() => {
+              onClearGuidedPrompt?.();
+              openFilePicker();
+            }}
+          >
             <PaperclipIcon className="mr-2 h-4 w-4" />
             Attach file
           </DropdownMenuItem>
           {showWorkspaceOption && (
-            <DropdownMenuItem onSelect={() => onUseWorkspaceFile?.()}>
+            <DropdownMenuItem
+              onSelect={() => {
+                onClearGuidedPrompt?.();
+                onUseWorkspaceFile?.();
+              }}
+            >
               <FolderOpenIcon className="mr-2 h-4 w-4" />
               Use File from Workspace
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onSelect={() => openModal("integrations")}>
+          <DropdownMenuItem
+            onSelect={() => {
+              onClearGuidedPrompt?.();
+              openModal("integrations");
+            }}
+          >
             <PlugsConnectedIcon className="mr-2 h-4 w-4" />
             Integrations
           </DropdownMenuItem>

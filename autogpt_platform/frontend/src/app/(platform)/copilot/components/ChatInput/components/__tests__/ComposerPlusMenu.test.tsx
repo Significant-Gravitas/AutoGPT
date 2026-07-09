@@ -99,6 +99,38 @@ describe("ComposerPlusMenu", () => {
     expect(onUseWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 
+  it("clears the guided prompt for Attach file and Integrations but not Skills or Scheduled", async () => {
+    const onClearGuidedPrompt = vi.fn();
+    render(
+      <ComposerPlusMenu
+        onFilesSelected={vi.fn()}
+        onClearGuidedPrompt={onClearGuidedPrompt}
+      />,
+    );
+
+    openMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /attach file/i }),
+    );
+    expect(onClearGuidedPrompt).toHaveBeenCalledTimes(1);
+
+    openMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /integrations/i }),
+    );
+    expect(onClearGuidedPrompt).toHaveBeenCalledTimes(2);
+
+    openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /skills/i }));
+    expect(onClearGuidedPrompt).toHaveBeenCalledTimes(2);
+
+    openMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /scheduled/i }),
+    );
+    expect(onClearGuidedPrompt).toHaveBeenCalledTimes(2);
+  });
+
   it("hides the workspace option when its flag is disabled", async () => {
     render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
     openMenu();

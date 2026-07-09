@@ -25,7 +25,9 @@ export function useChatInput({
   useEffect(
     function consumeInitialPrompt() {
       if (!initialPrompt) return;
-      setValue((prev) => (prev.length === 0 ? initialPrompt : prev));
+      // Guided flows always replace the draft — picking "New skill" after
+      // "New scheduled task" must swap the prompt, not keep the stale one.
+      setValue(initialPrompt);
       setInitialPrompt(null);
       // Guided flows can prefill while the composer is already mounted
       // (e.g. from a copilot modal) — put the caret in the input so the

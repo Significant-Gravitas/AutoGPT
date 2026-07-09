@@ -6,6 +6,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import {
@@ -221,6 +222,12 @@ export function ChatInput({
     !isRecording &&
     !isTranscribing;
 
+  function handleClearGuidedPrompt() {
+    // Only discard untouched guided prompts — never a draft the user typed
+    // or edited themselves.
+    if (isGuidedPrompt(value)) setValue("");
+  }
+
   function handleFilesSelected(newFiles: File[]) {
     setAttachments((prev) => [
       ...prev,
@@ -302,6 +309,7 @@ export function ChatInput({
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
             {/* Mode and model are per-message settings sent with each stream request,

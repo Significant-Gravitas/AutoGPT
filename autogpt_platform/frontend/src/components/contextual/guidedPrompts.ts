@@ -9,3 +9,7 @@ export const NEW_SCHEDULED_TASK_PROMPT = `I want to create a new scheduled task.
 Don't make any assumptions and make sure that the task instructions are unambiguous. You should also ask me whether or not each scheduled task should start a new session or continue in the same session.
 
 Start by asking me about the task itself.`;
+
+export function isGuidedPrompt(text: string) {
+  return text === NEW_SKILL_PROMPT || text === NEW_SCHEDULED_TASK_PROMPT;
+}

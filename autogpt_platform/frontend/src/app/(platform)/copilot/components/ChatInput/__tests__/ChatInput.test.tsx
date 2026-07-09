@@ -6,6 +6,10 @@ import {
   act,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import {
+  NEW_SCHEDULED_TASK_PROMPT,
+  NEW_SKILL_PROMPT,
+} from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -475,6 +479,69 @@ describe("ChatInput guided prompt prefill", () => {
     });
     expect(document.activeElement).toBe(textarea);
     expect(mockSetInitialPrompt).toHaveBeenCalledWith(null);
+  });
+
+  it("replaces the current draft when a new guided prompt arrives", async () => {
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    mockInitialPrompt = NEW_SKILL_PROMPT;
+    rerender(<ChatInput onSend={mockOnSend} />);
+    await waitFor(() => {
+      expect(textarea.value).toBe(NEW_SKILL_PROMPT);
+    });
+
+    mockInitialPrompt = NEW_SCHEDULED_TASK_PROMPT;
+    rerender(<ChatInput onSend={mockOnSend} />);
+    await waitFor(() => {
+      expect(textarea.value).toBe(NEW_SCHEDULED_TASK_PROMPT);
+    });
+  });
+
+  it("clears an untouched guided prompt when picking Attach file", async () => {
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    mockInitialPrompt = NEW_SKILL_PROMPT;
+    rerender(<ChatInput onSend={mockOnSend} />);
+    await waitFor(() => {
+      expect(textarea.value).toBe(NEW_SKILL_PROMPT);
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /attach file/i }),
+    );
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+  });
+
+  it("keeps a user-edited draft when picking Attach file", async () => {
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    mockInitialPrompt = NEW_SKILL_PROMPT;
+    rerender(<ChatInput onSend={mockOnSend} />);
+    await waitFor(() => {
+      expect(textarea.value).toBe(NEW_SKILL_PROMPT);
+    });
+
+    fireEvent.change(textarea, {
+      target: { value: `${NEW_SKILL_PROMPT} plus my edits` },
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /attach file/i }),
+    );
+
+    expect(textarea.value).toBe(`${NEW_SKILL_PROMPT} plus my edits`);
   });
 });
 
