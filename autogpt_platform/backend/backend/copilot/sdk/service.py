@@ -3752,6 +3752,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -3783,6 +3785,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
+
+    # The session row is the tenancy anchor; the turn entry's org/team only
+    # backfills sessions created before org tagging (pre-migration rows).
+    if session.organization_id is None and organization_id:
+        session.organization_id = organization_id
+        session.team_id = team_id
 
     # Clean up ALL trailing error markers from previous turn before starting
     # a new turn.  Multiple markers can accumulate when a mid-stream error is

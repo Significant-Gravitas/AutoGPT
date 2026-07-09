@@ -245,7 +245,7 @@ async def test_build_cached_search_results_merges_all_branches(mocker):
         "my_agents": 3,
     }
     # Each branch is awaited exactly once with the expected arguments.
-    mock_library.assert_awaited_once_with("user-1", "youtube", "youtube")
+    mock_library.assert_awaited_once_with("user-1", "youtube", "youtube", None)
     mock_marketplace.assert_awaited_once_with([], "youtube", "youtube")
 
 

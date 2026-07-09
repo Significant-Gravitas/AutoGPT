@@ -544,6 +544,8 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
+                organization_id=entry.organization_id,
+                team_id=entry.team_id,
             )
             # Surround the driver stream with a silence watchdog so the
             # FE shows escalating ``StreamStatus`` messages during long
