@@ -3,7 +3,8 @@ import base64
 import hashlib
 import hmac
 import logging
-import secrets
+import random
+import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -67,17 +68,15 @@ async def get_or_create_user(user_data: dict) -> User:
                 )
             )
 
-        # Marketplace features (e.g. store submissions) require a Profile.
-        # The legacy Supabase auth.users trigger used to create it; since its
-        # removal this is the only place that does. Best-effort: a failure
-        # must not block user resolution — the user self-heals on their next
-        # request or via the profile settings page.
+        # Ensure every user has a marketplace Profile (required to publish
+        # agents). Best-effort: a failure must not block user resolution — the
+        # user self-heals on their next request or via the profile settings page.
         try:
-            await _ensure_default_profile(user_id, user_email)
+            await _ensure_user_profile(user.id, user.email)
         except Exception:
             logger.warning(
                 "Failed to ensure marketplace profile for user %s",
-                user_id,
+                user.id,
                 exc_info=True,
             )
 
@@ -94,56 +93,92 @@ async def get_or_create_user(user_data: dict) -> User:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 
 
-# Word pools mirror the legacy platform.generate_username() SQL function.
-_USERNAME_ADJECTIVES = [
-    "happy", "clever", "swift", "bright", "wise", "funny",
-    "cool", "awesome", "amazing", "fantastic", "wonderful",
-]  # fmt: skip
-_USERNAME_ANIMALS = [
-    "fox", "wolf", "bear", "eagle", "owl",
-    "tiger", "lion", "elephant", "giraffe", "zebra",
-]  # fmt: skip
+# Word lists mirror the legacy generate_username() SQL function so that app-
+# and DB-generated handles look consistent.
+_PROFILE_USERNAME_ADJECTIVES = (
+    "happy",
+    "clever",
+    "swift",
+    "bright",
+    "wise",
+    "funny",
+    "cool",
+    "awesome",
+    "amazing",
+    "fantastic",
+    "wonderful",
+)
+_PROFILE_USERNAME_ANIMALS = (
+    "fox",
+    "wolf",
+    "bear",
+    "eagle",
+    "owl",
+    "tiger",
+    "lion",
+    "elephant",
+    "giraffe",
+    "zebra",
+)
 
 
-async def _ensure_default_profile(user_id: str, user_email: str) -> None:
-    if await prisma.profile.find_first(where={"userId": user_id}):
+async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
+    """Create a default marketplace Profile for *user_id* if none exists.
+
+    Idempotent and race-safe. A UniqueViolationError has two possible sources:
+    a concurrent request that already created this user's Profile (done), or a
+    collision on the unique username with *another* user (retry with a fresh
+    handle — otherwise the user would be left without a Profile).
+    """
+    if await prisma.profile.find_unique(where={"userId": user_id}):
         return
 
-    # A UniqueViolationError on insert is ambiguous: either a concurrent
-    # request created this user's profile (done), or the generated username
-    # collided with another user's (retry with a fresh one).
+    name = (email or "").split("@", 1)[0] or "user"
     for _ in range(3):
-        username = await _generate_unique_username()
         try:
             await prisma.profile.create(
-                data={
-                    "id": user_id,
-                    "userId": user_id,
-                    "name": user_email.split("@")[0],
-                    "username": username,
-                    "description": "I'm new here",
-                    "links": [],
-                    "avatarUrl": "",
-                }
+                data=ProfileCreateInput(
+                    userId=user_id,
+                    name=name,
+                    username=await _generate_profile_username(),
+                    description="I'm new here",
+                    links=[],
+                    avatarUrl="",
+                )
             )
             return
         except UniqueViolationError:
-            if await prisma.profile.find_first(where={"userId": user_id}):
+            if await prisma.profile.find_unique(where={"userId": user_id}):
+                # Another in-flight request (or the legacy auth.users trigger)
+                # created this user's Profile — nothing to do.
+                logger.debug(
+                    "Profile for user %s already created concurrently", user_id
+                )
                 return
+            # The generated username collided with another user — loop and
+            # retry with a fresh handle.
+    logger.warning(
+        "Failed to create a unique profile handle for user %s after retries",
+        user_id,
+    )
 
-    raise DatabaseError(f"Failed to create default profile for user {user_id}")
 
+async def _generate_profile_username() -> str:
+    """Generate a human-friendly profile handle, avoiding obvious collisions.
 
-async def _generate_unique_username() -> str:
+    The unique constraint on Profile.username is the real guarantee; this
+    pre-check just avoids retrying a create in the common case. Falls back to a
+    UUID-based handle if we can't find a free friendly name.
+    """
     for _ in range(10):
         candidate = (
-            f"{secrets.choice(_USERNAME_ADJECTIVES)}"
-            f"-{secrets.choice(_USERNAME_ANIMALS)}"
-            f"-{secrets.randbelow(90000) + 10000}"
+            f"{random.choice(_PROFILE_USERNAME_ADJECTIVES)}-"
+            f"{random.choice(_PROFILE_USERNAME_ANIMALS)}-"
+            f"{random.randint(10000, 99999)}"
         )
-        if not await prisma.profile.find_first(where={"username": candidate}):
+        if not await prisma.profile.find_unique(where={"username": candidate}):
             return candidate
-    raise DatabaseError("Unable to generate a unique profile username")
+    return f"user-{uuid.uuid4().hex[:12]}"
 
 
 @cache_user_lookup
