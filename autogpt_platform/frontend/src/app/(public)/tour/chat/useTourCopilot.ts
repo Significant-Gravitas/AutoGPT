@@ -7,6 +7,7 @@ import type { TourMessage, TourScript } from "./script/types";
 
 type TourStatus = "ready" | "streaming";
 
+const AUTO_START_DELAY_MS = 1000;
 const TURN_SETTLE_MS = 300;
 /** Hold after the final part streams in before the demo flips to the upsell
  * card — gives the visitor time to take in the payoff artifact. */
@@ -45,6 +46,9 @@ export function useTourCopilot({
     const turn = script[stepIndex.current];
     if (status !== "ready" || !turn) return;
 
+    // A manual send cancels the pending auto-start so the turn can't fire twice.
+    clearTimers();
+
     commit([
       ...messagesRef.current,
       {
@@ -79,15 +83,31 @@ export function useTourCopilot({
     );
   }
 
+  function scheduleAutoStart() {
+    timers.current.push(
+      setTimeout(() => {
+        const turn = script[stepIndex.current];
+        if (turn) onSend(turn.userPrompt);
+      }, AUTO_START_DELAY_MS),
+    );
+  }
+
   function reset() {
     clearTimers();
     stepIndex.current = 0;
     commit([]);
     setStatus("ready");
     onReset?.();
+    scheduleAutoStart();
   }
 
-  useMountEffect(() => clearTimers);
+  // TourChatHost is keyed by sessionId, so a sidebar switch remounts this hook —
+  // auto-play the newly-selected chat's first turn after a short beat (pressing
+  // Enter still works and just skips the wait).
+  useMountEffect(() => {
+    scheduleAutoStart();
+    return clearTimers;
+  });
 
   const currentTurn = script[stepIndex.current];
 

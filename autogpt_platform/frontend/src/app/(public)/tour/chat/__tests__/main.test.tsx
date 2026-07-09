@@ -26,24 +26,24 @@ const ADVANCE_STEP_MS = 200;
 // hold before the final turn flips to the upsell.
 const ADVANCE_TOTAL_MS = 13000;
 
-// The prompt bar is prefilled and locked — the visitor only presses Enter to send.
-async function pressEnterToSend() {
-  fireEvent.keyDown(getSendBar(), { key: "Enter" });
-  // TourStreamingText mounts mid-stream (from a setTimeout callback) and
-  // registers its own setInterval — a timer created by an effect that fires
-  // *during* an in-flight advanceTimersByTimeAsync call is never picked up
-  // by that same call. Advancing in small chunks, each in its own act(),
-  // gives React a chance to flush the mount effect and register the new
-  // interval before the next chunk advances past it.
-  for (
-    let elapsed = 0;
-    elapsed < ADVANCE_TOTAL_MS;
-    elapsed += ADVANCE_STEP_MS
-  ) {
+// TourStreamingText mounts mid-stream (from a setTimeout callback) and
+// registers its own setInterval — a timer created by an effect that fires
+// *during* an in-flight advanceTimersByTimeAsync call is never picked up
+// by that same call. Advancing in small chunks, each in its own act(),
+// gives React a chance to flush the mount effect and register the new
+// interval before the next chunk advances past it.
+async function advanceInChunks(totalMs: number) {
+  for (let elapsed = 0; elapsed < totalMs; elapsed += ADVANCE_STEP_MS) {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(ADVANCE_STEP_MS);
     });
   }
+}
+
+// The prompt bar is prefilled and locked — the visitor only presses Enter to send.
+async function pressEnterToSend() {
+  fireEvent.keyDown(getSendBar(), { key: "Enter" });
+  await advanceInChunks(ADVANCE_TOTAL_MS);
 }
 
 describe("Tour chat scripted demo", () => {
@@ -56,6 +56,22 @@ describe("Tour chat scripted demo", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+  });
+
+  test("auto-plays the first turn without pressing Enter", async () => {
+    render(<TourChatPage />);
+
+    expect(
+      screen.getByText(/Watch a competitor's pricing page/i),
+    ).toBeDefined();
+
+    // After the auto-start delay the first scripted turn streams in on its own.
+    await advanceInChunks(5000);
+
+    // getByText throws on multiple matches, so this also guards against the
+    // turn double-firing.
+    expect(screen.getByText(/break that down/i)).toBeDefined();
+    expect(screen.getByText(/build and run it for me/i)).toBeDefined();
   });
 
   test("plays the competitor watch demo through to the payoff and upsell", async () => {
@@ -121,6 +137,13 @@ describe("Tour chat scripted demo", () => {
     // The prompt bar now prefills the selected scenario's opening prompt.
     expect(
       screen.getByText(/pull my unread emails and calendar/i),
+    ).toBeDefined();
+
+    // The newly selected chat auto-plays its first turn too.
+    await advanceInChunks(5000);
+
+    expect(
+      screen.getByText(/Love it\. Here's how I'll set that up/i),
     ).toBeDefined();
   });
 });
