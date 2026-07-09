@@ -13,6 +13,11 @@ permissions:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
+    # Serialize per PR so rapid pushes/comments don't race each other's
+    # dispatches. Deliberately NOT cancel-in-progress: cancelling could kill an
+    # in-flight !undeploy dispatch when a push lands right after it.
+    concurrency:
+      group: preview-dispatch-${{ github.event.pull_request.number || github.event.issue.number }}
     steps:
       - name: Check comment permissions and deployment status
         id: check_status
@@ -91,7 +96,7 @@ jobs:
             {
               "action": "deploy",
               "pr_number": "${{ steps.pr_details.outputs.pr_number }}",
-              "pr_title": "${{ steps.pr_details.outputs.pr_title }}",
+              "pr_title": ${{ toJSON(steps.pr_details.outputs.pr_title) }},
               "pr_state": "${{ steps.pr_details.outputs.pr_state }}",
               "repo": "${{ github.repository }}"
             }
@@ -119,7 +124,7 @@ jobs:
             {
               "action": "undeploy",
               "pr_number": "${{ steps.pr_details.outputs.pr_number }}",
-              "pr_title": "${{ steps.pr_details.outputs.pr_title }}",
+              "pr_title": ${{ toJSON(steps.pr_details.outputs.pr_title) }},
               "pr_state": "${{ steps.pr_details.outputs.pr_state }}",
               "repo": "${{ github.repository }}"
             }
@@ -181,7 +186,7 @@ jobs:
             {
               "action": "undeploy",
               "pr_number": "${{ github.event.pull_request.number }}",
-              "pr_title": "${{ github.event.pull_request.title }}",
+              "pr_title": ${{ toJSON(github.event.pull_request.title) }},
               "pr_state": "${{ github.event.pull_request.state }}",
               "repo": "${{ github.repository }}"
             }
@@ -206,7 +211,13 @@ jobs:
       # (last !deploy with no later !undeploy) and refresh the preview if one is active.
       - name: Check deployment status on PR update
         id: check_pr_sync
-        if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+        # Same-repo branches only: a fork author must not be able to push
+        # unreviewed code onto a preview that a collaborator !deployed once.
+        # Fork PRs keep the manual !deploy flow (explicit human per update).
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action == 'synchronize' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         with:
           script: |
@@ -255,7 +266,7 @@ jobs:
             {
               "action": "deploy",
               "pr_number": "${{ github.event.pull_request.number }}",
-              "pr_title": "${{ github.event.pull_request.title }}",
+              "pr_title": ${{ toJSON(github.event.pull_request.title) }},
               "pr_state": "${{ github.event.pull_request.state }}",
               "repo": "${{ github.repository }}"
             }
