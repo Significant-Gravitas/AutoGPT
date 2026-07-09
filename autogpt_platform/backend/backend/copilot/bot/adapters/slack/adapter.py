@@ -118,14 +118,16 @@ class SlackAdapter(WebhookAdapter):
     async def _client_for(self, team_id: str) -> Optional[AsyncWebClient]:
         """Return a cached Slack client for ``team_id``, building it from the
         workspace's stored install token (or the static back-compat token).
-        ``None`` if the workspace has no usable token — the caller then can't
-        respond, which is the correct outcome for an uninstalled workspace."""
-        if not team_id:
-            return None
+
+        An empty ``team_id`` (e.g. a raw channel ref in a proactive post that
+        carries no workspace) can't be looked up, so it falls straight through to
+        the static single-workspace token. Returns ``None`` only when there is no
+        usable token at all — the caller then can't respond, which is the correct
+        outcome for an uninstalled workspace."""
         client = self._clients.get(team_id)
         if client is not None:
             return client
-        install = await get_bot_install(Platform.SLACK, team_id)
+        install = await get_bot_install(Platform.SLACK, team_id) if team_id else None
         token = install.bot_token if install else config.get_bot_token()
         if not token:
             return None
@@ -428,7 +430,15 @@ class SlackAdapter(WebhookAdapter):
             await client.conversations_info(channel=channel)
         except Exception:
             return None
-        return team
+        if team:
+            return team
+        # Static single-workspace fallback: the ref carried no team, so resolve
+        # the bot's own workspace from auth_test.
+        try:
+            resp = await client.auth_test()
+            return resp.get("team_id") or None
+        except Exception:
+            return None
 
     async def post_channel_message(
         self, channel_id: str, text: str
@@ -490,7 +500,6 @@ class SlackAdapter(WebhookAdapter):
         cache_key = (team_id, user_id)
         if cache_key in self._user_name_cache:
             return self._user_name_cache[cache_key]
-        name = user_id
         client = await self._client_for(team_id)
         if client is not None:
             try:
@@ -503,10 +512,13 @@ class SlackAdapter(WebhookAdapter):
                     or user.get("name")
                     or user_id
                 )
+                # Only cache a real resolution — a transient API failure must not
+                # poison the cache with the raw id (mirrors _bot_user_id_for).
+                self._user_name_cache[cache_key] = name
+                return name
             except Exception:
                 logger.warning("Failed to fetch Slack user %s", user_id, exc_info=True)
-        self._user_name_cache[cache_key] = name
-        return name
+        return user_id
 
     async def _strip_mentions(self, team_id: str, text: str) -> str:
         """Drop the bot's own mention; rewrite others as `@displayname`."""

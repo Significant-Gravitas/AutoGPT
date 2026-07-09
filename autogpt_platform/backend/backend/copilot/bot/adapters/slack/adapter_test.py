@@ -32,10 +32,10 @@ def _mock_client() -> MagicMock:
 def adapter() -> SlackAdapter:
     a = SlackAdapter(MagicMock())
     client = _mock_client()
-    # The behaviour tests aren't about token resolution, so short-circuit it:
-    # any workspace resolves to the one mock client (kept on _client as a handle).
-    a._client = client  # type: ignore[attr-defined]  # test handle only
-    a._client_for = AsyncMock(return_value=client)  # type: ignore[method-assign]
+    # Seed the per-workspace client cache so the real _client_for resolves to the
+    # mock without a DB lookup — covers every team the behaviour tests use.
+    for team in ("T1", "T99", ""):
+        a._clients[team] = client
     return a
 
 
@@ -232,7 +232,7 @@ class TestOutbound:
     @pytest.mark.asyncio
     async def test_send_message_renders_mrkdwn_and_mentions_and_threads(self, adapter):
         await adapter.send_message("T1|C1|1.2", "**hi** @Bently", (("Bently", "U9"),))
-        call = adapter._client.chat_postMessage.await_args.kwargs
+        call = adapter._clients["T1"].chat_postMessage.await_args.kwargs
         assert call["channel"] == "C1"
         assert call["thread_ts"] == "1.2"
         assert call["text"] == "*hi* <@U9>"
@@ -240,7 +240,10 @@ class TestOutbound:
     @pytest.mark.asyncio
     async def test_non_allowlisted_mention_is_not_pinged(self, adapter):
         await adapter.send_message("T1|C1|", "hi @Ghost", ())
-        assert adapter._client.chat_postMessage.await_args.kwargs["text"] == "hi @Ghost"
+        assert (
+            adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+            == "hi @Ghost"
+        )
 
     @pytest.mark.asyncio
     async def test_send_file_uploads_into_thread(self, adapter):
@@ -249,7 +252,7 @@ class TestOutbound:
             "here you go",
             FileAttachment(filename="r.txt", mime_type="text/plain", content=b"x"),
         )
-        call = adapter._client.files_upload_v2.await_args.kwargs
+        call = adapter._clients["T1"].files_upload_v2.await_args.kwargs
         assert call["channel"] == "C1"
         assert call["thread_ts"] == "1.2"
         assert call["filename"] == "r.txt"
@@ -319,11 +322,35 @@ class TestPerWorkspaceClient:
         ):
             assert await a._client_for("T1") is None
 
+    @pytest.mark.asyncio
+    async def test_client_for_empty_team_falls_back_to_static_token(self):
+        # A raw channel ref (no team) must resolve via the static token rather
+        # than returning None — otherwise proactive posts fail (channel_not_found).
+        a = SlackAdapter(MagicMock())
+        lookup = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
+                new=lookup,
+            ),
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
+                return_value="xoxb-static",
+            ),
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
+            ) as web_client,
+        ):
+            client = await a._client_for("")
+        assert client is not None
+        web_client.assert_called_once_with(token="xoxb-static")
+        lookup.assert_not_awaited()  # no DB lookup for an empty team
+
 
 class TestIdentityCaching:
     @pytest.mark.asyncio
     async def test_auth_failure_is_not_cached_and_retries(self, adapter):
-        adapter._client.auth_test = AsyncMock(
+        adapter._clients["T1"].auth_test = AsyncMock(
             side_effect=[RuntimeError("blip"), {"user_id": "UBOT"}]
         )
         # First call fails → not cached as "".
@@ -335,7 +362,7 @@ class TestIdentityCaching:
 
     @pytest.mark.asyncio
     async def test_empty_auth_response_is_not_cached_and_retries(self, adapter):
-        adapter._client.auth_test = AsyncMock(
+        adapter._clients["T1"].auth_test = AsyncMock(
             side_effect=[{"user_id": ""}, {"user_id": "UBOT"}]
         )
         assert await adapter._bot_user_id_for("T1") == ""
