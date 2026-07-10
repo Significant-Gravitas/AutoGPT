@@ -1299,3 +1299,55 @@ async def test_save_session_to_db_uses_actual_start_after_collision(
 
     assert msg_a.sequence == 5
     assert msg_b.sequence == 6
+
+
+def test_chat_session_org_team_roundtrip_from_db():
+    """``from_db`` must surface the session row's organizationId/teamId —
+    the session object is the tenancy anchor for every tool call in a
+    turn (run_agent, run_block, sub-sessions), so dropping these here
+    makes the whole turn tenant-blind."""
+    from datetime import UTC, datetime
+
+    from prisma.enums import ResourceVisibility
+    from prisma.models import ChatSession as PrismaChatSession
+
+    from .model import ChatSessionInfo
+
+    now = datetime.now(UTC)
+    row = PrismaChatSession(
+        id="s-org",
+        userId="u1",
+        chatStatus="idle",
+        createdAt=now,
+        updatedAt=now,
+        credentials="{}",
+        successfulAgentRuns="{}",
+        successfulAgentSchedules="{}",
+        metadata="{}",
+        totalPromptTokens=0,
+        totalCompletionTokens=0,
+        isShared=False,
+        shareToken=None,
+        sharedAt=None,
+        autoShareExecutions=False,
+        isPinned=False,
+        visibility=ResourceVisibility.PRIVATE,
+        organizationId="org-1",
+        teamId="team-1",
+    )
+
+    info = ChatSessionInfo.from_db(row)
+    assert info.organization_id == "org-1"
+    assert info.team_id == "team-1"
+
+
+def test_chat_session_new_carries_org_team():
+    session = ChatSession.new(
+        "u1", dry_run=False, organization_id="org-1", team_id="team-1"
+    )
+    assert session.organization_id == "org-1"
+    assert session.team_id == "team-1"
+
+    tenantless = ChatSession.new("u1", dry_run=False)
+    assert tenantless.organization_id is None
+    assert tenantless.team_id is None

@@ -10,7 +10,9 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Props, usePublishAgentModal } from "./usePublishAgentModal";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { getApprovedMarketplaceUrl } from "@/lib/utils";
 import {
   PublishAuthPrompt,
   PublishAuthPromptSkeleton,
@@ -20,6 +22,7 @@ export function PublishAgentModal({
   trigger,
   targetState,
   onStateChange,
+  onRequestEdit,
   preSelectedAgentId,
   preSelectedAgentVersion,
   showTrigger = true,
@@ -31,6 +34,7 @@ export function PublishAgentModal({
     initialData,
     selectedAgentId,
     selectedAgentVersion,
+    creatorUsername,
     // Handlers
     handleClose,
     handleAgentSelect,
@@ -90,19 +94,37 @@ export function PublishAgentModal({
             isMarketplaceUpdate={!!currentState.submissionData}
           />
         );
-      case "review":
-        return currentState.submissionData &&
-          currentState.submissionData.name ? (
+      case "review": {
+        const submission = currentState.submissionData;
+        const marketplaceUrl = getApprovedMarketplaceUrl({
+          creatorUsername,
+          slug: submission?.slug,
+          isApproved: submission?.status === SubmissionStatus.APPROVED,
+        });
+        const onEdit =
+          onRequestEdit &&
+          submission &&
+          submission.status !== SubmissionStatus.APPROVED
+            ? () => onRequestEdit(submission)
+            : undefined;
+        return submission && submission.name ? (
           <AgentReviewStep
-            agentName={currentState.submissionData.name}
-            subheader={currentState.submissionData.sub_heading}
-            description={currentState.submissionData.description || ""}
-            thumbnailSrc={currentState.submissionData.image_urls?.[0]}
-            status={currentState.submissionData.status}
-            reviewComments={currentState.submissionData.review_comments}
+            agentName={submission.name}
+            subheader={submission.sub_heading}
+            description={submission.description || ""}
+            thumbnailSrc={submission.image_urls?.[0]}
+            status={submission.status}
+            reviewComments={submission.review_comments}
+            version={submission.listing_version}
+            category={submission.categories?.[0]}
+            submittedAt={submission.submitted_at}
+            reviewedAt={submission.reviewed_at}
+            runCount={submission.run_count}
+            marketplaceUrl={marketplaceUrl}
             onClose={handleClose}
             onDone={handleClose}
             onViewProgress={() => handleGoToDashboard()}
+            onEdit={onEdit}
           />
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center gap-8 space-y-2">
@@ -114,6 +136,7 @@ export function PublishAgentModal({
             <Skeleton className="h-8 w-full" />
           </div>
         );
+      }
     }
   }
 

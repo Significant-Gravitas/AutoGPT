@@ -4,7 +4,7 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { cn } from "@/lib/utils";
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef } from "react";
-import { TourUpsellCard } from "../TourUpsellCard/TourUpsellCard";
+import { TourUpsellBanner } from "../TourUpsellBanner/TourUpsellBanner";
 
 interface Props {
   prompt: string | null;
@@ -30,7 +30,7 @@ export function TourPromptBar({
   });
 
   if (isExhausted) {
-    return <TourUpsellCard onReplay={onReplay} />;
+    return <TourUpsellBanner onReplay={onReplay} />;
   }
 
   function send() {

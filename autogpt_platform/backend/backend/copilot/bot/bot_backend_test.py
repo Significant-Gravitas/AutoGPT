@@ -18,6 +18,7 @@ from backend.platform_linking.models import (
     LinkTokenResponse,
     Platform,
     ResolveResponse,
+    TurnDenial,
     WorkspaceUploadResult,
 )
 from backend.util.exceptions import (
@@ -30,6 +31,7 @@ from .adapters.base import InboundAttachment
 from .bot_backend import (
     BotBackend,
     BotStreamError,
+    ChatTurnDeniedError,
     _extract_setup_requirements,
     _is_corrupted_setup_requirements,
 )
@@ -514,3 +516,24 @@ class TestUploadWorkspaceFiles:
         )
         assert results == []
         api._client.upload_workspace_file.assert_not_awaited()
+
+
+class TestStreamChatDenial:
+    @pytest.mark.asyncio
+    async def test_stream_chat_raises_chat_turn_denied_on_denial(self, api: BotBackend):
+        api._client.start_chat_turn = AsyncMock(
+            return_value=ChatTurnHandle(
+                session_id="",
+                turn_id="",
+                user_id="u1",
+                denial=TurnDenial(reason="paywalled", message="subscription required"),
+            )
+        )
+
+        with pytest.raises(ChatTurnDeniedError) as exc_info:
+            async for _ in api.stream_chat(
+                platform="discord", platform_user_id="pu1", message="hi"
+            ):
+                pass
+
+        assert exc_info.value.denial.reason == "paywalled"

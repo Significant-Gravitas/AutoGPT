@@ -114,6 +114,7 @@ async def list_library_agents(
     folder_id: Optional[str] = None,
     include_root_only: bool = False,
     is_hidden: Optional[bool] = None,
+    organization_id: Optional[str] = None,
     include_nodes: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
@@ -162,6 +163,19 @@ async def list_library_agents(
         "isDeleted": False,
         "isArchived": False,
     }
+    # Library entries are personal bookmarks (per-user favorites/folders),
+    # so org context scopes rather than shares: the caller's own rows in
+    # the active org, plus untagged pre-backfill rows. Nested in AND so it
+    # can't collide with the search OR-clause below.
+    if organization_id is not None:
+        where_clause["AND"] = [
+            {
+                "OR": [
+                    {"organizationId": organization_id},
+                    {"organizationId": None},
+                ]
+            }
+        ]
 
     # Apply folder filter (skip when searching — search spans all folders)
     if folder_id is not None and not search_term:
@@ -510,6 +524,8 @@ async def create_library_agent(
     create_library_agents_for_sub_graphs: bool = True,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -538,6 +554,16 @@ async def create_library_agent(
     if folder_id:
         await get_folder(folder_id, user_id)
 
+    # Library entries are the ADDING user's bookmarks: their tenancy is the
+    # adder's active org (not the graph publisher's org — tagging with the
+    # publisher's org would hide a marketplace add from the user's own org
+    # context). Default to the user's personal org, matching the migration
+    # invariant for backfilled rows.
+    if organization_id is None:
+        from backend.api.features.orgs.db import get_user_default_team
+
+        organization_id, team_id = await get_user_default_team(user_id)
+
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
     )
@@ -559,6 +585,16 @@ async def create_library_agent(
                             isHidden=is_hidden,
                             useGraphIsActiveVersion=True,
                             User={"connect": {"id": user_id}},
+                            **(
+                                {"organizationId": organization_id}
+                                if organization_id
+                                else {}
+                            ),
+                            **(
+                                {"Team": {"connect": {"id": team_id}}}
+                                if team_id
+                                else {}
+                            ),
                             AgentGraph={
                                 "connect": {
                                     "graphVersionId": {
@@ -585,6 +621,22 @@ async def create_library_agent(
                             "isArchived": False,
                             "isHidden": is_hidden,
                             "useGraphIsActiveVersion": True,
+                            # Re-adding under a different active org re-tags the
+                            # row — and resets the team alongside it, since a
+                            # stale team from the previous org would point
+                            # across tenants. Untagged callers leave both as-is.
+                            **(
+                                {
+                                    "organizationId": organization_id,
+                                    "Team": (
+                                        {"connect": {"id": team_id}}
+                                        if team_id
+                                        else {"disconnect": True}
+                                    ),
+                                }
+                                if organization_id
+                                else {}
+                            ),
                             "settings": SafeJson(
                                 GraphSettings.from_graph(
                                     graph_entry,
@@ -1870,27 +1922,38 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    # Resource-follows-parent tenancy: a preset lives in the same org/team
+    # as the graph it runs, regardless of the caller's active org. Resolved
+    # here (not threaded by callers) so the invariant can't be forgotten.
+    graph_row = await prisma.models.AgentGraph.prisma().find_first(
+        where={"id": preset.graph_id, "version": preset.graph_version},
+    )
+    create_input = prisma.types.AgentPresetCreateInput(
+        userId=user_id,
+        name=preset.name,
+        description=preset.description,
+        agentGraphId=preset.graph_id,
+        agentGraphVersion=preset.graph_version,
+        isActive=preset.is_active,
+        webhookId=preset.webhook_id,
+        InputPresets={
+            "create": [
+                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                    name=name, data=SafeJson(data)
+                )
+                for name, data in {
+                    **preset.inputs,
+                    **preset.credentials,
+                }.items()
+            ]
+        },
+    )
+    if graph_row and graph_row.organizationId:
+        create_input["organizationId"] = graph_row.organizationId
+    if graph_row and graph_row.teamId:
+        create_input["teamId"] = graph_row.teamId
     new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=prisma.types.AgentPresetCreateInput(
-            userId=user_id,
-            name=preset.name,
-            description=preset.description,
-            agentGraphId=preset.graph_id,
-            agentGraphVersion=preset.graph_version,
-            isActive=preset.is_active,
-            webhookId=preset.webhook_id,
-            InputPresets={
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
-                        **preset.inputs,
-                        **preset.credentials,
-                    }.items()
-                ]
-            },
-        ),
+        data=create_input,
         include=AGENT_PRESET_INCLUDE,
     )
     return library_model.LibraryAgentPreset.from_db(new_preset)

@@ -34,9 +34,15 @@ async def setup_webhook_for_block(
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
     credentials: Optional["Credentials"] = None,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> tuple["Webhook", None] | tuple[None, str]:
     """
     Utility function to create (and auto-setup if possible) a webhook for a given provider.
+
+    ``organization_id``/``team_id`` should be the tenant of the graph/preset
+    the webhook will trigger (resource-follows-parent), not the caller's
+    active org.
 
     Returns:
         Webhook: The created or found webhook object, if successful.
@@ -132,6 +138,8 @@ async def setup_webhook_for_block(
             webhook_type=trigger_base_config.webhook_type,
             resource=resource,
             events=events,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     else:
         # Manual webhook -> no credentials -> don't register but do create
@@ -141,6 +149,8 @@ async def setup_webhook_for_block(
             events=events,
             graph_id=for_graph_id,
             preset_id=for_preset_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     logger.debug(f"Acquired webhook: {webhook}")
     return webhook, None

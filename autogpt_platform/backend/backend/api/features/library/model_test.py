@@ -26,6 +26,7 @@ def _make_library_agent(
         updatedAt=datetime.datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id=graph_id,
             version=1,
@@ -34,6 +35,7 @@ def _make_library_agent(
             userId="u1",
             isActive=True,
             createdAt=datetime.datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
         ),
     )
@@ -52,6 +54,7 @@ def test_from_db_execution_count_override_covers_success_rate():
         updatedAt=now,
         isDeleted=False,
         isShared=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
     agent = _make_library_agent(executions=[exec1])
 
@@ -76,6 +79,7 @@ async def test_agent_preset_from_db(test_user_id: str):
         isActive=True,
         userId=test_user_id,
         isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         InputPresets=[
             prisma.models.AgentNodeExecutionInputOutput.model_validate(
                 {
