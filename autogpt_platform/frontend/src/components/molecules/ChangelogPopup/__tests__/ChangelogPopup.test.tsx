@@ -1,6 +1,7 @@
 import { server } from "@/mocks/mock-server";
 import { useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,12 +16,22 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: vi.fn() };
 });
 
+const LATEST = "v0-6-63";
+const INDEX_MD = `
+| Release | Highlights |
+| --- | --- |
+| [May 7 – June 10, 2026](https://agpt.co/docs/platform/changelog/changelog/${LATEST}) | Copilot upgrades |
+`;
+
+function mdUrl(slug: string) {
+  return `https://agpt.co/docs/platform/changelog/changelog/${slug}.md`;
+}
+
 let indexRequests = 0;
 
 beforeEach(() => {
   indexRequests = 0;
-  // The toast fetches the changelog index on mount; count hits so we can prove
-  // whether the toast actually mounted under each layout.
+  window.localStorage.clear();
   server.use(
     http.get(CHANGELOG_INDEX_MD_URL, () => {
       indexRequests += 1;
@@ -34,7 +45,7 @@ afterEach(() => {
   vi.mocked(useGetFlag).mockReset();
 });
 
-describe("ChangelogPopup", () => {
+describe("ChangelogPopup gating", () => {
   it("renders nothing and skips the changelog fetch on the new sidebar layout", async () => {
     vi.mocked(useGetFlag).mockReturnValue(true);
     render(<ChangelogPopup />);
@@ -51,5 +62,44 @@ describe("ChangelogPopup", () => {
     render(<ChangelogPopup />);
 
     await waitFor(() => expect(indexRequests).toBeGreaterThan(0));
+  });
+});
+
+describe("ChangelogPopup toast (classic layout)", () => {
+  beforeEach(() => {
+    vi.mocked(useGetFlag).mockReturnValue(false);
+    server.use(
+      http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
+      http.get(mdUrl(LATEST), () => HttpResponse.text("# Latest release")),
+    );
+  });
+
+  it("slides in for an unseen release and opens the full modal via Read more", async () => {
+    render(<ChangelogPopup />);
+
+    const readMore = await screen.findByText(
+      /read more/i,
+      {},
+      { timeout: 3000 },
+    );
+    expect(screen.getByText("Copilot upgrades")).toBeDefined();
+
+    await userEvent.click(readMore);
+    expect(await screen.findByText("Changelog")).toBeDefined();
+  });
+
+  it("can be dismissed", async () => {
+    render(<ChangelogPopup />);
+
+    const dismiss = await screen.findByLabelText(
+      "Dismiss changelog",
+      {},
+      { timeout: 3000 },
+    );
+    await userEvent.click(dismiss);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Copilot upgrades")).toBeNull(),
+    );
   });
 });
