@@ -2,12 +2,14 @@
 
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useRef, useState } from "react";
-import { appendPartToLastMessage } from "./helpers";
+import { appendPartToLastMessage, textRevealDurationMs } from "./helpers";
 import type { TourMessage, TourScript } from "./script/types";
 
 type TourStatus = "ready" | "streaming";
 
-const TURN_SETTLE_MS = 300;
+/** Beat after the turn's last text finishes revealing before the next prompt
+ * prefills — keeps the visitor's attention on the transcript, not the bar. */
+const TURN_SETTLE_MS = 1500;
 /** Hold after the final part streams in before the demo flips to the upsell
  * card — gives the visitor time to take in the payoff artifact. */
 const FINAL_TURN_SETTLE_MS = 3000;
@@ -61,6 +63,9 @@ export function useTourCopilot({
     setStatus("streaming");
 
     let elapsed = 0;
+    // Text parts keep typing themselves out after they commit, so the turn is
+    // only visually over once the slowest reveal finishes — not at last commit.
+    let visualEnd = 0;
     turn.steps.forEach((step) => {
       elapsed += step.delayMs;
       timers.current.push(
@@ -68,6 +73,9 @@ export function useTourCopilot({
           commit(appendPartToLastMessage(messagesRef.current, step.part));
         }, elapsed),
       );
+      const revealMs =
+        step.part.type === "text" ? textRevealDurationMs(step.part.text) : 0;
+      visualEnd = Math.max(visualEnd, elapsed + revealMs);
     });
 
     const isFinalTurn = stepIndex.current === script.length - 1;
@@ -78,7 +86,7 @@ export function useTourCopilot({
           stepIndex.current += 1;
           if (stepIndex.current >= script.length) onComplete();
         },
-        elapsed + (isFinalTurn ? FINAL_TURN_SETTLE_MS : TURN_SETTLE_MS),
+        visualEnd + (isFinalTurn ? FINAL_TURN_SETTLE_MS : TURN_SETTLE_MS),
       ),
     );
   }

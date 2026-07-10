@@ -2,9 +2,10 @@
 
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useRef, useState } from "react";
-
-const CHARS_PER_TICK = 2;
-const TICK_MS = 16;
+import {
+  REVEAL_CHARS_PER_TICK as CHARS_PER_TICK,
+  REVEAL_TICK_MS as TICK_MS,
+} from "../../helpers";
 
 /** Reveals the scripted text character by character, like a live LLM stream.
  * The revealed text stays a single text node so test matchers and copy/paste

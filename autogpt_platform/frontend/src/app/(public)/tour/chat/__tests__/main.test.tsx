@@ -24,7 +24,7 @@ function getSendBar() {
 const ADVANCE_STEP_MS = 200;
 // Longest turn is ~7.7s of parts — including the 5s fake run — plus the 3s
 // hold before the final turn flips to the upsell.
-const ADVANCE_TOTAL_MS = 13000;
+const ADVANCE_TOTAL_MS = 16000;
 
 // TourStreamingText mounts mid-stream (from a setTimeout callback) and
 // registers its own setInterval — a timer created by an effect that fires
