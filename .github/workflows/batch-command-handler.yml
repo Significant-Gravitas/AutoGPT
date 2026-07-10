@@ -48,6 +48,11 @@ jobs:
         with:
           app-id: ${{ vars.BATCH_BOT_APP_ID }}
           private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          # Scope the minted token to only what batch.mjs needs (not blanket install).
+          permission-contents: write # create/force-update/delete batch/rollup
+          permission-pull-requests: write # open/update/merge rollup PR, comment
+          permission-issues: write # labels + PR conversation comments
+          permission-actions: read # read member CI status before merge
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

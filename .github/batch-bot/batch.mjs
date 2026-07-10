@@ -293,14 +293,6 @@ function cmdBatchMerge() {
     if (prNumber) comment(prNumber, `${MARKER}\n🤖 The batch is empty — nothing to merge.`);
     return;
   }
-  // Every member must be explicitly approved and green. `reviewDecision` must be
-  // exactly APPROVED — null / REVIEW_REQUIRED / CHANGES_REQUESTED all block.
-  const blockers = [];
-  for (const p of list) {
-    if (p.reviewDecision !== "APPROVED")
-      blockers.push(`#${p.number} not approved (${p.reviewDecision || "no reviews"})`);
-    blockers.push(...checkBlockers(p));
-  }
   const { merged, ejected } = buildRollup(list);
   const pr = upsertRollupPR(merged, ejected);
   if (!pr) {
@@ -314,6 +306,17 @@ function cmdBatchMerge() {
   // buildRollup only updates the branch ref; the preview redeploys on an explicit
   // `!deploy`, and enabling auto-merge below never triggers one on its own.
   deployRollup(pr);
+  // Gate on the PRs that actually made it into the rollup — assembly may have
+  // ejected members, and an ejected PR's CI must not block a rollup it's no longer
+  // part of. Each remaining member must be explicitly approved and green:
+  // `reviewDecision` must be exactly APPROVED (null / REVIEW_REQUIRED /
+  // CHANGES_REQUESTED all block).
+  const blockers = [];
+  for (const p of merged) {
+    if (p.reviewDecision !== "APPROVED")
+      blockers.push(`#${p.number} not approved (${p.reviewDecision || "no reviews"})`);
+    blockers.push(...checkBlockers(p));
+  }
   if (blockers.length) {
     comment(prNumber || pr.number, `${MARKER}\n🤖 Not merging — resolve first:\n- ${blockers.join("\n- ")}`);
     return;

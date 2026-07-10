@@ -113,9 +113,9 @@ permissions:
 
 Store the App's **App ID** as the repo variable `BATCH_BOT_APP_ID` and its **private
 key** (`.pem` contents) as the secret `BATCH_BOT_PRIVATE_KEY`, then **install the App
-on this repo**. Do **not** grant admin or a review-bypass — that would turn the token
-into a review-bypass primitive. (A fine-grained, single-repo PAT with an expiry,
-stored as `BATCH_BOT_TOKEN` and added as a write collaborator, works as a fallback.)
+on this repo**. All three workflows (listener, handler, reconcile) mint their token
+from these — there is no PAT fallback. Do **not** grant admin or a review-bypass —
+that would turn the token into a review-bypass primitive.
 
 Optional repo **variables**: `BATCH_BASE_BRANCH` (default `dev`), `BATCH_BOT_NAME`,
 `BATCH_BOT_EMAIL`.
