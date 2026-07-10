@@ -83,6 +83,24 @@ describe("Tour chat scripted demo", () => {
     expect(getSendBar()).toBeDefined();
   });
 
+  test("clicking the active sidebar session restarts the demo with an empty bar", async () => {
+    render(<TourChatPage />);
+
+    // Let the first turn auto-play so the second turn's prompt prefills.
+    await advanceThroughTurn();
+    expect(getSendBar()).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Competitor watch" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Fresh run: transcript cleared and the bar empty/disabled again while
+    // the first turn re-plays on its own.
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
+    expect(screen.queryByText(/break that down/i)).toBeNull();
+  });
+
   test("plays the competitor watch demo through to the payoff and upsell", async () => {
     render(<TourChatPage />);
 

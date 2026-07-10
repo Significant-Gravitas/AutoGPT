@@ -35,6 +35,7 @@ function TourBackdrop() {
 
 export function TourCopilot() {
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
+  const runId = useTourStore((s) => s.runId);
   const scenario = getTourScenario(activeScenarioId);
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -54,7 +55,7 @@ export function TourCopilot() {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <div className="h-4 shrink-0" />
         <TourChatHost
-          key={scenario.id}
+          key={`${scenario.id}-${runId}`}
           sessionId={scenario.id}
           script={scenario.script}
           onComplete={() =>
