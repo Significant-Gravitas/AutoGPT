@@ -21,6 +21,7 @@ from ..base import (
     ChannelInfo,
     ChannelType,
     FileAttachment,
+    InboundAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
@@ -54,6 +55,10 @@ _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 MAX_REFERENCED_CONVERSATIONS = 3
 REFERENCED_HISTORY_LIMIT = 200
 REFERENCED_CHAR_BUDGET = 8000
+
+# Cap how many attachments we pull off a single message into the workspace, so
+# a message with dozens of files can't fan out into that many uploads/scans.
+MAX_INBOUND_ATTACHMENTS = 10
 # When a link names a specific message, fetch that message plus a little of the
 # conversation leading up to it (rather than the channel's latest activity).
 REFERENCED_MESSAGE_CONTEXT = 15
@@ -444,6 +449,7 @@ class DiscordAdapter(PlatformAdapter):
             # context — both verbatim, with their links left untouched.
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
+            attachments, skipped = await self._extract_attachments(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -457,8 +463,45 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
+                attachments=attachments,
+                skipped_attachments=skipped,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _extract_attachments(
+        self, message: discord.Message
+    ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
+        """Download the user's file attachments so the handler can upload them.
+
+        Returns ``(downloaded, skipped)`` where ``skipped`` is ``(filename,
+        reason)`` for files we couldn't ingest (over the per-file cap, beyond
+        the per-message count, or a failed download) so the handler can tell
+        the user and the model rather than silently dropping them.
+        """
+        attachments: list[InboundAttachment] = []
+        skipped: list[tuple[str, str]] = []
+        extra = message.attachments[MAX_INBOUND_ATTACHMENTS:]
+        for attachment in extra:
+            skipped.append((attachment.filename or "file", "too many files attached"))
+        for attachment in message.attachments[:MAX_INBOUND_ATTACHMENTS]:
+            name = attachment.filename or "file"
+            if attachment.size > self.max_attachment_bytes:
+                skipped.append((name, "too large"))
+                continue
+            try:
+                content = await attachment.read()
+            except (discord.HTTPException, discord.NotFound):
+                logger.warning("Could not download attachment %s", name)
+                skipped.append((name, "couldn't be downloaded"))
+                continue
+            attachments.append(
+                InboundAttachment(
+                    filename=name,
+                    mime_type=attachment.content_type or "application/octet-stream",
+                    content=content,
+                )
+            )
+        return tuple(attachments), tuple(skipped)
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""

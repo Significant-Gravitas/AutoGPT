@@ -4,7 +4,7 @@ import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
-import type { TodoItem } from "../ContextPanel/components/ProgressTab/helpers";
+import type { TodoItem } from "../TaskProgressBar/helpers";
 
 export function shouldShowTaskListNotice({
   isContextPanelEnabled,

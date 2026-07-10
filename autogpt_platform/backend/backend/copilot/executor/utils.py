@@ -199,6 +199,12 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
+    organization_id: str | None = None
+    """Active organization for tenant-scoped execution"""
+
+    team_id: str | None = None
+    """Active workspace for tenant-scoped execution"""
+
     mode: CopilotMode | None = None
     """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
 
@@ -238,6 +244,8 @@ async def enqueue_copilot_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
@@ -268,6 +276,8 @@ async def enqueue_copilot_turn(
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
+        organization_id=organization_id,
+        team_id=team_id,
         mode=mode,
         model=model,
         permissions=permissions,
@@ -293,6 +303,8 @@ async def schedule_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
@@ -355,6 +367,8 @@ async def schedule_turn(
             is_user_message=is_user_message,
             context=context,
             file_ids=file_ids,
+            organization_id=organization_id,
+            team_id=team_id,
             mode=mode,
             model=model,
             permissions=permissions,
@@ -374,6 +388,8 @@ async def dispatch_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
@@ -423,6 +439,8 @@ async def dispatch_turn(
             is_user_message=is_user_message,
             context=context,
             file_ids=file_ids,
+            organization_id=organization_id,
+            team_id=team_id,
             mode=mode,
             model=model,
             permissions=permissions,
@@ -452,6 +470,8 @@ async def schedule_chat_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
@@ -514,6 +534,8 @@ async def schedule_chat_turn(
             is_user_message=is_user_message,
             context=context,
             file_ids=file_ids,
+            organization_id=organization_id,
+            team_id=team_id,
             mode=mode,
             model=model,
             permissions=permissions,
