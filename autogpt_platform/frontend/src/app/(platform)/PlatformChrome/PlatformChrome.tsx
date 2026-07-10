@@ -2,6 +2,7 @@
 
 import { CSSProperties, ReactNode } from "react";
 
+import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
@@ -23,13 +24,29 @@ interface Props {
 }
 
 export function PlatformChrome({ children }: Props) {
-  const { showNewLayout } = usePlatformChrome();
+  const { showNewLayout, showTourSidebar } = usePlatformChrome();
 
   const content = (
     <TopUpPromptProvider>
       <PaywallGate>{children}</PaywallGate>
     </TopUpPromptProvider>
   );
+
+  // Logged-out marketplace visitors browse with the tour demo sidebar as an
+  // upsell — clicking a demo session takes them into /tour/chat.
+  if (showTourSidebar) {
+    return (
+      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+        <TourSidebar variant="marketplace" />
+        <SidebarInset className="bg-[#f9f9f9]">
+          <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
+            <SidebarTrigger />
+          </div>
+          <section className="flex-1">{content}</section>
+        </SidebarInset>
+      </SidebarProvider>
+    );
+  }
 
   if (showNewLayout) {
     return (

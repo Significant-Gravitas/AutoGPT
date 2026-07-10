@@ -5,6 +5,7 @@ import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useMountEffect } from "@/hooks/useMountEffect";
+import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
 import { TourChatHost } from "./TourChatHost";
@@ -35,11 +36,13 @@ function TourBackdrop() {
 
 export function TourCopilot() {
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
+  const runId = useTourStore((s) => s.runId);
+  const setDemoComplete = useTourStore((s) => s.setDemoComplete);
   const scenario = getTourScenario(activeScenarioId);
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
+  const isArtifactOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
   // The tour shares the copilot UI store but must never leak panel state
   // into the real /copilot: opens skip the localStorage write
@@ -49,18 +52,26 @@ export function TourCopilot() {
   });
 
   const chatColumn = (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    // The chat fades back once the artifact panel opens so the visitor's
+    // attention lands on the payoff.
+    <div
+      className={cn(
+        "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-opacity duration-700",
+        isArtifactOpen && "opacity-50",
+      )}
+    >
       <TourBackdrop />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <div className="h-4 shrink-0" />
         <TourChatHost
-          key={scenario.id}
+          key={`${scenario.id}-${runId}`}
           sessionId={scenario.id}
           script={scenario.script}
-          onComplete={() =>
-            openArtifact(buildTourArtifactRef(scenario), { persist: false })
-          }
-          onReset={clearArtifactPreview}
+          completionNotice={`Your **"${scenario.completionArtifact.filename}"** will appear in a moment on the right side.`}
+          onComplete={() => {
+            setDemoComplete();
+            openArtifact(buildTourArtifactRef(scenario), { persist: false });
+          }}
         />
       </div>
     </div>

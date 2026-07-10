@@ -13,6 +13,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -33,9 +34,11 @@ import {
 } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
+import { TourUpsellCard } from "./components/TourUpsellCard";
 
 // Visual clone of the logged-in AppSidebar for the public tour demo. Only
 // Marketplace navigates; every other destination needs an account, so those
@@ -63,7 +66,8 @@ function DisabledMenuItem({
   );
 }
 
-function TourSessionsMenu() {
+function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
+  const router = useRouter();
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
   const setActiveScenario = useTourStore((s) => s.setActiveScenario);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
@@ -71,6 +75,7 @@ function TourSessionsMenu() {
   function selectScenario(id: string) {
     clearArtifactPreview();
     setActiveScenario(id);
+    if (variant === "marketplace") router.push("/tour/chat");
   }
 
   return (
@@ -78,7 +83,7 @@ function TourSessionsMenu() {
       {tourScenarios.map((scenario) => (
         <SidebarMenuItem key={scenario.id}>
           <SidebarMenuButton
-            isActive={scenario.id === activeScenarioId}
+            isActive={variant === "tour" && scenario.id === activeScenarioId}
             tooltip={scenario.label}
             onClick={() => selectScenario(scenario.id)}
             className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200"
@@ -92,7 +97,16 @@ function TourSessionsMenu() {
   );
 }
 
-export function TourSidebar() {
+type TourSidebarVariant = "tour" | "marketplace";
+
+interface Props {
+  /** "marketplace" renders the sidebar as a logged-out upsell shell: the
+   * sessions group is honestly labelled a demo and clicking one navigates
+   * into /tour/chat instead of switching in place. */
+  variant?: TourSidebarVariant;
+}
+
+export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
 
@@ -182,15 +196,19 @@ export function TourSidebar() {
           >
             <SidebarGroup className="py-1">
               <SidebarGroupLabel className="text-[13px] font-medium">
-                Recent chats
+                {variant === "marketplace" ? "Try Autopilot" : "Recent chats"}
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <TourSessionsMenu />
+                <TourSessionsMenu variant={variant} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
         </motion.div>
       </SidebarContent>
+
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        <TourUpsellCard />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
