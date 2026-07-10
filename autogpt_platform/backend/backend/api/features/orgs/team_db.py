@@ -148,6 +148,14 @@ async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
     return [TeamMemberResponse.from_db(m) for m in members]
 
 
+async def is_team_admin(ws_id: str, user_id: str) -> bool:
+    """Return True if the user is an active admin of the workspace."""
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    )
+    return bool(member and member.isAdmin and member.status == "ACTIVE")
+
+
 async def add_team_member(
     ws_id: str,
     user_id: str,
