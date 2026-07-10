@@ -9,8 +9,9 @@ rules in one place.
 """
 
 import logging
-from dataclasses import dataclass
 from typing import AsyncIterable, Awaitable, Callable, Sequence
+
+from pydantic import BaseModel
 
 from .base import InboundAttachment, MessageHistoryEntry
 
@@ -19,8 +20,7 @@ logger = logging.getLogger(__name__)
 _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 
-@dataclass
-class InboundFile:
+class InboundFile(BaseModel):
     """A platform file an adapter wants to ingest, normalized for
     ``collect_attachments``. ``fetch`` is the only platform-specific part — a
     zero-arg coroutine bound to this file that downloads its bytes.
