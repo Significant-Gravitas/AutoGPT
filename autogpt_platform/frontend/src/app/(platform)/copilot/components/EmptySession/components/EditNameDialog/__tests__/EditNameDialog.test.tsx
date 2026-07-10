@@ -22,9 +22,10 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   }),
 }));
 
-function mockUpdateNameSuccess() {
+function mockUpdateNameSuccess(onBody?: (body: unknown) => void) {
   server.use(
-    http.put("/api/auth/user", () => {
+    http.put("/api/auth/user", async ({ request }) => {
+      onBody?.(await request.json());
       return HttpResponse.json({ user: { id: "u1" } });
     }),
   );
@@ -67,8 +68,14 @@ describe("EditNameDialog", () => {
     expect(input.value).toBe("Alice");
   });
 
-  test("saves name via API route and closes dialog", async () => {
-    mockUpdateNameSuccess();
+  test("saves the name as preferred_name via API route and closes dialog", async () => {
+    // preferred_name is the key the copilot greeting prefers (also written
+    // by onboarding); writing full_name here would be shadowed by any
+    // previously-set preferred_name and the edit would appear to not work.
+    let requestBody: unknown;
+    mockUpdateNameSuccess((body) => {
+      requestBody = body;
+    });
     render(<EditNameDialog currentName="Alice" />);
 
     const input = await openDialogAndGetInput();
@@ -78,6 +85,7 @@ describe("EditNameDialog", () => {
     await waitFor(() => {
       expect(mockRefreshSession).toHaveBeenCalled();
     });
+    expect(requestBody).toEqual({ preferred_name: "Bob" });
     expect(mockToast).toHaveBeenCalledWith({ title: "Name updated" });
   });
 
