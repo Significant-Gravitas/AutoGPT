@@ -1,4 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import {
   ArrowRightIcon,
   CheckCircleIcon,
@@ -20,7 +21,13 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         <Text variant="large-medium" className="text-zinc-900">
           {agent.name}
         </Text>
-        <span className="flex shrink-0 items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700">
+        <span
+          className={cn(
+            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700",
+            !runCompleted &&
+              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-emerald-300/70",
+          )}
+        >
           {runCompleted ? (
             <>
               <CheckCircleIcon className="size-4 shrink-0" weight="fill" />
@@ -28,6 +35,11 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
             </>
           ) : (
             <>
+              {/* Breathing halo behind the badge while the run is live. */}
+              <span
+                aria-hidden="true"
+                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-emerald-400/50 blur-md"
+              />
               <span className="relative flex size-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
                 <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />

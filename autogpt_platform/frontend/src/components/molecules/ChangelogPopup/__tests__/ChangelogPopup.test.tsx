@@ -16,6 +16,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: vi.fn() };
 });
 
+// usePlatformChrome (which drives the gate) reads the session to decide the
+// logged-out marketplace tour sidebar; a logged-in user keeps that off so the
+// new-layout gate is what's under test here.
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ isLoggedIn: true, isUserLoading: false }),
+}));
+
 const LATEST = "v0-6-63";
 const INDEX_MD = `
 | Release | Highlights |

@@ -42,7 +42,7 @@ const prNumber = process.env.PR_NUMBER ? Number(process.env.PR_NUMBER) : null;
 const arg1 = (process.env.ARG1 || "").trim();
 const rollupUrl = process.env.ROLLUP_URL || "";
 const rollupPr = process.env.ROLLUP_PR ? Number(process.env.ROLLUP_PR) : null;
-const SAFE_REF = /^[\w./-]+$/; // git ref chars we allow through, defense-in-depth
+const SAFE_REF = /^[\w./][\w./-]*$/; // allowed git ref chars, no leading dash (arg-injection guard)
 
 function req(name) {
   const v = process.env[name];
@@ -142,7 +142,9 @@ function buildRollup(list) {
   // settings so only the bot can push to it (see README).
   const sha = git(["rev-parse", "HEAD"]);
   const ref = `refs/heads/${ROLLUP}`;
-  const exists = tryGh(["api", `repos/${REPO}/git/${ref}`]).ok;
+  // Exact-match existence check via the singular `git/ref/…`; the plural
+  // `git/refs/…` prefix-matches and can false-positive on a sibling branch.
+  const exists = tryGh(["api", `repos/${REPO}/git/ref/heads/${ROLLUP}`]).ok;
   if (exists) {
     gh(["api", "-X", "PATCH", `repos/${REPO}/git/${ref}`, "-f", `sha=${sha}`, "-F", "force=true"]);
   } else {
@@ -259,27 +261,65 @@ function cmdBatchRemove() {
   rebuildAndReport(`Removed #${prNumber} from the batch.`);
 }
 
+// Returns merge-blocker strings for a member's CI. `gh pr checks --json` exits
+// non-zero when checks are failing (1) or still pending (8) but STILL prints the
+// JSON to stdout, so we must read the output regardless of exit code — gating on
+// the exit code alone silently skips CI for that member. Only `pass`/`skipping`
+// count as green; fail, cancel, pending, or an unreadable/empty response all
+// block. Fail closed: a member must be provably green to land.
+function checkBlockers(p) {
+  const raw = tryGh(["pr", "checks", String(p.number), "--repo", REPO, "--json", "bucket"]).out || "";
+  // tryGh folds stderr into `out` on non-zero exit, so extract just the array.
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  let rows = null;
+  if (start !== -1 && end > start) {
+    try {
+      rows = JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      rows = null;
+    }
+  }
+  if (rows === null) return [`#${p.number} check status could not be determined`];
+  // Zero reported checks can't be confirmed green — block (fail closed) rather
+  // than let a PR with no CI slip through the gate on an empty array.
+  if (rows.length === 0) return [`#${p.number} has no reported checks — cannot confirm green`];
+  const bad = rows.filter((c) => c.bucket !== "pass" && c.bucket !== "skipping");
+  if (!bad.length) return [];
+  const buckets = [...new Set(bad.map((c) => c.bucket))].sort().join(", ");
+  return [`#${p.number} not green (${buckets})`];
+}
+
 function cmdBatchMerge() {
   const list = members();
   if (list.length === 0) {
     if (prNumber) comment(prNumber, `${MARKER}\n🤖 The batch is empty — nothing to merge.`);
     return;
   }
-  // Every member must be explicitly approved and green. `reviewDecision` must be
-  // exactly APPROVED — null / REVIEW_REQUIRED / CHANGES_REQUESTED all block.
-  const blockers = [];
-  for (const p of list) {
-    if (p.reviewDecision !== "APPROVED")
-      blockers.push(`#${p.number} not approved (${p.reviewDecision || "no reviews"})`);
-    const checks = tryGh(["pr", "checks", String(p.number), "--repo", REPO, "--json", "bucket"]);
-    if (checks.ok) {
-      const bad = JSON.parse(checks.out).filter((c) => c.bucket === "fail" || c.bucket === "cancel");
-      if (bad.length) blockers.push(`#${p.number} has failing checks`);
-    }
-  }
   const { merged, ejected } = buildRollup(list);
   const pr = upsertRollupPR(merged, ejected);
-  if (!pr) throw new Error("rollup PR missing after build");
+  if (!pr) {
+    // Every member was ejected during assembly (conflict / fork / unsafe ref), so
+    // upsertRollupPR closed the rollup PR. Report cleanly instead of throwing.
+    if (prNumber)
+      comment(prNumber, `${MARKER}\n🤖 Every batched PR was ejected during assembly — nothing left to merge.`);
+    return;
+  }
+  // Refresh the combined preview so a maintainer approves what will actually land.
+  // buildRollup only updates the branch ref; the preview redeploys on an explicit
+  // `!deploy`, and enabling auto-merge below never triggers one on its own.
+  deployRollup(pr);
+  // Gate on the PRs that actually made it into the rollup — assembly may have
+  // ejected members, and an ejected PR's CI must not block a rollup it's no longer
+  // part of. Each remaining member must be explicitly approved and green:
+  // `reviewDecision` must be exactly APPROVED (null / REVIEW_REQUIRED /
+  // CHANGES_REQUESTED all block).
+  const blockers = [];
+  for (const p of merged) {
+    if (p.reviewDecision !== "APPROVED")
+      blockers.push(`#${p.number} not approved (${p.reviewDecision || "no reviews"})`);
+    blockers.push(...checkBlockers(p));
+  }
   if (blockers.length) {
     comment(prNumber || pr.number, `${MARKER}\n🤖 Not merging — resolve first:\n- ${blockers.join("\n- ")}`);
     return;

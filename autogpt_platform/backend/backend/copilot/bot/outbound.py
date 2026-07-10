@@ -15,7 +15,6 @@ thread creation); this module never imports ``discord``.
 """
 
 import logging
-import re
 from typing import Literal, Optional
 
 from pydantic import BaseModel
@@ -24,11 +23,6 @@ from backend.copilot.bot.adapters.base import ChannelInfo, PlatformAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 
 logger = logging.getLogger(__name__)
-
-# Discord snowflakes are 17-19 digits today; allow a little slack so the ID
-# path stays robust as the epoch advances rather than silently treating a
-# valid ID as a channel name.
-_SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
 
 class DeliveryResult(BaseModel):
@@ -138,7 +132,7 @@ async def _resolve_target(
     if not ref:
         return None, "channel_not_found"
 
-    if _SNOWFLAKE.match(ref):
+    if adapter.looks_like_channel_id(ref):
         guild_id = await adapter.get_channel_server_id(ref)
         if guild_id is None:
             return None, "channel_not_found"
