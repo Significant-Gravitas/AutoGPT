@@ -12,7 +12,7 @@ import {
   LightningIcon,
   ListChecksIcon,
   SpinnerGapIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 import type { SuggestionTheme } from "../../helpers";
 
@@ -74,19 +74,23 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                       type="button"
                       disabled={disabled || loadingPrompt !== null}
                       onClick={() => void handlePromptClick(theme.name, prompt)}
-                      className="w-full rounded-md px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
                     >
                       {loadingPrompt === `${theme.name}:${prompt}` ? (
-                        <span className="flex items-center gap-2">
-                          <SpinnerGapIcon
-                            className="h-4 w-4 animate-spin"
-                            weight="bold"
-                          />
-                          {prompt}
-                        </span>
+                        <SpinnerGapIcon
+                          className="h-4 w-4 shrink-0 animate-spin"
+                          weight="bold"
+                        />
                       ) : (
-                        prompt
+                        Icon && (
+                          <Icon
+                            size={16}
+                            weight="regular"
+                            className="shrink-0 text-zinc-500"
+                          />
+                        )
                       )}
+                      <span>{prompt}</span>
                     </button>
                   </li>
                 ))}

@@ -3716,6 +3716,258 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/sandbox/changes": {
+      "get": {
+        "tags": ["v2", "chat"],
+        "summary": "Get Sandbox Changes",
+        "description": "List git-changed files via ``git status --porcelain`` (empty if not a repo).",
+        "operationId": "getV2GetSandboxChanges",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxChangesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/sandbox/diff": {
+      "get": {
+        "tags": ["v2", "chat"],
+        "summary": "Get Sandbox Diff",
+        "description": "Return committed (HEAD) vs current content for a file.",
+        "operationId": "getV2GetSandboxDiff",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SandboxDiffResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/sandbox/download": {
+      "get": {
+        "tags": ["v2", "chat"],
+        "summary": "Download Sandbox Files",
+        "description": "Download the workspace as a gzipped tarball (VCS/deps excluded).",
+        "operationId": "getV2DownloadSandboxFiles",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/sandbox/file": {
+      "get": {
+        "tags": ["v2", "chat"],
+        "summary": "Get Sandbox File",
+        "description": "Read a file's UTF-8 content (first 1 MB, ``truncated`` set if larger).",
+        "operationId": "getV2GetSandboxFile",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SandboxFileResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["v2", "chat"],
+        "summary": "Write Sandbox File",
+        "description": "Write UTF-8 content to a file, echoing back what was written.",
+        "operationId": "putV2WriteSandboxFile",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxWriteFileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SandboxFileResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/sandbox/tree": {
+      "get": {
+        "tags": ["v2", "chat"],
+        "summary": "Get Sandbox Tree",
+        "description": "List a single directory in the sandbox workspace (no recursion).",
+        "operationId": "getV2GetSandboxTree",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SandboxTreeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/share": {
       "delete": {
         "tags": ["v2", "chat", "share", "chat", "share"],
@@ -20877,6 +21129,91 @@
         "required": ["executions", "total"],
         "title": "RunningExecutionsListResponse",
         "description": "Response model for list of running executions"
+      },
+      "SandboxChangedFile": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "status": {
+            "type": "string",
+            "enum": ["M", "A", "D", "R", "?"],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": ["path", "status"],
+        "title": "SandboxChangedFile"
+      },
+      "SandboxChangesResponse": {
+        "properties": {
+          "is_git_repo": { "type": "boolean", "title": "Is Git Repo" },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SandboxChangedFile" },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": ["is_git_repo", "files"],
+        "title": "SandboxChangesResponse"
+      },
+      "SandboxDiffResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "original": { "type": "string", "title": "Original" },
+          "modified": { "type": "string", "title": "Modified" }
+        },
+        "type": "object",
+        "required": ["path", "original", "modified"],
+        "title": "SandboxDiffResponse"
+      },
+      "SandboxFileResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "content": { "type": "string", "title": "Content" },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["path", "content"],
+        "title": "SandboxFileResponse"
+      },
+      "SandboxTreeEntry": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "type": { "type": "string", "enum": ["file", "dir"], "title": "Type" }
+        },
+        "type": "object",
+        "required": ["name", "path", "type"],
+        "title": "SandboxTreeEntry"
+      },
+      "SandboxTreeResponse": {
+        "properties": {
+          "entries": {
+            "items": { "$ref": "#/components/schemas/SandboxTreeEntry" },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": ["entries"],
+        "title": "SandboxTreeResponse"
+      },
+      "SandboxWriteFileRequest": {
+        "properties": {
+          "path": { "type": "string", "maxLength": 4096, "title": "Path" },
+          "content": {
+            "type": "string",
+            "maxLength": 1000000,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": ["path", "content"],
+        "title": "SandboxWriteFileRequest"
       },
       "ScheduleCleanupRequest": {
         "properties": {

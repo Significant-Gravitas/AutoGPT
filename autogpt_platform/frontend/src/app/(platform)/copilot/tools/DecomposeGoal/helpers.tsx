@@ -8,7 +8,7 @@ import {
   SpinnerGapIcon,
   WarningDiamondIcon,
   XCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
@@ -131,7 +131,9 @@ export function ToolIcon({
 }
 
 export function AccordionIcon() {
-  return <ListChecksIcon size={32} weight="light" />;
+  return (
+    <ListChecksIcon size={14} weight="bold" className="text-neutral-400" />
+  );
 }
 
 export function StepStatusIcon({ status }: { status: string }) {

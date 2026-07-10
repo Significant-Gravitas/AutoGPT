@@ -30,15 +30,14 @@ import {
   DotsThree,
   DownloadSimpleIcon,
   FilesIcon,
-  MagnifyingGlassIcon,
   PencilSimpleIcon,
-  PlusCircleIcon,
-  PlusIcon,
   PushPinIcon,
   PushPinSlashIcon,
   ShareNetworkIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
+import { SearchIcon } from "@/components/icons/SearchIcon";
+import { SparkleIcon } from "@/components/icons/SparkleIcon";
 import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -272,7 +271,7 @@ export function ChatSidebar() {
                     onClick={handleNewChat}
                     style={{ minWidth: "auto", width: "auto" }}
                   >
-                    <PlusCircleIcon className="!size-5" />
+                    <SparkleIcon className="!size-5" />
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
@@ -285,7 +284,7 @@ export function ChatSidebar() {
                     onClick={() => openSearch()}
                     className="rounded-full text-zinc-600 hover:bg-zinc-100"
                   >
-                    <MagnifyingGlassIcon className="!size-5" />
+                    <SearchIcon className="!size-5" />
                   </ShadcnButton>
                 ) : null}
               </div>
@@ -314,7 +313,7 @@ export function ChatSidebar() {
                       onClick={() => openSearch()}
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
-                      <MagnifyingGlassIcon className="!size-5" />
+                      <SearchIcon className="!size-5" />
                     </ShadcnButton>
                   ) : null}
                   {isArtifactsEnabled ? (
@@ -340,7 +339,7 @@ export function ChatSidebar() {
                   size="small"
                   onClick={handleNewChat}
                   className="w-full"
-                  leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+                  leftIcon={<SparkleIcon className="h-4 w-4" />}
                 >
                   New Chat
                 </Button>

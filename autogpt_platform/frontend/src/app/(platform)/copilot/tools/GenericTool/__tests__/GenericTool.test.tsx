@@ -23,7 +23,7 @@ describe("GenericTool", () => {
   });
 
   it("renders exactly one row once output is available (accordion only, no loose status line)", () => {
-    render(
+    const { container } = render(
       <GenericTool
         part={makePart({
           state: "output-available",
@@ -36,10 +36,13 @@ describe("GenericTool", () => {
     // MorphingTextAnimation status row is rendered alongside it.
     const triggers = screen.getAllByRole("button");
     expect(triggers.length).toBe(1);
-    expect(triggers[0].textContent).toContain("Command failed (exit 1)");
+    expect(triggers[0].textContent).toContain(
+      'echo "starting simulation run 2"',
+    );
+    expect(container.textContent).not.toContain("Ran:");
   });
 
-  it("shows 'status code N · <first line of stderr>' on non-zero exit", () => {
+  it("shows 'exit N · <first line of stderr>' on non-zero exit", () => {
     render(
       <GenericTool
         part={makePart({
@@ -54,13 +57,13 @@ describe("GenericTool", () => {
       />,
     );
     const trigger = screen.getByRole("button", { expanded: false });
-    expect(trigger.textContent).toContain("Command failed (exit 127)");
+    expect(trigger.textContent).toContain("missing-bin");
     expect(trigger.textContent).toContain(
-      "status code 127 · bash: missing-bin: command not found",
+      "exit 127 · bash: missing-bin: command not found",
     );
   });
 
-  it("falls back to bare 'status code N' when stderr is empty", () => {
+  it("falls back to bare 'exit N' when stderr is empty", () => {
     render(
       <GenericTool
         part={makePart({
@@ -70,11 +73,11 @@ describe("GenericTool", () => {
       />,
     );
     const trigger = screen.getByRole("button", { expanded: false });
-    expect(trigger.textContent).toContain("status code 2");
+    expect(trigger.textContent).toContain("exit 2");
     expect(trigger.textContent).not.toContain("·");
   });
 
-  it("shows the stderr first line for a timed-out command", () => {
+  it("shows the command and stderr first line for a timed-out command", () => {
     render(
       <GenericTool
         part={makePart({
@@ -89,12 +92,11 @@ describe("GenericTool", () => {
       />,
     );
     const trigger = screen.getByRole("button", { expanded: false });
-    expect(trigger.textContent).toContain("Command timed out");
+    expect(trigger.textContent).toContain("sleep 120");
     expect(trigger.textContent).toContain("Timed out after 120s");
-    expect(trigger.textContent).not.toContain("sleep 120");
   });
 
-  it("falls back to the command preview for legacy outputs missing exit_code/timed_out", () => {
+  it("uses the command as the row for legacy outputs missing exit_code/timed_out", () => {
     render(
       <GenericTool
         part={makePart({
@@ -108,11 +110,12 @@ describe("GenericTool", () => {
     expect(trigger.textContent).toContain("echo hello");
   });
 
-  it("prefers stdout first line on exit 0, falls back to 'completed'", () => {
-    const { rerender } = render(
+  it("keeps a quiet single line on exit 0 — stdout only visible after expanding", () => {
+    render(
       <GenericTool
         part={makePart({
           state: "output-available",
+          input: { command: "cat greeting.txt" },
           output: {
             exit_code: 0,
             stdout: "Hello, world!\nmore lines below\n",
@@ -121,20 +124,35 @@ describe("GenericTool", () => {
         })}
       />,
     );
-    const trigger1 = screen.getByRole("button", { expanded: false });
-    expect(trigger1.textContent).toContain("Hello, world!");
-    expect(trigger1.textContent).not.toContain("more lines below");
+    const trigger = screen.getByRole("button", { expanded: false });
+    expect(trigger.textContent).toContain("cat greeting.txt");
+    expect(trigger.textContent).not.toContain("Hello, world!");
+    expect(trigger.textContent).not.toContain("completed");
 
-    rerender(
+    fireEvent.click(trigger);
+    expect(screen.queryByText(/Hello, world!/)).not.toBeNull();
+    // Single-section output: no redundant stdout/command labels.
+    expect(screen.queryByText("stdout")).toBeNull();
+    expect(screen.queryByText("command")).toBeNull();
+  });
+
+  it("labels stdout/stderr sections only when both are present", () => {
+    render(
       <GenericTool
         part={makePart({
           state: "output-available",
-          output: { exit_code: 0, stdout: "", stderr: "" },
+          input: { command: "build.sh" },
+          output: {
+            exit_code: 1,
+            stdout: "compiling...\n",
+            stderr: "error: missing semicolon\n",
+          },
         })}
       />,
     );
-    const trigger2 = screen.getByRole("button", { expanded: false });
-    expect(trigger2.textContent).toContain("completed");
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.queryByText("stdout")).not.toBeNull();
+    expect(screen.queryByText("stderr")).not.toBeNull();
   });
 
   describe("web_search results rendering", () => {
@@ -234,7 +252,7 @@ describe("GenericTool", () => {
       expect(screen.queryByText("Just text")).not.toBeNull();
     });
 
-    it("shows subtitle 'Searched \"…\"' once web_search output is available", () => {
+    it("renders no duplicate 'Searched \u2026' status row once output is available", () => {
       const { container } = render(
         <GenericTool
           part={makeWebSearchPart(
@@ -249,11 +267,10 @@ describe("GenericTool", () => {
           )}
         />,
       );
-      // MorphingTextAnimation splits each character into its own span and
-      // substitutes spaces with  , so assert on a normalized textContent
-      // rather than the raw substring.
-      const normalized = (container.textContent ?? "").replace(/ /g, " ");
-      expect(normalized).toContain('Searched "kimi k2.6"');
+      // The accordion header already shows count + query; the old
+      // MorphingTextAnimation row duplicated the query above it.
+      expect(container.textContent).not.toContain("Searched");
+      expect(screen.getAllByRole("button").length).toBe(1);
     });
 
     it("renders the synthesised answer above the citations when present", () => {

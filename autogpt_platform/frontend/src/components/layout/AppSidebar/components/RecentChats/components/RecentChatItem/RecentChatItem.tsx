@@ -21,7 +21,7 @@ import {
   PencilSimpleIcon,
   ShareNetworkIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import Link from "next/link";
 import { useRef } from "react";
 

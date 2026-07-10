@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Key, storage } from "@/services/storage/local-storage";
-import { BellRingingIcon, XIcon } from "@phosphor-icons/react";
+import { BellRingingIcon, XIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 

@@ -14,7 +14,7 @@ import {
   StarIcon,
   TrashIcon,
   PencilIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/AGPTIcon/icons";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderIcon, HouseIcon } from "@phosphor-icons/react";
+import { FolderIcon, HouseIcon } from "@/components/atoms/AGPTIcon/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";

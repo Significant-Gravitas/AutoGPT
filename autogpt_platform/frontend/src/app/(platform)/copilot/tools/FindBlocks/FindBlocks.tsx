@@ -11,12 +11,7 @@ import type { BlockListResponse } from "@/app/api/__generated__/models/blockList
 import type { BlockInfoSummary } from "@/app/api/__generated__/models/blockInfoSummary";
 import { ToolUIPart } from "ai";
 import { HorizontalScroll } from "@/app/(platform)/build/components/NewControlPanel/NewBlockMenu/HorizontalScroll";
-import {
-  AccordionIcon,
-  getAnimationText,
-  parseOutput,
-  ToolIcon,
-} from "./helpers";
+import { getAnimationText, parseOutput, ToolIcon } from "./helpers";
 
 export interface FindBlockInput {
   query: string;
@@ -59,10 +54,26 @@ export function FindBlocksTool({ part }: Props) {
     part.state === "output-available" ? parseOutput(part.output) : null;
   const hasBlocks = !!parsed && parsed.blocks.length > 0;
 
-  const query = (part.input as FindBlockInput | undefined)?.query?.trim();
-  const accordionDescription = parsed
-    ? `Found ${parsed.count} action${parsed.count === 1 ? "" : "s"}${query ? ` for "${query}"` : ""}`
-    : undefined;
+  // Once there are results, the accordion header IS the tool row — a single
+  // compact line (icon + summary + caret), matching the bash/file tools.
+  // No status line stacked above a card, no repeated "Found N actions".
+  if (hasBlocks && parsed) {
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={<ToolIcon weight="bold" />}
+          title={text}
+        >
+          <HorizontalScroll dependencyList={[parsed.blocks.length]}>
+            {parsed.blocks.map((block) => (
+              <BlockCard key={block.id} block={block} />
+            ))}
+          </HorizontalScroll>
+        </ToolAccordion>
+      </div>
+    );
+  }
 
   return (
     <div className="py-2">
@@ -73,20 +84,6 @@ export function FindBlocksTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
-
-      {hasBlocks && parsed && (
-        <ToolAccordion
-          icon={<AccordionIcon />}
-          title="Results"
-          description={accordionDescription}
-        >
-          <HorizontalScroll dependencyList={[parsed.blocks.length]}>
-            {parsed.blocks.map((block) => (
-              <BlockCard key={block.id} block={block} />
-            ))}
-          </HorizontalScroll>
-        </ToolAccordion>
-      )}
     </div>
   );
 }

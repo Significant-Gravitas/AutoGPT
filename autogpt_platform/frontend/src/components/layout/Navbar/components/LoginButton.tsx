@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { SignInIcon } from "@phosphor-icons/react/dist/ssr";
+import { SignInIcon } from "@/components/atoms/AGPTIcon/icons";
 import { usePathname, useRouter } from "next/navigation";
 
 export function LoginButton() {

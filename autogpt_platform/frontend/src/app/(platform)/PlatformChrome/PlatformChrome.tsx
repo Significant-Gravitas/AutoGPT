@@ -14,6 +14,9 @@ import {
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
+import { ContextPanelToggle } from "../copilot/components/ContextPanel/ContextPanelToggle";
+import { SandboxIdeSlot } from "../copilot/components/SandboxIdePanel/SandboxIdeSlot";
+import { SandboxIdeToggle } from "../copilot/components/SandboxIdePanel/SandboxIdeToggle";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
@@ -50,24 +53,27 @@ export function PlatformChrome({ children }: Props) {
 
   if (showNewLayout) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider style={{ "--sidebar-width": "16rem" } as CSSProperties}>
         <AppSidebar />
-        <SidebarInset className="bg-[#f9f9f9]">
-          <header className="relative flex shrink-0 items-center pb-4 pt-6">
+        <SidebarInset className="min-w-0 bg-white">
+          <header className="relative flex shrink-0 items-center pb-4 pt-8">
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
               <div className="md:hidden">
                 <SidebarTrigger />
               </div>
               <InsetHeaderTitle />
             </div>
-            <div className="absolute inset-y-0 right-4 flex items-center">
+            <div className="absolute inset-y-0 right-4 flex items-center gap-2">
               <InsetHeaderActions />
+              <ContextPanelToggle />
+              <SandboxIdeToggle />
             </div>
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
           <section className="flex-1">{content}</section>
         </SidebarInset>
+        <SandboxIdeSlot />
       </SidebarProvider>
     );
   }

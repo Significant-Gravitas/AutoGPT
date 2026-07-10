@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, SignOutIcon } from "@/components/atoms/AGPTIcon/icons";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";

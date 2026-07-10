@@ -1,7 +1,6 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
 
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -16,8 +15,6 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
-  AccordionIcon,
-  getAccordionTitle,
   getAnimationText,
   getFeatureRequestOutput,
   isCreatedOutput,
@@ -54,11 +51,6 @@ export function SearchFeatureRequestsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    return { title: getAccordionTitle(part.type, output) };
-  }, [output, part.type]);
-
   const isOutputAvailable = part.state === "output-available" && !!output;
 
   const searchOutput =
@@ -76,32 +68,16 @@ export function SearchFeatureRequestsTool({ part }: Props) {
       !!noResultsOutput ||
       !!errorOutput);
 
-  const accordionDescription =
-    hasExpandableContent && searchOutput
-      ? `Found ${searchOutput.count} result${searchOutput.count === 1 ? "" : "s"} for "${searchOutput.query}"`
-      : hasExpandableContent && (noResultsOutput || errorOutput)
-        ? ((noResultsOutput ?? errorOutput)?.message ?? null)
-        : null;
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon
-          toolType={part.type}
-          isStreaming={isStreaming}
-          isError={isError}
-        />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
-
-      {hasExpandableContent && normalized && (
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasExpandableContent) {
+    return (
+      <div className="py-1">
         <ToolAccordion
-          icon={<AccordionIcon toolType={part.type} />}
-          title={normalized.title}
-          description={accordionDescription}
+          variant="compact"
+          icon={<ToolIcon toolType={part.type} isError={isError} />}
+          title={text}
+          titleClassName={isError ? "text-red-500" : undefined}
         >
           {searchOutput && (
             <ContentGrid>
@@ -141,40 +117,9 @@ export function SearchFeatureRequestsTool({ part }: Props) {
             </div>
           )}
         </ToolAccordion>
-      )}
-    </div>
-  );
-}
-
-export function CreateFeatureRequestTool({ part }: Props) {
-  const output = getFeatureRequestOutput(part);
-  const text = getAnimationText(part);
-  const isStreaming =
-    part.state === "input-streaming" || part.state === "input-available";
-  const isError =
-    part.state === "output-error" || (!!output && isErrorOutput(output));
-
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    return { title: getAccordionTitle(part.type, output) };
-  }, [output, part.type]);
-
-  const isOutputAvailable = part.state === "output-available" && !!output;
-
-  const createdOutput =
-    isOutputAvailable && output && isCreatedOutput(output) ? output : null;
-  const errorOutput =
-    isOutputAvailable && output && isErrorOutput(output) ? output : null;
-
-  const hasExpandableContent =
-    isOutputAvailable && (!!createdOutput || !!errorOutput);
-
-  const accordionDescription =
-    hasExpandableContent && createdOutput
-      ? createdOutput.issue_title
-      : hasExpandableContent && errorOutput
-        ? errorOutput.message
-        : null;
+      </div>
+    );
+  }
 
   return (
     <div className="py-2">
@@ -189,12 +134,38 @@ export function CreateFeatureRequestTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+    </div>
+  );
+}
 
-      {hasExpandableContent && normalized && (
+export function CreateFeatureRequestTool({ part }: Props) {
+  const output = getFeatureRequestOutput(part);
+  const text = getAnimationText(part);
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
+  const isError =
+    part.state === "output-error" || (!!output && isErrorOutput(output));
+
+  const isOutputAvailable = part.state === "output-available" && !!output;
+
+  const createdOutput =
+    isOutputAvailable && output && isCreatedOutput(output) ? output : null;
+  const errorOutput =
+    isOutputAvailable && output && isErrorOutput(output) ? output : null;
+
+  const hasExpandableContent =
+    isOutputAvailable && (!!createdOutput || !!errorOutput);
+
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasExpandableContent) {
+    return (
+      <div className="py-1">
         <ToolAccordion
-          icon={<AccordionIcon toolType={part.type} />}
-          title={normalized.title}
-          description={accordionDescription}
+          variant="compact"
+          icon={<ToolIcon toolType={part.type} isError={isError} />}
+          title={text}
+          titleClassName={isError ? "text-red-500" : undefined}
         >
           {createdOutput && (
             <ContentCard>
@@ -221,7 +192,23 @@ export function CreateFeatureRequestTool({ part }: Props) {
             </div>
           )}
         </ToolAccordion>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          toolType={part.type}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
     </div>
   );
 }

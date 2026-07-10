@@ -12,7 +12,7 @@ import {
   FormMessage,
 } from "@/components/molecules/Form/Form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderSimpleIcon } from "@phosphor-icons/react";
+import { FolderSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";

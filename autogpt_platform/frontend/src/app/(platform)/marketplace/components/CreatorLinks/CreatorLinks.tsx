@@ -9,7 +9,7 @@ import {
   TiktokLogo,
   XLogo,
   YoutubeLogo,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 interface CreatorLinksProps {
   links: string[];

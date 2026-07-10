@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { ArrowClockwise, Trash, Copy } from "@phosphor-icons/react";
+import { ArrowClockwise, Trash, Copy } from "@/components/atoms/AGPTIcon/icons";
 import React, { useState } from "react";
 import {
   Table,

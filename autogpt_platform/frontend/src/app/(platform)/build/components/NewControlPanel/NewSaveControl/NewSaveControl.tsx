@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { FloppyDiskIcon } from "@phosphor-icons/react";
+import { FloppyDiskIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useNewSaveControl } from "./useNewSaveControl";
@@ -40,7 +40,7 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              <FloppyDiskIcon className="size-5" />
+              <FloppyDiskIcon className="size-4" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>

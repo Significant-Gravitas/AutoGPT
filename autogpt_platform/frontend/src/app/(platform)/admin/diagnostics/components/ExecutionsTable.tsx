@@ -19,7 +19,7 @@ import {
   CaretLeft,
   CaretRight,
   Copy,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import React, { useState } from "react";
 import {
   Table,

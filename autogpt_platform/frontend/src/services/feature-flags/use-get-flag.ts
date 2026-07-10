@@ -18,6 +18,10 @@ export enum Flag {
   CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
   AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
+  // Child of AUTOGPT_NEW_LAYOUT: the Sandbox IDE panel only shows when
+  // both this and the new layout are enabled. Kept as its own flag so the
+  // IDE can be removed later without touching the rest of the new layout.
+  AUTOGPT_NEW_LAYOUT_IDE = "autogpt-new-layout-ide",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
@@ -34,6 +38,10 @@ export enum Flag {
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // Swaps the app's icon set from Phosphor to Pikaicons via the shared
+  // AGPTIcon atom. Default false (fail-closed): the app keeps Phosphor
+  // until this is turned on. See ``src/components/atoms/AGPTIcon``.
+  PIKA_ICONS = "pika-icons",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -42,23 +50,25 @@ const defaultFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
+  [Flag.ARTIFACTS]: true,
+  [Flag.ARTIFACTS_PAGE]: true,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: true,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
+  [Flag.AUTOGPT_NEW_LAYOUT]: true,
+  [Flag.AUTOGPT_NEW_LAYOUT_IDE]: true,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
-  [Flag.TASK_PROGRESS_BAR]: false,
+  [Flag.TASK_PROGRESS_BAR]: true,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.PIKA_ICONS]: true,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -106,6 +116,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
     case Flag.AUTOGPT_NEW_LAYOUT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
+    case Flag.AUTOGPT_NEW_LAYOUT_IDE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT_IDE;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
@@ -122,6 +134,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.PIKA_ICONS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_PIKA_ICONS;
   }
 }
 

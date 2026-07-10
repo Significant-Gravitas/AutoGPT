@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { FolderIcon, ListIcon } from "@phosphor-icons/react";
+import { FolderIcon, ListIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useCopilotUIStore } from "../../store";
 
 export function MobileHeader() {

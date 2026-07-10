@@ -8,6 +8,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -21,10 +22,10 @@ import {
   FlowArrowIcon,
   FolderIcon,
   type Icon,
-  SparkleIcon,
+  NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
@@ -35,7 +36,7 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { SidebarOrgSwitcher } from "./components/SidebarOrgSwitcher/SidebarOrgSwitcher";
-import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
+import { SidebarUserMenu } from "./components/SidebarUserMenu/SidebarUserMenu";
 
 type NavLink = {
   name: string;
@@ -82,7 +83,24 @@ function NewTaskIcon() {
     return <LoadingSpinner size="small" className="shrink-0" />;
   }
 
-  return <SparkleIcon className="size-4" />;
+  return <NotePencilIcon className="size-4" />;
+}
+
+function NewTaskItem() {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip="New Task"
+        className="h-auto rounded-lg p-2 text-sm font-normal hover:!bg-zinc-100 [&>svg]:size-4"
+      >
+        <Link href="/copilot">
+          <NewTaskIcon />
+          <span className="truncate">New Task</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 }
 
 function NavMenu({
@@ -95,7 +113,7 @@ function NavMenu({
   const pathname = usePathname();
 
   return (
-    <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
+    <SidebarMenu className="group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
         <SidebarMenuItem key={link.href}>
@@ -103,10 +121,10 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className="h-auto rounded-lg p-2 text-sm font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 [&>svg]:size-4"
           >
             <Link href={link.href}>
-              <link.icon className="size-5" />
+              <link.icon className="size-4" />
               <span className="truncate">{link.name}</span>
               <NavLinkLoader />
             </Link>
@@ -177,7 +195,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
+      className="group-data-[side=left]:border-r-zinc-100 [&_[data-sidebar=sidebar]]:bg-[#ffffff]"
     >
       <AppSidebarHeader />
 
@@ -191,28 +209,7 @@ export function AppSidebar(props: Props) {
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip="New Task"
-                      className="justify-center rounded-lg bg-zinc-800 font-medium text-white group-data-[collapsible=icon]:justify-start hover:!bg-zinc-900 hover:!text-white"
-                    >
-                      <Link href="/copilot">
-                        <NewTaskIcon />
-                        <span className="truncate">New Task</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
-              <SidebarGroupContent>
-                <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
+                <NavMenu links={MAIN_LINKS} leading={<NewTaskItem />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
@@ -241,7 +238,11 @@ export function AppSidebar(props: Props) {
 
       <SidebarOrgSwitcher />
 
-      <SidebarRail />
+      <SidebarFooter className="p-2">
+        <SidebarUserMenu />
+      </SidebarFooter>
+
+      <SidebarRail className="hover:after:bg-zinc-100" />
     </Sidebar>
   );
 }

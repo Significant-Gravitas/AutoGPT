@@ -1,6 +1,10 @@
 "use client";
 
-import { CheckIcon, CopyIcon, ShareNetworkIcon } from "@phosphor-icons/react";
+import {
+  CheckIcon,
+  CopyIcon,
+  ShareNetworkIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";

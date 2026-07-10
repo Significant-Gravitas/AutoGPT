@@ -1,6 +1,9 @@
 "use client";
 
-import { ArrowRightIcon, ListChecksIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  ListChecksIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { useCopilotUIStore } from "../../../store";
 
 export function TaskListNotice() {

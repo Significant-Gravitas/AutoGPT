@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { isMacPlatform } from "@/lib/platform";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/atoms/AGPTIcon/icons";
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useMemo } from "react";
 import { ControlPanelButton } from "../../ControlPanelButton";
@@ -64,7 +64,7 @@ export function GraphSearchMenu() {
               selected={graphSearchOpen}
               className="rounded-none"
             >
-              <MagnifyingGlass className="size-5" />
+              <MagnifyingGlass className="size-4" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>

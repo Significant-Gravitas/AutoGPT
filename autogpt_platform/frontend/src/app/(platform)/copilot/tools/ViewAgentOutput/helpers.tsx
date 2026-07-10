@@ -2,7 +2,7 @@ import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOu
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { EyeIcon, MonitorIcon } from "@phosphor-icons/react";
+import { EyeIcon } from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 
 export interface ViewAgentOutputInput {
@@ -142,10 +142,6 @@ export function ToolIcon({
       }
     />
   );
-}
-
-export function AccordionIcon() {
-  return <MonitorIcon size={32} weight="light" />;
 }
 
 export function formatMaybeJson(value: unknown): string {

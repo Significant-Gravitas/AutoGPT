@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { UserMinus, UserCheck, CreditCard } from "@phosphor-icons/react";
+import {
+  UserMinus,
+  UserCheck,
+  CreditCard,
+} from "@/components/atoms/AGPTIcon/icons";
 import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";

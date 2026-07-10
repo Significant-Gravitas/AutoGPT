@@ -3,11 +3,12 @@ import {
   ChatsCircleIcon,
   CreditCardIcon,
   KeyIcon,
+  PaintBrushIcon,
   PlugsConnectedIcon,
   SlidersHorizontalIcon,
   UserIcon,
   type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 export interface SettingsNavItem {
   label: string;
@@ -21,6 +22,11 @@ export const settingsNavItems: SettingsNavItem[] = [
     label: "Account",
     href: "/settings/account",
     Icon: SlidersHorizontalIcon,
+  },
+  {
+    label: "Appearance",
+    href: "/settings/appearance",
+    Icon: PaintBrushIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {

@@ -4,6 +4,7 @@ import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { INSET_HEADER_HEIGHT_PX, NAVBAR_HEIGHT_PX } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
@@ -12,7 +13,6 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
-import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -81,12 +81,13 @@ export function CopilotPage() {
               height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
             }
       }
-      className="min-h-0"
+      className={cn("min-h-0", showNewLayout && "font-sans")}
     >
       {!isMobile && !showNewLayout && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
+        showNewLayout={showNewLayout}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
@@ -104,6 +105,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   isArtifactsEnabled: boolean;
+  showNewLayout: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -112,15 +114,26 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   isArtifactsEnabled,
+  showNewLayout,
   sessionId,
   droppedFiles,
   setDroppedFiles,
 }: MainAreaProps) {
   const hasSession = !!sessionId;
+  // When the sandbox IDE is available it hosts the artifact preview itself
+  // (multi-purpose panel), so the standalone desktop ArtifactPanel is skipped
+  // to avoid rendering the same artifact twice.
+  const isIdeFlagEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT_IDE);
+  const isIdeHost = !isMobile && showNewLayout && isIdeFlagEnabled;
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
-      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
-        {hasSession && (
+      <div
+        className={cn(
+          "relative flex min-w-0 flex-1 overflow-hidden",
+          showNewLayout ? "bg-white" : "bg-[#fafafa]",
+        )}
+      >
+        {!showNewLayout && hasSession && (
           <DotDistortionShader
             dotGap={14}
             dotSize={1}
@@ -154,8 +167,9 @@ function MainArea({
       {!isMobile && isArtifactsEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} />
       )}
-      {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
-      {!isMobile && isArtifactsEnabled && sessionId && <ContextPanelToggle />}
+      {!isMobile && isArtifactsEnabled && sessionId && !isIdeHost && (
+        <ArtifactPanel />
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
 
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -17,11 +16,8 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
-  AccordionIcon,
   getAnimationText,
   getDocsToolOutput,
-  getDocsToolTitle,
-  getToolLabel,
   isDocPageOutput,
   isDocSearchResultsOutput,
   isErrorOutput,
@@ -57,13 +53,6 @@ export function SearchDocsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    const title = getDocsToolTitle(part.type, output);
-    const label = getToolLabel(part.type);
-    return { title, label };
-  }, [output, part.type]);
-
   const isOutputAvailable = part.state === "output-available" && !!output;
 
   const docSearchOutput =
@@ -84,34 +73,16 @@ export function SearchDocsTool({ part }: Props) {
       !!noResultsOutput ||
       !!errorOutput);
 
-  const accordionDescription =
-    hasExpandableContent && docSearchOutput
-      ? `Found ${docSearchOutput.count} result${docSearchOutput.count === 1 ? "" : "s"} for "${docSearchOutput.query}"`
-      : hasExpandableContent && docPageOutput
-        ? docPageOutput.path
-        : hasExpandableContent && (noResultsOutput || errorOutput)
-          ? ((noResultsOutput ?? errorOutput)?.message ?? null)
-          : null;
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon
-          toolType={part.type}
-          isStreaming={isStreaming}
-          isError={isError}
-        />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
-
-      {hasExpandableContent && normalized && (
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasExpandableContent) {
+    return (
+      <div className="py-1">
         <ToolAccordion
-          icon={<AccordionIcon toolType={part.type} />}
-          title={normalized.title}
-          description={accordionDescription}
+          variant="compact"
+          icon={<ToolIcon toolType={part.type} isError={isError} />}
+          title={text}
+          titleClassName={isError ? "text-red-500" : undefined}
         >
           {docSearchOutput && (
             <ContentGrid>
@@ -180,7 +151,23 @@ export function SearchDocsTool({ part }: Props) {
             </div>
           )}
         </ToolAccordion>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          toolType={part.type}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
     </div>
   );
 }

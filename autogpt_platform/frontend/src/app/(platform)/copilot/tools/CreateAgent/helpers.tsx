@@ -7,7 +7,7 @@ import {
   PlusCircleIcon,
   PlusIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
@@ -130,7 +130,9 @@ export function ToolIcon({
 }
 
 export function AccordionIcon() {
-  return <PlusCircleIcon size={32} weight="light" />;
+  return (
+    <PlusCircleIcon size={14} weight="bold" className="text-neutral-400" />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {

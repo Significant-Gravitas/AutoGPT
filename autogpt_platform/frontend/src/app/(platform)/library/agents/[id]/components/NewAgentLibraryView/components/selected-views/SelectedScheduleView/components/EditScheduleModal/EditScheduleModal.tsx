@@ -8,7 +8,7 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Select } from "@/components/atoms/Select/Select";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useEditScheduleModal } from "./useEditScheduleModal";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon } from "@/components/atoms/AGPTIcon/icons";
 
 type Props = {
   graphId: string;

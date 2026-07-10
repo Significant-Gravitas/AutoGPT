@@ -2,7 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
-import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
+import {
+  CircleNotchIcon,
+  FolderOpenIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import {
   Props as BaseProps,
   useGoogleDrivePicker,

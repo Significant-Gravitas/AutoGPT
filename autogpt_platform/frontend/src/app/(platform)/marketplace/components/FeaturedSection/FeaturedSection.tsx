@@ -11,7 +11,7 @@ import {
 } from "@/components/__legacy__/ui/carousel";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { SparkleIcon } from "@phosphor-icons/react";
+import { SparkleIcon } from "@/components/atoms/AGPTIcon/icons";
 import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
 import { useFeaturedSection } from "./useFeaturedSection";

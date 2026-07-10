@@ -5,7 +5,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { DownloadSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  DownloadSimpleIcon,
+  TrashIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
 import {
   formatFileSize,

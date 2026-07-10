@@ -1,7 +1,10 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockCounterClockwiseIcon, XIcon } from "@phosphor-icons/react";
+import {
+  ClockCounterClockwiseIcon,
+  XIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {

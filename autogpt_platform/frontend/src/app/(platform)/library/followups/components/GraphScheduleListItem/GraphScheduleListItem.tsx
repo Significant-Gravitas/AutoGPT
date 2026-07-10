@@ -4,7 +4,11 @@ import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graph
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { CalendarDotsIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  CalendarDotsIcon,
+  EyeIcon,
+  TrashIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import Link from "next/link";
 import { useGraphScheduleListItem } from "./useGraphScheduleListItem";
 

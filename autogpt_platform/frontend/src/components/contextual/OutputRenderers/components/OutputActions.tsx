@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckIcon, CopyIcon, DownloadIcon } from "@phosphor-icons/react";
+import {
+  CheckIcon,
+  CopyIcon,
+  DownloadIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { OutputRenderer, OutputMetadata } from "../types";
 import { downloadOutputs } from "../utils/download";

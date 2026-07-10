@@ -20,7 +20,12 @@ export function useChatInput({
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
+  const {
+    initialPrompt,
+    setInitialPrompt,
+    chatInputInsert,
+    clearChatInputInsert,
+  } = useCopilotUIStore();
 
   useEffect(
     function consumeInitialPrompt() {
@@ -29,6 +34,25 @@ export function useChatInput({
       setInitialPrompt(null);
     },
     [initialPrompt, setInitialPrompt],
+  );
+
+  useEffect(
+    function consumeChatInputInsert() {
+      if (!chatInputInsert) return;
+      setValue((prev) =>
+        prev.trim().length === 0
+          ? chatInputInsert
+          : `${prev}\n${chatInputInsert}`,
+      );
+      clearChatInputInsert();
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      if (textarea) {
+        textarea.focus();
+        const end = textarea.value.length;
+        textarea.setSelectionRange(end, end);
+      }
+    },
+    [chatInputInsert, clearChatInputInsert, inputId],
   );
 
   useEffect(

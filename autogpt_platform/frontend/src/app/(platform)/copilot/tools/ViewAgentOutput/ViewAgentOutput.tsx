@@ -1,7 +1,6 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import React from "react";
 import {
   globalRegistry,
   OutputItem,
@@ -29,9 +28,7 @@ import {
   isAgentOutputResponse,
   isErrorResponse,
   isNoResultsResponse,
-  AccordionIcon,
   ToolIcon,
-  type ViewAgentOutputToolOutput,
 } from "./helpers";
 
 export interface ViewAgentOutputToolPart {
@@ -88,27 +85,6 @@ function RenderOutputValue({ value }: { value: unknown }) {
   return null;
 }
 
-function getAccordionMeta(output: ViewAgentOutputToolOutput): {
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-} {
-  const icon = <AccordionIcon />;
-
-  if (isAgentOutputResponse(output)) {
-    const status = output.execution?.status;
-    return {
-      icon,
-      title: output.agent_name,
-      description: status ? `Status: ${status}` : output.message,
-    };
-  }
-  if (isNoResultsResponse(output)) {
-    return { icon, title: "No results" };
-  }
-  return { icon, title: "Error" };
-}
-
 export function ViewAgentOutputTool({ part }: Props) {
   const text = getAnimationText(part);
   const isStreaming =
@@ -124,18 +100,17 @@ export function ViewAgentOutputTool({ part }: Props) {
       isNoResultsResponse(output) ||
       isErrorResponse(output));
 
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
-
-      {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasExpandableContent && output) {
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={<ToolIcon isError={isError} />}
+          title={text}
+          titleClassName={isError ? "text-red-500" : undefined}
+        >
           {isAgentOutputResponse(output) && (
             <ContentGrid>
               <ContentCardHeader
@@ -238,7 +213,19 @@ export function ViewAgentOutputTool({ part }: Props) {
             </ContentGrid>
           )}
         </ToolAccordion>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon isStreaming={isStreaming} isError={isError} />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
     </div>
   );
 }

@@ -13,7 +13,6 @@ import {
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
 import {
-  getAccordionMeta,
   getAnimationText,
   getRunBlockToolOutput,
   isRunBlockBlockOutput,
@@ -74,6 +73,31 @@ export function RunBlockTool({ part }: Props) {
   // not inside each tool card. This matches the non-copilot flow where
   // a single PendingReviewsList shows all reviews grouped together.
 
+  // With output, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasExpandableContent && output) {
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={<ToolIcon isError={isError} />}
+          title={text}
+          titleClassName={isError ? "text-red-500" : undefined}
+        >
+          {hasInputData && <BlockInputCard inputData={inputData} />}
+
+          {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}
+
+          {isRunBlockDetailsOutput(output) && (
+            <BlockDetailsCard output={output} />
+          )}
+
+          {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}
+        </ToolAccordion>
+      </div>
+    );
+  }
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -95,20 +119,6 @@ export function RunBlockTool({ part }: Props) {
         <div className="mt-2">
           <SetupRequirementsCard output={setupRequirementsOutput} />
         </div>
-      )}
-
-      {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {hasInputData && <BlockInputCard inputData={inputData} />}
-
-          {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}
-
-          {isRunBlockDetailsOutput(output) && (
-            <BlockDetailsCard output={output} />
-          )}
-
-          {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}
-        </ToolAccordion>
       )}
     </div>
   );

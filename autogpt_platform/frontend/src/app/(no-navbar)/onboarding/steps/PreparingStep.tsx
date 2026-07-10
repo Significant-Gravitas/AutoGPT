@@ -4,7 +4,7 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Text } from "@/components/atoms/Text/Text";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
+import { Check } from "@/components/atoms/AGPTIcon/icons";
 import { useEffect, useRef, useState } from "react";
 
 const CHECKLIST = [

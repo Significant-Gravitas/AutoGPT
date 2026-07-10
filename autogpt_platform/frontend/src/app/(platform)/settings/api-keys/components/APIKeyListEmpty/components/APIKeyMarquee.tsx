@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { KeyIcon } from "@phosphor-icons/react";
+import { KeyIcon } from "@/components/atoms/AGPTIcon/icons";
 
 const GHOST_CARDS = Array.from({ length: 4 }, (_, i) => i);
 

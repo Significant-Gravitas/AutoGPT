@@ -1,6 +1,6 @@
 "use client";
 
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/atoms/AGPTIcon/icons";
 import { useSearchbar } from "./useSearchBar";
 
 interface SearchBarProps {

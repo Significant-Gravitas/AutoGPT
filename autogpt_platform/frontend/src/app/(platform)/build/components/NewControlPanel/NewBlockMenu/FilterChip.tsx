@@ -1,6 +1,6 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
-import { XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@/components/atoms/AGPTIcon/icons";
 import { AnimatePresence, motion } from "framer-motion";
 
 import React, { ButtonHTMLAttributes, useState } from "react";

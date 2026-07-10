@@ -19,14 +19,6 @@ vi.mock("@/components/layout/Navbar/components/Wallet/Wallet", () => ({
   Wallet: () => <div data-testid="wallet" />,
 }));
 vi.mock(
-  "@/components/layout/Navbar/components/AccountMenu/AccountMenu",
-  () => ({
-    AccountMenu: ({ userName }: { userName?: string }) => (
-      <div data-testid="account-menu">{userName}</div>
-    ),
-  }),
-);
-vi.mock(
   "@/app/(platform)/PlatformChrome/components/UsageIndicator/UsageIndicator",
   () => ({ UsageIndicator: () => <div data-testid="usage-indicator" /> }),
 );
@@ -69,7 +61,6 @@ describe("InsetHeaderActions", () => {
 
     expect(screen.getByTestId("agent-activity")).toBeDefined();
     expect(screen.getByTestId("usage-indicator")).toBeDefined();
-    expect(screen.getByTestId("account-menu")).toBeDefined();
     expect(await screen.findByTestId("wallet")).toBeDefined();
   });
 });

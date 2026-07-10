@@ -2,7 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { BookOpenIcon, PencilSimpleIcon } from "@phosphor-icons/react";
+import {
+  BookOpenIcon,
+  PencilSimpleIcon,
+} from "@/components/atoms/AGPTIcon/icons";
 import Image from "next/image";
 import sparklesImg from "./assets/sparkles.png";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";

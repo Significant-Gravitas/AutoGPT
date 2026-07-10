@@ -19,9 +19,10 @@ import {
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
+import { DiffView } from "../../components/ToolAccordion/DiffView";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentCodeBlock,
@@ -66,90 +67,56 @@ function ToolIcon({
   category,
   isStreaming,
   isError,
+  weight = "regular",
 }: {
   category: ToolCategory;
   isStreaming: boolean;
   isError: boolean;
+  weight?: "regular" | "bold";
 }) {
   if (isError) {
     return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
+      <WarningDiamondIcon size={14} weight={weight} className="text-red-500" />
     );
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-green-500";
+  const iconClass = "text-green-600";
   switch (category) {
     case "bash":
-      return <TerminalIcon size={14} weight="regular" className={iconClass} />;
+      return <TerminalIcon size={14} weight={weight} className={iconClass} />;
     case "web":
-      return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+      return <GlobeIcon size={14} weight={weight} className={iconClass} />;
     case "browser":
-      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
+      return <MonitorIcon size={14} weight={weight} className={iconClass} />;
     case "file-read":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <FileIcon size={14} weight={weight} className={iconClass} />;
     case "file-write":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <FileIcon size={14} weight={weight} className={iconClass} />;
     case "file-delete":
-      return <TrashIcon size={14} weight="regular" className={iconClass} />;
+      return <TrashIcon size={14} weight={weight} className={iconClass} />;
     case "file-list":
-      return <FilesIcon size={14} weight="regular" className={iconClass} />;
+      return <FilesIcon size={14} weight={weight} className={iconClass} />;
     case "search":
       return (
-        <MagnifyingGlassIcon size={14} weight="regular" className={iconClass} />
+        <MagnifyingGlassIcon size={14} weight={weight} className={iconClass} />
       );
     case "edit":
       return (
-        <PencilSimpleIcon size={14} weight="regular" className={iconClass} />
+        <PencilSimpleIcon size={14} weight={weight} className={iconClass} />
       );
     case "todo":
-      return (
-        <ListChecksIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <ListChecksIcon size={14} weight={weight} className={iconClass} />;
     case "compaction":
       return (
-        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
+        <ArrowsClockwiseIcon size={14} weight={weight} className={iconClass} />
       );
     case "agent":
-      return <RobotIcon size={14} weight="regular" className={iconClass} />;
+      return <RobotIcon size={14} weight={weight} className={iconClass} />;
     default:
-      return <GearIcon size={14} weight="regular" className={iconClass} />;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Accordion icon (larger, for the accordion header)                  */
-/* ------------------------------------------------------------------ */
-
-function AccordionIcon({ category }: { category: ToolCategory }) {
-  switch (category) {
-    case "bash":
-      return <TerminalIcon size={32} weight="light" />;
-    case "web":
-      return <GlobeIcon size={32} weight="light" />;
-    case "browser":
-      return <MonitorIcon size={32} weight="light" />;
-    case "file-read":
-    case "file-write":
-      return <FileIcon size={32} weight="light" />;
-    case "file-delete":
-      return <TrashIcon size={32} weight="light" />;
-    case "file-list":
-      return <FilesIcon size={32} weight="light" />;
-    case "search":
-      return <MagnifyingGlassIcon size={32} weight="light" />;
-    case "edit":
-      return <PencilSimpleIcon size={32} weight="light" />;
-    case "todo":
-      return <ListChecksIcon size={32} weight="light" />;
-    case "compaction":
-      return <ArrowsClockwiseIcon size={32} weight="light" />;
-    case "agent":
-      return <RobotIcon size={32} weight="light" />;
-    default:
-      return <GearIcon size={32} weight="light" />;
+      return <GearIcon size={14} weight={weight} className={iconClass} />;
   }
 }
 
@@ -212,6 +179,8 @@ interface AccordionData {
   title: string;
   description?: string;
   content: React.ReactNode;
+  titleIsCode?: boolean;
+  isFailure?: boolean;
 }
 
 function getBashAccordionData(
@@ -231,67 +200,55 @@ function getBashAccordionData(
   const timedOut = output.timed_out === true;
   const message = getStringField(output, "message");
 
-  const title = timedOut
-    ? "Command timed out"
-    : exitCode !== null && exitCode !== 0
-      ? `Command failed (exit ${exitCode})`
-      : "Command output";
-
-  // The command itself is already in the subtitle row above; surface the
-  // outcome here so scanning the closed accordion tells the reader "how it
-  // ended" at a glance.  Prefer the backend's own first line of output
-  // (stderr for failures/timeouts — that's where bash_exec writes
-  // "Timed out after Xs" and where shells emit "command not found" etc.,
-  // stdout for success) over a terse "exit N" so the reader actually sees
-  // WHY the command ended.
+  // The command IS the collapsed row — no generic "Command output" title.
+  // On success the row stays a single quiet line; only failures earn a
+  // second line, built from the backend's own first stderr line (that's
+  // where bash_exec writes "Timed out after Xs" and where shells emit
+  // "command not found") so the reader sees WHY it failed at a glance.
   const firstNonEmptyLine = (s: string | null): string | null => {
     if (!s) return null;
     const line = s.split("\n").find((l) => l.trim().length > 0);
     return line ? truncate(line.trim(), 80) : null;
   };
   const stderrPreview = firstNonEmptyLine(stderr);
-  const stdoutPreview = firstNonEmptyLine(stdout);
+  const failed = timedOut || (exitCode !== null && exitCode !== 0);
+
   let description: string | undefined;
   if (timedOut) {
     description = stderrPreview ?? "timed out";
   } else if (exitCode !== null && exitCode !== 0) {
     description = stderrPreview
-      ? `status code ${exitCode} · ${stderrPreview}`
-      : `status code ${exitCode}`;
-  } else if (exitCode === 0) {
-    description = stdoutPreview ?? "completed";
-  } else {
-    // Historical sessions persisted before exit_code/timed_out were added
-    // fall through here — fall back to the command preview so the closed
-    // accordion still tells the reader what ran.
-    description = truncate(command, 80);
+      ? `exit ${exitCode} · ${stderrPreview}`
+      : `exit ${exitCode}`;
   }
 
+  const showSectionLabels = !!stdout && !!stderr;
+
   return {
-    title,
+    title: truncate(command, 100),
     description,
+    titleIsCode: true,
+    isFailure: failed,
     content: (
       <div className="space-y-2">
-        {command && (
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
-            <ContentCodeBlock>{command}</ContentCodeBlock>
-          </div>
-        )}
         {stdout && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            {showSectionLabels && (
+              <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            )}
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            {showSectionLabels && (
+              <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            )}
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
-        {!stdout && !stderr && message && (
-          <ContentMessage>{message}</ContentMessage>
+        {!stdout && !stderr && (
+          <ContentMessage>{message ?? "No output"}</ContentMessage>
         )}
       </div>
     ),
@@ -527,26 +484,20 @@ function getFileAccordionData(
     fileListText = fileLines.join("\n");
   }
 
-  const isWriteOrEdit = category === "file-write" || category === "edit";
-
+  // Path is the payload: it becomes the collapsed row itself. Only keep a
+  // second line when the backend sent a distinct human message.
   return {
-    title:
-      message ??
-      (isWriteOrEdit ? `Wrote ${truncate(filePath, 60)}` : "File output"),
-    description: truncate(filePath, 80),
+    title: message ?? truncate(filePath, 100),
+    description: message ? truncate(filePath, 80) : undefined,
+    titleIsCode: !message,
     content: (
       <div className="space-y-2">
         {oldString && newString != null ? (
-          <>
-            <div>
-              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
-              <ContentCodeBlock>{oldString}</ContentCodeBlock>
-            </div>
-            <div>
-              <p className="mb-1 text-xs font-medium text-green-400">added</p>
-              <ContentCodeBlock>{newString}</ContentCodeBlock>
-            </div>
-          </>
+          <DiffView
+            oldText={oldString}
+            newText={newString}
+            fileName={filePath}
+          />
         ) : writtenContent ? (
           <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
         ) : isImage &&
@@ -779,6 +730,38 @@ export function GenericTool({ part }: Props) {
     ? getAccordionData(category, toolName, part.input, output ?? {})
     : null;
 
+  // Once there is something to expand, the accordion header IS the tool row —
+  // a single compact line (icon + summary + caret) instead of a status line
+  // stacked on top of a card.
+  if (showAccordion && accordionData) {
+    const failed = isError || accordionData.isFailure === true;
+    return (
+      <div className="py-1">
+        <ToolAccordion
+          variant="compact"
+          icon={
+            <ToolIcon
+              category={category}
+              isStreaming={false}
+              isError={failed}
+              weight="bold"
+            />
+          }
+          title={accordionData.title}
+          titleClassName={cn(
+            accordionData.titleIsCode && "font-mono",
+            failed && "text-red-500",
+          )}
+          description={accordionData.description}
+          descriptionClassName={failed ? "text-red-500" : undefined}
+          defaultExpanded={category === "todo"}
+        >
+          {accordionData.content}
+        </ToolAccordion>
+      </div>
+    );
+  }
+
   return (
     <div className="py-2">
       <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
@@ -793,18 +776,6 @@ export function GenericTool({ part }: Props) {
           className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>
-
-      {showAccordion && accordionData ? (
-        <ToolAccordion
-          icon={<AccordionIcon category={category} />}
-          title={accordionData.title}
-          description={accordionData.description}
-          titleClassName={isError ? "text-red-500" : undefined}
-          defaultExpanded={category === "todo"}
-        >
-          {accordionData.content}
-        </ToolAccordion>
-      ) : null}
     </div>
   );
 }

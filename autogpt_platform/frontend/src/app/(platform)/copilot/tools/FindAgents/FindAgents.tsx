@@ -13,11 +13,9 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
-  AccordionIcon,
   getAgentHref,
   getAnimationText,
   getFindAgentsOutput,
-  getSourceLabelFromToolType,
   isAgentsFoundOutput,
   isErrorOutput,
   ToolIcon,
@@ -43,11 +41,6 @@ export function FindAgentsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const query =
-    typeof part.input === "object" && part.input !== null
-      ? String((part.input as { query?: unknown }).query ?? "").trim()
-      : "";
-
   const agentsFoundOutput =
     part.state === "output-available" && output && isAgentsFoundOutput(output)
       ? output
@@ -58,37 +51,16 @@ export function FindAgentsTool({ part }: Props) {
     agentsFoundOutput.agents.length > 0 &&
     (typeof agentsFoundOutput.count !== "number" ||
       agentsFoundOutput.count > 0);
-  const totalCount = agentsFoundOutput ? agentsFoundOutput.count : 0;
-  const { source } = getSourceLabelFromToolType(part.type);
-  const scopeText =
-    source === "library"
-      ? "in your library"
-      : source === "marketplace"
-        ? "in marketplace"
-        : "";
-  const accordionDescription = `Found ${totalCount}${scopeText ? ` ${scopeText}` : ""}${
-    query ? ` for "${query}"` : ""
-  }`;
 
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon
-          toolType={part.type}
-          isStreaming={isStreaming}
-          isError={isError}
-        />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
-
-      {hasAgents && agentsFoundOutput && (
+  // With results, the accordion header IS the tool row — a single compact
+  // line (icon + summary + caret), matching the bash-style tools.
+  if (hasAgents && agentsFoundOutput) {
+    return (
+      <div className="py-1">
         <ToolAccordion
-          icon={<AccordionIcon toolType={part.type} />}
-          title="Agent results"
-          description={accordionDescription}
+          variant="compact"
+          icon={<ToolIcon toolType={part.type} />}
+          title={text}
         >
           <ContentGrid className="sm:grid-cols-2">
             {agentsFoundOutput.agents.map((agent) => {
@@ -123,7 +95,23 @@ export function FindAgentsTool({ part }: Props) {
             })}
           </ContentGrid>
         </ToolAccordion>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          toolType={part.type}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
     </div>
   );
 }

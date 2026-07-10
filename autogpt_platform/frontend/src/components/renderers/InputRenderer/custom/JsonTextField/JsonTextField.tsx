@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
+import { ArrowsOutIcon } from "@/components/atoms/AGPTIcon/icons";
 import { InputExpanderModal } from "../../base/standard/widgets/TextInput/TextInputExpanderModal";
 import { getHandleId, updateUiOption } from "../../helpers";
 import { useJsonTextField } from "./useJsonTextField";

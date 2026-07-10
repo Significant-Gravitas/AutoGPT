@@ -4,10 +4,9 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
-  ArticleIcon,
   FileMagnifyingGlassIcon,
   FileTextIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { ToolUIPart } from "ai";
 
 export interface SearchDocsInput {
@@ -25,17 +24,6 @@ export type DocsToolOutput =
   | ErrorResponse;
 
 export type DocsToolType = "tool-search_docs" | "tool-get_doc_page" | string;
-
-export function getToolLabel(toolType: DocsToolType): string {
-  switch (toolType) {
-    case "tool-search_docs":
-      return "Docs";
-    case "tool-get_doc_page":
-      return "Docs page";
-    default:
-      return "Docs";
-  }
-}
 
 function parseOutput(output: unknown): DocsToolOutput | null {
   if (!output) return null;
@@ -98,21 +86,6 @@ export function isNoResultsOutput(
 
 export function isErrorOutput(output: DocsToolOutput): output is ErrorResponse {
   return output.type === ResponseType.error || "error" in output;
-}
-
-export function getDocsToolTitle(
-  toolType: DocsToolType,
-  output: DocsToolOutput,
-): string {
-  if (toolType === "tool-search_docs") {
-    if (isDocSearchResultsOutput(output)) return "Documentation results";
-    if (isNoResultsOutput(output)) return "No documentation found";
-    return "Documentation search error";
-  }
-
-  if (isDocPageOutput(output)) return "Documentation page";
-  if (isNoResultsOutput(output)) return "No documentation found";
-  return "Documentation page error";
 }
 
 export function getAnimationText(part: {
@@ -199,12 +172,6 @@ export function ToolIcon({
       }
     />
   );
-}
-
-export function AccordionIcon({ toolType }: { toolType: DocsToolType }) {
-  const IconComponent =
-    toolType === "tool-get_doc_page" ? ArticleIcon : FileTextIcon;
-  return <IconComponent size={32} weight="light" />;
 }
 
 export function toDocsUrl(path: string): string {

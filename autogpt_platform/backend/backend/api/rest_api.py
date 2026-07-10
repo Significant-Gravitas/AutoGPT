@@ -28,6 +28,7 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.sandbox_routes as chat_sandbox_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
@@ -428,6 +429,11 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
+    chat_sandbox_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
     chat_share.owner_router,
     tags=["v2", "chat", "share"],
     prefix="/api/chat",
@@ -544,8 +550,9 @@ class AgentServer(backend.util.service.AppProcess):
             http="httptools",
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
+            # Enable WebSockets: the chat sandbox terminal (sandbox_routes) serves
+            # a PTY over a WebSocket on this app.
+            ws="auto",
         )
 
     @staticmethod

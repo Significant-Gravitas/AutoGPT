@@ -6,8 +6,8 @@ import {
   Image,
   Table,
   VideoCamera,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
+import type { Icon } from "@/components/atoms/AGPTIcon/icons";
 
 export interface ArtifactClassification {
   type:

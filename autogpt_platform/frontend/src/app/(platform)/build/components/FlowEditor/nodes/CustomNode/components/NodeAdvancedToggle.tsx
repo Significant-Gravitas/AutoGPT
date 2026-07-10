@@ -1,7 +1,7 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@/components/atoms/AGPTIcon/icons";
 import { cn } from "@/lib/utils";
 
 type Props = {

@@ -9,6 +9,18 @@ export interface DeleteTarget {
 }
 
 /**
+ * A snippet of code the user pinned from the sandbox file editor to attach as
+ * context to their next chat message. Rendered as a chip in the chat input.
+ */
+export interface CodeRef {
+  id: string;
+  path: string;
+  fromLine: number;
+  toLine: number;
+  code: string;
+}
+
+/**
  * A single workspace artifact surfaced in the copilot chat.
  *
  * Rendered by `ArtifactCard` (inline) and `ArtifactPanel` (preview pane).
@@ -45,11 +57,24 @@ interface ArtifactPanelState {
   activeTab: ContextPanelTab;
 }
 
-export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
+/** Sandbox IDE panel tab (flagged behind `autogpt-new-layout-ide`). */
+export type SandboxIdeTab = "files" | "changes";
+
+interface SandboxIdePanelState {
+  isOpen: boolean;
+  activeTab: SandboxIdeTab;
+  selectedFilePath: string | null;
+  openFilePaths: string[];
+  width: number;
+}
+
+export const DEFAULT_PANEL_WIDTH = 352; // context panel default
 export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
-export const MIN_CONTEXT_PANEL_WIDTH = 280;
+export const MIN_CONTEXT_PANEL_WIDTH = 240;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;
 export const MIN_ARTIFACT_PANEL_WIDTH = 400;
+export const DEFAULT_SANDBOX_IDE_PANEL_WIDTH = 640;
+export const MIN_SANDBOX_IDE_PANEL_WIDTH = 400;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -93,6 +118,15 @@ function getPersistedArtifactWidth(): number {
     : DEFAULT_ARTIFACT_PANEL_WIDTH;
 }
 
+// The sandbox IDE opens covering ~60% of the viewport; still resizable.
+function getDefaultSandboxIdeWidth(): number {
+  if (!isClient) return DEFAULT_SANDBOX_IDE_PANEL_WIDTH;
+  return Math.max(
+    MIN_SANDBOX_IDE_PANEL_WIDTH,
+    Math.round(window.innerWidth * 0.6),
+  );
+}
+
 const widthPersistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 function scheduleWidthPersist(key: Key, value: number) {
   if (!isClient) return;
@@ -121,6 +155,19 @@ interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
+
+  /** Text queued to append into the chat input — e.g. an instruction typed in
+   *  the file editor's line-comment popover. Consumed by useChatInput. */
+  chatInputInsert: string | null;
+  insertIntoChatInput: (text: string) => void;
+  clearChatInputInsert: () => void;
+
+  /** Code snippets pinned from the file editor, shown as chips in the chat
+   *  input and prepended to the message on send. */
+  pendingCodeRefs: CodeRef[];
+  addCodeRef: (ref: CodeRef) => void;
+  removeCodeRef: (id: string) => void;
+  clearCodeRefs: () => void;
 
   contextPanelWidth: number;
   artifactPanelWidth: number;
@@ -174,6 +221,16 @@ interface CopilotUIState {
   markUserClosedForAutoOpen: () => void;
   resetAutoOpenState: () => void;
 
+  // Sandbox IDE panel (flagged behind `autogpt-new-layout-ide`)
+  sandboxIdePanel: SandboxIdePanelState;
+  openSandboxIde: () => void;
+  closeSandboxIdePanel: () => void;
+  setSandboxIdeTab: (tab: SandboxIdeTab) => void;
+  selectSandboxFile: (path: string | null) => void;
+  openSandboxFile: (path: string) => void;
+  closeSandboxFile: (path: string) => void;
+  setSandboxIdeWidth: (width: number) => void;
+
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
   setCopilotChatMode: (mode: CopilotMode) => void;
@@ -200,6 +257,19 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  chatInputInsert: null,
+  insertIntoChatInput: (text) => set({ chatInputInsert: text }),
+  clearChatInputInsert: () => set({ chatInputInsert: null }),
+
+  pendingCodeRefs: [],
+  addCodeRef: (ref) =>
+    set((state) => ({ pendingCodeRefs: [...state.pendingCodeRefs, ref] })),
+  removeCodeRef: (id) =>
+    set((state) => ({
+      pendingCodeRefs: state.pendingCodeRefs.filter((ref) => ref.id !== id),
+    })),
+  clearCodeRefs: () => set({ pendingCodeRefs: [] }),
 
   contextPanelWidth: getPersistedContextWidth(),
   artifactPanelWidth: getPersistedArtifactWidth(),
@@ -294,6 +364,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeArtifact: ref,
           history,
         },
+        // Route the preview into the sandbox panel (the multi-purpose right
+        // panel) so it hosts artifacts alongside the IDE. No-op when the
+        // sandbox is unavailable (flag off / mobile) — the standalone
+        // ArtifactPanel handles those.
+        sandboxIdePanel: { ...state.sandboxIdePanel, isOpen: true },
       };
     }),
   closeArtifactPanel: (opts) =>
@@ -464,6 +539,83 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }
     _autoOpenKnownIds.add(ref.id);
   },
+  sandboxIdePanel: {
+    // Closed on load — the panel only opens on an explicit user action
+    // (the header toggle, or opening an artifact).
+    isOpen: false,
+    activeTab: "files",
+    selectedFilePath: null,
+    openFilePaths: [],
+    width: getDefaultSandboxIdeWidth(),
+  },
+  openSandboxIde: () =>
+    // Opening the sandbox takes over the right side, so collapse the inline
+    // file card — it re-opens as a popover (see ContextPanel) if reopened
+    // while the sandbox is up.
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, isOpen: true },
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: false,
+        activeArtifact: null,
+        history: [],
+      },
+    })),
+  closeSandboxIdePanel: () =>
+    // Closing the multi-purpose panel also drops any artifact it was hosting,
+    // so an active preview can't be left orphaned (invisible) once the panel
+    // that renders it is gone.
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, isOpen: false },
+      artifactPanel: {
+        ...state.artifactPanel,
+        activeArtifact: null,
+        history: [],
+      },
+    })),
+  setSandboxIdeTab: (tab) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, activeTab: tab },
+    })),
+  selectSandboxFile: (path) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, selectedFilePath: path },
+    })),
+  openSandboxFile: (path) =>
+    set((state) => {
+      const openFilePaths = state.sandboxIdePanel.openFilePaths.includes(path)
+        ? state.sandboxIdePanel.openFilePaths
+        : [...state.sandboxIdePanel.openFilePaths, path];
+      return {
+        sandboxIdePanel: {
+          ...state.sandboxIdePanel,
+          openFilePaths,
+          selectedFilePath: path,
+        },
+      };
+    }),
+  closeSandboxFile: (path) =>
+    set((state) => {
+      const openFilePaths = state.sandboxIdePanel.openFilePaths.filter(
+        (p) => p !== path,
+      );
+      const selectedFilePath =
+        state.sandboxIdePanel.selectedFilePath === path
+          ? (openFilePaths[openFilePaths.length - 1] ?? null)
+          : state.sandboxIdePanel.selectedFilePath;
+      return {
+        sandboxIdePanel: {
+          ...state.sandboxIdePanel,
+          openFilePaths,
+          selectedFilePath,
+        },
+      };
+    }),
+  setSandboxIdeWidth: (width) =>
+    set((state) => ({
+      sandboxIdePanel: { ...state.sandboxIdePanel, width },
+    })),
+
   setAutoOpenReady: () => {
     _autoOpenReady = true;
   },

@@ -64,6 +64,7 @@ export function DecomposeGoalTool({ part }: Props) {
 
       {output && isDecompositionOutput(output) && (
         <ToolAccordion
+          variant="compact"
           icon={<AccordionIcon />}
           title={`Build Plan — ${output.step_count} steps`}
           description={output.goal}

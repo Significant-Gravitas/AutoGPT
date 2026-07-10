@@ -5,7 +5,7 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useEffect, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";

@@ -2,7 +2,7 @@
 
 import { MessageAction } from "@/components/ai-elements/message";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Check, CopySimple } from "@phosphor-icons/react";
+import { Check, CopySimple } from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 
 interface Props {

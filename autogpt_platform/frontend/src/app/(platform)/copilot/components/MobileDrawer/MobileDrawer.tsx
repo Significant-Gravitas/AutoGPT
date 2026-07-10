@@ -11,7 +11,7 @@ import {
   PlusIcon,
   SpinnerGapIcon,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef } from "react";
 import { Drawer } from "vaul";

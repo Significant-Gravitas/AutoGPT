@@ -4,7 +4,7 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useWorkspaceFilePicker } from "./useWorkspaceFilePicker";
 import { WorkspaceFileList } from "./WorkspaceFileList";
 

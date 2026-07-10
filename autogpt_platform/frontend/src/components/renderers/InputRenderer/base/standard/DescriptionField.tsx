@@ -1,6 +1,6 @@
 import { DescriptionFieldProps } from "@rjsf/utils";
 import { RichDescription } from "@rjsf/core";
-import { InfoIcon } from "@phosphor-icons/react";
+import { InfoIcon } from "@/components/atoms/AGPTIcon/icons";
 import {
   Tooltip,
   TooltipContent,

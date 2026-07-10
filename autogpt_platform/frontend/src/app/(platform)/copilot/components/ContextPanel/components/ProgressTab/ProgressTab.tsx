@@ -4,7 +4,7 @@ import {
   CheckCircleIcon,
   CircleDashedIcon,
   CircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { motion } from "framer-motion";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import {

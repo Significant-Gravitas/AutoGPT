@@ -13,7 +13,7 @@ import {
   LightbulbIcon,
   TrashIcon,
   WarningIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { DreamWriteRow } from "./components/DreamWriteRow";
 import { DreamDemotionRow } from "./components/DreamDemotionRow";
 import { DreamEntityInvalidationRow } from "./components/DreamEntityInvalidationRow";

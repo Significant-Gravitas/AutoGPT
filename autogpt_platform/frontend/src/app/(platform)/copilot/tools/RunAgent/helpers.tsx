@@ -9,7 +9,7 @@ import {
   PlayIcon,
   RocketLaunchIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
@@ -199,7 +199,9 @@ export function ToolIcon({
 }
 
 export function AccordionIcon() {
-  return <RocketLaunchIcon size={28} weight="light" />;
+  return (
+    <RocketLaunchIcon size={14} weight="bold" className="text-neutral-400" />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -272,7 +274,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
 
   return {
     icon: (
-      <WarningDiamondIcon size={28} weight="light" className="text-red-500" />
+      <WarningDiamondIcon size={14} weight="bold" className="text-red-500" />
     ),
     title: "Error",
     titleClassName: "text-red-500",

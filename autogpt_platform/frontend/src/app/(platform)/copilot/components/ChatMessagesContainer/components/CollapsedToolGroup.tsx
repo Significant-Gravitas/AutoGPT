@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId, useState } from "react";
 import {
   ArrowsClockwiseIcon,
@@ -16,7 +17,7 @@ import {
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { ToolUIPart } from "ai";
 import {
   type ToolCategory,
@@ -82,6 +83,7 @@ function EntryIcon({
 export function CollapsedToolGroup({ parts }: Props) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
+  const reduceMotion = useReducedMotion();
 
   const errorCount = parts.filter((p) => p.state === "output-error").length;
   const label =
@@ -121,32 +123,44 @@ export function CollapsedToolGroup({ parts }: Props) {
         <span>{label}</span>
       </button>
 
-      {expanded && (
-        <div
-          id={panelId}
-          className="ml-5 mt-1 space-y-0.5 border-l border-neutral-200 pl-3"
-        >
-          {parts.map((part) => {
-            const toolName = extractToolName(part);
-            const category = getToolCategory(toolName);
-            const text = getAnimationText(part, category);
-            const isError = part.state === "output-error";
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            id={panelId}
+            initial={{ height: 0, opacity: 0, filter: "blur(4px)" }}
+            animate={{ height: "auto", opacity: 1, filter: "blur(0px)" }}
+            exit={{ height: 0, opacity: 0, filter: "blur(4px)" }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }
+            }
+            className="overflow-hidden"
+          >
+            <div className="ml-5 mt-1 space-y-0.5 border-l border-neutral-200 pl-3">
+              {parts.map((part) => {
+                const toolName = extractToolName(part);
+                const category = getToolCategory(toolName);
+                const text = getAnimationText(part, category);
+                const isError = part.state === "output-error";
 
-            return (
-              <div
-                key={part.toolCallId}
-                className={
-                  "flex items-center gap-1.5 text-xs " +
-                  (isError ? "text-red-500" : "text-muted-foreground")
-                }
-              >
-                <EntryIcon category={category} isError={isError} />
-                <span>{text}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                return (
+                  <div
+                    key={part.toolCallId}
+                    className={
+                      "flex items-center gap-1.5 text-xs " +
+                      (isError ? "text-red-500" : "text-muted-foreground")
+                    }
+                  >
+                    <EntryIcon category={category} isError={isError} />
+                    <span>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

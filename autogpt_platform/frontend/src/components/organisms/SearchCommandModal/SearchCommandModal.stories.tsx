@@ -4,7 +4,7 @@ import {
   ChatCircleIcon,
   FileIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useState } from "react";
 import { SearchCommandModal } from "./SearchCommandModal";
 import type { SearchCommandBucket } from "./helpers";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon } from "@/components/atoms/AGPTIcon/icons";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";

@@ -19,7 +19,7 @@ import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
+import { WarningOctagonIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { SignupMarketingPanel } from "./components/SignupMarketingPanel";

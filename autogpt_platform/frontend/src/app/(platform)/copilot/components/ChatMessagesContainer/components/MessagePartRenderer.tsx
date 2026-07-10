@@ -88,8 +88,11 @@ function TextWithArtifactCards({
 
   return (
     <>
+      <MessageResponse components={STREAMDOWN_COMPONENTS}>
+        {resolved}
+      </MessageResponse>
       {isArtifactsEnabled && artifacts.length > 0 && (
-        <div className="mb-2 flex flex-col gap-1">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           {artifacts.map((artifact) => (
             <ArtifactCard
               key={artifact.id}
@@ -99,9 +102,6 @@ function TextWithArtifactCards({
           ))}
         </div>
       )}
-      <MessageResponse components={STREAMDOWN_COMPONENTS}>
-        {resolved}
-      </MessageResponse>
     </>
   );
 }

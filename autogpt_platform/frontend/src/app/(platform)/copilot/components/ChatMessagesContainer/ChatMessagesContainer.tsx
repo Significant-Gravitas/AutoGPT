@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Clock } from "@phosphor-icons/react";
+import { Clock } from "@/components/atoms/AGPTIcon/icons";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -327,6 +327,14 @@ export function ChatMessagesContainer({
   // sidebar surface — hide it entirely when the task bar is on.
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
+  // New layout restyles the user message bubble (neutral squircle vs the
+  // classic purple rounded-xl). Only the size + bubble segments differ.
+  const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  const userBubbleClassName = isNewLayout
+    ? "text-sm leading-relaxed " +
+      "group-[.is-user]:rounded-[1.75rem] group-[.is-user]:[corner-shape:squircle] group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] "
+    : "text-[1rem] leading-relaxed " +
+      "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ";
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -591,8 +599,7 @@ export function ChatMessagesContainer({
             >
               <MessageContent
                 className={
-                  "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  userBubbleClassName +
                   "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }

@@ -11,7 +11,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
-import { HourglassIcon, XCircleIcon } from "@phosphor-icons/react";
+import { HourglassIcon, XCircleIcon } from "@/components/atoms/AGPTIcon/icons";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Props {

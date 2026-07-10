@@ -36,7 +36,7 @@ import {
   X,
   XLogo,
   YoutubeLogo,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import type { Meta } from "@storybook/nextjs";
 import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
@@ -190,7 +190,7 @@ export function AllVariants() {
                   A flexible icon family with multiple weights and styles
                 </Text>
                 <div className="font-mono text-sm text-zinc-800">
-                  @phosphor-icons/react → React components
+                  @/components/atoms/AGPTIcon/icons → React components
                 </div>
               </div>
               <div className="rounded-lg border border-gray-200 p-4">
@@ -228,7 +228,7 @@ export function AllVariants() {
                 </Text>
                 <div className="space-y-2 text-blue-700">
                   <Text variant="body">
-                    • Import from @phosphor-icons/react
+                    • Import from @/components/atoms/AGPTIcon/icons
                   </Text>
                   <Text variant="body">
                     • Always match size and weight from Figma designs
@@ -397,7 +397,7 @@ export function AllVariants() {
 
         <StoryCode
           code={`// Import icons from Phosphor
-import { User, Heart, Star, Bell } from "@phosphor-icons/react";
+import { User, Heart, Star, Bell } from "@/components/atoms/AGPTIcon/icons";
 
 // Basic usage with default size (24px)
 <User />

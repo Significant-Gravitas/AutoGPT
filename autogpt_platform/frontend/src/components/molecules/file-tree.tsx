@@ -13,7 +13,7 @@ import {
   File as PhFileIcon,
   Folder as PhFolderIcon,
   FolderOpen as PhFolderOpenIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

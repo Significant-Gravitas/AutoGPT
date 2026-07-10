@@ -1,4 +1,4 @@
-import type { Icon } from "@phosphor-icons/react";
+import type { Icon } from "@/components/atoms/AGPTIcon/icons";
 
 export interface LibraryTab {
   id: string;

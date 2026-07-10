@@ -1,7 +1,7 @@
 "use client";
 
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { DeviceMobile } from "@phosphor-icons/react";
+import { DeviceMobile } from "@/components/atoms/AGPTIcon/icons";
 import { Text } from "../atoms/Text/Text";
 
 export function MobileWarningBanner() {

@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowUp as ArrowUpIcon,
   Stop as StopIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { Children, useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================================================
@@ -323,7 +323,7 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
-        "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+        "size-9 rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-400 disabled:bg-zinc-400 disabled:text-white disabled:opacity-100",
         className,
       )}
       disabled={isDisabled}

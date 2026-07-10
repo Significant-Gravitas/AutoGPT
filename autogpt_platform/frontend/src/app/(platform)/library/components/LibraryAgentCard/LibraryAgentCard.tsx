@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { EyeIcon, ChatCircleDotsIcon } from "@phosphor-icons/react";
+import { EyeIcon, ChatCircleDotsIcon } from "@/components/atoms/AGPTIcon/icons";
 import Image from "next/image";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";

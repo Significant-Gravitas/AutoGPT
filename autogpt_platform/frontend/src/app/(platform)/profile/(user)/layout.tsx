@@ -10,7 +10,7 @@ import {
   SlidersHorizontalIcon,
   StorefrontIcon,
   UserCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 
 export default function Layout({ children }: { children: React.ReactNode }) {

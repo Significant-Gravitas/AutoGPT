@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
-import { BellRinging } from "@phosphor-icons/react";
+import { BellRinging } from "@/components/atoms/AGPTIcon/icons";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 

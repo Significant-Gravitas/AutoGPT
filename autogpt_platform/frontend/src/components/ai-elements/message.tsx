@@ -357,9 +357,12 @@ export const MessageResponse = memo(
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
+        // Inline code (`like this`) — rounder pill and a slightly darker fill.
+        // Scoped to `:not(pre) > code` so fenced code blocks keep their own style.
+        "[&_:not(pre)>code]:!rounded-lg [&_:not(pre)>code]:!bg-neutral-200/80 [&_:not(pre)>code]:[corner-shape:squircle]",
         // Raycast/Linear-style markdown tables — clean borders, subtle row
         // separators, light header, no outer-corner artifacts.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border [&_table]:border-zinc-200 [&_table]:text-sm",
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:text-sm",
         "[&_thead]:bg-zinc-50",
         "[&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:text-zinc-600",
         "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:text-zinc-800",
@@ -372,7 +375,7 @@ export const MessageResponse = memo(
         // Wrap in an overflow-x-auto div so the page never grows past the
         // chat container — the table scrolls internally instead.
         table: ({ children, ...tableProps }) => (
-          <div className="my-4 max-w-full overflow-x-auto">
+          <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 [corner-shape:squircle]">
             <table {...tableProps}>{children}</table>
           </div>
         ),

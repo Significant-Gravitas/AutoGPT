@@ -1,4 +1,4 @@
-import type { Icon } from "@phosphor-icons/react";
+import type { Icon } from "@/components/atoms/AGPTIcon/icons";
 import {
   BracketsCurlyIcon,
   CodeIcon,
@@ -8,7 +8,7 @@ import {
   ImageIcon,
   TableIcon,
   VideoCameraIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/AGPTIcon/icons";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }

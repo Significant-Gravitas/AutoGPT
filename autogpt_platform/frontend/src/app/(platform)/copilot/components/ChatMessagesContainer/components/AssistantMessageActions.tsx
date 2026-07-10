@@ -5,7 +5,11 @@ import {
   MessageActions,
 } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import { CopySimple, ThumbsDown, ThumbsUp } from "@phosphor-icons/react";
+import {
+  CopySimple,
+  ThumbsDown,
+  ThumbsUp,
+} from "@/components/atoms/AGPTIcon/icons";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useMessageFeedback } from "../useMessageFeedback";
 import { FeedbackModal } from "./FeedbackModal";

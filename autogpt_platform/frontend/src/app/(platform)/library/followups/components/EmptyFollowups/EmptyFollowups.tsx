@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { ClockClockwiseIcon } from "@phosphor-icons/react";
+import { ClockClockwiseIcon } from "@/components/atoms/AGPTIcon/icons";
 
 export function EmptyFollowups() {
   return (

@@ -96,7 +96,7 @@ export function EditAgentTool({ part }: Props) {
       )}
 
       {output && !isError && isAgentPreviewOutput(output) && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion variant="compact" {...getAccordionMeta(output)}>
           <ContentGrid>
             <ContentMessage>{output.message}</ContentMessage>
             {output.description?.trim() && (
