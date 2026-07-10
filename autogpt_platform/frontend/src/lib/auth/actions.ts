@@ -139,7 +139,19 @@ async function clearAuthCookies() {
       cookie.name.startsWith("__Secure-better-auth.") ||
       cookie.name.startsWith("sb-")
     ) {
-      cookieStore.delete(cookie.name);
+      // A bare cookies().delete(name) emits a Set-Cookie WITHOUT `Secure`, which
+      // the browser REJECTS for `__Secure-`-prefixed cookies over HTTPS (the
+      // prefix mandates Secure). The session_token/session_data then survive and
+      // the user "logs out" but /login bounces them straight back into the app.
+      // Overwrite with an expired cookie carrying matching attributes so the
+      // deletion is accepted on both HTTP (local) and HTTPS (deployed).
+      cookieStore.set(cookie.name, "", {
+        maxAge: 0,
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: cookie.name.startsWith("__Secure-"),
+      });
     }
   }
 }

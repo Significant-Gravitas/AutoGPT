@@ -3,8 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getServerSessionMock = vi.fn();
 const getServerAuthTokenMock = vi.fn();
 const signOutMock = vi.fn();
-const { cookieJar } = vi.hoisted(() => ({
+const { cookieJar, setCalls } = vi.hoisted(() => ({
   cookieJar: new Map<string, string>(),
+  setCalls: [] as Array<{
+    name: string;
+    value: string;
+    options?: { maxAge?: number; secure?: boolean; path?: string };
+  }>,
 }));
 
 vi.mock("../auth", () => ({
@@ -31,6 +36,15 @@ vi.mock("next/headers", () => ({
         name,
         value: cookieJar.get(name) ?? "",
       })),
+    set: (
+      name: string,
+      value: string,
+      options?: { maxAge?: number; secure?: boolean; path?: string },
+    ) => {
+      setCalls.push({ name, value, options });
+      if (options?.maxAge === 0) cookieJar.delete(name);
+      else cookieJar.set(name, value);
+    },
     delete: (name: string) => {
       cookieJar.delete(name);
     },
@@ -176,6 +190,7 @@ describe("getWebSocketToken", () => {
 describe("serverLogout", () => {
   beforeEach(() => {
     cookieJar.clear();
+    setCalls.length = 0;
   });
 
   it("signs out via Better Auth and clears the auth cookies", async () => {
@@ -209,6 +224,35 @@ describe("serverLogout", () => {
 
     expect(result).toEqual({ success: true });
     expect(cookieJar.has("better-auth.session_token")).toBe(false);
+  });
+
+  it("expires __Secure- cookies WITH the Secure attribute so HTTPS logout isn't rejected", async () => {
+    // Regression: a bare cookies().delete() emits Set-Cookie without `Secure`,
+    // which the browser rejects for `__Secure-`-prefixed cookies over HTTPS —
+    // the session survives and /login bounces the user straight back in. The
+    // deletion must carry Secure + maxAge 0 for the prefixed cookies.
+    signOutMock.mockResolvedValue({ success: true });
+    cookieJar.set("__Secure-better-auth.session_token", "tok");
+    cookieJar.set("__Secure-better-auth.session_data", "data");
+    cookieJar.set("better-auth.session_token", "plain");
+
+    await serverLogout();
+
+    expect(cookieJar.has("__Secure-better-auth.session_token")).toBe(false);
+    expect(cookieJar.has("__Secure-better-auth.session_data")).toBe(false);
+
+    const secureExpiry = setCalls.find(
+      (c) => c.name === "__Secure-better-auth.session_token",
+    );
+    expect(secureExpiry?.options?.maxAge).toBe(0);
+    expect(secureExpiry?.options?.secure).toBe(true);
+
+    // A non-prefixed cookie (local HTTP) is expired without requiring Secure.
+    const plainExpiry = setCalls.find(
+      (c) => c.name === "better-auth.session_token",
+    );
+    expect(plainExpiry?.options?.maxAge).toBe(0);
+    expect(plainExpiry?.options?.secure).toBe(false);
   });
 });
 
