@@ -141,11 +141,11 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText("$59/mo")).toBeDefined();
     expect(screen.getByText("+20.4%")).toBeDefined();
 
-    // The closing line points the visitor at the artifact panel.
+    // The closing line points the visitor at the artifact panel, with the
+    // filename bolded (its own <strong> node, hence the split assertions).
+    expect(screen.getByText('"competitor-pricing-report.md"')).toBeDefined();
     expect(
-      screen.getByText(
-        /competitor-pricing-report\.md will appear in a moment on the right side/i,
-      ),
+      screen.getByText(/will appear in a moment on the right side/i),
     ).toBeDefined();
 
     // The sidebar upsell card stays visible; no bottom banner takes over.
