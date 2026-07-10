@@ -66,14 +66,20 @@ describe("Tour chat scripted demo", () => {
     vi.useRealTimers();
   });
 
-  test("auto-plays the first turn with the prompt bar empty and disabled", async () => {
+  test("auto-types the first prompt into the bar and sends it on its own", async () => {
     render(<TourChatPage />);
 
-    // While the first turn auto-plays the bar shows no prompt and can't send.
+    // The bar starts empty.
     expect(screen.queryByText(/email me when the price changes/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
 
-    // After the auto-start delay the first scripted turn streams in on its own.
+    // After a beat the first prompt starts typing itself into the bar.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+    expect(getSendBar()).toBeDefined();
+
+    // Once typed it sends itself and the scripted turn streams in.
     await advanceThroughTurn();
 
     // The auto-sent user message is now in the transcript. getByText throws on

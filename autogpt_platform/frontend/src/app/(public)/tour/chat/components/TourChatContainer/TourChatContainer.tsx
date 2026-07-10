@@ -23,7 +23,7 @@ export function TourChatContainer({ chat }: Props) {
         />
         <div className="relative px-3 pb-2 pt-2">
           <TourPromptBar
-            key={chat.turnIndex}
+            key={`${chat.turnIndex}:${chat.currentUserPrompt ?? ""}`}
             prompt={chat.currentUserPrompt}
             isStreaming={chat.isStreaming}
             onSend={() =>
