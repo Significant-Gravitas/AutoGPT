@@ -1,23 +1,20 @@
 "use client";
 
-import { isNewLayoutExcludedRoute } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ArrowRight, ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
-import { usePathname } from "next/navigation";
 import { ChangelogModal } from "./components/ChangelogModal";
 import { useChangelog } from "./useChangelog";
 
 export function ChangelogPopup() {
   // On the new sidebar layout the changelog lives at the bottom of the sidebar
-  // (SidebarChangelog), so the floating toast steps aside to avoid a duplicate
-  // entry point. But routes excluded from the new layout (settings, auth pages)
-  // still render the classic shell without a sidebar — keep the toast there so
-  // those users don't lose the changelog entirely. Gating here (rather than
-  // mounting) also stops the toast's fetch/auto-dismiss timers from running.
-  const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
-  const pathname = usePathname();
-  if (isNewLayout && !isNewLayoutExcludedRoute(pathname)) return null;
+  // (SidebarChangelog), so the floating toast steps aside. Reuse the exact same
+  // post-mount gate the layout uses (`usePlatformChrome.showNewLayout`) so the
+  // toast shows precisely when the sidebar is NOT rendered — the pre-mount first
+  // paint and routes excluded from the new layout (settings/auth) both keep it —
+  // instead of racing the layout's own mount timing.
+  const { showNewLayout } = usePlatformChrome();
+  if (showNewLayout) return null;
   return <ChangelogPopupToast />;
 }
 

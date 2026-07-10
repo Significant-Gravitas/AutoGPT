@@ -46,15 +46,17 @@ afterEach(() => {
 });
 
 describe("ChangelogPopup gating", () => {
-  it("renders nothing and skips the changelog fetch on the new sidebar layout", async () => {
+  it("keeps the toast hidden once the new sidebar layout is active", async () => {
     vi.mocked(useGetFlag).mockReturnValue(true);
+    server.use(
+      http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
+    );
     render(<ChangelogPopup />);
 
-    // Give any effects a chance to run — none should, since the gate short
-    // -circuits before the toast (and its fetch/auto-dismiss) ever mounts.
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(indexRequests).toBe(0);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // Wait past the reveal delay — the toast must never surface on the new
+    // layout, where the sidebar owns the changelog.
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    expect(screen.queryByText("Copilot upgrades")).toBeNull();
   });
 
   it("mounts the floating toast on the classic layout", async () => {
