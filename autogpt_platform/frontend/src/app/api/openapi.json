@@ -1222,9 +1222,9 @@
     },
     "/api/admin/generate-test-data": {
       "post": {
-        "tags": ["v2", "admin", "admin", "test-data"],
+        "tags": ["v2", "admin", "test-data"],
         "summary": "Generate Test Data",
-        "description": "Generate test data for the platform.\n\nThis endpoint runs the test data generation scripts to populate the database\nwith sample users, agents, graphs, executions, store listings, and more.\n\nAvailable script types:\n- `e2e`: Creates 15 test users with graphs, library agents, presets, and store submissions.\n         Uses API functions for better compatibility. (Recommended)\n- `full`: Creates 100+ users with comprehensive test data using direct Prisma calls.\n          Generates more data but may take longer.\n\n**Warning**: This will add significant data to your database. Use with caution.\n**Note**: This endpoint is disabled in production environments.",
+        "description": "Generate test data for the platform.\n\nThis endpoint runs the test data generation scripts to populate the database\nwith sample users, agents, graphs, executions, store listings, and more.\n\nAvailable script types:\n- `e2e`: Creates a set of test users with graphs, library agents, presets,\n         and store submissions. Uses API functions for better compatibility.\n- `full`: Creates 100+ users with comprehensive test data using direct Prisma\n          calls. Generates more data but may take longer.\n\n**Warning**: This will add significant data to your database. Use with caution.\n**Note**: This endpoint is only available in local environments; requests from\nany shared/cloud environment are rejected and alerted on.",
         "operationId": "postV2Generate test data",
         "requestBody": {
           "content": {
