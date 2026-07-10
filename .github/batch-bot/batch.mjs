@@ -281,6 +281,9 @@ function checkBlockers(p) {
     }
   }
   if (rows === null) return [`#${p.number} check status could not be determined`];
+  // Zero reported checks can't be confirmed green — block (fail closed) rather
+  // than let a PR with no CI slip through the gate on an empty array.
+  if (rows.length === 0) return [`#${p.number} has no reported checks — cannot confirm green`];
   const bad = rows.filter((c) => c.bucket !== "pass" && c.bucket !== "skipping");
   if (!bad.length) return [];
   const buckets = [...new Set(bad.map((c) => c.bucket))].sort().join(", ");
