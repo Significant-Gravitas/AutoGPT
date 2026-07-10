@@ -58,9 +58,9 @@ EXCLUDED_BLOCK_IDS = frozenset(
 
 INPUT_BLOCK_TYPES = frozenset(
     {
-        BlockType.INPUT.value,
-        BlockType.WEBHOOK.value,
-        BlockType.WEBHOOK_MANUAL.value,
+        BlockType.INPUT,
+        BlockType.WEBHOOK,
+        BlockType.WEBHOOK_MANUAL,
     }
 )
 
@@ -160,12 +160,11 @@ def get_blocks(
             continue
         # Skip blocks that don't match the type
         if (
-            (type == "input" and block.block_type.value not in INPUT_BLOCK_TYPES)
-            or (type == "output" and block.block_type.value != BlockType.OUTPUT.value)
+            (type == "input" and block.block_type not in INPUT_BLOCK_TYPES)
+            or (type == "output" and block.block_type != BlockType.OUTPUT)
             or (
                 type == "action"
-                and block.block_type.value
-                in (*INPUT_BLOCK_TYPES, BlockType.OUTPUT.value)
+                and block.block_type in (*INPUT_BLOCK_TYPES, BlockType.OUTPUT)
             )
         ):
             continue
@@ -667,9 +666,9 @@ async def _get_static_counts():
 
         all_blocks += 1
 
-        if block.block_type.value in INPUT_BLOCK_TYPES:
+        if block.block_type in INPUT_BLOCK_TYPES:
             input_blocks += 1
-        elif block.block_type.value == BlockType.OUTPUT.value:
+        elif block.block_type == BlockType.OUTPUT:
             output_blocks += 1
         else:
             action_blocks += 1
