@@ -4,6 +4,7 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { cn } from "@/lib/utils";
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef } from "react";
+import { useTextReveal } from "../../useTextReveal";
 import { TourUpsellBanner } from "../TourUpsellBanner/TourUpsellBanner";
 
 interface Props {
@@ -22,6 +23,9 @@ export function TourPromptBar({
   onReplay,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  // The parent re-keys this component per turn, so the reveal restarts
+  // whenever a new prompt prefills — it types itself in like the transcript.
+  const { visibleText, isDone: isTyped } = useTextReveal(prompt ?? "");
   // No prompt means the turn plays itself (auto-started first turn) — the bar
   // sits empty and disabled until the next turn's prompt prefills.
   const isDisabled = isStreaming || !prompt;
@@ -64,9 +68,12 @@ export function TourPromptBar({
       )}
     >
       <span className="min-h-6 flex-1 truncate text-base text-zinc-700">
-        {prompt}
+        {visibleText}
+        {prompt && !isTyped && (
+          <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-zinc-300 align-middle" />
+        )}
       </span>
-      {!isDisabled && (
+      {!isDisabled && isTyped && (
         <span className="hidden shrink-0 items-center gap-1 text-xs text-zinc-400 sm:flex">
           Press
           <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
