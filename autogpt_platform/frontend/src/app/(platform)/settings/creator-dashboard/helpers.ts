@@ -8,7 +8,27 @@ import {
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { SubmissionStats } from "@/app/api/__generated__/models/submissionStats";
+
+export interface EditPayload extends StoreSubmissionEditRequest {
+  store_listing_version_id: string;
+  graph_id: string;
+}
+
+export function buildEditPayload(submission: StoreSubmission): EditPayload {
+  return {
+    name: submission.name,
+    sub_heading: submission.sub_heading,
+    description: submission.description,
+    image_urls: submission.image_urls,
+    video_url: submission.video_url,
+    categories: submission.categories,
+    changes_summary: submission.changes_summary || "Update Submission",
+    store_listing_version_id: submission.listing_version_id,
+    graph_id: submission.graph_id,
+  };
+}
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 

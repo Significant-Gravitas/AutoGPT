@@ -3,9 +3,10 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
+import { INSET_HEADER_HEIGHT_PX, NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
@@ -41,6 +42,10 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
+  // hidden in lockstep with the layout swap — avoids a one-frame flash where
+  // the classic shell renders without its sidebar before the new layout mounts.
+  const { showNewLayout } = usePlatformChrome();
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -59,15 +64,26 @@ export function CopilotPage() {
   return (
     <SidebarProvider
       defaultOpen={true}
-      // Explicit height: `h-full` against <section className="flex-1"> drifts
-      // out of sync with the navbar-driven --preview-banner-height var during
-      // re-renders, clipping the navbar when the sidebar toggles.
-      style={{
-        height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
-      }}
+      // Both layouts need an explicit, viewport-bound height: the chat column
+      // relies on a definite height so its inner `min-h-0` chain lets the
+      // messages area (not the page) absorb growth — e.g. expanding the task
+      // progress accordion above the input. The new-layout ancestors
+      // (SidebarProvider `min-h-svh` → SidebarInset `flex-1` → `section flex-1`)
+      // only set a *minimum* height, so `height: 100%` there resolves to
+      // content height and the accordion pushes the input below the fold.
+      // Subtract the inset header in the new layout; the navbar + preview
+      // banner in the classic one. `svh` keeps the input visible when mobile
+      // browser chrome is shown.
+      style={
+        showNewLayout
+          ? { height: `calc(100svh - ${INSET_HEADER_HEIGHT_PX}px)` }
+          : {
+              height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+            }
+      }
       className="min-h-0"
     >
-      {!isMobile && <ChatSidebar />}
+      {!isMobile && !showNewLayout && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
@@ -79,7 +95,7 @@ export function CopilotPage() {
         <ContextPanel sessionId={sessionId} mobile />
       )}
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
-      {isMobile && <MobileDrawer />}
+      {isMobile && !showNewLayout && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>
   );

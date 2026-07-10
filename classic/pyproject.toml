@@ -45,7 +45,7 @@ trafilatura = "^2.0"
 # LLM providers
 anthropic = "^0.45.0"
 groq = "^0.8.0"
-litellm = "^1.17.9"
+litellm = ">=1.17.9,<1.82.7"
 openai = "^1.50.0"
 tiktoken = ">=0.7.0,<1.0.0"
 

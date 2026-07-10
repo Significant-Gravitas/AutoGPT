@@ -58,35 +58,47 @@ function mockShareState(state: Partial<ChatShareStateResponse>) {
   );
 }
 
-vi.mock("framer-motion", () => ({
-  LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: React.forwardRef(function MotionDiv(
+vi.mock("framer-motion", () => {
+  const MOTION_PROPS = [
+    "initial",
+    "animate",
+    "exit",
+    "transition",
+    "layout",
+    "layoutId",
+    "whileHover",
+    "whileTap",
+    "style",
+  ];
+  function makeMotion(Tag: string) {
+    return React.forwardRef(function MotionComponent(
       props: Record<string, unknown>,
-      ref: React.Ref<HTMLDivElement>,
+      ref: React.Ref<unknown>,
     ) {
-      const {
-        children,
-        initial: _initial,
-        animate: _animate,
-        transition: _transition,
-        ...rest
-      } = props as {
-        children?: React.ReactNode;
-        initial?: unknown;
-        animate?: unknown;
-        transition?: unknown;
-        [key: string]: unknown;
-      };
-
-      return (
-        <div ref={ref} {...rest}>
-          {children}
-        </div>
-      );
-    }),
-  },
-}));
+      const rest: Record<string, unknown> = {};
+      let children: React.ReactNode = null;
+      for (const [key, value] of Object.entries(props)) {
+        if (key === "children") children = value as React.ReactNode;
+        else if (!MOTION_PROPS.includes(key)) rest[key] = value;
+      }
+      return React.createElement(Tag, { ref, ...rest }, children);
+    });
+  }
+  return {
+    LayoutGroup: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    useReducedMotion: () => false,
+    motion: {
+      div: makeMotion("div"),
+      span: makeMotion("span"),
+      button: makeMotion("button"),
+    },
+  };
+});
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
   ChatInput: () => <div data-testid="chat-input" />,
