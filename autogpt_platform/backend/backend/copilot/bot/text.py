@@ -1,6 +1,7 @@
 """Text formatting helpers — message batching and chunk splitting."""
 
 import re
+from collections import Counter
 from typing import Callable, Iterator
 
 from backend.data.sharing.workspace_refs import cut_lands_inside_artifact_link
@@ -104,13 +105,21 @@ def resolve_mentions(
     if not mentionable_users:
         return text, []
 
+    # Names that two different allowlisted users share case-insensitively are
+    # ambiguous — we can't know which the author meant, so leave them plain
+    # rather than ping whichever happens to sort first.
+    name_counts = Counter(name.casefold() for name, _ in mentionable_users)
+
     rendered = text
     pinged: list[str] = []
     for display_name, user_id in sorted(
         mentionable_users, key=lambda pair: -len(pair[0])
     ):
+        if name_counts[display_name.casefold()] > 1:
+            continue
         pattern = re.compile(
-            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
+            # Trailing [\w-] guard so "@John" can't match inside "@John-Smith".
+            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?![\w-])",
             re.IGNORECASE,
         )
         if not pattern.search(rendered):

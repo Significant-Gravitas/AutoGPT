@@ -47,6 +47,29 @@ class TestResolveMentions:
         assert rendered == "mail me@Bently.dev"
         assert pinged == []
 
+    def test_partial_name_before_hyphen_is_not_matched(self):
+        # "@John" must not ping inside "@John-Smith" when only John is allowlisted.
+        rendered, pinged = resolve_mentions(
+            "ping @John-Smith please", (("John", "U1"),), _token
+        )
+        assert rendered == "ping @John-Smith please"
+        assert pinged == []
+
+    def test_hyphenated_name_still_matches_fully(self):
+        rendered, pinged = resolve_mentions(
+            "ping @John-Smith please", (("John-Smith", "U2"),), _token
+        )
+        assert rendered == "ping <@U2> please"
+        assert pinged == ["U2"]
+
+    def test_ambiguous_duplicate_names_stay_plain(self):
+        # Two different users share a case-insensitive display name → ping neither.
+        rendered, pinged = resolve_mentions(
+            "hey @john", (("John", "U1"), ("john", "U2")), _token
+        )
+        assert rendered == "hey @john"
+        assert pinged == []
+
     def test_empty_allowlist_returns_text_unchanged(self):
         rendered, pinged = resolve_mentions("hi @Bently", (), _token)
         assert rendered == "hi @Bently"
