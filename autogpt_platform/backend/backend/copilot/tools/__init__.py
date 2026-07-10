@@ -43,6 +43,14 @@ from .manage_folders import (
 )
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .menlo import (
+    MenloConnectRobotTool,
+    MenloDisconnectRobotTool,
+    MenloDiscoverSkillsTool,
+    MenloGetRobotStateTool,
+    MenloGetVisionTool,
+    MenloInvokeSkillTool,
+)
 from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
@@ -149,6 +157,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # Menlo robot platform (hidden unless MENLO_API_KEY is set; needs `menlo` extra)
+    "menlo_connect_robot": MenloConnectRobotTool(),
+    "menlo_disconnect_robot": MenloDisconnectRobotTool(),
+    "menlo_discover_skills": MenloDiscoverSkillsTool(),
+    "menlo_invoke_skill": MenloInvokeSkillTool(),
+    "menlo_get_robot_state": MenloGetRobotStateTool(),
+    "menlo_get_vision": MenloGetVisionTool(),
 }
 
 # Export individual tool instances for backwards compatibility

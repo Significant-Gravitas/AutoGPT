@@ -534,6 +534,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="If True, allow execution to continue if AutoMod fails",
     )
 
+    menlo_rcs_url: str = Field(
+        default="https://api.menlo.ai/rcs",
+        description="Menlo RCS (control-plane) base URL for the copilot robot tools",
+    )
+    menlo_robot_viewer_url: str = Field(
+        default="https://sim.menlo.ai",
+        description="Menlo browser 3D viewer base URL used to build room-key links",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -785,6 +794,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
+    menlo_api_key: str = Field(
+        default="", description="Menlo robot platform API key (sk_live_...)"
+    )
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
