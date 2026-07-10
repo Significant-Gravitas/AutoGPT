@@ -10,23 +10,33 @@ const PRICING_URL = "https://agpt.co/pricing";
 const GITHUB_URL = "https://github.com/Significant-Gravitas/AutoGPT";
 
 export function TourUpsellCard() {
-  // The moving effects (spinning border, shine sweep, pulsing sparkle) would
-  // fight the streaming transcript for attention — they only switch on once
-  // the demo has played through. The static glow stays on the whole time.
+  // The glow and moving effects (spinning border, shine sweep, pulsing
+  // sparkle) would fight the streaming transcript for attention, so the card
+  // sits quiet and only lights up once the demo has played through.
   const isDemoComplete = useTourStore((s) => s.isDemoComplete);
 
   return (
-    // Gradient border: a p-px shell with an oversized conic gradient behind
-    // the white inner card (same trick as PlanCard's badge).
-    <div className="relative rounded-xl p-px shadow-[0_0_20px_-4px_rgba(139,92,246,0.45),0_0_44px_-8px_rgba(139,92,246,0.4)]">
+    // Border: a p-px shell whose backdrop is a plain hairline while the demo
+    // runs and an oversized spinning conic gradient once it completes (same
+    // trick as PlanCard's badge).
+    <div
+      className={cn(
+        "relative rounded-xl p-px",
+        isDemoComplete
+          ? "shadow-[0_0_20px_-4px_rgba(139,92,246,0.45),0_0_44px_-8px_rgba(139,92,246,0.4)]"
+          : "shadow-sm",
+      )}
+    >
       <span
         aria-hidden="true"
         className="absolute inset-0 overflow-hidden rounded-xl"
       >
         <span
           className={cn(
-            "absolute -inset-[150%] bg-[conic-gradient(from_0deg,#ede9fe,#c4b5fd,#8b5cf6,#ede9fe,#ddd6fe,#a78bfa,#ede9fe)]",
-            isDemoComplete && "animate-[spin_6s_linear_infinite]",
+            "absolute -inset-[150%]",
+            isDemoComplete
+              ? "animate-[spin_6s_linear_infinite] bg-[conic-gradient(from_0deg,#ede9fe,#c4b5fd,#8b5cf6,#ede9fe,#ddd6fe,#a78bfa,#ede9fe)]"
+              : "bg-zinc-200/80",
           )}
         />
       </span>
@@ -46,7 +56,7 @@ export function TourUpsellCard() {
           </Text>
         </div>
         <Text variant="small" className="mt-1 text-zinc-500">
-          Spin up agents like this in minutes — hosted for you, or on your own
+          Spin up agents like this in minutes, hosted for you or on your own
           infrastructure.
         </Text>
         <Button
@@ -64,7 +74,7 @@ export function TourUpsellCard() {
               className="pointer-events-none absolute inset-y-0 left-0 w-1/3 -skew-x-12 animate-[progress-bar_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent"
             />
           )}
-          Start with Pro — $42.50/mo
+          Start with Pro for $42.50/mo
         </Button>
         <Button
           as="NextLink"
