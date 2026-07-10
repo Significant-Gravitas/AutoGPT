@@ -67,6 +67,8 @@ def _adapter() -> MagicMock:
     adapter = MagicMock()
     adapter.chunk_flush_at = 1900
     adapter.max_attachment_bytes = 25 * 1024 * 1024
+    adapter.max_thread_name_length = 100
+    adapter.typing_refresh_interval = 8.0
     adapter.send_message = AsyncMock()
     adapter.send_reply = AsyncMock()
     adapter.send_link = AsyncMock()
@@ -764,21 +766,32 @@ class TestStreamFallback:
 class TestThreadNames:
     def test_build_thread_name_from_prompt(self):
         assert (
-            build_thread_name("  tell me\nabout space  ", "Bently")
+            build_thread_name("  tell me\nabout space  ", "Bently", 100)
             == "AutoPilot: tell me about space"
         )
 
-    def test_build_thread_name_truncates_to_discord_limit(self):
-        name = build_thread_name("x" * 200, "Bently")
+    def test_build_thread_name_truncates_to_platform_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 100)
         assert len(name) <= 100
         assert name.startswith("AutoPilot: ")
         assert name.endswith("...")
 
+    def test_build_thread_name_respects_a_larger_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 128)
+        assert 100 < len(name) <= 128
+
     def test_clamp_thread_name_handles_generated_titles(self):
-        assert clamp_thread_name("  Generated\nWeb   Title  ") == "Generated Web Title"
+        assert (
+            clamp_thread_name("  Generated\nWeb   Title  ", 100)
+            == "Generated Web Title"
+        )
 
     def test_clamp_thread_name_falls_back_when_blank(self):
-        assert clamp_thread_name("   ") == "AutoPilot Chat"
+        assert clamp_thread_name("   ", 100) == "AutoPilot Chat"
+
+    def test_clamp_thread_name_never_overruns_a_tiny_cap(self):
+        # A tiny adapter cap must not make the slice index go negative.
+        assert len(clamp_thread_name("x" * 50, 2)) <= 2
 
 
 # ── Workspace artifact extraction & delivery ────────────────────────────

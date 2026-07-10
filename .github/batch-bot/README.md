@@ -81,7 +81,8 @@ suggestions:
    Postgres schema `pr_<n>`, and URLs — non-prod and per-PR isolated. Confirm those
    previews use non-prod secrets (they do by design). Nuance: isolation is
    schema-level within a shared preview Postgres cluster, not separate DB servers —
-   fine for non-prod previews. Optionally set `BATCH_REQUIRE_APPROVAL=1` to require
+   fine for non-prod previews. Optionally set the repository variable
+   `BATCH_REQUIRE_APPROVAL=1` (wired into `batch-command-handler.yml`) to require
    an approval before a PR can be added to the batch.
 4. **Pinned actions.** All actions are pinned to commit SHAs (`slash-command-dispatch`,
    `checkout`, `setup-node`); keep them pinned when bumping.
@@ -91,16 +92,16 @@ suggestions:
 
 ## Setup
 
-### 1. Bot token — `BATCH_BOT_TOKEN` (repo secret)
+### 1. Bot identity — GitHub App (`BATCH_BOT_APP_ID` variable + `BATCH_BOT_PRIVATE_KEY` secret)
 
-Needed (not just `GITHUB_TOKEN`) because a `repository_dispatch` made with
-`GITHUB_TOKEN` won't trigger the handler, and pushes by `GITHUB_TOKEN` won't
-trigger the preview-deploy — and the payoff is the rollup push kicking off one
-preview.
+Both workflows mint a short-lived installation token per run via
+`actions/create-github-app-token`. A real identity (not `GITHUB_TOKEN`) is required
+because a `repository_dispatch` made with `GITHUB_TOKEN` won't trigger the handler,
+and pushes by `GITHUB_TOKEN` won't trigger the preview-deploy — the payoff is the
+rollup push kicking off one preview.
 
-**Prefer a GitHub App installation token** (short-lived, auto-rotating,
-repo-scoped) over a PAT. If you must use a PAT, make it **fine-grained,
-single-repo, with an expiry** — never a classic PAT. Either way grant only:
+Create a **GitHub App** (org-owned preferred) and grant only these **repository**
+permissions:
 
 | Permission | Level | Why |
 |---|---|---|
@@ -110,8 +111,11 @@ single-repo, with an expiry** — never a classic PAT. Either way grant only:
 | Actions | Read | read member CI status before batch/merge |
 | Metadata | Read | required baseline |
 
-Add the identity as a **write collaborator**. Do **not** grant admin or a
-review-bypass — that would turn the token into a review-bypass primitive.
+Store the App's **App ID** as the repo variable `BATCH_BOT_APP_ID` and its **private
+key** (`.pem` contents) as the secret `BATCH_BOT_PRIVATE_KEY`, then **install the App
+on this repo**. All three workflows (listener, handler, reconcile) mint their token
+from these — there is no PAT fallback. Do **not** grant admin or a review-bypass —
+that would turn the token into a review-bypass primitive.
 
 Optional repo **variables**: `BATCH_BASE_BRANCH` (default `dev`), `BATCH_BOT_NAME`,
 `BATCH_BOT_EMAIL`.
@@ -122,9 +126,10 @@ No new preview infra needed — the bot reuses the repo's existing per-PR previe
 system by posting `!deploy` on the rollup PR (handled by
 `platform-dev-deploy-event-dispatcher.yml` → `AutoGPT_cloud_infrastructure`'s
 `autogpt-platform-preview-env-cd.yml`). Two prerequisites: that per-PR preview
-system is enabled, and the bot identity is a **write collaborator** so the deploy
-dispatcher honors its `!deploy`/`!undeploy` comments (the dispatcher gates on the
-commenter's `author_association`).
+system is enabled, and the App bot's `!deploy`/`!undeploy` comments clear the deploy
+dispatcher's gate on the commenter's `author_association` — verify this end-to-end,
+since an App bot comment can read as `NONE`; if it doesn't qualify, add the bot to
+the dispatcher's allowlist (or keep the write-collaborator PAT fallback for deploys).
 
 ## Opt-out
 
