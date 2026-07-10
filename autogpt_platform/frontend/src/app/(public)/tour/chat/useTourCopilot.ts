@@ -19,15 +19,9 @@ interface Args {
   sessionId: string;
   script: TourScript;
   onComplete: () => void;
-  onReset?: () => void;
 }
 
-export function useTourCopilot({
-  sessionId,
-  script,
-  onComplete,
-  onReset,
-}: Args) {
+export function useTourCopilot({ sessionId, script, onComplete }: Args) {
   const [messages, setMessages] = useState<TourMessage[]>([]);
   const [status, setStatus] = useState<TourStatus>("ready");
   const stepIndex = useRef(0);
@@ -100,15 +94,6 @@ export function useTourCopilot({
     );
   }
 
-  function reset() {
-    clearTimers();
-    stepIndex.current = 0;
-    commit([]);
-    setStatus("ready");
-    onReset?.();
-    scheduleAutoStart();
-  }
-
   // TourChatHost is keyed by scenario id, so a scenario switch remounts this
   // hook — each fresh mount auto-plays its first turn after a short beat
   // (pressing Enter still works and just skips the wait).
@@ -126,10 +111,8 @@ export function useTourCopilot({
   return {
     messages,
     onSend,
-    reset,
     turnIndex: stepIndex.current,
     currentUserPrompt,
     isStreaming: status === "streaming",
-    isExhausted: stepIndex.current >= script.length,
   };
 }

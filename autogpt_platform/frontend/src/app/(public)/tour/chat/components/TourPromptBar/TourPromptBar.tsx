@@ -5,40 +5,27 @@ import { cn } from "@/lib/utils";
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef } from "react";
 import { useTextReveal } from "../../useTextReveal";
-import { TourUpsellBanner } from "../TourUpsellBanner/TourUpsellBanner";
 
 interface Props {
   prompt: string | null;
   isStreaming: boolean;
-  isExhausted: boolean;
   onSend: () => void;
-  onReplay: () => void;
 }
 
-export function TourPromptBar({
-  prompt,
-  isStreaming,
-  isExhausted,
-  onSend,
-  onReplay,
-}: Props) {
+export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   // The parent re-keys this component per turn, so the reveal restarts
   // whenever a new prompt prefills — it types itself in like the transcript.
   const { visibleText, isDone: isTyped } = useTextReveal(prompt ?? "");
-  // No prompt means the turn plays itself (auto-started first turn) — the bar
-  // sits empty and disabled until the next turn's prompt prefills.
+  // No prompt means the turn plays itself (auto-started first turn) or the
+  // demo is over — the bar sits empty and disabled either way.
   const isDisabled = isStreaming || !prompt;
 
   // The parent re-keys this component whenever the prefilled prompt changes, so
   // focusing on mount keeps the box ready for the visitor to just press Enter.
   useMountEffect(() => {
-    if (!isDisabled && !isExhausted) ref.current?.focus();
+    if (!isDisabled) ref.current?.focus();
   });
-
-  if (isExhausted) {
-    return <TourUpsellBanner onReplay={onReplay} />;
-  }
 
   function send() {
     if (!isDisabled) onSend();

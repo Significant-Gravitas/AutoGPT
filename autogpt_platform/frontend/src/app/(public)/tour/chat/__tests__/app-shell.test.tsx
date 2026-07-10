@@ -91,6 +91,10 @@ describe("Tour chat app shell", () => {
       expect(screen.getByRole("button", { name: label })).toBeDefined();
     }
 
+    // The upsell card is always visible in the sidebar footer.
+    expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
+    expect(screen.getByText(/Start with Pro — \$42\.50\/mo/i)).toBeDefined();
+
     // Marketplace is the only live navigation target.
     const marketplace = screen.getByRole("link", { name: "Marketplace" });
     expect(marketplace.getAttribute("href")).toBe("/marketplace");

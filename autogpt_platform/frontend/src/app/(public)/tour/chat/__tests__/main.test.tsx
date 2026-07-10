@@ -132,10 +132,11 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText("$59/mo")).toBeDefined();
     expect(screen.getByText("+20.4%")).toBeDefined();
 
-    // Upsell: Pro-first CTA with self-host secondary.
+    // The sidebar upsell card stays visible; no bottom banner takes over.
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
     expect(screen.getByText(/Start with Pro — \$42\.50\/mo/i)).toBeDefined();
     expect(screen.getByText(/Self-host free/i)).toBeDefined();
+    expect(screen.queryByText(/Replay demo/i)).toBeNull();
   });
 
   test("scenario chips switch the demo path", async () => {

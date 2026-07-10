@@ -39,7 +39,6 @@ export function TourCopilot() {
   const scenario = getTourScenario(activeScenarioId);
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
 
   // The tour shares the copilot UI store but must never leak panel state
@@ -61,7 +60,6 @@ export function TourCopilot() {
           onComplete={() =>
             openArtifact(buildTourArtifactRef(scenario), { persist: false })
           }
-          onReset={clearArtifactPreview}
         />
       </div>
     </div>

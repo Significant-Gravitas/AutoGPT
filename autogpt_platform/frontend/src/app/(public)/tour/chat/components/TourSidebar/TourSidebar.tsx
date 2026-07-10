@@ -13,6 +13,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -36,6 +37,7 @@ import Link from "next/link";
 import { tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
+import { TourUpsellCard } from "./components/TourUpsellCard";
 
 // Visual clone of the logged-in AppSidebar for the public tour demo. Only
 // Marketplace navigates; every other destination needs an account, so those
@@ -191,6 +193,10 @@ export function TourSidebar() {
           </motion.div>
         </motion.div>
       </SidebarContent>
+
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        <TourUpsellCard />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
