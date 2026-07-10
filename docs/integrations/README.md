@@ -226,6 +226,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md#bannerbear-text-overlay) | Add text overlay to images using Bannerbear templates |
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
 | [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using OpenAI's Codex (Responses API) |
+| [Create Hey Gen Avatar Video](block-integrations/llm.md#create-hey-gen-avatar-video) | This block integrates with HeyGen to create avatar videos and retrieve their URLs |
 | [Create Talking Avatar Video](block-integrations/llm.md#create-talking-avatar-video) | This block integrates with D-ID to create video clips and retrieve their URLs |
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |

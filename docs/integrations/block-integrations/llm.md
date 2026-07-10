@@ -621,6 +621,44 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 
 ---
 
+## Create Hey Gen Avatar Video
+
+### What it is
+This block integrates with HeyGen to create avatar videos and retrieve their URLs.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| avatar_id | The HeyGen avatar ID to use | str | Yes |
+| script | The script the avatar will speak | str | Yes |
+| voice_id | The HeyGen voice ID to use. If omitted, falls back to the avatar's default voice. | str | No |
+| title | Optional title for the video | str | No |
+| resolution | Output video resolution | "4k" \| "1080p" \| "720p" | No |
+| aspect_ratio | Output video aspect ratio | "auto" \| "16:9" \| "9:16" \| "4:5" \| "5:4" \| "1:1" | No |
+| output_format | Output video file format | "mp4" \| "webm" | No |
+| max_polling_attempts | Maximum number of polling attempts | int | No |
+| polling_interval | Interval between polling attempts in seconds | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| video_url | The URL of the created video | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Create Talking Avatar Video
 
 ### What it is
