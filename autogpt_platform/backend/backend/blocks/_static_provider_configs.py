@@ -33,6 +33,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "d_id": ("AI avatar and video generation", ("api_key",)),
     "e2b": ("Sandboxed code execution", ("api_key",)),
     "google_maps": ("Places, directions, geocoding", ("api_key",)),
+    "heygen": ("AI avatar video generation", ("api_key",)),
     "http": ("Generic HTTP requests", ("api_key", "host_scoped")),
     "ideogram": ("Text-to-image generation", ("api_key",)),
     "medium": ("Publish stories and posts", ("api_key",)),
