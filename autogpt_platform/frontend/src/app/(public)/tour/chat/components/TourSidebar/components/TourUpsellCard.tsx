@@ -2,21 +2,33 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { GithubLogoIcon, SparkleIcon } from "@phosphor-icons/react";
+import { useTourStore } from "../../../tourStore";
 
 const PRICING_URL = "https://agpt.co/pricing";
 const GITHUB_URL = "https://github.com/Significant-Gravitas/AutoGPT";
 
 export function TourUpsellCard() {
+  // The moving effects (spinning border, shine sweep, pulsing sparkle) would
+  // fight the streaming transcript for attention — they only switch on once
+  // the demo has played through. The static glow stays on the whole time.
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+
   return (
-    // Animated gradient border: a p-px shell with an oversized spinning conic
-    // gradient behind the white inner card (same trick as PlanCard's badge).
+    // Gradient border: a p-px shell with an oversized conic gradient behind
+    // the white inner card (same trick as PlanCard's badge).
     <div className="relative rounded-xl p-px shadow-[0_0_20px_-4px_rgba(139,92,246,0.45),0_0_44px_-8px_rgba(139,92,246,0.4)]">
       <span
         aria-hidden="true"
         className="absolute inset-0 overflow-hidden rounded-xl"
       >
-        <span className="absolute -inset-[150%] animate-[spin_6s_linear_infinite] bg-[conic-gradient(from_0deg,#ede9fe,#c4b5fd,#8b5cf6,#ede9fe,#ddd6fe,#a78bfa,#ede9fe)]" />
+        <span
+          className={cn(
+            "absolute -inset-[150%] bg-[conic-gradient(from_0deg,#ede9fe,#c4b5fd,#8b5cf6,#ede9fe,#ddd6fe,#a78bfa,#ede9fe)]",
+            isDemoComplete && "animate-[spin_6s_linear_infinite]",
+          )}
+        />
       </span>
 
       <div className="relative flex flex-col rounded-[11px] bg-white p-4">
@@ -24,7 +36,10 @@ export function TourUpsellCard() {
           <SparkleIcon
             size={14}
             weight="fill"
-            className="shrink-0 animate-pulse text-violet-600"
+            className={cn(
+              "shrink-0 text-violet-600",
+              isDemoComplete && "animate-pulse",
+            )}
           />
           <Text variant="body-medium" className="text-zinc-900">
             Ready to build your own?
@@ -43,11 +58,12 @@ export function TourUpsellCard() {
           size="small"
           className="relative mt-3 w-full overflow-hidden shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)] transition-shadow hover:shadow-[0_0_28px_-4px_rgba(124,58,237,0.75)]"
         >
-          {/* Shine sweep gliding across the CTA every few seconds. */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 w-1/3 -skew-x-12 animate-[progress-bar_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent"
-          />
+          {isDemoComplete && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 -skew-x-12 animate-[progress-bar_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent"
+            />
+          )}
           Start with Pro — $42.50/mo
         </Button>
         <Button

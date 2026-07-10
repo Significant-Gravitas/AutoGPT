@@ -55,7 +55,10 @@ describe("Tour chat scripted demo", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // The scenario store is module-level state — reset between tests.
-    useTourStore.setState({ activeScenarioId: DEFAULT_SCENARIO_ID });
+    useTourStore.setState({
+      activeScenarioId: DEFAULT_SCENARIO_ID,
+      isDemoComplete: false,
+    });
   });
 
   afterEach(() => {
@@ -137,6 +140,9 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText(/Start with Pro — \$42\.50\/mo/i)).toBeDefined();
     expect(screen.getByText(/Self-host free/i)).toBeDefined();
     expect(screen.queryByText(/Replay demo/i)).toBeNull();
+
+    // Completion flips the store flag that turns on the card's animations.
+    expect(useTourStore.getState().isDemoComplete).toBe(true);
   });
 
   test("scenario chips switch the demo path", async () => {

@@ -67,7 +67,10 @@ describe("Tour chat app shell", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Both stores are module-level state — reset between tests.
-    useTourStore.setState({ activeScenarioId: DEFAULT_SCENARIO_ID });
+    useTourStore.setState({
+      activeScenarioId: DEFAULT_SCENARIO_ID,
+      isDemoComplete: false,
+    });
     useCopilotUIStore.getState().clearArtifactPreview();
   });
 

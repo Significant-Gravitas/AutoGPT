@@ -36,6 +36,7 @@ function TourBackdrop() {
 export function TourCopilot() {
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
   const runId = useTourStore((s) => s.runId);
+  const setDemoComplete = useTourStore((s) => s.setDemoComplete);
   const scenario = getTourScenario(activeScenarioId);
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -57,9 +58,10 @@ export function TourCopilot() {
           key={`${scenario.id}-${runId}`}
           sessionId={scenario.id}
           script={scenario.script}
-          onComplete={() =>
-            openArtifact(buildTourArtifactRef(scenario), { persist: false })
-          }
+          onComplete={() => {
+            setDemoComplete();
+            openArtifact(buildTourArtifactRef(scenario), { persist: false });
+          }}
         />
       </div>
     </div>
