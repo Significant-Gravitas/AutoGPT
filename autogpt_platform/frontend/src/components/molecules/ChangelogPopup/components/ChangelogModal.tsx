@@ -149,7 +149,10 @@ export function ChangelogModal({
               </div>
             )}
             {entryMarkdown && (
-              <ChangelogMarkdownContent markdown={entryMarkdown} />
+              <ChangelogMarkdownContent
+                markdown={entryMarkdown}
+                baseUrl={selectedEntry?.url}
+              />
             )}
             {!isLoadingMarkdown && !entryMarkdown && selectedEntry && (
               <div className="text-sm text-muted-foreground">

@@ -25,4 +25,21 @@ describe("ChangelogMarkdownContent", () => {
 
     expect(screen.getByAltText("a screenshot")).toBeDefined();
   });
+
+  it("resolves docs-relative links and images against the base URL", () => {
+    render(
+      <ChangelogMarkdownContent
+        markdown={"A [relative link](../other) and ![img](assets/pic.png)."}
+        baseUrl="https://agpt.co/docs/platform/changelog/changelog/v0-6-63"
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "relative link" });
+    expect(link.getAttribute("href")).toBe(
+      "https://agpt.co/docs/platform/changelog/other",
+    );
+    expect(screen.getByAltText("img").getAttribute("src")).toBe(
+      "https://agpt.co/docs/platform/changelog/changelog/assets/pic.png",
+    );
+  });
 });

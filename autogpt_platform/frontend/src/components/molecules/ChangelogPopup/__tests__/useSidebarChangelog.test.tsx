@@ -90,4 +90,15 @@ describe("useSidebarChangelog", () => {
     expect(result.current.selectedEntry).toBeNull();
     expect(result.current.entryMarkdown).toBeNull();
   });
+
+  it("open() is a no-op until the index has loaded", () => {
+    const { result } = renderHook(() => useSidebarChangelog());
+
+    // Index fetch is still in flight — entries haven't populated yet.
+    expect(result.current.entries).toHaveLength(0);
+    act(() => result.current.open());
+
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.selectedEntry).toBeNull();
+  });
 });

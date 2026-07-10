@@ -7,13 +7,20 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 // signup and onboarding already live in the (no-navbar) group. These
 // (platform) routes should not show the app sidebar — reset-password and the
 // auth/error/unauthorized pages are all reachable while unauthenticated.
-const NEW_LAYOUT_EXCLUDED_PREFIXES = [
+export const NEW_LAYOUT_EXCLUDED_PREFIXES = [
   "/settings",
   "/reset-password",
   "/auth/auth-code-error",
   "/error",
   "/unauthorized",
 ];
+
+export function isNewLayoutExcludedRoute(pathname: string | null) {
+  if (!pathname) return false;
+  return NEW_LAYOUT_EXCLUDED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 export function usePlatformChrome() {
   const pathname = usePathname();
@@ -27,12 +34,8 @@ export function usePlatformChrome() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const isExcludedRoute = NEW_LAYOUT_EXCLUDED_PREFIXES.some((prefix) => {
-    if (!pathname) return false;
-    return pathname === prefix || pathname.startsWith(`${prefix}/`);
-  });
-
   return {
-    showNewLayout: isMounted && isNewLayoutEnabled && !isExcludedRoute,
+    showNewLayout:
+      isMounted && isNewLayoutEnabled && !isNewLayoutExcludedRoute(pathname),
   };
 }

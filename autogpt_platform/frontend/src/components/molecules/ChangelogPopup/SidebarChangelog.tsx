@@ -7,6 +7,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { SparkleIcon } from "@phosphor-icons/react";
+import { createPortal } from "react-dom";
 
 import { ChangelogModal } from "./components/ChangelogModal";
 import { useSidebarChangelog } from "./useSidebarChangelog";
@@ -31,6 +32,7 @@ export function SidebarChangelog() {
           <SidebarMenuButton
             tooltip="What's New"
             onClick={open}
+            disabled={entries.length === 0}
             aria-label="What's New"
             className="h-auto rounded-lg p-2 font-normal hover:!bg-zinc-100 [&>svg]:size-5"
           >
@@ -50,16 +52,21 @@ export function SidebarChangelog() {
         </SidebarMenuItem>
       </SidebarMenu>
 
-      {isOpen ? (
-        <ChangelogModal
-          entries={entries}
-          selectedEntry={selectedEntry}
-          entryMarkdown={entryMarkdown}
-          isLoadingMarkdown={isLoadingMarkdown}
-          onSelectEntry={selectEntry}
-          onClose={close}
-        />
-      ) : null}
+      {/* Portal to <body> so the modal escapes the mobile sidebar Sheet's
+          stacking context and focus trap. */}
+      {isOpen && typeof document !== "undefined"
+        ? createPortal(
+            <ChangelogModal
+              entries={entries}
+              selectedEntry={selectedEntry}
+              entryMarkdown={entryMarkdown}
+              isLoadingMarkdown={isLoadingMarkdown}
+              onSelectEntry={selectEntry}
+              onClose={close}
+            />,
+            document.body,
+          )
+        : null}
     </SidebarFooter>
   );
 }

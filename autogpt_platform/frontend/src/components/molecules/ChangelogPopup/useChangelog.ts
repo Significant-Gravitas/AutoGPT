@@ -26,9 +26,14 @@ export function useChangelog() {
 
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPaused = useRef(false);
   const isDismissing = useRef(false);
   const mdAbort = useRef<AbortController | null>(null);
+  // Track how much of the auto-dismiss countdown is left so hover/focus can
+  // pause and resume the *remaining* time instead of restarting from scratch.
+  const dismissStartedAt = useRef(0);
+  const remainingMs = useRef(AUTO_DISMISS_MS);
 
   function clearTimers() {
     if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
@@ -58,12 +63,14 @@ export function useChangelog() {
     }, 500);
   }
 
-  function startAutoDismiss() {
+  function startAutoDismiss(duration = AUTO_DISMISS_MS) {
     if (isPaused.current || showFullChangelog) return;
     clearTimers();
+    dismissStartedAt.current = Date.now();
+    remainingMs.current = duration;
     autoDismissTimer.current = setTimeout(() => {
       if (!isPaused.current && !showFullChangelog) dismiss();
-    }, AUTO_DISMISS_MS);
+    }, duration);
   }
 
   function pauseAutoDismiss() {
@@ -71,13 +78,16 @@ export function useChangelog() {
     if (autoDismissTimer.current) {
       clearTimeout(autoDismissTimer.current);
       autoDismissTimer.current = null;
+      const elapsed = Date.now() - dismissStartedAt.current;
+      remainingMs.current = Math.max(0, remainingMs.current - elapsed);
     }
   }
 
   function resumeAutoDismiss() {
     if (isDismissing.current) return;
     isPaused.current = false;
-    startAutoDismiss();
+    // Resume the leftover time rather than restarting the full countdown.
+    startAutoDismiss(remainingMs.current);
   }
 
   function fetchEntryMarkdown(entry: ChangelogEntry) {
@@ -122,6 +132,8 @@ export function useChangelog() {
     setShowFullChangelog(false);
     setEntryMarkdown(null);
     setSelectedEntry(null);
+    // The aborted fetch's `.finally` won't clear this, so reset it here.
+    setIsLoadingMarkdown(false);
   }
 
   function selectEntry(entry: ChangelogEntry) {
@@ -150,7 +162,7 @@ export function useChangelog() {
           /* show anyway */
         }
 
-        setTimeout(() => {
+        revealTimer.current = setTimeout(() => {
           if (!cancelled) setIsVisible(true);
         }, 1500);
       })
@@ -161,6 +173,7 @@ export function useChangelog() {
     return () => {
       cancelled = true;
       clearTimers();
+      if (revealTimer.current) clearTimeout(revealTimer.current);
       mdAbort.current?.abort();
     };
   }, []);

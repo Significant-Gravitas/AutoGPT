@@ -1,18 +1,23 @@
 "use client";
 
+import { isNewLayoutExcludedRoute } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRight, ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ArrowRight, ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
+import { usePathname } from "next/navigation";
 import { ChangelogModal } from "./components/ChangelogModal";
 import { useChangelog } from "./useChangelog";
 
 export function ChangelogPopup() {
   // On the new sidebar layout the changelog lives at the bottom of the sidebar
   // (SidebarChangelog), so the floating toast steps aside to avoid a duplicate
-  // entry point. Gating here (rather than mounting the toast) also stops its
-  // fetch/auto-dismiss timers from running — and from marking releases "seen".
+  // entry point. But routes excluded from the new layout (settings, auth pages)
+  // still render the classic shell without a sidebar — keep the toast there so
+  // those users don't lose the changelog entirely. Gating here (rather than
+  // mounting) also stops the toast's fetch/auto-dismiss timers from running.
   const isNewLayout = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
-  if (isNewLayout) return null;
+  const pathname = usePathname();
+  if (isNewLayout && !isNewLayoutExcludedRoute(pathname)) return null;
   return <ChangelogPopupToast />;
 }
 
@@ -58,6 +63,8 @@ function ChangelogPopupToast() {
       }`}
       onMouseEnter={pauseAutoDismiss}
       onMouseLeave={resumeAutoDismiss}
+      onFocus={pauseAutoDismiss}
+      onBlur={resumeAutoDismiss}
       role="dialog"
       aria-label="What's new"
     >

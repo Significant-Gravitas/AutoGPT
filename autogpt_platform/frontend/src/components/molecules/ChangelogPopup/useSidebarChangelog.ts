@@ -56,12 +56,12 @@ export function useSidebarChangelog() {
 
   function open() {
     const latest = entries[0];
+    // Guard against opening an empty modal before the index has loaded.
+    if (!latest) return;
     setIsOpen(true);
-    if (latest) {
-      setSelectedEntry(latest);
-      loadEntryMarkdown(latest);
-      markLatestSeen(latest.slug);
-    }
+    setSelectedEntry(latest);
+    loadEntryMarkdown(latest);
+    markLatestSeen(latest.slug);
   }
 
   function close() {
@@ -69,6 +69,8 @@ export function useSidebarChangelog() {
     setIsOpen(false);
     setSelectedEntry(null);
     setEntryMarkdown(null);
+    // The aborted fetch's `.finally` won't clear this, so reset it here.
+    setIsLoadingMarkdown(false);
   }
 
   function selectEntry(entry: ChangelogEntry) {
