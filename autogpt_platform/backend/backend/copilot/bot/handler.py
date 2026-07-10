@@ -38,7 +38,6 @@ from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
-THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
@@ -294,7 +293,9 @@ class MessageHandler:
             return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
-        thread_name = build_thread_name(ctx.text, ctx.username)
+        thread_name = build_thread_name(
+            ctx.text, ctx.username, adapter.max_thread_name_length
+        )
         thread_id = await adapter.create_thread(
             ctx.channel_id, ctx.message_id, thread_name
         )
@@ -762,7 +763,9 @@ class MessageHandler:
                 )
                 title = None
             if title:
-                await adapter.rename_thread(thread_id, clamp_thread_name(title))
+                await adapter.rename_thread(
+                    thread_id, clamp_thread_name(title, adapter.max_thread_name_length)
+                )
                 return
             if attempt < TITLE_RENAME_ATTEMPTS - 1:
                 await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
@@ -854,11 +857,15 @@ class MessageHandler:
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
-    """Re-fire the typing indicator every 8s so it doesn't expire mid-stream."""
+    """Re-fire the typing indicator so it doesn't expire mid-stream.
+
+    Cadence is the adapter's ``typing_refresh_interval`` — platform indicators
+    auto-expire at different rates.
+    """
     try:
         while True:
             await adapter.start_typing(target_id)
-            await asyncio.sleep(8)
+            await asyncio.sleep(adapter.typing_refresh_interval)
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -891,19 +898,25 @@ def _model_attachment_note(problems: list[tuple[str, str]]) -> str:
     )
 
 
-def build_thread_name(text: str, username: str) -> str:
-    """Build a Discord-safe thread name from the user's first prompt."""
+def build_thread_name(text: str, username: str, max_length: int) -> str:
+    """Build a thread name from the user's first prompt, clamped to the
+    platform's ``max_length``."""
     cleaned = " ".join(text.split())
     if not cleaned:
         cleaned = f"{username} with AutoPilot"
-    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}")
+    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}", max_length)
 
 
-def clamp_thread_name(name: str) -> str:
+def clamp_thread_name(name: str, max_length: int) -> str:
     cleaned = " ".join(name.split()) or "AutoPilot Chat"
-    if len(cleaned) > THREAD_NAME_MAX_LENGTH:
-        return cleaned[: THREAD_NAME_MAX_LENGTH - 3].rstrip() + "..."
-    return cleaned
+    if len(cleaned) <= max_length:
+        return cleaned
+    # Below the ellipsis width a tiny adapter cap can't fit "…", and a
+    # negative slice index would overrun the limit — hard-cut instead.
+    ellipsis = "..."
+    if max_length <= len(ellipsis):
+        return cleaned[:max_length]
+    return cleaned[: max_length - len(ellipsis)].rstrip() + ellipsis
 
 
 def _copilot_session_url(session_id: str) -> str | None:
