@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.platform_linking.models import WorkspaceArtifact, WorkspaceUploadResult
+from backend.platform_linking.models import (
+    EnsureSessionResult,
+    TurnDenial,
+    WorkspaceArtifact,
+    WorkspaceUploadResult,
+)
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import (
@@ -16,7 +21,7 @@ from .adapters.base import (
     MessageHistoryEntry,
     ReferencedConversation,
 )
-from .bot_backend import LinkTokenResult, ResolveResult
+from .bot_backend import ChatTurnDeniedError, LinkTokenResult, ResolveResult
 from .handler import (
     MAX_TURN_FILE_IDS,
     MessageHandler,
@@ -62,6 +67,8 @@ def _adapter() -> MagicMock:
     adapter = MagicMock()
     adapter.chunk_flush_at = 1900
     adapter.max_attachment_bytes = 25 * 1024 * 1024
+    adapter.max_thread_name_length = 100
+    adapter.typing_refresh_interval = 8.0
     adapter.send_message = AsyncMock()
     adapter.send_reply = AsyncMock()
     adapter.send_link = AsyncMock()
@@ -86,7 +93,9 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
     api.upload_workspace_files = AsyncMock(return_value=[])
-    api.ensure_session = AsyncMock(return_value="session-ensured")
+    api.ensure_session = AsyncMock(
+        return_value=EnsureSessionResult(session_id="session-ensured")
+    )
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -757,21 +766,32 @@ class TestStreamFallback:
 class TestThreadNames:
     def test_build_thread_name_from_prompt(self):
         assert (
-            build_thread_name("  tell me\nabout space  ", "Bently")
+            build_thread_name("  tell me\nabout space  ", "Bently", 100)
             == "AutoPilot: tell me about space"
         )
 
-    def test_build_thread_name_truncates_to_discord_limit(self):
-        name = build_thread_name("x" * 200, "Bently")
+    def test_build_thread_name_truncates_to_platform_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 100)
         assert len(name) <= 100
         assert name.startswith("AutoPilot: ")
         assert name.endswith("...")
 
+    def test_build_thread_name_respects_a_larger_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 128)
+        assert 100 < len(name) <= 128
+
     def test_clamp_thread_name_handles_generated_titles(self):
-        assert clamp_thread_name("  Generated\nWeb   Title  ") == "Generated Web Title"
+        assert (
+            clamp_thread_name("  Generated\nWeb   Title  ", 100)
+            == "Generated Web Title"
+        )
 
     def test_clamp_thread_name_falls_back_when_blank(self):
-        assert clamp_thread_name("   ") == "AutoPilot Chat"
+        assert clamp_thread_name("   ", 100) == "AutoPilot Chat"
+
+    def test_clamp_thread_name_never_overruns_a_tiny_cap(self):
+        # A tiny adapter cap must not make the slice index go negative.
+        assert len(clamp_thread_name("x" * 50, 2)) <= 2
 
 
 # ── Workspace artifact extraction & delivery ────────────────────────────
@@ -1040,6 +1060,36 @@ class TestAttachments:
         assert "a.png" in adapter.send_message.await_args_list[0].args[1]
         assert captured["file_ids"] == []
 
+    @pytest.mark.asyncio
+    async def test_denied_user_gets_denial_before_any_upload(self):
+        # The turn gate refuses the user during session resolution — the bot
+        # renders the denial (with CTA button) and stops: no AV scan, no
+        # storage write, no turn.
+        api, captured = self._upload_recording_api([])
+        api.ensure_session = AsyncMock(
+            return_value=EnsureSessionResult(
+                denial=TurnDenial(
+                    reason="rate_limited",
+                    message="You've reached your daily usage limit.",
+                    button_label="Upgrade for higher limits",
+                    button_url="https://app.example/settings/billing",
+                )
+            )
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        api.upload_workspace_files.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        assert (
+            adapter.send_link.await_args.kwargs["link_label"]
+            == "Upgrade for higher limits"
+        )
+        # No turn ran at all.
+        assert "file_ids" not in captured
+
     def test_session_lock_is_stable_per_target(self):
         # Concurrent attachment messages on the same target serialise on one
         # lock (so they converge on one session); different targets don't block.
@@ -1265,3 +1315,63 @@ class TestAttachments:
         assert "file_ids" not in captured
         note = adapter.send_message.await_args_list[0].args[1]
         assert "bad.exe" in note
+
+
+class TestTurnDenied:
+    @pytest.mark.asyncio
+    async def test_paywalled_turn_sends_subscribe_button(self):
+        api = _api()
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(
+                TurnDenial(
+                    reason="paywalled",
+                    message="AutoPilot needs an active subscription.",
+                    button_label="Subscribe",
+                    button_url="https://app.example/settings/billing",
+                )
+            )
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.handler.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        kwargs = adapter.send_link.await_args.kwargs
+        assert kwargs["link_url"] == "https://app.example/settings/billing"
+        assert kwargs["link_label"] == "Subscribe"
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_turn_sends_plain_message_when_no_button(self):
+        api = _api()
+        msg = "You've reached your daily usage limit. Resets in 5h 30m."
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(TurnDenial(reason="rate_limited", message=msg))
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.handler.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_message.assert_awaited_once()
+        assert msg in adapter.send_message.await_args.args[1]
+        adapter.send_link.assert_not_awaited()

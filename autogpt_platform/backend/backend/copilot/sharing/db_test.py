@@ -753,7 +753,9 @@ class TestLinkNewExecutionToChatShare:
         link_create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_idempotent_when_link_already_exists(self, mock_prisma_calls):
+    async def test_idempotent_when_link_already_exists(
+        self, mock_prisma_calls, mock_transaction
+    ):
         """Repeated calls for the same (session, execution) pair don't double-link."""
         mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
             return_value=_mock_session(auto_share_executions=True)

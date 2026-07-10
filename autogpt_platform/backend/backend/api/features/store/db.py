@@ -662,8 +662,14 @@ async def get_store_submissions(
     statuses: list[prisma.enums.SubmissionStatus] | None = None,
     sort_key: str | None = None,
     sort_dir: str = "desc",
+    organization_id: str | None = None,
 ) -> store_model.StoreSubmissionsResponse:
-    """Get store submissions for the authenticated user -- not an admin"""
+    """Get store submissions for the authenticated user -- not an admin.
+
+    With ``organization_id`` (membership-verified RequestContext), the
+    org's submissions are visible to every member; tenant-less rows stay
+    visible to their submitting user.
+    """
     logger.debug(
         (
             "Getting store submissions for user %s, page=%s, search_query=%r, "
@@ -681,9 +687,20 @@ async def get_store_submissions(
         skip = (page - 1) * page_size
 
         where: prisma.types.StoreSubmissionWhereInput = {
-            "user_id": user_id,
             "is_deleted": False,
         }
+        if organization_id is not None:
+            # Nested under AND so it can't collide with the search OR below.
+            where["AND"] = [
+                {
+                    "OR": [
+                        {"organization_id": organization_id},
+                        {"user_id": user_id, "organization_id": None},
+                    ]
+                }
+            ]
+        else:
+            where["user_id"] = user_id
 
         normalized_query = (search_query or "").strip()
         if normalized_query:
@@ -743,6 +760,7 @@ async def get_store_submissions(
 async def delete_store_submission(
     user_id: str,
     submission_id: str,
+    organization_id: str | None = None,
 ) -> bool:
     """
     Delete a store submission version as the submitting user.
@@ -750,6 +768,9 @@ async def delete_store_submission(
     Args:
         user_id: ID of the authenticated user
         submission_id: StoreListingVersion ID to delete
+        organization_id: Caller's active org. When set, the listing must
+            belong to that org (or be tenant-less and personally owned) —
+            mirrors ``edit_store_submission``.
 
     Returns:
         bool: True if successfully deleted
@@ -760,11 +781,17 @@ async def delete_store_submission(
             where={"id": submission_id}, include={"StoreListing": True}
         )
 
-        if (
-            not version
-            or not version.StoreListing
-            or version.StoreListing.owningUserId != user_id
-        ):
+        if not version or not version.StoreListing:
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+        listing = version.StoreListing
+        if organization_id is not None:
+            allowed = listing.owningOrgId == organization_id or (
+                listing.owningOrgId is None and listing.owningUserId == user_id
+            )
+        else:
+            allowed = listing.owningUserId == user_id
+        if not allowed:
             raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
         # Prevent deletion of approved submissions
@@ -809,6 +836,7 @@ async def create_store_submission(
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
+    organization_id: str | None = None,
 ) -> store_model.StoreSubmission:
     """
     Create the first (and only) store listing and thus submission as a normal user
@@ -834,7 +862,21 @@ async def create_store_submission(
         f"graph #{graph_id} v{graph_version}"
     )
 
+    async def verify_org_membership(org_id: str, uid: str) -> None:
+        """Check that user is a member of the specified organization."""
+        member = await prisma.models.OrgMember.prisma().find_first(
+            where={"orgId": org_id, "userId": uid}
+        )
+        if not member:
+            raise PreconditionFailed(
+                "User is not a member of the specified organization"
+            )
+
     try:
+        # Verify org membership when submitting on behalf of an organization
+        if organization_id:
+            await verify_org_membership(organization_id, user_id)
+
         # Sanitize slug to only allow letters and hyphens
         slug = "".join(
             c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
@@ -937,6 +979,17 @@ async def create_store_submission(
                                 "agentGraphId": graph_id,
                                 "OwningUser": {"connect": {"id": user_id}},
                                 "CreatorProfile": {"connect": {"userId": user_id}},
+                                # Relation-connect, NOT the raw owningOrgId
+                                # scalar: this nested create uses checked
+                                # (relation) input syntax, and Prisma
+                                # rejects the whole create when a raw FK
+                                # field is mixed in ("Field does not exist
+                                # in enclosing type").
+                                **(
+                                    {"OwningOrg": {"connect": {"id": organization_id}}}
+                                    if organization_id
+                                    else {}
+                                ),
                             },
                         }
                     },
@@ -986,6 +1039,7 @@ async def edit_store_submission(
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
     instructions: str | None = None,
+    organization_id: str | None = None,
 ) -> store_model.StoreSubmission:
     """
     Edit an existing store listing submission.
@@ -1023,11 +1077,21 @@ async def edit_store_submission(
                 f"Store listing version not found: {store_listing_version_id}"
             )
 
-        # Verify the user owns this listing (submission)
-        if (
-            not current_version.StoreListing
-            or current_version.StoreListing.owningUserId != user_id
-        ):
+        # Verify ownership. With an active org: the listing must belong to
+        # that org, or be a tenant-less (pre-backfill) listing the caller
+        # owns personally. Without org context: personal ownership only.
+        listing = current_version.StoreListing
+        if not listing:
+            raise store_exceptions.UnauthorizedError(
+                f"User {user_id} does not own submission {store_listing_version_id}"
+            )
+        if organization_id is not None:
+            allowed = listing.owningOrgId == organization_id or (
+                listing.owningOrgId is None and listing.owningUserId == user_id
+            )
+        else:
+            allowed = listing.owningUserId == user_id
+        if not allowed:
             raise store_exceptions.UnauthorizedError(
                 f"User {user_id} does not own submission {store_listing_version_id}"
             )
@@ -1238,6 +1302,7 @@ async def get_my_agents(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
+    organization_id: str | None = None,
     sort_by: store_model.MyAgentsSortBy = store_model.MyAgentsSortBy.MOST_RECENT,
     search_query: str | None = None,
 ) -> store_model.MyUnpublishedAgentsResponse:

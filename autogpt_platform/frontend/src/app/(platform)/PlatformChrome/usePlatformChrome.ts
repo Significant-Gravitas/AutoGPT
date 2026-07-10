@@ -1,6 +1,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 // Routes that must stay outside the new top-level sidebar layout. Login,
@@ -18,6 +19,9 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
 export function usePlatformChrome() {
   const pathname = usePathname();
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  // Also initializes the auth store — required here because the tour shell
+  // replaces the Navbar, which is what normally kicks off the session check.
+  const { isLoggedIn, isUserLoading } = useSupabase();
 
   // The LaunchDarkly flag is client-side data that can resolve differently on
   // the server vs the client's first render. Switching the whole layout shell
@@ -32,7 +36,18 @@ export function usePlatformChrome() {
     return pathname === prefix || pathname.startsWith(`${prefix}/`);
   });
 
+  const isMarketplaceRoute =
+    pathname === "/marketplace" ||
+    Boolean(pathname?.startsWith("/marketplace/"));
+
+  // Logged-out marketplace visitors get the tour demo sidebar as an upsell.
+  // Waits for the session check so it never flashes at logged-in users.
+  const showTourSidebar =
+    isMounted && isMarketplaceRoute && !isUserLoading && !isLoggedIn;
+
   return {
-    showNewLayout: isMounted && isNewLayoutEnabled && !isExcludedRoute,
+    showNewLayout:
+      isMounted && isNewLayoutEnabled && !isExcludedRoute && !showTourSidebar,
+    showTourSidebar,
   };
 }

@@ -19,6 +19,7 @@ from .models import (
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     LinkTokenResponse,
     LinkTokenStatusResponse,
     ListUserChatsResponse,
@@ -89,7 +90,7 @@ class PlatformLinkingManager(AppService):
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
-    ) -> str:
+    ) -> EnsureSessionResult:
         return await ensure_chat_session(
             platform, platform_user_id, platform_server_id, session_id
         )

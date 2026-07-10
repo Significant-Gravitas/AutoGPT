@@ -149,9 +149,124 @@ class TestUpdateUserTimezone:
         assert isinstance(warn_mock.call_args.kwargs["exc_info"], RuntimeError)
 
 
+class TestTableBackedCredentials:
+    """get/set_user_credentials — the IntegrationCredential-backed seam the
+    credential store runs on after the blob→table migration."""
+
+    @pytest.mark.asyncio
+    async def test_get_decrypts_active_user_rows(self, mocker):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import get_user_credentials
+        from backend.util.encryption import JSONCryptor
+
+        cred = APIKeyCredentials(
+            id="cred-1", provider="github", api_key=SecretStr("sk-1"), title="GH"
+        )
+        row = MagicMock()
+        row.id = "cred-1"
+        row.encryptedPayload = JSONCryptor().encrypt(cred.model_dump())
+
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[row])
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        result = await get_user_credentials("u1")
+
+        assert len(result) == 1
+        assert result[0].id == "cred-1"
+        assert result[0].api_key.get_secret_value() == "sk-1"
+        where = mock_prisma.integrationcredential.find_many.call_args.kwargs["where"]
+        assert where == {"ownerType": "USER", "ownerId": "u1", "status": "active"}
+
+    @pytest.mark.asyncio
+    async def test_set_updates_existing_creates_new_revokes_missing(self, mocker):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import set_user_credentials
+
+        kept = APIKeyCredentials(
+            id="cred-kept", provider="github", api_key=SecretStr("sk-2"), title="GH"
+        )
+        new = APIKeyCredentials(
+            id="cred-new", provider="notion", api_key=SecretStr("sk-3"), title="N"
+        )
+
+        row_kept = MagicMock()
+        row_kept.id = "cred-kept"
+        row_kept.status = "active"
+        row_gone = MagicMock()
+        row_gone.id = "cred-gone"
+        row_gone.status = "active"
+
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[row_kept, row_gone]
+        )
+        mock_prisma.integrationcredential.update = AsyncMock()
+        mock_prisma.integrationcredential.create = AsyncMock()
+        mock_prisma.organization.find_first = AsyncMock(
+            return_value=MagicMock(id="org-personal")
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        await set_user_credentials("u1", [kept, new])
+
+        create_data = mock_prisma.integrationcredential.create.call_args.kwargs["data"]
+        assert create_data["id"] == "cred-new"
+        assert create_data["organizationId"] == "org-personal"
+
+        update_calls = {
+            c.kwargs["where"]["id"]: c.kwargs["data"]
+            for c in mock_prisma.integrationcredential.update.call_args_list
+        }
+        # kept: payload refresh; gone: revoked
+        assert "encryptedPayload" in update_calls["cred-kept"]
+        assert update_calls["cred-gone"] == {"status": "revoked"}
+
+    @pytest.mark.asyncio
+    async def test_set_raises_without_personal_org_for_new_cred(self, mocker):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import set_user_credentials
+        from backend.util.exceptions import DatabaseError
+
+        new = APIKeyCredentials(
+            id="cred-new", provider="notion", api_key=SecretStr("sk-3"), title="N"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[])
+        mock_prisma.organization.find_first = AsyncMock(return_value=None)
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        with pytest.raises(DatabaseError):
+            await set_user_credentials("u1", [new])
+
+
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since
     the auth.users trigger that used to do this is unreliable."""
+
+    @pytest.fixture(autouse=True)
+    def stub_ensure_personal_org(self):
+        """Stub the personal-org bootstrap for the Profile-focused tests.
+
+        The real bootstrap hits the DB; these tests only exercise the Profile
+        branch. Tests that assert on the bootstrap use the yielded mock.
+        """
+        with patch.object(
+            user_module, "ensure_personal_org", new_callable=AsyncMock
+        ) as m:
+            yield m
 
     @pytest.mark.asyncio
     async def test_creates_profile_when_missing(self):
@@ -248,3 +363,60 @@ class TestGetOrCreateUserProfile:
             )
 
         assert mock_prisma.profile.create.await_count == 2
+
+
+class TestGetOrCreateUserPersonalOrg:
+    """get_or_create_user must bootstrap a personal org so new sign-ups don't
+    hit "No organization context available" on every org-scoped endpoint.
+
+    Unlike the marketplace Profile, this is NOT best-effort: without an org the
+    account is unusable, so a bootstrap failure must fail the request loudly.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bootstraps_personal_org_for_user(self):
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-org", email="erin@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(
+                user_module, "ensure_personal_org", new_callable=AsyncMock
+            ) as ensure_org,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user(
+                {"sub": "user-org", "email": "erin@example.com"}
+            )
+
+        ensure_org.assert_awaited_once_with("user-org")
+
+    @pytest.mark.asyncio
+    async def test_org_bootstrap_failure_fails_loudly(self):
+        """A failed org bootstrap must raise (DatabaseError) — never return a
+        bricked account. Contrast with the best-effort Profile branch."""
+        user_module.get_or_create_user.cache_clear()
+        db_user = MagicMock(id="user-brick", email="frank@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(
+                user_module,
+                "ensure_personal_org",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("org bootstrap exploded"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            with pytest.raises(DatabaseError) as exc:
+                await user_module.get_or_create_user(
+                    {"sub": "user-brick", "email": "frank@example.com"}
+                )
+
+        assert "org bootstrap exploded" in str(exc.value)

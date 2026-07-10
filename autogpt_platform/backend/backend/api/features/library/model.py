@@ -500,6 +500,12 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
     webhook: "Webhook | None"
 
     @classmethod
@@ -536,6 +542,8 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
         )

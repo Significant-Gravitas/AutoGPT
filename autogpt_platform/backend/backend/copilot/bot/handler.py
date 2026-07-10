@@ -17,6 +17,7 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
+from backend.platform_linking.models import TurnDenial
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -31,13 +32,12 @@ from .adapters.base import (
     MessageHistoryEntry,
     PlatformAdapter,
 )
-from .bot_backend import BotBackend, BotStreamError
+from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
-THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
@@ -89,30 +89,65 @@ class MessageHandler:
 
     async def _resolve_session_for_attachments(
         self, ctx: MessageContext, target_id: str
-    ) -> str | None:
+    ) -> tuple[str | None, TurnDenial | None]:
         """Resolve (or create) the session this message's attachments upload
         into, so they land where the turn will read them (``/sessions/<id>/``).
 
         Serialised per target so concurrent attachment messages converge on one
-        session instead of splitting the files. Returns None on failure — the
-        caller then reports the files as un-attachable rather than uploading
-        them somewhere AutoPilot can't see.
+        session instead of splitting the files. Returns ``(session_id, None)``
+        on success, ``(None, denial)`` when the turn gate refused the user
+        (the caller renders the denial and skips the upload + turn), and
+        ``(None, None)`` on failure — the caller then reports the files as
+        un-attachable rather than uploading them somewhere AutoPilot can't see.
         """
         async with self._session_lock(target_id):
             try:
-                session_id = await self._api.ensure_session(
+                result = await self._api.ensure_session(
                     platform=ctx.platform,
                     platform_user_id=ctx.user_id,
                     platform_server_id=ctx.server_id,
                     session_id=await sessions.get_session(ctx.platform, target_id),
                 )
-                await sessions.set_session(ctx.platform, target_id, session_id)
-                return session_id
+                if result.denial is not None:
+                    return None, result.denial
+                if result.session_id:
+                    await sessions.set_session(
+                        ctx.platform, target_id, result.session_id
+                    )
+                return result.session_id, None
             except Exception:
                 logger.exception(
                     "Failed to resolve session for uploads (user %s)", ctx.user_id
                 )
-                return None
+                return None, None
+
+    async def _send_denial(
+        self,
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        denial: TurnDenial,
+    ) -> None:
+        """Render a turn denial: message plus CTA button when configured."""
+        logger.info("Turn denied (%s) for target %s", denial.reason, target_id)
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="turn_denied",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            error_kind=denial.reason,
+        )
+        if denial.button_url and denial.button_label:
+            await adapter.send_link(
+                target_id,
+                denial.message,
+                link_label=denial.button_label,
+                link_url=denial.button_url,
+            )
+        else:
+            await adapter.send_message(
+                target_id, denial.message, mentionable_users=ctx.mentionable_users
+            )
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip() and not ctx.attachments:
@@ -161,7 +196,15 @@ class MessageHandler:
         file_ids: list[str]
         upload_problems: list[tuple[str, str]]
         if ctx.attachments:
-            session_id = await self._resolve_session_for_attachments(ctx, target_id)
+            session_id, denial = await self._resolve_session_for_attachments(
+                ctx, target_id
+            )
+            if denial is not None:
+                # The turn gate refused the user before anything was uploaded —
+                # render the denial and stop; no file is scanned or stored and
+                # no turn runs.
+                await self._send_denial(ctx, adapter, target_id, denial)
+                return
             if session_id is None:
                 # Without a session the files can't be made readable to
                 # AutoPilot, so report them as failed rather than uploading
@@ -250,7 +293,9 @@ class MessageHandler:
             return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
-        thread_name = build_thread_name(ctx.text, ctx.username)
+        thread_name = build_thread_name(
+            ctx.text, ctx.username, adapter.max_thread_name_length
+        )
         thread_id = await adapter.create_thread(
             ctx.channel_id, ctx.message_id, thread_name
         )
@@ -611,6 +656,11 @@ class MessageHandler:
                             adapter, target_id, post, ctx, active_session_id
                         ):
                             sent_any_content = True
+        except ChatTurnDeniedError as exc:
+            # Refused before running (paywall / rate limit). Show the message
+            # and, when present, a CTA button (Subscribe / Upgrade).
+            await self._send_denial(ctx, adapter, target_id, exc.denial)
+            return
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
             # stay quiet so the user doesn't get a double response.
@@ -713,7 +763,9 @@ class MessageHandler:
                 )
                 title = None
             if title:
-                await adapter.rename_thread(thread_id, clamp_thread_name(title))
+                await adapter.rename_thread(
+                    thread_id, clamp_thread_name(title, adapter.max_thread_name_length)
+                )
                 return
             if attempt < TITLE_RENAME_ATTEMPTS - 1:
                 await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
@@ -805,11 +857,15 @@ class MessageHandler:
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
-    """Re-fire the typing indicator every 8s so it doesn't expire mid-stream."""
+    """Re-fire the typing indicator so it doesn't expire mid-stream.
+
+    Cadence is the adapter's ``typing_refresh_interval`` — platform indicators
+    auto-expire at different rates.
+    """
     try:
         while True:
             await adapter.start_typing(target_id)
-            await asyncio.sleep(8)
+            await asyncio.sleep(adapter.typing_refresh_interval)
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -842,19 +898,25 @@ def _model_attachment_note(problems: list[tuple[str, str]]) -> str:
     )
 
 
-def build_thread_name(text: str, username: str) -> str:
-    """Build a Discord-safe thread name from the user's first prompt."""
+def build_thread_name(text: str, username: str, max_length: int) -> str:
+    """Build a thread name from the user's first prompt, clamped to the
+    platform's ``max_length``."""
     cleaned = " ".join(text.split())
     if not cleaned:
         cleaned = f"{username} with AutoPilot"
-    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}")
+    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}", max_length)
 
 
-def clamp_thread_name(name: str) -> str:
+def clamp_thread_name(name: str, max_length: int) -> str:
     cleaned = " ".join(name.split()) or "AutoPilot Chat"
-    if len(cleaned) > THREAD_NAME_MAX_LENGTH:
-        return cleaned[: THREAD_NAME_MAX_LENGTH - 3].rstrip() + "..."
-    return cleaned
+    if len(cleaned) <= max_length:
+        return cleaned
+    # Below the ellipsis width a tiny adapter cap can't fit "…", and a
+    # negative slice index would overrun the limit — hard-cut instead.
+    ellipsis = "..."
+    if max_length <= len(ellipsis):
+        return cleaned[:max_length]
+    return cleaned[: max_length - len(ellipsis)].rstrip() + ellipsis
 
 
 def _copilot_session_url(session_id: str) -> str | None:
