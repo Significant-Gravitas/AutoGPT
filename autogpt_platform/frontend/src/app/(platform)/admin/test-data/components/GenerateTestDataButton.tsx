@@ -71,8 +71,8 @@ export function GenerateTestDataButton() {
                 <Text variant="small-medium" as="span">
                   Warning:
                 </Text>{" "}
-                This will add significant data to your database. This endpoint is
-                only available in local environments.
+                This will add significant data to your database. This endpoint
+                is only available in local environments.
               </Text>
             </Alert>
 
@@ -95,7 +95,11 @@ export function GenerateTestDataButton() {
           </div>
 
           <Dialog.Footer>
-            <Button variant="outline" onClick={closeDialog} disabled={isPending}>
+            <Button
+              variant="outline"
+              onClick={closeDialog}
+              disabled={isPending}
+            >
               Cancel
             </Button>
             <Button
