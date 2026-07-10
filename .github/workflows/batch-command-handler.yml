@@ -5,7 +5,8 @@ name: batch-command-handler
 # `git` + `gh` via array-arg execFileSync — no shell). repository_dispatch always
 # checks out the DEFAULT branch, so this workflow never runs PR-controlled code;
 # member branches are only ever `git merge`d (data), never executed here.
-# Runs under BATCH_BOT_TOKEN so the rollup-branch push triggers the preview deploy
+# Runs under a GitHub App installation token (minted per-run from BATCH_BOT_APP_ID
+# + BATCH_BOT_PRIVATE_KEY) so the rollup-branch push triggers the preview deploy
 # (GITHUB_TOKEN pushes do not trigger other workflows).
 on:
   repository_dispatch:
@@ -28,7 +29,6 @@ jobs:
     # concurrency group (and every queued /batch* command) for the default 6h.
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.BATCH_BOT_TOKEN }}
       REPO: ${{ github.repository }}
       BASE: ${{ vars.BATCH_BASE_BRANCH || 'dev' }}
       COMMAND: ${{ github.event.action }}
@@ -40,10 +40,19 @@ jobs:
       BOT_NAME: ${{ vars.BATCH_BOT_NAME || 'autogpt-batch-bot' }}
       BOT_EMAIL: ${{ vars.BATCH_BOT_EMAIL || 'autogpt-batch-bot@users.noreply.github.com' }}
     steps:
+      # Mint a short-lived installation token for the batch-bot GitHub App. Pushes
+      # made with it DO trigger the preview-deploy workflow (unlike GITHUB_TOKEN),
+      # and the App identity can be precisely push-restricted on batch/rollup.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.BATCH_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -55,4 +64,6 @@ jobs:
           git config user.email "$BOT_EMAIL"
 
       - name: Run batch bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/batch-bot/batch.mjs
