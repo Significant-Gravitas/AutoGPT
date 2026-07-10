@@ -5,6 +5,8 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 
@@ -39,16 +41,27 @@ vi.mock("next/navigation", () => ({
 }));
 
 let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
-const mockUpdateUser = vi.fn(() => Promise.resolve({ error: null }));
 const mockRefreshSession = vi.fn(() => Promise.resolve({ user: null }));
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: () => ({
     ...mockSupabaseState,
     user: null,
-    supabase: { auth: { updateUser: mockUpdateUser } },
     refreshSession: mockRefreshSession,
   }),
 }));
+
+// The onboarding page writes preferred_name through the server route (the
+// browser Supabase client has no session — persistSession: false — so
+// client-side auth.updateUser silently fails; regression caught in manual QA).
+const authUserPutBodies: unknown[] = [];
+function mockAuthUserRoute() {
+  server.use(
+    http.put("/api/auth/user", async ({ request }) => {
+      authUserPutBodies.push(await request.json());
+      return HttpResponse.json({ user: { id: "u1" } });
+    }),
+  );
+}
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
@@ -96,7 +109,8 @@ beforeEach(() => {
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
   mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
-  mockUpdateUser.mockClear();
+  authUserPutBodies.length = 0;
+  mockAuthUserRoute();
   mockRefreshSession.mockClear();
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
@@ -289,9 +303,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     await waitFor(() => {
-      expect(mockUpdateUser).toHaveBeenCalledWith({
-        data: { preferred_name: "Reinier" },
-      });
+      expect(authUserPutBodies).toEqual([{ preferred_name: "Reinier" }]);
     });
     await waitFor(() => {
       expect(mockRefreshSession).toHaveBeenCalled();
@@ -304,7 +316,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     currentSearchParams = new URLSearchParams("step=4");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
-    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(authUserPutBodies).toEqual([]);
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {

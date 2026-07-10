@@ -54,7 +54,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading, supabase, refreshSession } = useSupabase();
+  const { isLoggedIn, isUserLoading, refreshSession } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -214,13 +214,18 @@ export function useOnboardingPage() {
     // Also store the chosen name in auth user_metadata so the copilot
     // greeting (getGreetingName) uses it; refresh the cached session user
     // so the new name shows up right after onboarding without a reload.
-    supabase?.auth
-      .updateUser({ data: { preferred_name: trimmedName } })
-      .then(() => refreshSession())
+    // Goes through the server route because the browser Supabase client has
+    // no session (persistSession: false) and can't call auth.updateUser.
+    fetch("/api/auth/user", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferred_name: trimmedName }),
+    })
+      .then((res) => (res.ok ? refreshSession() : undefined))
       .catch(() => {
         // Best effort — the greeting falls back to existing metadata
       });
-  }, [currentStep, preparingStep, supabase, refreshSession]);
+  }, [currentStep, preparingStep, refreshSession]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
