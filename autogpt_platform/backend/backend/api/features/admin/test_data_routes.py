@@ -1,22 +1,30 @@
+import importlib.util
 import logging
 from enum import Enum
+from pathlib import Path
+from types import ModuleType
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel
 
+from backend.data.db import prisma
 from backend.util.metrics import DiscordChannel, discord_send_alert
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.settings import AppEnvironment, BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+# The dev-only seeding scripts live in backend/test/, outside the importable
+# package tree, so they are loaded by file path via importlib at request time.
+_TEST_SCRIPT_DIR = Path(__file__).resolve().parents[4] / "test"
 
 
 class TestDataScriptType(str, Enum):
     """Available test data generation scripts."""
 
     FULL = "full"  # test_data_creator.py - creates 100+ users, comprehensive data
-    E2E = "e2e"  # e2e_test_data.py - creates 15 users with API functions
+    E2E = "e2e"  # e2e_test_data.py - creates a set of users with API functions
 
 
 class GenerateTestDataRequest(BaseModel):
@@ -35,7 +43,7 @@ class GenerateTestDataResponse(BaseModel):
 
 router = APIRouter(
     prefix="/admin",
-    tags=["admin", "test-data"],
+    tags=["test-data"],
     dependencies=[Security(requires_admin_user)],
 )
 
@@ -56,119 +64,113 @@ async def generate_test_data(
     with sample users, agents, graphs, executions, store listings, and more.
 
     Available script types:
-    - `e2e`: Creates 15 test users with graphs, library agents, presets, and store submissions.
-             Uses API functions for better compatibility. (Recommended)
-    - `full`: Creates 100+ users with comprehensive test data using direct Prisma calls.
-              Generates more data but may take longer.
+    - `e2e`: Creates a set of test users with graphs, library agents, presets,
+             and store submissions. Uses API functions for better compatibility.
+    - `full`: Creates 100+ users with comprehensive test data using direct Prisma
+              calls. Generates more data but may take longer.
 
     **Warning**: This will add significant data to your database. Use with caution.
-    **Note**: This endpoint is disabled in production environments.
+    **Note**: This endpoint is only available in local environments; requests from
+    any shared/cloud environment are rejected and alerted on.
     """
-    # Block execution in production environment
-    if settings.config.app_env == AppEnvironment.PRODUCTION:
-        alert_message = (
-            f"🚨 **SECURITY ALERT**: Test data generation attempted in PRODUCTION!\n"
-            f"Admin User ID: `{admin_user_id}`\n"
-            f"Script Type: `{request.script_type}`\n"
-            f"Action: Request was blocked."
-        )
-        logger.warning(
-            f"Test data generation blocked in production. Admin: {admin_user_id}"
-        )
-
-        # Send Discord alert
-        try:
-            await discord_send_alert(alert_message, DiscordChannel.PLATFORM)
-        except Exception as e:
-            logger.error(f"Failed to send Discord alert: {e}")
-
-        return GenerateTestDataResponse(
-            success=False,
-            message="Test data generation is disabled in production environments.",
-        )
+    await _guard_local_only(admin_user_id, request.script_type)
 
     logger.info(
-        f"Admin user {admin_user_id} is generating test data with script type: {request.script_type}"
+        f"Admin user {admin_user_id} is generating test data "
+        f"with script type: {request.script_type}"
     )
 
     try:
         if request.script_type == TestDataScriptType.E2E:
-            # Import and run the E2E test data creator
-            # We need to import within the function to avoid circular imports
-            import sys
-            from pathlib import Path
-
-            from backend.data.db import prisma
-
-            # Add the test directory to the path
-            test_dir = Path(__file__).parent.parent.parent.parent.parent / "test"
-            sys.path.insert(0, str(test_dir))
-
-            try:
-                from e2e_test_data import (  # pyright: ignore[reportMissingImports]
-                    TestDataCreator,
-                )
-
-                # Connect to database if not already connected
-                if not prisma.is_connected():
-                    await prisma.connect()
-
-                creator = TestDataCreator()
-                await creator.create_all_test_data()
-
-                return GenerateTestDataResponse(
-                    success=True,
-                    message="E2E test data generated successfully",
-                    details={
-                        "users_created": len(creator.users),
-                        "graphs_created": len(creator.agent_graphs),
-                        "library_agents_created": len(creator.library_agents),
-                        "store_submissions_created": len(creator.store_submissions),
-                        "presets_created": len(creator.presets),
-                        "api_keys_created": len(creator.api_keys),
-                    },
-                )
-            finally:
-                # Remove the test directory from the path
-                if str(test_dir) in sys.path:
-                    sys.path.remove(str(test_dir))
-
-        elif request.script_type == TestDataScriptType.FULL:
-            # Import and run the full test data creator
-            import sys
-            from pathlib import Path
-
-            test_dir = Path(__file__).parent.parent.parent.parent.parent / "test"
-            sys.path.insert(0, str(test_dir))
-
-            try:
-                import test_data_creator  # pyright: ignore[reportMissingImports]
-
-                create_full_test_data = test_data_creator.main
-
-                await create_full_test_data()
-
-                return GenerateTestDataResponse(
-                    success=True,
-                    message="Full test data generated successfully",
-                    details={
-                        "script": "test_data_creator.py",
-                        "note": "Created 100+ users with comprehensive test data",
-                    },
-                )
-            finally:
-                if str(test_dir) in sys.path:
-                    sys.path.remove(str(test_dir))
-
-        else:
-            return GenerateTestDataResponse(
-                success=False,
-                message=f"Unknown script type: {request.script_type}",
-            )
-
-    except Exception as e:
-        logger.exception(f"Error generating test data: {e}")
-        return GenerateTestDataResponse(
-            success=False,
-            message=f"Failed to generate test data: {str(e)}",
+            return await _run_e2e_generation()
+        return await _run_full_generation()
+    except Exception:
+        logger.exception("Error generating test data")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate test data. Check the server logs for details.",
         )
+
+
+async def _guard_local_only(
+    admin_user_id: str, script_type: TestDataScriptType
+) -> None:
+    """Reject and alert on any test-data generation outside a local environment."""
+    is_local = (
+        settings.config.app_env == AppEnvironment.LOCAL
+        and settings.config.behave_as == BehaveAs.LOCAL
+    )
+    if is_local:
+        return
+
+    logger.warning(
+        "Test data generation blocked outside local environment. Admin: %s",
+        admin_user_id,
+    )
+    alert_message = (
+        f"🚨 **SECURITY ALERT**: Test data generation attempted outside a local "
+        f"environment!\n"
+        f"Admin User ID: `{admin_user_id}`\n"
+        f"Environment: `{settings.config.app_env}` / `{settings.config.behave_as}`\n"
+        f"Script Type: `{script_type}`\n"
+        f"Action: Request was blocked."
+    )
+    try:
+        await discord_send_alert(alert_message, DiscordChannel.PLATFORM)
+    except Exception:
+        logger.exception("Failed to send Discord alert for blocked test-data request")
+
+    raise HTTPException(
+        status_code=403,
+        detail="Test data generation is only available in local environments.",
+    )
+
+
+async def _run_e2e_generation() -> GenerateTestDataResponse:
+    """Run the E2E seeding script against the shared Prisma connection."""
+    creator_class = getattr(_load_test_script("e2e_test_data"), "TestDataCreator")
+
+    if not prisma.is_connected():
+        await prisma.connect()
+
+    creator = creator_class()
+    await creator.create_all_test_data()
+
+    return GenerateTestDataResponse(
+        success=True,
+        message="E2E test data generated successfully",
+        details={
+            "users_created": len(creator.users),
+            "graphs_created": len(creator.agent_graphs),
+            "library_agents_created": len(creator.library_agents),
+            "store_submissions_created": len(creator.store_submissions),
+            "presets_created": len(creator.presets),
+            "api_keys_created": len(creator.api_keys),
+        },
+    )
+
+
+async def _run_full_generation() -> GenerateTestDataResponse:
+    """Run the comprehensive seeding script (owns its own Prisma lifecycle)."""
+    run_full = getattr(_load_test_script("test_data_creator"), "main")
+    await run_full()
+
+    return GenerateTestDataResponse(
+        success=True,
+        message="Full test data generated successfully",
+        details={
+            "script": "test_data_creator.py",
+            "note": "Created 100+ users with comprehensive test data",
+        },
+    )
+
+
+def _load_test_script(module_name: str) -> ModuleType:
+    """Load a dev-only seeding script from backend/test/ by file path."""
+    script_path = _TEST_SCRIPT_DIR / f"{module_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load test-data script '{module_name}'")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
