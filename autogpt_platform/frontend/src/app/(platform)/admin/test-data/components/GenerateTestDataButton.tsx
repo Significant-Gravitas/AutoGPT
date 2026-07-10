@@ -1,22 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Select, SelectOption } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-// Generated types and hooks from OpenAPI spec
-// Run `npm run generate:api` to regenerate after backend changes
-import { usePostV2GenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
-import type { GenerateTestDataResponse } from "@/app/api/__generated__/models/generateTestDataResponse";
+import { Alert } from "@/components/molecules/Alert/Alert";
 import type { TestDataScriptType } from "@/app/api/__generated__/models/testDataScriptType";
+import { useGenerateTestDataButton } from "./useGenerateTestDataButton";
 
 const scriptTypeOptions: SelectOption[] = [
   {
     value: "e2e",
     label:
-      "E2E Test Data - 15 users with graphs, agents, and store submissions",
+      "E2E Test Data - up to 15 users with graphs, agents, and store submissions",
   },
   {
     value: "full",
@@ -25,70 +21,20 @@ const scriptTypeOptions: SelectOption[] = [
 ];
 
 export function GenerateTestDataButton() {
-  const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [scriptType, setScriptType] = useState<TestDataScriptType>("e2e");
-  const [result, setResult] = useState<GenerateTestDataResponse | null>(null);
-
-  const generateMutation = usePostV2GenerateTestData({
-    mutation: {
-      onSuccess: (response) => {
-        if (response.status !== 200) return;
-        const data = response.data;
-        setResult(data);
-        if (data.success) {
-          toast({
-            title: "Success",
-            description: data.message,
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: data.message,
-            variant: "destructive",
-          });
-        }
-      },
-      onError: (error) => {
-        console.error("Error generating test data:", error);
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        setResult({
-          success: false,
-          message: `Failed to generate test data: ${errorMessage}`,
-        });
-        toast({
-          title: "Error",
-          description: "Failed to generate test data. Please try again.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
-
-  const handleGenerate = () => {
-    setResult(null);
-    generateMutation.mutate({
-      data: {
-        script_type: scriptType,
-      },
-    });
-  };
-
-  const handleDialogClose = () => {
-    setIsDialogOpen(false);
-  };
+  const {
+    isDialogOpen,
+    scriptType,
+    setScriptType,
+    result,
+    isPending,
+    openDialog,
+    closeDialog,
+    generate,
+  } = useGenerateTestDataButton();
 
   return (
     <>
-      <Button
-        size="large"
-        variant="primary"
-        onClick={() => {
-          setIsDialogOpen(true);
-          setResult(null);
-        }}
-      >
+      <Button size="large" variant="primary" onClick={openDialog}>
         Generate Test Data
       </Button>
 
@@ -97,7 +43,7 @@ export function GenerateTestDataButton() {
         controlled={{
           isOpen: isDialogOpen,
           set: (open) => {
-            if (!open) handleDialogClose();
+            if (!open) closeDialog();
           },
         }}
         styling={{ maxWidth: "32rem" }}
@@ -116,28 +62,22 @@ export function GenerateTestDataButton() {
               onValueChange={(value) =>
                 setScriptType(value as TestDataScriptType)
               }
-              disabled={generateMutation.isPending}
+              disabled={isPending}
               options={scriptTypeOptions}
             />
 
-            <div className="rounded-md bg-yellow-50 p-3 text-yellow-800">
+            <Alert variant="warning">
               <Text variant="small" as="span">
                 <Text variant="small-medium" as="span">
                   Warning:
                 </Text>{" "}
-                This will add significant data to your database. This endpoint
-                is disabled in production environments.
+                This will add significant data to your database. This endpoint is
+                only available in local environments.
               </Text>
-            </div>
+            </Alert>
 
             {result && (
-              <div
-                className={`rounded-md p-3 ${
-                  result.success
-                    ? "bg-green-50 text-green-800"
-                    : "bg-red-50 text-red-800"
-                }`}
-              >
+              <Alert variant={result.success ? "default" : "error"}>
                 <Text variant="small-medium">{result.message}</Text>
                 {result.details && (
                   <ul className="mt-2 list-inside list-disc">
@@ -150,27 +90,21 @@ export function GenerateTestDataButton() {
                     ))}
                   </ul>
                 )}
-              </div>
+              </Alert>
             )}
           </div>
 
           <Dialog.Footer>
-            <Button
-              variant="outline"
-              onClick={handleDialogClose}
-              disabled={generateMutation.isPending}
-            >
+            <Button variant="outline" onClick={closeDialog} disabled={isPending}>
               Cancel
             </Button>
             <Button
               variant="primary"
-              onClick={handleGenerate}
-              disabled={generateMutation.isPending}
-              loading={generateMutation.isPending}
+              onClick={generate}
+              disabled={isPending}
+              loading={isPending}
             >
-              {generateMutation.isPending
-                ? "Generating..."
-                : "Generate Test Data"}
+              {isPending ? "Generating..." : "Generate Test Data"}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

@@ -36,9 +36,9 @@ function TestDataDashboard() {
                   <Text variant="body-medium" as="span">
                     E2E Test Data:
                   </Text>{" "}
-                  Creates 15 test users with graphs, library agents, presets,
-                  store submissions, and API keys. Uses API functions for better
-                  compatibility.
+                  Creates up to 15 test users with graphs, library agents,
+                  presets, store submissions, and API keys. Uses API functions
+                  for better compatibility.
                 </Text>
               </li>
               <li>
@@ -67,7 +67,7 @@ function TestDataDashboard() {
               <ul className="mt-1 list-inside list-disc">
                 <li>
                   <Text variant="small" as="span">
-                    15 test users
+                    Up to 15 test users
                   </Text>
                 </li>
                 <li>
