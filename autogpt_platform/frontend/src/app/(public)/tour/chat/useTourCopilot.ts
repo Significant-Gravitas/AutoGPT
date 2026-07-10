@@ -110,13 +110,17 @@ export function useTourCopilot({
   });
 
   const currentTurn = script[stepIndex.current];
+  // The first turn auto-plays, so the prompt bar stays empty and disabled
+  // until it finishes — only then does the next turn's prompt prefill.
+  const currentUserPrompt =
+    stepIndex.current === 0 ? null : (currentTurn?.userPrompt ?? null);
 
   return {
     messages,
     onSend,
     reset,
     turnIndex: stepIndex.current,
-    currentUserPrompt: currentTurn?.userPrompt ?? null,
+    currentUserPrompt,
     isStreaming: status === "streaming",
     isExhausted: stepIndex.current >= script.length,
   };

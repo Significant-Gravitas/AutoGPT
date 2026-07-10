@@ -43,11 +43,9 @@ const ADVANCE_STEP_MS = 200;
 // hold before the demo completes.
 const ADVANCE_TOTAL_MS = 13000;
 
-// The prompt bar is prefilled and locked — the visitor only presses Enter to
-// send. Timers advance in small chunks so effects that register new timers
+// Timers advance in small chunks so effects that register new timers
 // mid-stream get picked up (see main.test.tsx for the full rationale).
-async function pressEnterToSend() {
-  fireEvent.keyDown(getSendBar(), { key: "Enter" });
+async function advanceThroughTurn() {
   for (
     let elapsed = 0;
     elapsed < ADVANCE_TOTAL_MS;
@@ -57,6 +55,12 @@ async function pressEnterToSend() {
       await vi.advanceTimersByTimeAsync(ADVANCE_STEP_MS);
     });
   }
+}
+
+// Later turns prefill the prompt bar — the visitor presses Enter to send.
+async function pressEnterToSend() {
+  fireEvent.keyDown(getSendBar(), { key: "Enter" });
+  await advanceThroughTurn();
 }
 
 describe("Tour chat app shell", () => {
@@ -100,9 +104,9 @@ describe("Tour chat app shell", () => {
     render(<TourChatPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    // The switched-to scenario auto-plays its first turn — its prompt shows up
+    // as the auto-sent user message.
+    await advanceThroughTurn();
 
     expect(
       screen.getByText(/pull my unread emails and calendar/i),
@@ -135,7 +139,19 @@ describe("Tour chat app shell", () => {
     });
     vi.useFakeTimers();
 
-    await pressEnterToSend();
+    // The demo mounted under real timers, so its auto-start timeout is a real
+    // timer that fake-timer advancing can't reach (and it may have already
+    // fired during the findByText wait). Toggling the scenario remounts
+    // TourChatHost under fake timers, giving a deterministic fresh demo.
+    act(() => {
+      useTourStore.setState({ activeScenarioId: "daily-brief" });
+    });
+    act(() => {
+      useTourStore.setState({ activeScenarioId: DEFAULT_SCENARIO_ID });
+    });
+
+    // First turn auto-plays; the second is sent from the prefilled bar.
+    await advanceThroughTurn();
     await pressEnterToSend();
 
     expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(

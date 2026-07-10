@@ -63,33 +63,31 @@ describe("Tour chat scripted demo", () => {
     vi.useRealTimers();
   });
 
-  test("auto-plays the first turn without pressing Enter", async () => {
+  test("auto-plays the first turn with the prompt bar empty and disabled", async () => {
     render(<TourChatPage />);
 
-    expect(
-      screen.getByText(/Watch a competitor's pricing page/i),
-    ).toBeDefined();
+    // While the first turn auto-plays the bar shows no prompt and can't send.
+    expect(screen.queryByText(/email me when the price changes/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
 
     // After the auto-start delay the first scripted turn streams in on its own.
     await advanceThroughTurn();
 
-    // getByText throws on multiple matches, so this also guards against the
-    // turn double-firing.
+    // The auto-sent user message is now in the transcript. getByText throws on
+    // multiple matches, so this also guards against the turn double-firing.
+    expect(screen.getByText(/email me when the price changes/i)).toBeDefined();
     expect(screen.getByText(/break that down/i)).toBeDefined();
+
+    // Only now does the second turn's prompt prefill, ready to send.
     expect(screen.getByText(/build and run it for me/i)).toBeDefined();
+    expect(getSendBar()).toBeDefined();
   });
 
   test("plays the competitor watch demo through to the payoff and upsell", async () => {
     render(<TourChatPage />);
 
-    // 1. The prompt bar is prefilled with the flagship scenario's prompt.
-    expect(getSendBar()).toBeDefined();
-    expect(
-      screen.getByText(/Watch a competitor's pricing page/i),
-    ).toBeDefined();
-
-    // 2. Pressing Enter streams in the scripted plan turn.
-    await pressEnterToSend();
+    // 1. The first turn auto-plays and streams in the scripted plan turn.
+    await advanceThroughTurn();
 
     expect(screen.getByText(/break that down/i)).toBeDefined();
     expect(
@@ -99,7 +97,7 @@ describe("Tour chat scripted demo", () => {
     // The prompt bar now prefills the second turn's prompt.
     expect(screen.getByText(/build and run it for me/i)).toBeDefined();
 
-    // 3. Pressing Enter again builds the agent and shows the payoff artifact.
+    // 2. Pressing Enter builds the agent and shows the payoff artifact.
     await pressEnterToSend();
 
     // Agent card: block chain chips + schedule row, no raw JSON.
@@ -139,14 +137,17 @@ describe("Tour chat scripted demo", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    // The prompt bar now prefills the selected scenario's opening prompt.
+    // The bar stays empty while the selected scenario's first turn auto-plays.
     expect(
-      screen.getByText(/pull my unread emails and calendar/i),
-    ).toBeDefined();
+      screen.queryByText(/pull my unread emails and calendar/i),
+    ).toBeNull();
 
     // The newly selected scenario auto-plays its first turn too.
     await advanceThroughTurn();
 
+    expect(
+      screen.getByText(/pull my unread emails and calendar/i),
+    ).toBeDefined();
     expect(
       screen.getByText(/Love it\. Here's how I'll set that up/i),
     ).toBeDefined();
