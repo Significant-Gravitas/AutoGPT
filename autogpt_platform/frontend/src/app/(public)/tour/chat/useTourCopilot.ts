@@ -17,14 +17,24 @@ const FINAL_TURN_SETTLE_MS = 3000;
 const AUTO_START_DELAY_MS = 1000;
 /** Pause between the auto-typed prompt finishing and its "Enter press". */
 const AUTO_SEND_DELAY_MS = 600;
+/** Beat after the final turn's last part before the artifact heads-up types in. */
+const COMPLETION_NOTICE_DELAY_MS = 600;
 
 interface Args {
   sessionId: string;
   script: TourScript;
   onComplete: () => void;
+  /** Extra closing line for the final turn, pointing at the artifact panel
+   * that is about to open (e.g. "Your report.md will appear on the right"). */
+  completionNotice?: string;
 }
 
-export function useTourCopilot({ sessionId, script, onComplete }: Args) {
+export function useTourCopilot({
+  sessionId,
+  script,
+  onComplete,
+  completionNotice,
+}: Args) {
   const [messages, setMessages] = useState<TourMessage[]>([]);
   const [status, setStatus] = useState<TourStatus>("ready");
   const [isAutoPromptVisible, setIsAutoPromptVisible] = useState(false);
@@ -77,6 +87,20 @@ export function useTourCopilot({ sessionId, script, onComplete }: Args) {
     });
 
     const isFinalTurn = stepIndex.current === script.length - 1;
+    if (isFinalTurn && completionNotice) {
+      const noticeAt = visualEnd + COMPLETION_NOTICE_DELAY_MS;
+      timers.current.push(
+        setTimeout(() => {
+          commit(
+            appendPartToLastMessage(messagesRef.current, {
+              type: "text",
+              text: completionNotice,
+            }),
+          );
+        }, noticeAt),
+      );
+      visualEnd = noticeAt + textRevealDurationMs(completionNotice);
+    }
     timers.current.push(
       setTimeout(
         () => {

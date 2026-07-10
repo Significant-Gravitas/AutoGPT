@@ -141,6 +141,13 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText("$59/mo")).toBeDefined();
     expect(screen.getByText("+20.4%")).toBeDefined();
 
+    // The closing line points the visitor at the artifact panel.
+    expect(
+      screen.getByText(
+        /competitor-pricing-report\.md will appear in a moment on the right side/i,
+      ),
+    ).toBeDefined();
+
     // The sidebar upsell card stays visible; no bottom banner takes over.
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
     expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();

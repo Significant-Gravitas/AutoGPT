@@ -58,6 +58,7 @@ export function TourCopilot() {
           key={`${scenario.id}-${runId}`}
           sessionId={scenario.id}
           script={scenario.script}
+          completionNotice={`Your ${scenario.completionArtifact.filename} will appear in a moment on the right side.`}
           onComplete={() => {
             setDemoComplete();
             openArtifact(buildTourArtifactRef(scenario), { persist: false });
