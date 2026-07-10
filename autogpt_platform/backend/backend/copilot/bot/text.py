@@ -109,26 +109,37 @@ def resolve_mentions(
     # ambiguous — we can't know which the author meant, so leave them plain
     # rather than ping whichever happens to sort first.
     name_counts = Counter(name.casefold() for name, _ in mentionable_users)
+    users_by_name = {
+        name.casefold(): (name, user_id)
+        for name, user_id in mentionable_users
+        if name_counts[name.casefold()] == 1
+    }
+    if not users_by_name:
+        return text, []
 
-    rendered = text
+    # ONE combined pattern + ONE sub() pass over the original text. re.sub never
+    # re-scans replacement output, so a rendered token can't be matched again —
+    # e.g. a display name equal to another user's ID inside an emitted <@U123>.
+    # Longest alternative first so "@John Smith" wins over "@John"; the same
+    # boundaries as before keep emails/URLs and "@John-Smith" prefixes unmatched.
+    alternation = "|".join(
+        re.escape(name)
+        for name, _ in sorted(users_by_name.values(), key=lambda pair: -len(pair[0]))
+    )
+    pattern = re.compile(
+        rf"(?<![\w@])@({alternation})(?![\w-])",
+        re.IGNORECASE,
+    )
+
     pinged: list[str] = []
-    for display_name, user_id in sorted(
-        mentionable_users, key=lambda pair: -len(pair[0])
-    ):
-        if name_counts[display_name.casefold()] > 1:
-            continue
-        pattern = re.compile(
-            # Trailing [\w-] guard so "@John" can't match inside "@John-Smith".
-            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?![\w-])",
-            re.IGNORECASE,
-        )
-        if not pattern.search(rendered):
-            continue
-        token = render_token(display_name, user_id)
-        # Callable replacement avoids backref interpretation of the token.
-        rendered = pattern.sub(lambda _m, t=token: t, rendered)
-        pinged.append(user_id)
-    return rendered, pinged
+
+    def _render(match: re.Match[str]) -> str:
+        display_name, user_id = users_by_name[match.group(1).casefold()]
+        if user_id not in pinged:
+            pinged.append(user_id)
+        return render_token(display_name, user_id)
+
+    return pattern.sub(_render, text), pinged
 
 
 def _guarded_cut(text: str, cut: int) -> int:

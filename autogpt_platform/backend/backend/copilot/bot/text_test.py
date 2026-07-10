@@ -70,6 +70,23 @@ class TestResolveMentions:
         assert rendered == "hey @john"
         assert pinged == []
 
+    def test_rendered_token_is_never_resubstituted(self):
+        # A display name equal to another user's ID must not re-match inside an
+        # already-rendered token: "@Bently" → "<@U1>", and the second user named
+        # "U1" must not turn that into "<@<@U9>>". Single-pass sub guarantees it.
+        rendered, pinged = resolve_mentions(
+            "hey @Bently", (("Bently", "U1"), ("U1", "U9")), _token
+        )
+        assert rendered == "hey <@U1>"
+        assert pinged == ["U1"]
+
+    def test_repeated_mentions_render_all_but_ping_once(self):
+        rendered, pinged = resolve_mentions(
+            "@Bently and again @Bently", (("Bently", "U1"),), _token
+        )
+        assert rendered == "<@U1> and again <@U1>"
+        assert pinged == ["U1"]
+
     def test_empty_allowlist_returns_text_unchanged(self):
         rendered, pinged = resolve_mentions("hi @Bently", (), _token)
         assert rendered == "hi @Bently"
