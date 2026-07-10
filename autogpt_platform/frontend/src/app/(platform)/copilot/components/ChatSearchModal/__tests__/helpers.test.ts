@@ -80,7 +80,11 @@ describe("formatRelativeDate", () => {
   });
 
   it("formats older dates", () => {
-    expect(formatRelativeDate("2025-01-01T00:00:00Z", baseDate)).toBe(
+    // formatRelativeDate renders in the runner's LOCAL timezone. Construct the
+    // input from local calendar parts (not a UTC-midnight string, which lands
+    // on the previous day west of UTC) so the assertion holds in any timezone.
+    const older = new Date(2025, 0, 1, 12, 0, 0);
+    expect(formatRelativeDate(older.toISOString(), baseDate)).toBe(
       "1st Jan 2025",
     );
   });

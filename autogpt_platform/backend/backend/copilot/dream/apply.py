@@ -319,13 +319,27 @@ async def _create_dream_session(user_id: str, pass_id: str) -> str:
     # through ``chat_db()`` means the dream pass (running in the
     # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
     # the DatabaseManager process itself uses the direct module.
+    from backend.api.features.orgs.db import get_user_default_team
     from backend.copilot.model import ChatSessionMetadata
     from backend.data.db_accessors import chat_db
+
+    # Dream passes run per-user with no request context; the user's
+    # default (personal) org is the correct tenant for their dreams.
+    try:
+        org_id, team_id = await get_user_default_team(user_id)
+    except Exception:
+        logger.warning(
+            f"Could not resolve default team for dream session (user {user_id}); "
+            "creating tenant-less session"
+        )
+        org_id, team_id = None, None
 
     session_id = str(uuidlib.uuid4())
     await chat_db().create_chat_session(
         session_id=session_id,
         user_id=user_id,
+        organization_id=org_id,
+        team_id=team_id,
         metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
     )
     return session_id
