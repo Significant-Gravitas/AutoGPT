@@ -30,9 +30,7 @@ export function EditNameDialog({ currentName }: Props) {
 
     setIsSaving(true);
     try {
-      // preferred_name is the metadata key the greeting prefers — it's also
-      // written by onboarding's "What should I call you?". Writing full_name
-      // here would be shadowed whenever a preferred_name is already set.
+      // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

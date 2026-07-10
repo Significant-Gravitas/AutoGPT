@@ -200,10 +200,11 @@ export function useOnboardingPage() {
     // the profile is only ever submitted here, once, on reaching Preparing.
     // Guard against an empty name so a stray Preparing visit can't blank a
     // previously-saved profile.
-    if (!name.trim()) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
     postV1SubmitOnboardingProfile({
-      user_name: name,
+      user_name: trimmedName,
       user_role: role,
       pain_points: painPoints,
     }).catch(() => {
@@ -214,7 +215,7 @@ export function useOnboardingPage() {
     // greeting (getGreetingName) uses it; refresh the cached session user
     // so the new name shows up right after onboarding without a reload.
     supabase?.auth
-      .updateUser({ data: { preferred_name: name } })
+      .updateUser({ data: { preferred_name: trimmedName } })
       .then(() => refreshSession())
       .catch(() => {
         // Best effort — the greeting falls back to existing metadata

@@ -281,7 +281,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     mockFlagValue = false;
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
     useOnboardingWizardStore.setState({
-      name: "Reinier",
+      name: "  Reinier  ",
       role: "Engineering",
       painPoints: [],
     });

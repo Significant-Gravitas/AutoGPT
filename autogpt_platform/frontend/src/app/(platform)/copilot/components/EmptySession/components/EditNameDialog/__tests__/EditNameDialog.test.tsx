@@ -69,9 +69,7 @@ describe("EditNameDialog", () => {
   });
 
   test("saves the name as preferred_name via API route and closes dialog", async () => {
-    // preferred_name is the key the copilot greeting prefers (also written
-    // by onboarding); writing full_name here would be shadowed by any
-    // previously-set preferred_name and the edit would appear to not work.
+    // preferred_name is also written by onboarding's "What should I call you?"
     let requestBody: unknown;
     mockUpdateNameSuccess((body) => {
       requestBody = body;
