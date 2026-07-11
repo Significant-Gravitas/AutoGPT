@@ -118,7 +118,7 @@ export const auth = betterAuth({
       // Off by default in Better Auth; the settings page's email form
       // depends on it. Verified users approve the change via a link sent
       // to their CURRENT address (anti-takeover), so the backend mailer
-      // (AUTH_EMAIL_TOKEN) must be configured for email changes to work in
+      // (Postmark) must be configured for email changes to work in
       // production.
       enabled: true,
       sendChangeEmailVerification: async ({

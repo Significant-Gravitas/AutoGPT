@@ -1,8 +1,12 @@
+import os
 from unittest.mock import MagicMock
 
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth import config as auth_config
+from autogpt_libs.auth.config import Settings as AuthSettings
+from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
 
@@ -19,8 +23,10 @@ VALID_BODY = {
 
 @pytest.fixture
 def send_mock(monkeypatch):
-    monkeypatch.setattr(
-        auth_email_routes.settings.secrets, "auth_email_token", "s3cret"
+    """Bypass service-token auth (covered by autogpt_libs service_test) and
+    capture the outgoing send."""
+    app.dependency_overrides[auth_email_routes.requires_auth_email_service] = (
+        lambda: None
     )
     monkeypatch.setattr(
         auth_email_routes.settings.config,
@@ -29,12 +35,12 @@ def send_mock(monkeypatch):
     )
     mock = MagicMock()
     monkeypatch.setattr(auth_email_routes._email_sender, "send_transactional", mock)
-    return mock
+    yield mock
+    app.dependency_overrides.clear()
 
 
-def _post(body=None, token="s3cret"):
-    headers = {"X-Auth-Email-Token": token} if token is not None else {}
-    return client.post("/api/auth-email/send", json=body or VALID_BODY, headers=headers)
+def _post(body=None):
+    return client.post("/api/auth-email/send", json=body or VALID_BODY)
 
 
 def test_valid_request_sends_and_returns_204(send_mock):
@@ -45,25 +51,6 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert to == "user@example.com"
     assert "Reset your AutoGPT Platform password" == subject
     assert VALID_BODY["url"] in body
-
-
-def test_missing_token_is_401(send_mock):
-    res = _post(token=None)
-    assert res.status_code == 401
-    send_mock.assert_not_called()
-
-
-def test_wrong_token_is_401(send_mock):
-    res = _post(token="not-the-secret")
-    assert res.status_code == 401
-    send_mock.assert_not_called()
-
-
-def test_endpoint_disabled_when_secret_unset(send_mock, monkeypatch):
-    monkeypatch.setattr(auth_email_routes.settings.secrets, "auth_email_token", "")
-    res = _post()
-    assert res.status_code == 503
-    send_mock.assert_not_called()
 
 
 def test_rejects_link_on_untrusted_host(send_mock):
@@ -90,3 +77,21 @@ def test_rejects_unknown_type(send_mock):
     res = _post({**VALID_BODY, "type": "spam_blast"})
     assert res.status_code == 422  # pydantic Literal rejection
     send_mock.assert_not_called()
+
+
+def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
+    """Without a frontend service token the route must refuse — proves the
+    Security dependency is actually wired to the endpoint."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    send = MagicMock()
+    monkeypatch.setattr(auth_email_routes._email_sender, "send_transactional", send)
+
+    res = _post()
+
+    assert res.status_code == 401
+    send.assert_not_called()

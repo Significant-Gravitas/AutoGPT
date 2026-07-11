@@ -2,20 +2,22 @@
 
 Better Auth runs in the Next.js frontend (Vercel), which deliberately holds no
 email/Postmark credentials. Rather than a frontend SMTP transport, its
-``sendResetPassword`` / ``sendVerificationEmail`` hooks POST here with a shared
-``AUTH_EMAIL_TOKEN``, and the backend sends the message through its existing
-Postmark mailer. The subject/body are built server-side from a fixed set of
-``type``s (never free-form input), so a leaked token can only trigger our own
-templated auth emails, and the action link is restricted to our own hosts.
+``sendResetPassword`` / ``sendVerificationEmail`` hooks POST here with a
+short-lived frontend service token — signed with the same Better Auth JWKS
+key the backend already trusts for user tokens — and the backend sends the
+message through its existing Postmark mailer. The subject/body are built
+server-side from a fixed set of ``type``s (never free-form input), so even a
+captured token can only trigger our own templated auth emails, and the action
+link is restricted to our own hosts.
 """
 
 import asyncio
-import hmac
 import logging
-from typing import Annotated, Literal
+from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from autogpt_libs.auth import requires_frontend_service
+from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr
 
 from backend.notifications.email import EmailSender
@@ -27,6 +29,9 @@ settings = Settings()
 auth_email_router = APIRouter(prefix="/auth-email")
 
 _email_sender = EmailSender()
+
+# Module-level so tests can override the exact dependency instance.
+requires_auth_email_service = requires_frontend_service("auth-email:send")
 
 _SUBJECTS: dict[str, str] = {
     "reset_password": "Reset your AutoGPT Platform password",
@@ -45,20 +50,6 @@ class AuthEmailRequest(BaseModel):
     type: Literal["reset_password", "verify_email", "change_email"]
     to: EmailStr
     url: str
-
-
-def require_auth_email_token(
-    x_auth_email_token: Annotated[str | None, Header()] = None,
-) -> None:
-    expected = settings.secrets.auth_email_token
-    if not expected:
-        # Disabled unless the shared secret is configured on this backend.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth email endpoint is not configured.",
-        )
-    if not x_auth_email_token or not hmac.compare_digest(x_auth_email_token, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
 
 def _url_host_allowed(url: str) -> bool:
@@ -80,7 +71,7 @@ def _url_host_allowed(url: str) -> bool:
 @auth_email_router.post(
     "/send",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_auth_email_token)],
+    dependencies=[Security(requires_auth_email_service)],
     summary="Send a Better Auth transactional email via the backend mailer",
     tags=["auth-email"],
 )

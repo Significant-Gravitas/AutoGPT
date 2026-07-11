@@ -55,7 +55,7 @@ async def get_jwt_payload(
         raise HTTPException(status_code=401, detail=str(e))
 
 
-def parse_jwt_token(token: str) -> dict[str, Any]:
+def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, Any]:
     """
     Parse and validate a JWT token.
 
@@ -66,6 +66,9 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
     valid during a migration window.
 
     :param token: The token to parse
+    :param audience: The `aud` claim the token must carry. Defaults to the
+        user-token audience; service tokens use a distinct audience so the
+        two planes can't be replayed against each other.
     :return: The decoded payload
     :raises ValueError: If the token is invalid or expired
     """
@@ -95,7 +98,7 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
             token,
             key,
             algorithms=algorithms,
-            audience="authenticated",
+            audience=audience,
         )
         return payload
     except jwt.ExpiredSignatureError:
