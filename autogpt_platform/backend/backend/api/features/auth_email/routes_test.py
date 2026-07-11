@@ -24,7 +24,7 @@ VALID_BODY = {
 @pytest.fixture
 def send_mock(monkeypatch):
     """Bypass service-token auth (covered by autogpt_libs service_test) and
-    capture the outgoing send."""
+    capture the send forwarded to the notification service."""
     app.dependency_overrides[auth_email_routes.requires_auth_email_service] = (
         lambda: None
     )
@@ -34,7 +34,11 @@ def send_mock(monkeypatch):
         "https://platform.agpt.co",
     )
     mock = MagicMock()
-    monkeypatch.setattr(auth_email_routes._email_sender, "send_transactional", mock)
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(send_transactional_email=mock),
+    )
     yield mock
     app.dependency_overrides.clear()
 
@@ -89,7 +93,11 @@ def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
     )
     mocker.patch.object(auth_config, "_settings", AuthSettings())
     send = MagicMock()
-    monkeypatch.setattr(auth_email_routes._email_sender, "send_transactional", send)
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(send_transactional_email=send),
+    )
 
     res = _post()
 

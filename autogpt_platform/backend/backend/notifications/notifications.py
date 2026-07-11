@@ -440,6 +440,15 @@ class NotificationManager(AppService):
         except Exception as e:
             logger.warning(f"Failed to send Discord system alert: {e}")
 
+    @expose
+    async def send_transactional_email(self, to: str, subject: str, body: str):
+        """Send a one-off transactional email (e.g. Better Auth password-reset
+        links forwarded by the REST API) through this service's Postmark
+        credential. Deliberately not wrapped in try/except: a delivery failure
+        must propagate to the RPC caller so it can surface the error instead
+        of reporting "email sent" for an undeliverable message."""
+        self.email_sender.send_transactional(to, subject, body)
+
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
         try:
@@ -1189,3 +1198,6 @@ class NotificationManagerClient(AppServiceClient):
     )
     queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
+    send_transactional_email = endpoint_to_sync(
+        NotificationManager.send_transactional_email
+    )

@@ -4,11 +4,12 @@ Better Auth runs in the Next.js frontend (Vercel), which deliberately holds no
 email/Postmark credentials. Rather than a frontend SMTP transport, its
 ``sendResetPassword`` / ``sendVerificationEmail`` hooks POST here with a
 short-lived frontend service token — signed with the same Better Auth JWKS
-key the backend already trusts for user tokens — and the backend sends the
-message through its existing Postmark mailer. The subject/body are built
-server-side from a fixed set of ``type``s (never free-form input), so even a
-captured token can only trigger our own templated auth emails, and the action
-link is restricted to our own hosts.
+key the backend already trusts for user tokens — and this endpoint forwards
+the message to the notification service, which owns the Postmark credential
+(the REST API pod holds none). The subject/body are built server-side from a
+fixed set of ``type``s (never free-form input), so even a captured token can
+only trigger our own templated auth emails, and the action link is restricted
+to our own hosts.
 """
 
 import asyncio
@@ -20,15 +21,13 @@ from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr
 
-from backend.notifications.email import EmailSender
+from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 auth_email_router = APIRouter(prefix="/auth-email")
-
-_email_sender = EmailSender()
 
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
@@ -90,8 +89,13 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
         "<p>If you didn't request this, you can safely ignore this email.</p>"
     )
 
-    # _email_sender.send_transactional wraps a blocking Postmark HTTP call; run
-    # it off the event loop and let its RuntimeError surface as a 5xx so a
-    # misconfigured mailer fails loudly instead of dropping the auth email.
-    await asyncio.to_thread(_email_sender.send_transactional, request.to, subject, body)
+    # The blocking RPC to the notification service runs off the event loop; a
+    # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
+    # loudly instead of dropping the auth email.
+    await asyncio.to_thread(
+        get_notification_manager_client().send_transactional_email,
+        request.to,
+        subject,
+        body,
+    )
     logger.info("Sent %s auth email to %s", request.type, request.to)
