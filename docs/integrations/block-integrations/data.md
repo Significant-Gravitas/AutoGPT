@@ -283,7 +283,7 @@ Recall memories from a self-hosted Dakera server.
 <!-- MANUAL: how_it_works -->
 This block calls the Dakera Python SDK's `recall` on the server pinned by your host-scoped credential (for example `host=http://localhost:3000`), so the API key is bound to that host and cannot be redirected elsewhere. The host is first validated against the platform's SSRF egress guard, then the (blocking) SDK call is offloaded with `asyncio.to_thread` so it never stalls the shared node event loop. It runs a semantic search over the memories in the `agent_id` namespace — which defaults to `"{user_id}:{graph_id}"` so recall is scoped per user and agent — and returns up to `top_k` matches ordered by relevance, each with its importance and similarity score.
 
-Processing and edge cases: `query` is required and validated by the block schema; `top_k` is clamped to 1–100 and `min_importance` to 0.0–1.0, so out-of-range values are rejected before the request is sent. `memory_type` optionally restricts the search to one kind of memory. An empty namespace simply yields an empty list, so `count` is `0` and downstream blocks should handle the no-result case. If the host resolves to a blocked address, or the server is unreachable or rejects the key, the error is caught and surfaced on the `error` output (e.g. `client.recall(...)` raising a connection error) rather than returning partial data.
+Processing and edge cases: `query` is required and validated by the block schema; `top_k` is clamped to 1–100 and `min_importance` to 0.0–1.0, so out-of-range values are rejected before the request is sent. `memory_type` optionally restricts the search to one kind of memory. An empty namespace simply yields an empty list, so `count` is `0` and downstream blocks should handle the no-result case. If the host resolves to a blocked address, or the server is unreachable or rejects the key, the exception propagates and the executor surfaces it on the block's standard `error` output (e.g. `client.recall(...)` raising a connection error) rather than returning partial data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -300,7 +300,7 @@ Processing and edge cases: `query` is required and validated by the block schema
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the recall operation failed. | str |
+| error | Error message if the operation failed | str |
 | memories | Recalled memories ordered by relevance. | List[Dict[str, Any]] |
 | count | Number of memories recalled. | int |
 
@@ -457,7 +457,7 @@ Store a memory in a self-hosted Dakera server.
 <!-- MANUAL: how_it_works -->
 This block calls the Dakera Python SDK's `store_memory` on the server pinned by your host-scoped credential (for example `host=http://localhost:3000`), so the API key is bound to that host and cannot be redirected elsewhere. The host is first validated against the platform's SSRF egress guard, then the (blocking) SDK call is offloaded with `asyncio.to_thread` so it never stalls the shared node event loop. The memory is written to the namespace given by `agent_id`, which defaults to `"{user_id}:{graph_id}"` so each user + agent keeps its own memory; set it explicitly to share a namespace across users/agents. `importance` (0.0–1.0) seeds Dakera's access-weighted decay so higher-importance memories are retained longer.
 
-Processing and edge cases: `content` is required and `importance` is validated to the 0.0–1.0 range by the block schema, so an invalid `importance` is rejected before the request is sent. Empty `tags` are omitted rather than stored as an empty list, and the block passes the graph execution id as the memory's `session_id` for provenance. On success it yields the stored memory's `memory_id` and a whitelisted `memory` record (`id`, `content`, `memory_type`, `importance`, `created_at`); a response with no `id`, a blocked host, or an unreachable/rejecting server is caught and surfaced on the `error` output (e.g. `client.store_memory(...)` raising an authorization error) rather than emitting a blank `memory_id`.
+Processing and edge cases: `content` is required and `importance` is validated to the 0.0–1.0 range by the block schema, so an invalid `importance` is rejected before the request is sent. Empty `tags` are omitted rather than stored as an empty list, and the block passes the graph execution id as the memory's `session_id` for provenance. On success it yields the stored memory's `memory_id` and a whitelisted `memory` record (`id`, `content`, `memory_type`, `importance`, `created_at`); a response with no `id`, a blocked host, or an unreachable/rejecting server raises, and the executor surfaces the exception on the block's standard `error` output (e.g. `client.store_memory(...)` raising an authorization error) rather than emitting a blank `memory_id`.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -474,7 +474,7 @@ Processing and edge cases: `content` is required and `importance` is validated t
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the store operation failed. | str |
+| error | Error message if the operation failed | str |
 | memory_id | ID of the stored memory. | str |
 | memory | The stored memory record. | Dict[str, Any] |
 

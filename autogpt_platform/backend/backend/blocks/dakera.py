@@ -216,11 +216,10 @@ class StoreDakeraMemoryBlock(Block, DakeraBase):
         )
 
     class Output(BlockSchemaOutput):
+        # ``BlockSchemaOutput`` already provides the standard ``error`` output;
+        # uncaught exceptions in ``run`` are routed there by the executor.
         memory_id: str = SchemaField(description="ID of the stored memory.")
         memory: dict[str, Any] = SchemaField(description="The stored memory record.")
-        error: str = SchemaField(
-            description="Error message if the store operation failed."
-        )
 
     def __init__(self):
         super().__init__(
@@ -263,31 +262,30 @@ class StoreDakeraMemoryBlock(Block, DakeraBase):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            await self._validate_host(credentials.host)
-            client = self._get_client(credentials)
-            agent_id = self._resolve_agent_id(input_data.agent_id, graph_id, user_id)
+        # No try/except: the executor converts any raised exception into the
+        # block's standard ``error`` output, preserving the original type.
+        await self._validate_host(credentials.host)
+        client = self._get_client(credentials)
+        agent_id = self._resolve_agent_id(input_data.agent_id, graph_id, user_id)
 
-            # store_memory is a synchronous requests-based SDK call; offload it
-            # so it does not block the shared node execution event loop.
-            record = await asyncio.to_thread(
-                client.store_memory,
-                agent_id=agent_id,
-                content=input_data.content,
-                memory_type=input_data.memory_type,
-                importance=input_data.importance,
-                tags=input_data.tags or None,
-                session_id=graph_exec_id,
-            )
+        # store_memory is a synchronous requests-based SDK call; offload it
+        # so it does not block the shared node execution event loop.
+        record = await asyncio.to_thread(
+            client.store_memory,
+            agent_id=agent_id,
+            content=input_data.content,
+            memory_type=input_data.memory_type,
+            importance=input_data.importance,
+            tags=input_data.tags or None,
+            session_id=graph_exec_id,
+        )
 
-            memory_id = record.get("id")
-            if not memory_id:
-                raise ValueError("Dakera store response did not include a memory id.")
+        memory_id = record.get("id")
+        if not memory_id:
+            raise ValueError("Dakera store response did not include a memory id.")
 
-            yield "memory_id", memory_id
-            yield "memory", self._normalize_memory(record)
-        except Exception as e:
-            yield "error", str(e)
+        yield "memory_id", memory_id
+        yield "memory", self._normalize_memory(record)
 
 
 class RecallDakeraMemoryBlock(Block, DakeraBase):
@@ -326,13 +324,12 @@ class RecallDakeraMemoryBlock(Block, DakeraBase):
         )
 
     class Output(BlockSchemaOutput):
+        # ``BlockSchemaOutput`` already provides the standard ``error`` output;
+        # uncaught exceptions in ``run`` are routed there by the executor.
         memories: list[dict[str, Any]] = SchemaField(
             description="Recalled memories ordered by relevance."
         )
         count: int = SchemaField(description="Number of memories recalled.")
-        error: str = SchemaField(
-            description="Error message if the recall operation failed."
-        )
 
     def __init__(self):
         super().__init__(
@@ -377,32 +374,31 @@ class RecallDakeraMemoryBlock(Block, DakeraBase):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            await self._validate_host(credentials.host)
-            client = self._get_client(credentials)
-            agent_id = self._resolve_agent_id(input_data.agent_id, graph_id, user_id)
+        # No try/except: the executor converts any raised exception into the
+        # block's standard ``error`` output, preserving the original type.
+        await self._validate_host(credentials.host)
+        client = self._get_client(credentials)
+        agent_id = self._resolve_agent_id(input_data.agent_id, graph_id, user_id)
 
-            # recall is a synchronous requests-based SDK call; offload it so it
-            # does not block the shared node execution event loop. (The SDK's
-            # recall has no session filter, so run-scoped recall is not exposed.)
-            response: RecallResponse = await asyncio.to_thread(
-                client.recall,
-                agent_id=agent_id,
-                query=input_data.query,
-                top_k=input_data.top_k,
-                min_importance=input_data.min_importance,
-                memory_type=input_data.memory_type,
-            )
+        # recall is a synchronous requests-based SDK call; offload it so it
+        # does not block the shared node execution event loop. (The SDK's
+        # recall has no session filter, so run-scoped recall is not exposed.)
+        response: RecallResponse = await asyncio.to_thread(
+            client.recall,
+            agent_id=agent_id,
+            query=input_data.query,
+            top_k=input_data.top_k,
+            min_importance=input_data.min_importance,
+            memory_type=input_data.memory_type,
+        )
 
-            memories = [
-                {**self._normalize_memory(vars(m)), "score": m.score}
-                for m in response.memories
-            ]
+        memories = [
+            {**self._normalize_memory(vars(m)), "score": m.score}
+            for m in response.memories
+        ]
 
-            yield "memories", memories
-            yield "count", len(memories)
-        except Exception as e:
-            yield "error", str(e)
+        yield "memories", memories
+        yield "count", len(memories)
 
 
 class MockDakeraClient:

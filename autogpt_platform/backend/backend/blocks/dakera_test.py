@@ -205,27 +205,28 @@ async def test_store_forwards_resolved_namespace_and_session():
 
 
 @pytest.mark.asyncio
-async def test_store_raises_error_output_on_missing_id():
+async def test_store_raises_on_missing_id():
+    # run() raises rather than yielding "error"; the executor converts the
+    # exception into the block's standard error output (see _base._execute).
     block = StoreDakeraMemoryBlock()
     client = _RecordingClient(store_return={"content": "no id here"})
     _wire(block, client)
 
-    outputs = await _collect(
-        block,
-        block.input_schema(
-            content="x", credentials=dakera_block.TEST_CREDENTIALS_INPUT
-        ),
-        credentials=_creds(),
-        graph_id=GRAPH_ID,
-        graph_exec_id=GRAPH_EXEC_ID,
-        user_id=USER_ID,
-    )
-    assert "memory_id" not in outputs
-    assert "did not include a memory id" in outputs["error"]
+    with pytest.raises(ValueError, match="did not include a memory id"):
+        await _collect(
+            block,
+            block.input_schema(
+                content="x", credentials=dakera_block.TEST_CREDENTIALS_INPUT
+            ),
+            credentials=_creds(),
+            graph_id=GRAPH_ID,
+            graph_exec_id=GRAPH_EXEC_ID,
+            user_id=USER_ID,
+        )
 
 
 @pytest.mark.asyncio
-async def test_store_ssrf_block_routes_to_error_output():
+async def test_store_ssrf_block_propagates():
     block = StoreDakeraMemoryBlock()
     client = _RecordingClient()
 
@@ -234,17 +235,17 @@ async def test_store_ssrf_block_routes_to_error_output():
 
     _wire(block, client, validate=_blocked)
 
-    outputs = await _collect(
-        block,
-        block.input_schema(
-            content="x", credentials=dakera_block.TEST_CREDENTIALS_INPUT
-        ),
-        credentials=_creds(host="http://169.254.169.254"),
-        graph_id=GRAPH_ID,
-        graph_exec_id=GRAPH_EXEC_ID,
-        user_id=USER_ID,
-    )
-    assert "blocked or private" in outputs["error"]
+    with pytest.raises(ValueError, match="blocked or private"):
+        await _collect(
+            block,
+            block.input_schema(
+                content="x", credentials=dakera_block.TEST_CREDENTIALS_INPUT
+            ),
+            credentials=_creds(host="http://169.254.169.254"),
+            graph_id=GRAPH_ID,
+            graph_exec_id=GRAPH_EXEC_ID,
+            user_id=USER_ID,
+        )
     # The client is never invoked once the host is rejected.
     assert client.store_kwargs is None
 
