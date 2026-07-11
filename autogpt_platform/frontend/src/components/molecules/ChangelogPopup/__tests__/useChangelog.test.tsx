@@ -15,18 +15,10 @@ const INDEX_MD = `
 | [Apr 1 – May 6, 2026](/docs/platform/changelog/changelog/${PREV}.md) | Marketplace redesign |
 `;
 
-const ENTRY_MD: Record<string, string> = {
-  [LATEST]: "# Latest release\n{% hint %}kept",
-  [PREV]: "# Previous release",
-};
-
 beforeEach(() => {
   window.localStorage.clear();
   server.use(
-    http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
-      const slug = new URL(request.url).searchParams.get("slug");
-      return HttpResponse.text(slug ? (ENTRY_MD[slug] ?? "") : INDEX_MD);
-    }),
+    http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
   );
 });
 
@@ -40,35 +32,20 @@ describe("useChangelog", () => {
 
     await waitFor(() => expect(result.current.allEntries).toHaveLength(2));
     expect(result.current.latestEntry?.slug).toBe(LATEST);
+    expect(result.current.latestEntry?.url).toContain(`/changelog/${LATEST}`);
   });
 
-  it("openFullChangelog loads + cleans the markdown and marks the release seen", async () => {
+  it("openFullChangelog shows the modal and marks the latest release seen", async () => {
     const { result } = renderHook(() => useChangelog());
-    await waitFor(() => expect(result.current.allEntries).toHaveLength(2));
+    await waitFor(() => expect(result.current.latestEntry?.slug).toBe(LATEST));
 
-    act(() => result.current.openFullChangelog(result.current.allEntries[0]));
+    act(() => result.current.openFullChangelog());
+
     expect(result.current.showFullChangelog).toBe(true);
-
-    await waitFor(() =>
-      expect(result.current.entryMarkdown).toContain("# Latest release"),
-    );
-    expect(result.current.entryMarkdown).not.toContain("{%");
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST);
   });
 
-  it("selectEntry switches the rendered release", async () => {
-    const { result } = renderHook(() => useChangelog());
-    await waitFor(() => expect(result.current.allEntries).toHaveLength(2));
-
-    act(() => result.current.openFullChangelog(result.current.allEntries[0]));
-    act(() => result.current.selectEntry(result.current.allEntries[1]));
-
-    await waitFor(() =>
-      expect(result.current.entryMarkdown).toContain("# Previous release"),
-    );
-  });
-
-  it("closeFullChangelog resets the modal state", async () => {
+  it("closeFullChangelog hides the modal", async () => {
     const { result } = renderHook(() => useChangelog());
     await waitFor(() => expect(result.current.allEntries).toHaveLength(2));
 
@@ -76,8 +53,6 @@ describe("useChangelog", () => {
     act(() => result.current.closeFullChangelog());
 
     expect(result.current.showFullChangelog).toBe(false);
-    expect(result.current.selectedEntry).toBeNull();
-    expect(result.current.entryMarkdown).toBeNull();
   });
 
   it("dismiss marks the latest release seen after fading out", async () => {

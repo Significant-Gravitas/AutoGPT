@@ -1,11 +1,11 @@
-import { CHANGELOG_BASE_URL, CHANGELOG_PROXY_URL } from "./changelog-constants";
+import { CHANGELOG_BASE_URL } from "./changelog-constants";
 
 export interface ChangelogEntry {
   slug: string;
   dateRange: string;
   highlights: string;
+  // The public docs page for this release (opened in a new tab).
   url: string;
-  mdUrl: string;
 }
 
 export function parseChangelogIndex(md: string): ChangelogEntry[] {
@@ -24,19 +24,8 @@ export function parseChangelogIndex(md: string): ChangelogEntry[] {
       dateRange: dateRange.trim(),
       highlights: highlights.trim(),
       url: `${CHANGELOG_BASE_URL}/${slug}`,
-      mdUrl: `${CHANGELOG_PROXY_URL}?slug=${slug}`,
     });
   }
 
   return entries;
-}
-
-export function cleanEntryMarkdown(md: string): string {
-  return md
-    .replace(/\{%.*?%\}/gs, "")
-    .replace(/<figure>|<\/figure>/g, "")
-    .replace(/<figcaption>.*?<\/figcaption>/gs, "")
-    .replace(/<details>/g, "\n---\n")
-    .replace(/<\/details>/g, "")
-    .replace(/<summary>(.*?)<\/summary>/g, "### $1");
 }

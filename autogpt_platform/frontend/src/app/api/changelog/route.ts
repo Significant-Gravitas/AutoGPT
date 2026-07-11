@@ -1,31 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 // The docs site (GitBook, behind Cloudflare) 503s cross-origin browser fetches
-// of the raw `.md`, so the changelog UI can't fetch it directly. This route
-// proxies the fetch server-side (same-origin to the browser) and is locked to
-// the changelog docs path — the only accepted input is a `[a-z0-9-]` slug — so
-// it can't be used as an open proxy.
-const DOCS_CHANGELOG_BASE = "https://agpt.co/docs/platform/changelog/changelog";
-const SLUG_PATTERN = /^[a-z0-9-]+$/;
+// of the raw `.md`, so the changelog UI can't fetch the index directly. This
+// route proxies that single fixed URL server-side (same-origin to the browser).
+const DOCS_CHANGELOG_INDEX =
+  "https://agpt.co/docs/platform/changelog/changelog.md";
 
-export async function GET(request: NextRequest) {
-  const slug = request.nextUrl.searchParams.get("slug");
-
-  if (slug !== null && !SLUG_PATTERN.test(slug)) {
-    return NextResponse.json({ error: "Invalid slug" }, { status: 400 });
-  }
-
-  const target = slug
-    ? `${DOCS_CHANGELOG_BASE}/${slug}.md`
-    : `${DOCS_CHANGELOG_BASE}.md`;
-
+export async function GET() {
   try {
-    const upstream = await fetch(target, {
+    const upstream = await fetch(DOCS_CHANGELOG_INDEX, {
       headers: {
         "User-Agent": "AutoGPT-Platform-Changelog/1.0",
         Accept: "text/markdown, text/plain, */*",
       },
-      // Cache the docs markdown so we don't hammer the docs site per view.
+      // Cache the docs index so we don't hammer the docs site per view.
       next: { revalidate: 3600 },
     });
 

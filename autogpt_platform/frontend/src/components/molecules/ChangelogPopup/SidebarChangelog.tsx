@@ -13,17 +13,7 @@ import { ChangelogModal } from "./components/ChangelogModal";
 import { useSidebarChangelog } from "./useSidebarChangelog";
 
 export function SidebarChangelog() {
-  const {
-    entries,
-    hasUnseen,
-    isOpen,
-    open,
-    close,
-    selectedEntry,
-    selectEntry,
-    entryMarkdown,
-    isLoadingMarkdown,
-  } = useSidebarChangelog();
+  const { entries, hasUnseen, isOpen, open, close } = useSidebarChangelog();
 
   return (
     <SidebarFooter className="p-2">
@@ -56,14 +46,7 @@ export function SidebarChangelog() {
           stacking context and focus trap. */}
       {isOpen && typeof document !== "undefined"
         ? createPortal(
-            <ChangelogModal
-              entries={entries}
-              selectedEntry={selectedEntry}
-              entryMarkdown={entryMarkdown}
-              isLoadingMarkdown={isLoadingMarkdown}
-              onSelectEntry={selectEntry}
-              onClose={close}
-            />,
+            <ChangelogModal entries={entries} onClose={close} />,
             document.body,
           )
         : null}

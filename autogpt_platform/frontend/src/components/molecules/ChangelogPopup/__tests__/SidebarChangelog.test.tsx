@@ -9,14 +9,14 @@ import { CHANGELOG_INDEX_MD_URL, STORAGE_KEY } from "../changelog-constants";
 import { SidebarChangelog } from "../SidebarChangelog";
 
 type StubModalProps = {
-  selectedEntry: { slug: string } | null;
+  entries: { slug: string }[];
   onClose: () => void;
 };
 
 vi.mock("../components/ChangelogModal", () => ({
-  ChangelogModal: ({ selectedEntry, onClose }: StubModalProps) => (
+  ChangelogModal: ({ entries, onClose }: StubModalProps) => (
     <div data-testid="changelog-modal">
-      <span>modal:{selectedEntry?.slug}</span>
+      <span>modal:{entries[0]?.slug}</span>
       <button onClick={onClose}>close-modal</button>
     </div>
   ),
@@ -41,10 +41,7 @@ function renderChangelog() {
 beforeEach(() => {
   window.localStorage.clear();
   server.use(
-    http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
-      const slug = new URL(request.url).searchParams.get("slug");
-      return HttpResponse.text(slug ? "# Release notes" : INDEX_MD);
-    }),
+    http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
   );
 });
 

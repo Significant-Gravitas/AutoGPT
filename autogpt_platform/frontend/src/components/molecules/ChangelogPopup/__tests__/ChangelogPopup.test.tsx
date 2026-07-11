@@ -74,10 +74,7 @@ describe("ChangelogPopup toast (classic layout)", () => {
   beforeEach(() => {
     vi.mocked(useGetFlag).mockReturnValue(false);
     server.use(
-      http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
-        const slug = new URL(request.url).searchParams.get("slug");
-        return HttpResponse.text(slug ? "# Latest release" : INDEX_MD);
-      }),
+      http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
     );
   });
 
@@ -92,7 +89,7 @@ describe("ChangelogPopup toast (classic layout)", () => {
     expect(screen.getByText("Copilot upgrades")).toBeDefined();
 
     await userEvent.click(readMore);
-    expect(await screen.findByText("Changelog")).toBeDefined();
+    expect(await screen.findByText(/view all on docs/i)).toBeDefined();
   });
 
   it("can be dismissed", async () => {
