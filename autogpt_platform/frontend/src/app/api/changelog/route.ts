@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 // The changelog source lives on our `gitbook` branch. We proxy it server-side
 // (cached) so browsers hit our own origin — not GitHub — and never treat
-// raw.githubusercontent.com as a CDN. Locked to the changelog dir + a validated
-// `[a-z0-9-]` slug so it can't be used as an open proxy.
+// raw.githubusercontent.com as a CDN.
 const RAW_CHANGELOG_BASE =
-  "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/gitbook/docs/platform/changelog";
+  "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/gitbook/docs/platform/changelog/";
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
 export async function GET(request: NextRequest) {
@@ -15,12 +14,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid slug" }, { status: 400 });
   }
 
-  const target = slug
-    ? `${RAW_CHANGELOG_BASE}/${slug}.md`
-    : `${RAW_CHANGELOG_BASE}/README.md`;
+  const target = new URL(slug ? `${slug}.md` : "README.md", RAW_CHANGELOG_BASE);
+  // Defense-in-depth against SSRF: the request can only ever resolve to a file
+  // inside the fixed changelog directory on our gitbook branch.
+  if (!target.href.startsWith(RAW_CHANGELOG_BASE)) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
 
   try {
-    const upstream = await fetch(target, {
+    const upstream = await fetch(target.href, {
       headers: { Accept: "text/plain, text/markdown, */*" },
       // Cache the markdown so we hit GitHub at most ~once an hour, not per view.
       next: { revalidate: 3600 },

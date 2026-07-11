@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Serves the changelog hero images (from our `gitbook` branch) through our own
-// cached origin, so browsers never hotlink raw.githubusercontent.com. Locked to
-// the `.gitbook/assets` dir + a validated image filename (no path traversal).
+// cached origin, so browsers never hotlink raw.githubusercontent.com.
 const RAW_ASSETS_BASE =
-  "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/gitbook/docs/platform/.gitbook/assets";
+  "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/gitbook/docs/platform/.gitbook/assets/";
 const FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(png|jpe?g|gif|webp|svg)$/;
 
 export async function GET(request: NextRequest) {
@@ -14,8 +13,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid file" }, { status: 400 });
   }
 
+  const target = new URL(file, RAW_ASSETS_BASE);
+  // Defense-in-depth against SSRF: only the fixed assets directory is reachable.
+  if (!target.href.startsWith(RAW_ASSETS_BASE)) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
   try {
-    const upstream = await fetch(`${RAW_ASSETS_BASE}/${file}`, {
+    const upstream = await fetch(target.href, {
       // Images rarely change; cache them for a day.
       next: { revalidate: 86400 },
     });
