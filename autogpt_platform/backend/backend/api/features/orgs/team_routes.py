@@ -1,11 +1,15 @@
 """Workspace management API routes (nested under /api/orgs/{org_id}/workspaces)."""
 
-from typing import Annotated
+import functools
+from collections.abc import Awaitable, Callable
+from typing import Annotated, ParamSpec, TypeVar
 
 from autogpt_libs.auth import get_request_context, requires_org_permission
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
+
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from . import team_db as team_db
 from .team_model import (
@@ -18,6 +22,37 @@ from .team_model import (
 )
 
 router = APIRouter()
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _rejects_as_400(
+    handler: Callable[_P, Awaitable[_R]],
+) -> Callable[_P, Awaitable[_R]]:
+    """Surface team_db's user-triggerable rejections as HTTP 400s.
+
+    team_db raises ValueError for rejections the caller can fix (changing the
+    default team's join policy, deleting/leaving the default team, removing the
+    last admin, adding a non-org-member, self-joining a non-OPEN team). Without
+    translation these reach the client as 500s. Applied only to the mutating
+    handlers whose db calls raise ValueError, so a genuine bug elsewhere still
+    surfaces as a 500 rather than being masked as a 400.
+
+    NotFoundError/NotAuthorizedError subclass ValueError but carry their own
+    404/403 mappings, so they are re-raised untouched rather than flattened.
+    """
+
+    @functools.wraps(handler)
+    async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        try:
+            return await handler(*args, **kwargs)
+        except (NotFoundError, NotAuthorizedError):
+            raise
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return wrapper
 
 
 async def _authorize_team_management(
@@ -99,6 +134,7 @@ async def get_team(
     summary="Update workspace",
     tags=["orgs", "workspaces"],
 )
+@_rejects_as_400
 async def update_team(
     org_id: str,
     ws_id: str,
@@ -122,6 +158,7 @@ async def update_team(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@_rejects_as_400
 async def delete_team(
     org_id: str,
     ws_id: str,
@@ -145,6 +182,7 @@ async def delete_team(
     summary="Self-join open workspace",
     tags=["orgs", "workspaces"],
 )
+@_rejects_as_400
 async def join_team(
     org_id: str,
     ws_id: str,
@@ -161,6 +199,7 @@ async def join_team(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@_rejects_as_400
 async def leave_team(
     org_id: str,
     ws_id: str,
@@ -195,6 +234,7 @@ async def list_members(
     summary="Add member to workspace",
     tags=["orgs", "workspaces"],
 )
+@_rejects_as_400
 async def add_member(
     org_id: str,
     ws_id: str,
@@ -239,6 +279,7 @@ async def update_member(
     tags=["orgs", "workspaces"],
     status_code=204,
 )
+@_rejects_as_400
 async def remove_member(
     org_id: str,
     ws_id: str,
