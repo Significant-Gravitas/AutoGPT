@@ -6,6 +6,7 @@ What's new in AutoPilot and the AutoGPT Platform. We ship updates regularly and 
 
 | Date | Highlights |
 | ---- | ---------- |
+| [June 18 – July 9](june-18-july-9-2026.md) | File folders, shareable chats, Discord bot |
 | [May 7 – June 10](may-7-june-10-2026.md) | AutoPilot upgrades, redesigned login, live subscriptions, rebuilt settings |
 | [April 10 – May 1](april-10-may-1-2026.md) | Artifacts panel, agent briefings, AI chat in builder |
 | [March 23 – April 9](march-23-april-9-2026.md) | Themed prompt categories, live timer stats, redesigned onboarding, copy your prompts |
