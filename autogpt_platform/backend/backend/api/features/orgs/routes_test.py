@@ -1159,6 +1159,124 @@ class TestWorkspaceRoutes:
         assert exc_info.value.status_code == 403
 
 
+class TestWorkspaceRouteValueErrorsBecome400:
+    """team_db raises ValueError for user-triggerable rejections; the mutating
+    route handlers must surface those as HTTP 400s carrying the db-layer message
+    as the detail, not as generic 500s. Handlers are called directly (matching
+    TestWorkspaceRoutes) so the route-level translation is exercised without
+    fighting nested FastAPI Security dependency overrides."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+
+    @pytest.mark.asyncio
+    async def test_delete_default_team_returns_400_with_detail(self):
+        from backend.api.features.orgs.team_routes import delete_team
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(isDefault=True, orgId=ORG_ID)
+        )
+        ctx = _owner_ctx(org_id=ORG_ID)
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await delete_team(org_id=ORG_ID, ws_id=WS_ID, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "Cannot delete the default workspace"
+
+    @pytest.mark.asyncio
+    async def test_update_default_team_join_policy_returns_400(self):
+        from backend.api.features.orgs.team_model import UpdateTeamRequest
+        from backend.api.features.orgs.team_routes import update_team
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(isDefault=True, orgId=ORG_ID)
+        )
+        ctx = _owner_ctx(org_id=ORG_ID)
+        request = UpdateTeamRequest(join_policy="PRIVATE")
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await update_team(org_id=ORG_ID, ws_id=WS_ID, request=request, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert (
+            exc_info.value.detail == "Cannot change the default workspace's join policy"
+        )
+
+    @pytest.mark.asyncio
+    async def test_remove_last_team_admin_returns_400(self):
+        from backend.api.features.orgs.team_routes import remove_member
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(orgId=ORG_ID)
+        )
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(userId=OTHER_USER_ID, isAdmin=True)
+        )
+        self.prisma.teammember.count = AsyncMock(return_value=1)
+        ctx = _owner_ctx(org_id=ORG_ID)
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await remove_member(org_id=ORG_ID, ws_id=WS_ID, uid=OTHER_USER_ID, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail.startswith(
+            "Cannot remove the last workspace admin"
+        )
+
+    @pytest.mark.asyncio
+    async def test_leave_default_team_returns_400(self):
+        from backend.api.features.orgs.team_routes import leave_team
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(isDefault=True, orgId=ORG_ID)
+        )
+        ctx = _owner_ctx(org_id=ORG_ID)
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await leave_team(org_id=ORG_ID, ws_id=WS_ID, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "Cannot leave the default workspace"
+
+    @pytest.mark.asyncio
+    async def test_self_join_private_team_returns_400(self):
+        from backend.api.features.orgs.team_routes import join_team
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(joinPolicy="PRIVATE", orgId=ORG_ID)
+        )
+        ctx = _member_ctx(org_id=ORG_ID)
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await join_team(org_id=ORG_ID, ws_id=WS_ID, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == (
+            "Cannot self-join a PRIVATE workspace. Request an invite."
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_non_org_member_returns_400(self):
+        from backend.api.features.orgs.team_model import AddTeamMemberRequest
+        from backend.api.features.orgs.team_routes import add_member
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(orgId=ORG_ID)
+        )
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+        ctx = _owner_ctx(org_id=ORG_ID)
+        request = AddTeamMemberRequest(user_id="outsider")
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await add_member(org_id=ORG_ID, ws_id=WS_ID, request=request, ctx=ctx)
+
+        assert exc_info.value.status_code == 400
+        assert "not a member of the organization" in exc_info.value.detail
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. INVITATION (invitation_routes.py)
 # ═══════════════════════════════════════════════════════════════════════════════
