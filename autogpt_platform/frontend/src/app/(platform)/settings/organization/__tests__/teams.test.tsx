@@ -163,12 +163,20 @@ function mockOrg({
   );
 }
 
+// TeamsSection now lives on the "Teams" tab; activate it before reading the
+// section. Clicking again once active is a no-op, so this is safe to call from
+// every teams-section lookup.
+async function showTeamsTab() {
+  await userEvent.click(await screen.findByRole("tab", { name: "Teams" }));
+  return screen.findByTestId("org-teams-section");
+}
+
 // The teams list resolves from its own query, a tick after the page's
 // org/members queries settle the section. Await the row before using it.
 // Scope to the teams section — the invitations section also lists team
 // names (its pre-assign selector), so a page-wide lookup is ambiguous.
 async function teamRow(teamName: string) {
-  const section = await screen.findByTestId("org-teams-section");
+  const section = await showTeamsTab();
   const label = await within(section).findByText(teamName);
   return label.closest("li") as HTMLElement;
 }
@@ -189,7 +197,7 @@ describe("TeamsSection", () => {
     mockOrg();
     render(<OrganizationSettingsPage />);
 
-    const section = await screen.findByTestId("org-teams-section");
+    const section = await showTeamsTab();
     await within(section).findByText("Marketing");
     expect(within(section).getByText("Teams (3)")).toBeDefined();
     expect(within(section).getAllByTestId("org-team-row")).toHaveLength(3);
@@ -213,7 +221,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     await userEvent.click(screen.getByTestId("create-team-button"));
 
     const dialog = await screen.findByRole("dialog");
@@ -241,7 +249,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const row = await teamRow("Marketing");
     await userEvent.click(within(row).getByRole("button", { name: "Join" }));
 
@@ -260,7 +268,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const row = await teamRow("Skunkworks");
     await userEvent.click(within(row).getByRole("button", { name: "Delete" }));
 
@@ -283,7 +291,7 @@ describe("TeamsSection", () => {
     });
     render(<OrganizationSettingsPage />);
 
-    const section = await screen.findByTestId("org-teams-section");
+    const section = await showTeamsTab();
     expect(screen.queryByTestId("create-team-button")).toBeNull();
     expect(
       within(section).queryByRole("button", { name: "Delete" }),
@@ -299,7 +307,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     expect(
@@ -321,7 +329,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     expect(await within(panel).findByTestId("team-leave-button")).toBeDefined();
@@ -349,7 +357,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     const nameInput = await within(panel).findByLabelText("Name");
@@ -379,7 +387,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     const combo = await within(panel).findByRole("combobox", {
@@ -408,7 +416,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     const carlRow = (await within(panel).findByText("Carl")).closest(
@@ -441,7 +449,7 @@ describe("TeamsSection", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await screen.findByTestId("org-teams-section");
+    await showTeamsTab();
     const panel = await openManagePanel("Marketing");
 
     await userEvent.click(
