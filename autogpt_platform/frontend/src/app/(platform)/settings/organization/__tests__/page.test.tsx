@@ -1,6 +1,12 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +16,7 @@ import {
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
+  getPostV2TransferOrganizationOwnershipMockHandler,
 } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import {
   getGetV2ListPendingInvitationsForCurrentUserMockHandler,
@@ -169,6 +176,7 @@ describe("OrganizationSettingsPage", () => {
     await screen.findByTestId("org-profile-section");
     expect(screen.queryByTestId("org-invitations-section")).toBeNull();
     expect(screen.queryByTestId("org-danger-zone")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "New owner" })).toBeNull();
     expect(screen.queryByText("Save changes")).toBeNull();
   });
 
@@ -183,6 +191,7 @@ describe("OrganizationSettingsPage", () => {
 
     await screen.findByTestId("org-profile-section");
     expect(screen.queryByTestId("org-members-section")).toBeNull();
+    expect(screen.queryByTestId("org-danger-zone")).toBeNull();
     expect(
       screen.getByText(/Personal organizations have a single member/),
     ).toBeDefined();
@@ -335,6 +344,59 @@ describe("OrganizationSettingsPage", () => {
     await waitFor(() => {
       expect(removeSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("transfers ownership to a selected member and drops the ex-owner's controls", async () => {
+    let sentNewOwnerId: string | undefined;
+    let ownershipTransferred = false;
+    mockTeamOrg();
+    server.use(
+      getGetV2ListOrganizationMembersMockHandler(() =>
+        ownershipTransferred
+          ? [
+              { ...OWNER_MEMBER, is_owner: false },
+              { ...PLAIN_MEMBER, is_owner: true, is_admin: true },
+            ]
+          : [OWNER_MEMBER, PLAIN_MEMBER],
+      ),
+      getPostV2TransferOrganizationOwnershipMockHandler(
+        async (info: { request: Request }) => {
+          const body = (await info.request.json()) as { new_owner_id?: string };
+          sentNewOwnerId = body.new_owner_id;
+          ownershipTransferred = true;
+        },
+      ),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const dangerZone = await screen.findByTestId("org-danger-zone");
+    fireEvent.click(
+      within(dangerZone).getByRole("combobox", { name: "New owner" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Bob" }));
+    await userEvent.click(
+      within(dangerZone).getByRole("button", { name: "Transfer" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Transfer ownership" }),
+    );
+
+    await waitFor(() => {
+      expect(sentNewOwnerId).toBe(PLAIN_MEMBER.user_id);
+    });
+    // The refetch re-runs role gating: the ex-owner loses the danger zone.
+    await waitFor(() => {
+      expect(screen.queryByTestId("org-danger-zone")).toBeNull();
+    });
+  });
+
+  it("hides the transfer control when the owner is the only member", async () => {
+    mockTeamOrg({ members: [OWNER_MEMBER] });
+    render(<OrganizationSettingsPage />);
+
+    await screen.findByTestId("org-danger-zone");
+    expect(screen.queryByRole("combobox", { name: "New owner" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Transfer" })).toBeNull();
   });
 
   it("updates the org profile", async () => {

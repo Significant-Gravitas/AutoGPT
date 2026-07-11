@@ -1,54 +1,44 @@
 "use client";
 
-import { useState } from "react";
-
-import { useDeleteV2DeleteOrganization } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useOrgTeamStore } from "@/services/org-team/store";
+
+import { useDangerZoneSection } from "./useDangerZoneSection";
 
 interface Props {
   org: OrgResponse;
+  members: OrgMemberResponse[];
   currentMember: OrgMemberResponse | null;
+  onTransferred: () => void;
 }
 
-export function DangerZoneSection({ org, currentMember }: Props) {
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { orgs, setOrgs, setActiveOrg } = useOrgTeamStore();
-
-  const { mutateAsync: deleteOrg, isPending } = useDeleteV2DeleteOrganization({
-    mutation: {
-      onError: (error) => {
-        toast({
-          title: "Failed to delete organization",
-          description:
-            error instanceof Error ? error.message : "Please try again.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+export function DangerZoneSection({
+  org,
+  members,
+  currentMember,
+  onTransferred,
+}: Props) {
+  const {
+    isDeleteOpen,
+    setIsDeleteOpen,
+    isDeleting,
+    handleDeleteConfirmed,
+    transferableMembers,
+    transferTarget,
+    transferTargetId,
+    setTransferTargetId,
+    isTransferConfirmOpen,
+    setIsTransferConfirmOpen,
+    isTransferring,
+    handleTransferConfirmed,
+  } = useDangerZoneSection({ org, members, onTransferred });
 
   if (!currentMember?.is_owner) {
     return null;
-  }
-
-  async function handleDeleteConfirmed() {
-    await deleteOrg({ orgId: org.id });
-    const remaining = orgs.filter((o) => o.id !== org.id);
-    setOrgs(remaining);
-    const personal = remaining.find((o) => o.isPersonal) ?? remaining[0];
-    if (personal) {
-      setActiveOrg(personal.id);
-    }
-    getQueryClient().resetQueries();
-    toast({ title: `Organization "${org.name}" deleted`, variant: "success" });
-    setIsConfirmOpen(false);
   }
 
   return (
@@ -59,6 +49,40 @@ export function DangerZoneSection({ org, currentMember }: Props) {
       <Text variant="h4" as="h2">
         Danger zone
       </Text>
+
+      {transferableMembers.length > 0 ? (
+        <div className="flex items-center gap-3">
+          <div className="flex flex-1 flex-col">
+            <Text variant="body">Transfer ownership</Text>
+            <Text variant="small" className="text-zinc-500">
+              Hand this organization to another member. You will keep your
+              current access but stop being the owner.
+            </Text>
+          </div>
+          <Select
+            id="transfer-owner"
+            label="New owner"
+            hideLabel
+            size="small"
+            wrapperClassName="!mb-0 w-48"
+            placeholder="Select a member"
+            value={transferTargetId ?? undefined}
+            onValueChange={setTransferTargetId}
+            options={transferableMembers.map((member) => ({
+              value: member.user_id,
+              label: member.name || member.email,
+            }))}
+          />
+          <Button
+            variant="secondary"
+            disabled={!transferTarget}
+            onClick={() => setIsTransferConfirmOpen(true)}
+          >
+            Transfer
+          </Button>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-3">
         <div className="flex flex-1 flex-col">
           <Text variant="body">Delete this organization</Text>
@@ -66,18 +90,50 @@ export function DangerZoneSection({ org, currentMember }: Props) {
             Members lose access; financial records are retained.
           </Text>
         </div>
-        <Button variant="destructive" onClick={() => setIsConfirmOpen(true)}>
+        <Button variant="destructive" onClick={() => setIsDeleteOpen(true)}>
           Delete organization
         </Button>
       </div>
 
       <Dialog
+        title={`Transfer ownership of ${org.name}?`}
+        styling={{ maxWidth: "26rem" }}
+        controlled={{
+          isOpen: isTransferConfirmOpen,
+          set: (open) => {
+            if (!isTransferring) setIsTransferConfirmOpen(open);
+          },
+        }}
+      >
+        <Dialog.Content>
+          <Text variant="body">
+            {transferTarget?.name || transferTarget?.email} (
+            {transferTarget?.email}) will become the owner of {org.name} and
+            gain admin access. You will stop being the owner. This cannot be
+            undone from the UI.
+          </Text>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button
+              variant="secondary"
+              onClick={() => setIsTransferConfirmOpen(false)}
+              disabled={isTransferring}
+            >
+              Cancel
+            </Button>
+            <Button loading={isTransferring} onClick={handleTransferConfirmed}>
+              Transfer ownership
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog>
+
+      <Dialog
         title={`Delete ${org.name}?`}
         styling={{ maxWidth: "26rem" }}
         controlled={{
-          isOpen: isConfirmOpen,
+          isOpen: isDeleteOpen,
           set: (open) => {
-            if (!isPending) setIsConfirmOpen(open);
+            if (!isDeleting) setIsDeleteOpen(open);
           },
         }}
       >
@@ -90,14 +146,14 @@ export function DangerZoneSection({ org, currentMember }: Props) {
           <div className="flex justify-end gap-2 pt-4">
             <Button
               variant="secondary"
-              onClick={() => setIsConfirmOpen(false)}
-              disabled={isPending}
+              onClick={() => setIsDeleteOpen(false)}
+              disabled={isDeleting}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              loading={isPending}
+              loading={isDeleting}
               onClick={handleDeleteConfirmed}
             >
               Delete organization
