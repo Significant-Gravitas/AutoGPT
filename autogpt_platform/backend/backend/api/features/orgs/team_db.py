@@ -38,23 +38,71 @@ async def create_team(
         }
     )
 
-    return TeamResponse.from_db(ws, member_count=1)
+    return TeamResponse.from_db(ws, member_count=1, is_member=True)
 
 
-async def list_teams(org_id: str, user_id: str) -> list[TeamResponse]:
-    """List workspaces: all OPEN workspaces + PRIVATE ones the user belongs to."""
-    workspaces = await prisma.team.find_many(
-        where={
-            "orgId": org_id,
-            "archivedAt": None,
-            "OR": [
-                {"joinPolicy": "OPEN"},
-                {"Members": {"some": {"userId": user_id, "status": "ACTIVE"}}},
-            ],
-        },
-        order={"createdAt": "asc"},
+async def _member_facts(
+    team_ids: list[str], user_id: str
+) -> tuple[set[str], dict[str, int]]:
+    """Compute per-caller membership and active member counts in bulk.
+
+    Returns the subset of ``team_ids`` the caller is an ACTIVE member of, plus a
+    ``team_id -> active member count`` map. Two queries total regardless of team
+    count, so callers avoid an N+1 over the returned teams.
+    """
+    if not team_ids:
+        return set(), {}
+
+    caller_rows = await prisma.teammember.find_many(
+        where={"teamId": {"in": team_ids}, "userId": user_id, "status": "ACTIVE"}
     )
-    return [TeamResponse.from_db(ws) for ws in workspaces]
+    member_of = {row.teamId for row in caller_rows}
+
+    count_rows = await prisma.teammember.group_by(
+        by=["teamId"],
+        where={"teamId": {"in": team_ids}, "status": "ACTIVE"},
+        count=True,
+    )
+    count_by_team = {
+        row["teamId"]: (row.get("_count") or {}).get("_all") or 0 for row in count_rows
+    }
+    return member_of, count_by_team
+
+
+async def list_teams(
+    org_id: str, user_id: str, can_manage_workspaces: bool = False
+) -> list[TeamResponse]:
+    """List workspaces visible to the caller, with a per-caller is_member flag.
+
+    Regular members see all OPEN workspaces plus PRIVATE ones they belong to.
+    Org admins (can_manage_workspaces) additionally see PRIVATE workspaces they
+    are not in — as name + member count only, with the description redacted
+    ("governance without surveillance").
+    """
+    where: dict = {"orgId": org_id, "archivedAt": None}
+    if not can_manage_workspaces:
+        where["OR"] = [
+            {"joinPolicy": "OPEN"},
+            {"Members": {"some": {"userId": user_id, "status": "ACTIVE"}}},
+        ]
+
+    workspaces = await prisma.team.find_many(where=where, order={"createdAt": "asc"})
+    member_of, count_by_team = await _member_facts(
+        [ws.id for ws in workspaces], user_id
+    )
+    return [
+        TeamResponse.from_db(
+            ws,
+            member_count=count_by_team.get(ws.id, 0),
+            is_member=ws.id in member_of,
+            redact_description=(
+                can_manage_workspaces
+                and ws.joinPolicy != "OPEN"
+                and ws.id not in member_of
+            ),
+        )
+        for ws in workspaces
+    ]
 
 
 async def get_team(ws_id: str, expected_org_id: str | None = None) -> TeamResponse:
@@ -65,6 +113,40 @@ async def get_team(ws_id: str, expected_org_id: str | None = None) -> TeamRespon
     if expected_org_id and ws.orgId != expected_org_id:
         raise NotFoundError(f"Workspace {ws_id} not found in org {expected_org_id}")
     return TeamResponse.from_db(ws)
+
+
+async def get_team_for_viewer(
+    ws_id: str,
+    org_id: str,
+    user_id: str,
+    can_manage_workspaces: bool = False,
+) -> TeamResponse:
+    """Get workspace details with the same visibility rules as list_teams.
+
+    OPEN workspaces and workspaces the caller belongs to are returned in full.
+    Org admins (can_manage_workspaces) may view a PRIVATE workspace they are not
+    in, but with the description redacted. A regular member asking for a PRIVATE
+    workspace they don't belong to gets NotFoundError — the details route mirrors
+    list visibility rather than exposing every team by id.
+    """
+    ws = await prisma.team.find_unique(where={"id": ws_id})
+    if ws is None:
+        raise NotFoundError(f"Workspace {ws_id} not found")
+    if ws.orgId != org_id:
+        raise NotFoundError(f"Workspace {ws_id} not found in org {org_id}")
+
+    member_of, count_by_team = await _member_facts([ws_id], user_id)
+    is_member = ws_id in member_of
+    is_open = ws.joinPolicy == "OPEN"
+    if not is_open and not is_member and not can_manage_workspaces:
+        raise NotFoundError(f"Workspace {ws_id} not found")
+
+    return TeamResponse.from_db(
+        ws,
+        member_count=count_by_team.get(ws_id, 0),
+        is_member=is_member,
+        redact_description=not is_open and not is_member,
+    )
 
 
 async def update_team(ws_id: str, data: dict) -> TeamResponse:
@@ -116,7 +198,7 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
         where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
     )
     if existing:
-        return TeamResponse.from_db(ws)
+        return TeamResponse.from_db(ws, is_member=True)
 
     await prisma.teammember.create(
         data={
@@ -125,7 +207,7 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
             "status": "ACTIVE",
         }
     )
-    return TeamResponse.from_db(ws)
+    return TeamResponse.from_db(ws, is_member=True)
 
 
 async def leave_team(ws_id: str, user_id: str) -> None:
