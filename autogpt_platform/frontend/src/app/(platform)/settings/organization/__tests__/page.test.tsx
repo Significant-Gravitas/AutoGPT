@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getDeleteV2RemoveMemberFromOrganizationMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
+  getGetV2ListOrganizationAliasesMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
@@ -139,6 +140,7 @@ function mockTeamOrg({
   server.use(
     getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
     getGetV2ListOrganizationMembersMockHandler(members),
+    getGetV2ListOrganizationAliasesMockHandler([]),
     getGetV2ListPendingInvitationsMockHandler(orgInvitations),
     getGetV2ListPendingInvitationsForCurrentUserMockHandler(myInvitations),
   );
@@ -169,6 +171,7 @@ describe("OrganizationSettingsPage", () => {
         { ...OWNER_MEMBER, user_id: "someone-else" },
         { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
       ]),
+      getGetV2ListOrganizationAliasesMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);

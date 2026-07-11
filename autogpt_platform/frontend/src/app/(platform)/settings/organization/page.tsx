@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
+import { AliasesSection } from "./components/AliasesSection/AliasesSection";
 import { DangerZoneSection } from "./components/DangerZoneSection/DangerZoneSection";
 import { InvitationsSection } from "./components/InvitationsSection/InvitationsSection";
 import { MembersSection } from "./components/MembersSection/MembersSection";
@@ -77,6 +78,7 @@ export default function OrganizationSettingsPage() {
             currentMember={currentMember}
           />
           <InvitationsSection orgId={org.id} isAdmin={isAdmin} />
+          <AliasesSection orgId={org.id} isAdmin={isAdmin} />
           <DangerZoneSection
             org={org}
             members={members}

@@ -14,6 +14,7 @@ import {
   getDeleteV2DeleteWorkspaceMockHandler,
   getDeleteV2RemoveMemberFromWorkspaceMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
+  getGetV2ListOrganizationAliasesMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspaceMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
@@ -156,6 +157,7 @@ function mockOrg({
     getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
     getGetV2ListOrganizationMembersMockHandler(members),
     getGetV2ListWorkspacesMockHandler(teams),
+    getGetV2ListOrganizationAliasesMockHandler([]),
     getGetV2ListPendingInvitationsMockHandler([]),
     getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
   );
