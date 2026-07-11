@@ -2569,6 +2569,36 @@
         }
       }
     },
+    "/api/auth-email/send": {
+      "post": {
+        "tags": ["auth-email", "auth-email"],
+        "summary": "Send a Better Auth transactional email via the backend mailer",
+        "operationId": "postAuth-emailSend a better auth transactional email via the backend mailer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthEmailRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -13560,6 +13590,20 @@
         "type": "object",
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
+      },
+      "AuthEmailRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["reset_password", "verify_email", "change_email"],
+            "title": "Type"
+          },
+          "to": { "type": "string", "format": "email", "title": "To" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "type": "object",
+        "required": ["type", "to", "url"],
+        "title": "AuthEmailRequest"
       },
       "AuthorizeRequest": {
         "properties": {
