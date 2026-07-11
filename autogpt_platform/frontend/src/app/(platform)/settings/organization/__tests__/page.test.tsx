@@ -11,6 +11,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getDeleteV2DeleteOrganizationMockHandler,
+  getDeleteV2DeleteOrganizationMockHandler422,
   getDeleteV2RemoveMemberFromOrganizationMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
   getGetV2ListOrganizationAliasesMockHandler,
@@ -18,6 +20,7 @@ import {
   getGetV2ListWorkspacesMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
   getPostV2TransferOrganizationOwnershipMockHandler,
+  getPostV2TransferOrganizationOwnershipMockHandler422,
 } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import {
   getGetV2ListPendingInvitationsForCurrentUserMockHandler,
@@ -34,9 +37,22 @@ import OrganizationSettingsPage from "../page";
 
 const OWNER_USER_ID = "user-owner";
 
+const toastSpy = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: () => ({ user: { id: OWNER_USER_ID } }),
 }));
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: Parameters<typeof actual.toast>) => toastSpy(...args),
+  };
+});
 
 const TEAM_ORG = {
   id: "org-company",
@@ -390,6 +406,110 @@ describe("OrganizationSettingsPage", () => {
     // The refetch re-runs role gating: the ex-owner loses the danger zone.
     await waitFor(() => {
       expect(screen.queryByTestId("org-danger-zone")).toBeNull();
+    });
+  });
+
+  it("deletes the organization and falls back to the personal org", async () => {
+    let deleteRequested = false;
+    useOrgTeamStore.setState({
+      orgs: [
+        {
+          id: TEAM_ORG.id,
+          name: TEAM_ORG.name,
+          slug: TEAM_ORG.slug,
+          avatarUrl: null,
+          isPersonal: false,
+          memberCount: 2,
+        },
+        {
+          id: PERSONAL_ORG.id,
+          name: PERSONAL_ORG.name,
+          slug: PERSONAL_ORG.slug,
+          avatarUrl: null,
+          isPersonal: true,
+          memberCount: 1,
+        },
+      ],
+    });
+    mockTeamOrg();
+    server.use(
+      getDeleteV2DeleteOrganizationMockHandler(() => {
+        deleteRequested = true;
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const dangerZone = await screen.findByTestId("org-danger-zone");
+    await userEvent.click(
+      within(dangerZone).getByRole("button", { name: "Delete organization" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Delete organization" }),
+    );
+
+    await waitFor(() => {
+      expect(deleteRequested).toBe(true);
+    });
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    });
+    expect(useOrgTeamStore.getState().orgs.map((org) => org.id)).not.toContain(
+      TEAM_ORG.id,
+    );
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "success" }),
+    );
+  });
+
+  it("shows an error toast when deleting the organization fails", async () => {
+    mockTeamOrg();
+    server.use(getDeleteV2DeleteOrganizationMockHandler422());
+    render(<OrganizationSettingsPage />);
+
+    const dangerZone = await screen.findByTestId("org-danger-zone");
+    await userEvent.click(
+      within(dangerZone).getByRole("button", { name: "Delete organization" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Delete organization" }),
+    );
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Failed to delete organization",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
+  it("shows an error toast when the ownership transfer fails", async () => {
+    mockTeamOrg();
+    server.use(getPostV2TransferOrganizationOwnershipMockHandler422());
+    render(<OrganizationSettingsPage />);
+
+    const dangerZone = await screen.findByTestId("org-danger-zone");
+    fireEvent.click(
+      within(dangerZone).getByRole("combobox", { name: "New owner" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Bob" }));
+    await userEvent.click(
+      within(dangerZone).getByRole("button", { name: "Transfer" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Transfer ownership" }),
+    );
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Failed to transfer ownership",
+          variant: "destructive",
+        }),
+      );
     });
   });
 
