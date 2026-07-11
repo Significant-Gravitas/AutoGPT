@@ -58,7 +58,11 @@ export function useDangerZoneSection({ org, members, onTransferred }: Args) {
     });
 
   async function handleDeleteConfirmed() {
-    await deleteOrg({ orgId: org.id });
+    try {
+      await deleteOrg({ orgId: org.id });
+    } catch {
+      return;
+    }
     const remaining = orgs.filter((o) => o.id !== org.id);
     setOrgs(remaining);
     const personal = remaining.find((o) => o.isPersonal) ?? remaining[0];
@@ -72,10 +76,14 @@ export function useDangerZoneSection({ org, members, onTransferred }: Args) {
 
   async function handleTransferConfirmed() {
     if (!transferTarget) return;
-    await transferOwnership({
-      orgId: org.id,
-      data: { new_owner_id: transferTarget.user_id },
-    });
+    try {
+      await transferOwnership({
+        orgId: org.id,
+        data: { new_owner_id: transferTarget.user_id },
+      });
+    } catch {
+      return;
+    }
     toast({
       title: `${transferTarget.name || transferTarget.email} is now the owner of ${org.name}`,
       variant: "success",

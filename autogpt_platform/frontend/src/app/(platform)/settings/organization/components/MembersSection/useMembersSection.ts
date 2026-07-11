@@ -59,6 +59,26 @@ export function useMembersSection({ orgId, onChanged }: Args) {
     onChanged();
   }
 
+  async function handleBillingManagerChange(
+    member: OrgMemberResponse,
+    isBillingManager: boolean,
+  ) {
+    await updateRole({
+      orgId,
+      uid: member.user_id,
+      data: { is_billing_manager: isBillingManager },
+    });
+    toast({
+      title: `${member.name || member.email} ${
+        isBillingManager
+          ? "can now manage billing"
+          : "can no longer manage billing"
+      }`,
+      variant: "success",
+    });
+    onChanged();
+  }
+
   async function handleRemoveConfirmed() {
     if (!memberToRemove) return;
     await removeMember({ orgId, uid: memberToRemove.user_id });
@@ -76,6 +96,7 @@ export function useMembersSection({ orgId, onChanged }: Args) {
     isUpdatingRole,
     isRemoving,
     handleRoleChange,
+    handleBillingManagerChange,
     handleRemoveConfirmed,
   };
 }
