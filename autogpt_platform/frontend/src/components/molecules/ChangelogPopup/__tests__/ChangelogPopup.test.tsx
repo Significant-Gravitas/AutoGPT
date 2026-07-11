@@ -27,12 +27,8 @@ const LATEST = "v0-6-63";
 const INDEX_MD = `
 | Release | Highlights |
 | --- | --- |
-| [May 7 – June 10, 2026](https://agpt.co/docs/platform/changelog/changelog/${LATEST}) | Copilot upgrades |
+| [May 7 – June 10, 2026](/docs/platform/changelog/changelog/${LATEST}.md) | Copilot upgrades |
 `;
-
-function mdUrl(slug: string) {
-  return `https://agpt.co/docs/platform/changelog/changelog/${slug}.md`;
-}
 
 let indexRequests = 0;
 
@@ -78,8 +74,10 @@ describe("ChangelogPopup toast (classic layout)", () => {
   beforeEach(() => {
     vi.mocked(useGetFlag).mockReturnValue(false);
     server.use(
-      http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
-      http.get(mdUrl(LATEST), () => HttpResponse.text("# Latest release")),
+      http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
+        const slug = new URL(request.url).searchParams.get("slug");
+        return HttpResponse.text(slug ? "# Latest release" : INDEX_MD);
+      }),
     );
   });
 

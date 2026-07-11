@@ -26,11 +26,12 @@ export const config = {
      * - /api/proxy (backend API proxy - the route handler authenticates
      *   itself via httpOnly cookies; running supabase.auth.getUser() here
      *   adds a Supabase auth-server round-trip to every API call)
+     * - /api/changelog (public docs proxy - no auth needed; skip the round-trip)
      * Feel free to modify this pattern to include more paths.
      *
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need
      * middleware to run for authentication checks.
      */
-    "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|api/proxy|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|api/proxy|api/changelog|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

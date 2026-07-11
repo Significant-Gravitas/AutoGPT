@@ -11,22 +11,22 @@ const PREV = "v0-6-58";
 const INDEX_MD = `
 | Release | Highlights |
 | --- | --- |
-| [May 7 – June 10, 2026](https://agpt.co/docs/platform/changelog/changelog/${LATEST}) | Copilot upgrades |
-| [Apr 1 – May 6, 2026](https://agpt.co/docs/platform/changelog/changelog/${PREV}) | Marketplace redesign |
+| [May 7 – June 10, 2026](/docs/platform/changelog/changelog/${LATEST}.md) | Copilot upgrades |
+| [Apr 1 – May 6, 2026](/docs/platform/changelog/changelog/${PREV}.md) | Marketplace redesign |
 `;
 
-function mdUrl(slug: string) {
-  return `https://agpt.co/docs/platform/changelog/changelog/${slug}.md`;
-}
+const ENTRY_MD: Record<string, string> = {
+  [LATEST]: "# Latest release\n{% hint %}kept",
+  [PREV]: "# Previous release",
+};
 
 beforeEach(() => {
   window.localStorage.clear();
   server.use(
-    http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
-    http.get(mdUrl(LATEST), () =>
-      HttpResponse.text("# Latest release\n{% hint %}kept"),
-    ),
-    http.get(mdUrl(PREV), () => HttpResponse.text("# Previous release")),
+    http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
+      const slug = new URL(request.url).searchParams.get("slug");
+      return HttpResponse.text(slug ? (ENTRY_MD[slug] ?? "") : INDEX_MD);
+    }),
   );
 });
 

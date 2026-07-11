@@ -1,4 +1,4 @@
-import { CHANGELOG_BASE_URL } from "./changelog-constants";
+import { CHANGELOG_BASE_URL, CHANGELOG_PROXY_URL } from "./changelog-constants";
 
 export interface ChangelogEntry {
   slug: string;
@@ -10,18 +10,21 @@ export interface ChangelogEntry {
 
 export function parseChangelogIndex(md: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
+  // Each row links to a release's docs page — absolute or relative, with or
+  // without a `.md` suffix, e.g.
+  //   | [May 7 – June 10](/docs/platform/changelog/changelog/may-7-june-10-2026.md) | ... |
   const rowPattern =
-    /\|\s*\[([^\]]+)\]\((https?:\/\/[^)]+\/changelog\/changelog\/([a-z0-9-]+))\)\s*\|\s*([^|]+)\|/g;
+    /\|\s*\[([^\]]+)\]\([^)]*\/changelog\/changelog\/([a-z0-9-]+)(?:\.md)?\)\s*\|\s*([^|]+)\|/g;
 
   let match;
   while ((match = rowPattern.exec(md)) !== null) {
-    const [, dateRange, url, slug, highlights] = match;
+    const [, dateRange, slug, highlights] = match;
     entries.push({
       slug,
       dateRange: dateRange.trim(),
       highlights: highlights.trim(),
-      url,
-      mdUrl: `${CHANGELOG_BASE_URL}/${slug}.md`,
+      url: `${CHANGELOG_BASE_URL}/${slug}`,
+      mdUrl: `${CHANGELOG_PROXY_URL}?slug=${slug}`,
     });
   }
 

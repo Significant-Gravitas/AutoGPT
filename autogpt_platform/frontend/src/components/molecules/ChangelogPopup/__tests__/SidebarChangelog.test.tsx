@@ -26,8 +26,8 @@ const LATEST_SLUG = "v0-6-63";
 const INDEX_MD = `
 | Release | Highlights |
 | --- | --- |
-| [May 7 – June 10, 2026](https://agpt.co/docs/platform/changelog/changelog/${LATEST_SLUG}) | Copilot upgrades |
-| [Apr 1 – May 6, 2026](https://agpt.co/docs/platform/changelog/changelog/v0-6-58) | Marketplace redesign |
+| [May 7 – June 10, 2026](/docs/platform/changelog/changelog/${LATEST_SLUG}.md) | Copilot upgrades |
+| [Apr 1 – May 6, 2026](/docs/platform/changelog/changelog/v0-6-58.md) | Marketplace redesign |
 `;
 
 function renderChangelog() {
@@ -41,7 +41,10 @@ function renderChangelog() {
 beforeEach(() => {
   window.localStorage.clear();
   server.use(
-    http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
+    http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
+      const slug = new URL(request.url).searchParams.get("slug");
+      return HttpResponse.text(slug ? "# Release notes" : INDEX_MD);
+    }),
   );
 });
 
