@@ -150,9 +150,12 @@ function buildRollup(list) {
 // --- rollup PR (sticky status + deploy + merge target) -------------------
 
 function findRollupPR() {
-  const owner = REPO.split("/")[0];
+  // Plain branch name only: `gh pr list --head` does NOT understand the
+  // owner-qualified `owner:branch` form (that's a `pr create` convention) —
+  // it silently matches nothing, which made every rebuild after the first
+  // try to create a duplicate rollup PR and die on "already exists".
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--head", `${owner}:${ROLLUP}`, "--base", BASE, "--state", "open",
+    "pr", "list", "--repo", REPO, "--head", ROLLUP, "--base", BASE, "--state", "open",
     "--json", "number,url",
   ]);
   return rows[0] || null;
