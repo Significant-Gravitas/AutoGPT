@@ -155,7 +155,7 @@ export function getCachedServerToken(sessionCookie: string): string | null {
  *
  * Deliberately uses an HTTP call instead of importing the Better Auth server
  * instance: this module is part of the client component graph (via the orval
- * mutator), where transitively importing pg/nodemailer breaks the browser
+ * mutator), where transitively importing pg breaks the browser
  * bundle. Cookies are read via next/headers `cookies()` (lazily required, as
  * the previous Supabase client did here) so that a session cookie set
  * earlier in the SAME server action — e.g. right after sign-in — is visible

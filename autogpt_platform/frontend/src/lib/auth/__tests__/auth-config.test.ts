@@ -204,8 +204,8 @@ describe("auth config", () => {
 
     expect(sendAuthEmailMock).toHaveBeenCalledWith({
       to: "user@example.com",
-      subject: "Reset your AutoGPT Platform password",
-      text: "Click the link to reset your password: https://platform.example.com/reset?token=abc",
+      type: "reset_password",
+      url: "https://platform.example.com/reset?token=abc",
     });
   });
 
@@ -219,8 +219,8 @@ describe("auth config", () => {
 
     expect(sendAuthEmailMock).toHaveBeenCalledWith({
       to: "new@example.com",
-      subject: "Verify your AutoGPT Platform email",
-      text: "Click the link to verify your email: https://platform.example.com/verify?token=xyz",
+      type: "verify_email",
+      url: "https://platform.example.com/verify?token=xyz",
     });
   });
 
@@ -249,11 +249,10 @@ describe("change email", () => {
       url: "https://app/approve?token=t",
     });
 
-    expect(sendAuthEmailMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "old@example.com",
-        text: expect.stringContaining("new@example.com"),
-      }),
-    );
+    expect(sendAuthEmailMock).toHaveBeenCalledWith({
+      to: "old@example.com",
+      type: "change_email",
+      url: "https://app/approve?token=t",
+    });
   });
 });

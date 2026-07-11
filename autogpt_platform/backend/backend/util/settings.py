@@ -683,6 +683,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    auth_email_token: str = Field(
+        default="",
+        description=(
+            "Shared secret the Better Auth frontend presents to the "
+            "/api/auth-email/send endpoint so it can send transactional auth "
+            "emails (password reset, email verification) through the backend "
+            "Postmark mailer without holding the Postmark credential itself."
+        ),
+    )
+
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
     )

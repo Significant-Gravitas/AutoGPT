@@ -1,98 +1,70 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const createTransportMock = vi.fn();
-
-vi.mock("nodemailer", () => ({
-  default: {
-    createTransport: (...args: unknown[]) => createTransportMock(...args),
+vi.mock("@/services/environment", () => ({
+  environment: {
+    getAGPTServerBaseUrl: () => "https://backend.example.com",
   },
 }));
 
 import { sendAuthEmail } from "../email";
 
 const resetUrl = "https://platform.example.com/reset-password?token=abc123";
-const email = {
+const args = {
   to: "user@example.com",
-  subject: "Reset your AutoGPT Platform password",
-  text: `Click the link to reset your password: ${resetUrl}`,
+  type: "reset_password" as const,
+  url: resetUrl,
 };
 
+const fetchMock = vi.fn();
+
 beforeEach(() => {
-  createTransportMock.mockReset();
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("sendAuthEmail", () => {
-  it("delivers mail through SMTP when SMTP_HOST is configured", async () => {
-    vi.stubEnv("SMTP_HOST", "smtp.example.com");
-    vi.stubEnv("SMTP_PORT", "2525");
-    vi.stubEnv("SMTP_SECURE", "true");
-    vi.stubEnv("SMTP_USER", "mailer");
-    vi.stubEnv("SMTP_PASS", "hunter2");
-    vi.stubEnv("SMTP_FROM", "AutoGPT Platform <no-reply@example.com>");
-    const sendMailMock = vi.fn().mockResolvedValue(undefined);
-    createTransportMock.mockReturnValue({ sendMail: sendMailMock });
+  it("POSTs the link to the backend mailer with the shared token", async () => {
+    vi.stubEnv("AUTH_EMAIL_TOKEN", "s3cret");
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 
-    await sendAuthEmail(email);
+    await sendAuthEmail(args);
 
-    expect(createTransportMock).toHaveBeenCalledWith({
-      host: "smtp.example.com",
-      port: 2525,
-      secure: true,
-      auth: { user: "mailer", pass: "hunter2" },
-    });
-    expect(sendMailMock).toHaveBeenCalledWith({
-      from: "AutoGPT Platform <no-reply@example.com>",
-      to: email.to,
-      subject: email.subject,
-      text: email.text,
-    });
-  });
-
-  it("falls back to port 587 without auth when only SMTP_HOST is set", async () => {
-    vi.stubEnv("SMTP_HOST", "smtp.example.com");
-    vi.stubEnv("SMTP_PORT", "");
-    vi.stubEnv("SMTP_SECURE", "");
-    vi.stubEnv("SMTP_USER", "");
-    vi.stubEnv("SMTP_FROM", "");
-    const sendMailMock = vi.fn().mockResolvedValue(undefined);
-    createTransportMock.mockReturnValue({ sendMail: sendMailMock });
-
-    await sendAuthEmail(email);
-
-    expect(createTransportMock).toHaveBeenCalledWith({
-      host: "smtp.example.com",
-      port: 587,
-      secure: false,
-      auth: undefined,
-    });
-    expect(sendMailMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: "AutoGPT Platform <no-reply@localhost>",
-      }),
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://backend.example.com/api/auth-email/send");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["X-Auth-Email-Token"]).toBe(
+      "s3cret",
     );
+    expect(JSON.parse(init.body as string)).toEqual({
+      type: "reset_password",
+      to: "user@example.com",
+      url: resetUrl,
+    });
   });
 
-  it("logs the auth link to the console in development when SMTP is missing", async () => {
-    vi.stubEnv("SMTP_HOST", "");
+  it("logs the auth link in development when the token is missing", async () => {
+    vi.stubEnv("AUTH_EMAIL_TOKEN", "");
     vi.stubEnv("NODE_ENV", "development");
     const infoSpy = vi
       .spyOn(console, "info")
       .mockImplementation(() => undefined);
 
-    await sendAuthEmail(email);
+    await sendAuthEmail(args);
 
-    expect(createTransportMock).not.toHaveBeenCalled();
-    const loggedLines = infoSpy.mock.calls.map((call) => String(call[0]));
-    expect(loggedLines.some((line) => line.includes(email.text))).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logged = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(logged.some((l) => l.includes(resetUrl))).toBe(true);
   });
 
-  it("fails the auth flow without leaking the link in production", async () => {
-    vi.stubEnv("SMTP_HOST", "");
+  it("throws in production without leaking the link when the token is missing", async () => {
+    vi.stubEnv("AUTH_EMAIL_TOKEN", "");
     vi.stubEnv("NODE_ENV", "production");
     const infoSpy = vi
       .spyOn(console, "info")
@@ -100,12 +72,21 @@ describe("sendAuthEmail", () => {
 
     // Throwing (instead of silently returning) keeps the reset-password UI
     // from claiming "Email sent" when nothing was delivered.
-    await expect(sendAuthEmail(email)).rejects.toThrow(
-      "SMTP is not configured",
+    await expect(sendAuthEmail(args)).rejects.toThrow(
+      "AUTH_EMAIL_TOKEN is not set",
     );
 
-    expect(createTransportMock).not.toHaveBeenCalled();
-    const loggedLines = infoSpy.mock.calls.map((call) => String(call[0]));
-    expect(loggedLines.some((line) => line.includes(resetUrl))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logged = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(logged.some((l) => l.includes(resetUrl))).toBe(false);
+  });
+
+  it("throws when the backend returns a non-2xx response", async () => {
+    vi.stubEnv("AUTH_EMAIL_TOKEN", "s3cret");
+    fetchMock.mockResolvedValue(new Response("mailer down", { status: 503 }));
+
+    await expect(sendAuthEmail(args)).rejects.toThrow(
+      "Backend auth-email send failed (503)",
+    );
   });
 });

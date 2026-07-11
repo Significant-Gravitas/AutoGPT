@@ -99,8 +99,8 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user, url }) => {
       await sendAuthEmail({
         to: user.email,
-        subject: "Reset your AutoGPT Platform password",
-        text: `Click the link to reset your password: ${url}`,
+        type: "reset_password",
+        url,
       });
     },
   },
@@ -108,8 +108,8 @@ export const auth = betterAuth({
     sendVerificationEmail: async ({ user, url }) => {
       await sendAuthEmail({
         to: user.email,
-        subject: "Verify your AutoGPT Platform email",
-        text: `Click the link to verify your email: ${url}`,
+        type: "verify_email",
+        url,
       });
     },
   },
@@ -117,12 +117,12 @@ export const auth = betterAuth({
     changeEmail: {
       // Off by default in Better Auth; the settings page's email form
       // depends on it. Verified users approve the change via a link sent
-      // to their CURRENT address (anti-takeover), so SMTP must be
-      // configured for email changes to work in production.
+      // to their CURRENT address (anti-takeover), so the backend mailer
+      // (AUTH_EMAIL_TOKEN) must be configured for email changes to work in
+      // production.
       enabled: true,
       sendChangeEmailVerification: async ({
         user,
-        newEmail,
         url,
       }: {
         user: { email: string };
@@ -131,8 +131,8 @@ export const auth = betterAuth({
       }) => {
         await sendAuthEmail({
           to: user.email,
-          subject: "Confirm your AutoGPT Platform email change",
-          text: `Click the link to approve changing your email to ${newEmail}: ${url}`,
+          type: "change_email",
+          url,
         });
       },
     },

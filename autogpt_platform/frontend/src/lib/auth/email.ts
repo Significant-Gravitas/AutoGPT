@@ -1,54 +1,57 @@
-import nodemailer from "nodemailer";
+import { environment } from "@/services/environment";
+
+export type AuthEmailType = "reset_password" | "verify_email" | "change_email";
 
 interface SendAuthEmailArgs {
   to: string;
-  subject: string;
-  text: string;
-}
-
-function getTransport() {
-  const host = process.env.SMTP_HOST;
-  if (!host) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-  });
+  type: AuthEmailType;
+  url: string;
 }
 
 /**
- * Delivers an auth email (verification, password reset) via SMTP when
- * configured. Without SMTP_HOST the link is logged to the server console,
- * which matches the previous local-dev behavior where GoTrue auto-confirmed
- * signups and dropped mail into Inbucket.
+ * Delivers a Better Auth transactional email (password reset, verification,
+ * email change) by POSTing the action link to the backend, which owns the
+ * Postmark credential and builds the message from `type`. The frontend
+ * (Vercel) holds only AUTH_EMAIL_TOKEN — a scoped shared secret — never the
+ * mail-provider credential.
+ *
+ * Without the token the link is logged to the server console in non-production
+ * (local-dev convenience, matching the old SMTP-unset behavior); in production
+ * a missing token throws so an "email sent" UI can't lie about an undeliverable
+ * message, and a failed backend send throws for the same reason.
  */
-export async function sendAuthEmail({ to, subject, text }: SendAuthEmailArgs) {
-  const transport = getTransport();
+export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
+  const token = process.env.AUTH_EMAIL_TOKEN;
 
-  if (!transport) {
+  if (!token) {
     if (process.env.NODE_ENV === "production") {
-      // Fail the auth flow rather than letting "Email sent" UI lie about an
-      // undeliverable message. Never print one-time auth links into
-      // production logs. This throws for every address equally, so it leaks
-      // nothing about account existence.
       throw new Error(
-        `SMTP is not configured — could not deliver "${subject}". ` +
-          "Set SMTP_HOST (and friends) to enable auth email delivery.",
+        `AUTH_EMAIL_TOKEN is not set — could not deliver "${type}" email. ` +
+          "Set it (and configure the backend mailer) to enable auth email delivery.",
       );
     }
-    console.info(`[auth-email] SMTP not configured. ${subject} for ${to}:`);
-    console.info(`[auth-email] ${text}`);
+    console.info(
+      `[auth-email] AUTH_EMAIL_TOKEN not set. ${type} link for ${to}:`,
+    );
+    console.info(`[auth-email] ${url}`);
     return;
   }
 
-  await transport.sendMail({
-    from: process.env.SMTP_FROM || "AutoGPT Platform <no-reply@localhost>",
-    to,
-    subject,
-    text,
+  const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth-email/send`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Email-Token": token,
+    },
+    body: JSON.stringify({ type, to, url }),
   });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `Backend auth-email send failed (${response.status}) for "${type}"` +
+        (detail ? `: ${detail.slice(0, 200)}` : ""),
+    );
+  }
 }
