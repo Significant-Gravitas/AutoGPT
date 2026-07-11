@@ -43,12 +43,27 @@ GraphExecutionSource = Literal["builder", "library", "onboarding"]
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
     source: GraphCreationSource | None = None
+    team_id: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Team to create the agent under. Must be a team in the caller's "
+            "org that the caller is an active member of. Omit for org-home."
+        ),
+    )
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
     permissions: list[APIKeyPermission]
     description: Optional[str] = None
+    team_id: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Restrict the key to a single team: it may only access that team's "
+            "resources. Must be a team in the caller's org that the caller is an "
+            "active member of. Omit for an org-wide key."
+        ),
+    )
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
