@@ -163,8 +163,11 @@ function mockOrg({
 
 // The teams list resolves from its own query, a tick after the page's
 // org/members queries settle the section. Await the row before using it.
+// Scope to the teams section — the invitations section also lists team
+// names (its pre-assign selector), so a page-wide lookup is ambiguous.
 async function teamRow(teamName: string) {
-  const label = await screen.findByText(teamName);
+  const section = await screen.findByTestId("org-teams-section");
+  const label = await within(section).findByText(teamName);
   return label.closest("li") as HTMLElement;
 }
 
