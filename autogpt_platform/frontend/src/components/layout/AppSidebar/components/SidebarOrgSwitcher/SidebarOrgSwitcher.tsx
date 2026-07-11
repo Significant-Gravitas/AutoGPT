@@ -37,15 +37,7 @@ import { useOrgTeamSwitcher } from "@/components/layout/Navbar/components/OrgTea
 export function SidebarOrgSwitcher() {
   const router = useRouter();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const {
-    orgs,
-    teams,
-    activeOrg,
-    activeTeam,
-    switchOrg,
-    switchTeam,
-    isLoaded,
-  } = useOrgTeamSwitcher();
+  const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
 
   if (!isLoaded || orgs.length === 0) {
     return null;
@@ -78,11 +70,6 @@ export function SidebarOrgSwitcher() {
                   <span className="truncate text-sm font-medium">
                     {activeOrg?.name}
                   </span>
-                  {activeTeam ? (
-                    <span className="truncate text-xs text-zinc-500">
-                      {activeTeam.name}
-                    </span>
-                  ) : null}
                 </div>
                 <CaretUpDownIcon className="ml-auto size-4 shrink-0 text-zinc-500" />
               </SidebarMenuButton>
@@ -118,30 +105,6 @@ export function SidebarOrgSwitcher() {
                   ) : null}
                 </DropdownMenuItem>
               ))}
-
-              {teams.length > 0 ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs uppercase text-zinc-400">
-                    Teams
-                  </DropdownMenuLabel>
-                  {teams.map((team) => (
-                    <DropdownMenuItem
-                      key={team.id}
-                      onClick={() => switchTeam(team.id)}
-                      className="gap-2"
-                    >
-                      <span className="flex-1 truncate">{team.name}</span>
-                      {team.joinPolicy === "PRIVATE" ? (
-                        <span className="text-xs text-zinc-400">Private</span>
-                      ) : null}
-                      {team.id === activeTeam?.id ? (
-                        <CheckIcon className="size-4 text-green-600" />
-                      ) : null}
-                    </DropdownMenuItem>
-                  ))}
-                </>
-              ) : null}
 
               <DropdownMenuSeparator />
               <DropdownMenuItem
