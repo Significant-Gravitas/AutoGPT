@@ -30,10 +30,23 @@ function ChangelogPopupToast() {
     showFullChangelog,
     openFullChangelog,
     closeFullChangelog,
+    selectedEntry,
+    selectEntry,
+    entryMarkdown,
+    isLoadingMarkdown,
   } = useChangelog();
 
   if (showFullChangelog) {
-    return <ChangelogModal entries={allEntries} onClose={closeFullChangelog} />;
+    return (
+      <ChangelogModal
+        entries={allEntries}
+        selectedEntry={selectedEntry}
+        entryMarkdown={entryMarkdown}
+        isLoadingMarkdown={isLoadingMarkdown}
+        onSelectEntry={selectEntry}
+        onClose={closeFullChangelog}
+      />
+    );
   }
 
   if (!isVisible || !latestEntry) return null;
@@ -89,7 +102,7 @@ function ChangelogPopupToast() {
 
         <div className="flex items-center justify-between border-t border-border bg-secondary/50 px-5 py-2.5">
           <button
-            onClick={openFullChangelog}
+            onClick={() => openFullChangelog(latestEntry)}
             className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             Read more

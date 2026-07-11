@@ -1,16 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CHANGELOG_INDEX_MD_URL, STORAGE_KEY } from "./changelog-constants";
-import { ChangelogEntry, parseChangelogIndex } from "./helpers";
+import {
+  ChangelogEntry,
+  cleanEntryMarkdown,
+  parseChangelogIndex,
+} from "./helpers";
 
-// Passive changelog surface for the sidebar footer: an "unseen" indicator and
-// a modal listing the releases (each links out to the docs). The floating
-// ChangelogPopup owns the proactive toast on the classic layout.
+// Passive changelog surface for the sidebar footer: no auto-popup or dismiss
+// timers, just an "unseen" indicator and the full modal on demand. The
+// floating ChangelogPopup owns the proactive toast on the classic layout.
 export function useSidebarChangelog() {
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [hasUnseen, setHasUnseen] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<ChangelogEntry | null>(
+    null,
+  );
+  const [entryMarkdown, setEntryMarkdown] = useState<string | null>(null);
+  const [isLoadingMarkdown, setIsLoadingMarkdown] = useState(false);
+
+  const mdAbort = useRef<AbortController | null>(null);
 
   function markLatestSeen(slug: string) {
     try {
@@ -21,16 +32,50 @@ export function useSidebarChangelog() {
     setHasUnseen(false);
   }
 
+  function loadEntryMarkdown(entry: ChangelogEntry) {
+    mdAbort.current?.abort();
+    const controller = new AbortController();
+    mdAbort.current = controller;
+
+    setIsLoadingMarkdown(true);
+    setEntryMarkdown(null);
+
+    fetch(entry.mdUrl, { signal: controller.signal })
+      .then((res) => (res.ok ? res.text() : ""))
+      .then((md) => {
+        if (controller.signal.aborted) return;
+        setEntryMarkdown(cleanEntryMarkdown(md));
+      })
+      .catch(() => {
+        /* abort or network error — non-critical */
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMarkdown(false);
+      });
+  }
+
   function open() {
     const latest = entries[0];
     // Guard against opening an empty modal before the index has loaded.
     if (!latest) return;
     setIsOpen(true);
+    setSelectedEntry(latest);
+    loadEntryMarkdown(latest);
     markLatestSeen(latest.slug);
   }
 
   function close() {
+    mdAbort.current?.abort();
     setIsOpen(false);
+    setSelectedEntry(null);
+    setEntryMarkdown(null);
+    // The aborted fetch's `.finally` won't clear this, so reset it here.
+    setIsLoadingMarkdown(false);
+  }
+
+  function selectEntry(entry: ChangelogEntry) {
+    setSelectedEntry(entry);
+    loadEntryMarkdown(entry);
   }
 
   useEffect(() => {
@@ -59,6 +104,7 @@ export function useSidebarChangelog() {
 
     return () => {
       cancelled = true;
+      mdAbort.current?.abort();
     };
   }, []);
 
@@ -68,5 +114,9 @@ export function useSidebarChangelog() {
     isOpen,
     open,
     close,
+    selectedEntry,
+    selectEntry,
+    entryMarkdown,
+    isLoadingMarkdown,
   };
 }

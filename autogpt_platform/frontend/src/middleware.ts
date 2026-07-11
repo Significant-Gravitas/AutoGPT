@@ -26,7 +26,7 @@ export const config = {
      * - /api/proxy (backend API proxy - the route handler authenticates
      *   itself via httpOnly cookies; running supabase.auth.getUser() here
      *   adds a Supabase auth-server round-trip to every API call)
-     * - /api/changelog (public docs proxy - no auth needed; skip the round-trip)
+     * - /api/changelog (public cached docs proxy - no auth; skip the round-trip)
      * Feel free to modify this pattern to include more paths.
      *
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need

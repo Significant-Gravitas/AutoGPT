@@ -9,14 +9,14 @@ import { CHANGELOG_INDEX_MD_URL, STORAGE_KEY } from "../changelog-constants";
 import { SidebarChangelog } from "../SidebarChangelog";
 
 type StubModalProps = {
-  entries: { slug: string }[];
+  selectedEntry: { slug: string } | null;
   onClose: () => void;
 };
 
 vi.mock("../components/ChangelogModal", () => ({
-  ChangelogModal: ({ entries, onClose }: StubModalProps) => (
+  ChangelogModal: ({ selectedEntry, onClose }: StubModalProps) => (
     <div data-testid="changelog-modal">
-      <span>modal:{entries[0]?.slug}</span>
+      <span>modal:{selectedEntry?.slug}</span>
       <button onClick={onClose}>close-modal</button>
     </div>
   ),
@@ -26,8 +26,8 @@ const LATEST_SLUG = "v0-6-63";
 const INDEX_MD = `
 | Release | Highlights |
 | --- | --- |
-| [May 7 – June 10, 2026](/docs/platform/changelog/changelog/${LATEST_SLUG}.md) | Copilot upgrades |
-| [Apr 1 – May 6, 2026](/docs/platform/changelog/changelog/v0-6-58.md) | Marketplace redesign |
+| [May 7 – June 10, 2026](${LATEST_SLUG}.md) | Copilot upgrades |
+| [Apr 1 – May 6, 2026](v0-6-58.md) | Marketplace redesign |
 `;
 
 function renderChangelog() {
@@ -41,7 +41,10 @@ function renderChangelog() {
 beforeEach(() => {
   window.localStorage.clear();
   server.use(
-    http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text(INDEX_MD)),
+    http.get(CHANGELOG_INDEX_MD_URL, ({ request }) => {
+      const slug = new URL(request.url).searchParams.get("slug");
+      return HttpResponse.text(slug ? "# Release notes" : INDEX_MD);
+    }),
   );
 });
 

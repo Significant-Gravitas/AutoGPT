@@ -1,19 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// The docs site (GitBook, behind Cloudflare) 503s cross-origin browser fetches
-// of the raw `.md`, so the changelog UI can't fetch the index directly. This
-// route proxies that single fixed URL server-side (same-origin to the browser).
-const DOCS_CHANGELOG_INDEX =
-  "https://agpt.co/docs/platform/changelog/changelog.md";
+// The changelog source lives on our `gitbook` branch. We proxy it server-side
+// (cached) so browsers hit our own origin — not GitHub — and never treat
+// raw.githubusercontent.com as a CDN. Locked to the changelog dir + a validated
+// `[a-z0-9-]` slug so it can't be used as an open proxy.
+const RAW_CHANGELOG_BASE =
+  "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/gitbook/docs/platform/changelog";
+const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const slug = request.nextUrl.searchParams.get("slug");
+
+  if (slug !== null && !SLUG_PATTERN.test(slug)) {
+    return NextResponse.json({ error: "Invalid slug" }, { status: 400 });
+  }
+
+  const target = slug
+    ? `${RAW_CHANGELOG_BASE}/${slug}.md`
+    : `${RAW_CHANGELOG_BASE}/README.md`;
+
   try {
-    const upstream = await fetch(DOCS_CHANGELOG_INDEX, {
-      headers: {
-        "User-Agent": "AutoGPT-Platform-Changelog/1.0",
-        Accept: "text/markdown, text/plain, */*",
-      },
-      // Cache the docs index so we don't hammer the docs site per view.
+    const upstream = await fetch(target, {
+      headers: { Accept: "text/plain, text/markdown, */*" },
+      // Cache the markdown so we hit GitHub at most ~once an hour, not per view.
       next: { revalidate: 3600 },
     });
 
