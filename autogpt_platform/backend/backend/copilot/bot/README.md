@@ -51,17 +51,31 @@ bot/
 ├── bot_backend.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
 ├── text.py             # Text splitting + batch formatting
 ├── threads.py          # Redis-backed thread subscription tracking
+├── webhook_routes.py   # Mounts webhook adapters' inbound routes on the main API
 └── adapters/
-    ├── base.py         # PlatformAdapter interface + MessageContext
+    ├── base.py         # PlatformAdapter (outbound) + SocketAdapter / WebhookAdapter + MessageContext
     └── discord/
         ├── adapter.py  # Gateway connection, events, sends, thread creation
         ├── commands.py # Slash commands (/setup, /help, /unlink)
         └── config.py   # Discord token + platform limits
 ```
 
+**Connector taxonomy.** `PlatformAdapter` is the outbound contract the core
+handler speaks through. Concrete adapters extend one of two subtypes by how
+inbound events arrive:
+
+- **`SocketAdapter`** — owns a long-lived connection (Discord Gateway, Slack
+  Socket Mode). Driven by `start`/`stop`; runs in the `copilot-bot` pod.
+  Built in `app.py::_build_socket_adapters`.
+- **`WebhookAdapter`** — receives inbound HTTPS POSTs (Slack Events API,
+  Telegram, Teams, WhatsApp). Stateless; its `register_routes(app)` mounts onto
+  the main backend API (via `webhook_routes.register_webhook_adapters`), so it
+  rides the existing N-replica deployment — no dedicated pod. Built in
+  `webhook_routes._build_webhook_adapters`.
+
 **Locality rule:** anything platform-specific lives under `adapters/<platform>/`.
-The only file that names specific platforms is `app.py`, which is the factory
-that decides which adapters to instantiate based on which tokens are set.
+The only files that name specific platforms are the two factories above, which
+decide which adapters to instantiate based on which tokens are set.
 
 ## How messaging works
 
@@ -82,14 +96,18 @@ that decides which adapters to instantiate based on which tokens are set.
 
 1. Create `adapters/<platform>/` with `adapter.py`, `commands.py` (if the
    platform has commands), and `config.py`
-2. `adapter.py` subclasses `PlatformAdapter` and implements all its abstract
-   methods — `max_message_length`, `chunk_flush_at`, `send_message`,
-   `send_link`, `create_thread`, etc.
+2. `adapter.py` subclasses **`SocketAdapter`** (long-lived connection) or
+   **`WebhookAdapter`** (inbound HTTPS) and implements all the outbound
+   `PlatformAdapter` methods — `max_message_length`, `chunk_flush_at`,
+   `send_message`, `send_link`, `create_thread`, `send_file`, etc. — plus its
+   subtype's inbound method (`start`/`stop` or `register_routes`).
 3. `config.py` declares the platform's env vars and any platform-specific
    numbers (message limits, token name, etc.)
-4. Add two lines to `app.py::_build_adapters`:
+4. Register it in the matching factory, gated on its token(s):
+   - Socket → `app.py::_build_socket_adapters`
+   - Webhook → `webhook_routes.py::_build_webhook_adapters`
    ```python
-   if <platform>_config.BOT_TOKEN:
+   if <platform>_config.get_bot_token():
        adapters.append(<Platform>Adapter(api))
    ```
 

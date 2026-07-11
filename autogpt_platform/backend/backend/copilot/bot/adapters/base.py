@@ -1,14 +1,18 @@
 """Abstract base for platform adapters.
 
-Each chat platform (Discord, Telegram, Slack, etc.) implements this interface.
-The core bot logic in handler.py is platform-agnostic — it only speaks through
-these methods.
+``PlatformAdapter`` is the outbound contract the platform-agnostic core handler
+(``handler.py``) speaks through — it never names a platform. Concrete adapters
+extend one of two subtypes depending on how inbound events arrive:
+``SocketAdapter`` (owns a long-lived connection — Discord Gateway, Slack Socket
+Mode) or ``WebhookAdapter`` (receives inbound HTTPS POSTs — Slack Events API,
+Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
@@ -135,7 +139,12 @@ class MessageContext:
 
 
 class PlatformAdapter(ABC):
-    """Interface that each chat platform must implement."""
+    """Outbound contract shared by every platform adapter.
+
+    The core handler only ever holds a ``PlatformAdapter`` — it speaks through
+    these methods and never cares whether events arrive over a socket or a
+    webhook. Inbound wiring lives on the two subtypes below.
+    """
 
     @property
     @abstractmethod
@@ -143,12 +152,6 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None: ...
-
-    @abstractmethod
-    async def start(self) -> None: ...
-
-    @abstractmethod
-    async def stop(self) -> None: ...
 
     @abstractmethod
     async def send_message(
@@ -236,6 +239,28 @@ class PlatformAdapter(ABC):
         """Hard platform cap on a single uploaded file's size in bytes."""
         ...
 
+    @property
+    @abstractmethod
+    def max_thread_name_length(self) -> int:
+        """Hard platform cap on a thread/topic name's length.
+
+        The shared thread-naming logic clamps candidate titles to this before
+        handing them to ``create_thread``/``rename_thread``. Platforms without
+        named threads (Slack) can return any value — the name is unused there.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def typing_refresh_interval(self) -> float:
+        """Seconds between typing-indicator refreshes while a turn streams.
+
+        Platform typing indicators auto-expire (Discord ~10s, Telegram ~5s);
+        the shared keep-alive loop re-fires at this cadence. Platforms with no
+        typing indicator can return any value — ``start_typing`` is a no-op.
+        """
+        ...
+
     @abstractmethod
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         """Send a single file as an attachment, with optional accompanying text.
@@ -245,11 +270,35 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    def localize_markup(self, text: str) -> str:
+        """Convert the bot's canonical markup into this platform's dialect.
+
+        The core handler and the model speak one canonical flavour (CommonMark:
+        ``**bold**``, ``[label](url)``, ``- bullets``). Each adapter converts
+        that to what its platform renders (Discord ≈ CommonMark, so the default
+        identity is correct; Slack overrides to mrkdwn). Adapters MUST apply
+        this to outbound text in their ``send_*`` methods so no send path
+        bypasses it — the default here keeps text unchanged.
+        """
+        return text
+
     # -- Proactive output (backend → platform) ----------------------------
     # These power scheduled / autopilot-initiated posts, where the bot speaks
     # without a triggering user message. Authorization (which servers a user
     # may post to) is enforced one layer up; adapters here only translate an
     # already-authorized request into platform API calls.
+
+    @abstractmethod
+    def looks_like_channel_id(self, ref: str) -> bool:
+        """Whether ``ref`` is one of this platform's channel IDs (vs a name).
+
+        The shared proactive-post resolver uses this to decide whether to treat
+        a target reference as a raw channel ID or a channel name to look up.
+        Each platform's ID grammar differs (Discord numeric snowflakes, Slack
+        ``C0123ABCD``, Telegram signed integers), so the discrimination can't
+        live in the platform-agnostic layer.
+        """
+        ...
 
     @abstractmethod
     async def list_text_channels(
@@ -292,5 +341,35 @@ class PlatformAdapter(ABC):
         "Standalone" = not anchored to a pre-existing message (unlike
         ``create_thread``). Returns the thread's ``PostedRef``, or ``None`` if
         the platform/channel doesn't support it.
+        """
+        ...
+
+
+class SocketAdapter(PlatformAdapter):
+    """Adapter that owns a long-lived connection (Discord Gateway, Slack Socket
+    Mode). The connection is a per-token singleton held open for the process's
+    lifetime, so each socket adapter runs in the ``copilot-bot`` pod and is
+    driven by ``start``/``stop``.
+    """
+
+    @abstractmethod
+    async def start(self) -> None: ...
+
+    @abstractmethod
+    async def stop(self) -> None: ...
+
+
+class WebhookAdapter(PlatformAdapter):
+    """Adapter driven by inbound HTTPS webhooks (Slack Events API, Telegram,
+    Teams, WhatsApp). Stateless — its routes mount on the main backend API and
+    ride the existing N-replica deployment, so no dedicated pod is needed.
+    """
+
+    @abstractmethod
+    def register_routes(self, app: FastAPI) -> None:
+        """Mount this adapter's inbound webhook route(s) onto ``app``.
+
+        The adapter owns its own request signature verification and must ACK
+        within the platform's timeout, scheduling the real work off-request.
         """
         ...

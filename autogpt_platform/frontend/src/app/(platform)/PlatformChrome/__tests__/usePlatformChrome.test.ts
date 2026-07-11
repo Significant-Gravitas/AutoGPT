@@ -8,6 +8,14 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathnameMock(),
 }));
 
+const supabaseMock = vi.fn(() => ({
+  isLoggedIn: true,
+  isUserLoading: false,
+}));
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => supabaseMock(),
+}));
+
 const flagMock = vi.fn<(flag: string) => boolean>(() => true);
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -24,6 +32,7 @@ describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
     flagMock.mockReturnValue(true);
+    supabaseMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
   });
 
   it("enables the new layout after mount when the flag is on and route is allowed", async () => {
@@ -83,6 +92,44 @@ describe("usePlatformChrome", () => {
     renderHook(() => usePlatformChrome());
     await waitFor(() => {
       expect(flagMock).toHaveBeenCalledWith("autogpt-new-layout");
+    });
+  });
+
+  it("shows the tour sidebar for logged-out marketplace visitors", async () => {
+    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showTourSidebar).toBe(true);
+    });
+    expect(result.current.showNewLayout).toBe(false);
+  });
+
+  it("keeps the tour sidebar hidden while the session check is in flight", async () => {
+    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: true });
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showTourSidebar).toBe(false);
+    });
+  });
+
+  it("keeps the tour sidebar hidden for logged-in marketplace visitors", async () => {
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showTourSidebar).toBe(false);
+      expect(result.current.showNewLayout).toBe(true);
+    });
+  });
+
+  it("keeps the tour sidebar off non-marketplace routes when logged out", async () => {
+    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    pathnameMock.mockReturnValue("/library");
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showTourSidebar).toBe(false);
     });
   });
 });
