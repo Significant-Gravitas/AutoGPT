@@ -628,7 +628,9 @@ This block integrates with HeyGen to create avatar videos and retrieve their URL
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block posts to HeyGen's `POST /v3/videos` endpoint with `type: "avatar"` and the provided `avatar_id`, `script`, `resolution`, `aspect_ratio`, and `output_format`. `voice_id` and `title` are only included in the payload when set, so omitting them falls back to HeyGen's own defaults (the avatar's default voice, no title).
+
+It then polls `GET /v3/videos/{video_id}` every `polling_interval` seconds, up to `max_polling_attempts` times. Once the status is `completed`, it downloads the returned `video_url` and stores it through the platform's media storage before yielding it as output. If the status is `failed`, it raises with HeyGen's own `failure_message`; if no terminal status is reached within the attempt budget, it raises a `TimeoutError` instead of polling indefinitely.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -654,7 +656,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Marketing Video Generation**: Turn a product description into a branded avatar video for social or ad campaigns without hiring on-camera talent.
+
+**Localized Training Content**: Run the same script across different avatars and voices to produce region- or language-specific onboarding and training videos.
+
+**Automated Personalized Outreach**: Feed a workflow-generated script (e.g. a lead's name and offer) into the block to produce a personalized avatar video at scale for sales or customer outreach.
 <!-- END MANUAL -->
 
 ---
