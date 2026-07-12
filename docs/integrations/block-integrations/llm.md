@@ -628,7 +628,7 @@ This block integrates with HeyGen to create avatar videos and retrieve their URL
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to HeyGen's `POST /v3/videos` endpoint with `type: "avatar"` and the provided `avatar_id`, `script`, `resolution`, `aspect_ratio`, and `output_format`. `voice_id` and `title` are only included in the payload when set, so omitting them falls back to HeyGen's own defaults (the avatar's default voice, no title).
+`avatar_id` and `script` are required; `resolution`, `aspect_ratio`, and `output_format` are constrained to HeyGen's supported enum values, and `max_polling_attempts`/`polling_interval` both enforce a minimum of 5 to avoid hammering the API. The block posts to HeyGen's `POST /v3/videos` endpoint with `type: "avatar"` and the provided `avatar_id`, `script`, `resolution`, `aspect_ratio`, and `output_format`. `voice_id` and `title` are only included in the payload when set, so omitting them falls back to HeyGen's own defaults (the avatar's default voice, no title).
 
 It then polls `GET /v3/videos/{video_id}` every `polling_interval` seconds, up to `max_polling_attempts` times. Once the status is `completed`, it downloads the returned `video_url` and stores it through the platform's media storage before yielding it as output. If the status is `failed`, it raises with HeyGen's own `failure_message`; if no terminal status is reached within the attempt budget, it raises a `TimeoutError` instead of polling indefinitely.
 <!-- END MANUAL -->
