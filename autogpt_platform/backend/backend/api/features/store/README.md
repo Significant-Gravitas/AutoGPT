@@ -9,11 +9,11 @@ Contains the FastAPI route handlers for the store API endpoints:
 
 - Profile endpoints for managing user profiles
 - Agent endpoints for browsing and retrieving store agents
-- Creator endpoints for browsing and retrieving creator details  
+- Creator endpoints for browsing and retrieving creator details
 - Store submission endpoints for submitting agents to the store
 - Media upload endpoints for submission images/videos
 
-### model.py 
+### model.py
 Contains Pydantic models for request/response validation and serialization:
 
 - Pagination model for paginated responses

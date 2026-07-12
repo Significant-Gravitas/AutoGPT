@@ -24,7 +24,7 @@ volumes:
   clamav-data:
 
 services:
-   
+
   db:
     <<: *supabase-services
     extends:

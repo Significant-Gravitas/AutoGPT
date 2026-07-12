@@ -67,7 +67,7 @@ from pytest_snapshot.plugin import Snapshot
 
 def test_api_endpoint(snapshot: Snapshot):
     response = client.get("/api/endpoint")
-    
+
     # Snapshot the response
     snapshot.snapshot_dir = "snapshots"
 snapshot.assert_match(
@@ -117,11 +117,11 @@ client = fastapi.testclient.TestClient(app)
 def test_endpoint_success(snapshot: Snapshot):
     response = client.get("/endpoint")
     assert response.status_code == 200
-    
+
     # Test specific fields
     data = response.json()
     assert data["status"] == "success"
-    
+
     # Snapshot the full response
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(

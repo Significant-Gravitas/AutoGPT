@@ -8,11 +8,11 @@ Clean, streamlined load testing infrastructure for the AutoGPT Platform using k6
 # 1. Set up Supabase service key (required for token generation)
 export SUPABASE_SERVICE_KEY="your-supabase-service-key"
 
-# 2. Generate pre-authenticated tokens (first time setup - creates 160+ tokens with 24-hour expiry)  
+# 2. Generate pre-authenticated tokens (first time setup - creates 160+ tokens with 24-hour expiry)
 node generate-tokens.js --count=160
 
 # 3. Set up k6 cloud credentials (for cloud testing - see Credential Setup section below)
-export K6_CLOUD_TOKEN="your-k6-cloud-token"  
+export K6_CLOUD_TOKEN="your-k6-cloud-token"
 export K6_CLOUD_PROJECT_ID="4254406"
 
 # 4. Run orchestrated load tests locally
@@ -85,7 +85,7 @@ npm run cloud
 ### Pre-Authenticated Tokens
 
 - **Generation**: Run `node generate-tokens.js --count=160` to create tokens
-- **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)  
+- **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)
 - **Capacity**: 160+ tokens supporting high-concurrency testing
 - **Expiry**: 24 hours (86400 seconds) - extended for long-duration testing
 - **Benefit**: Eliminates Supabase auth rate limiting at scale
@@ -120,7 +120,7 @@ npm run cloud
 ### Validated Performance Limits
 
 - **Core API**: 100+ VUs successfully handling `/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`
-- **Graph Execution**: 80+ VUs for complete workflow pipeline  
+- **Graph Execution**: 80+ VUs for complete workflow pipeline
 - **Marketplace Browsing**: 160 VUs for public marketplace access (verified)
 - **Marketplace Library**: 160 VUs for authenticated library operations (verified)
 - **Authentication**: 160+ concurrent users with pre-authenticated tokens

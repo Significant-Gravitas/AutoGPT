@@ -52,7 +52,7 @@ make start-core
 # Stop core services
 make stop-core
 
-# View logs from core services 
+# View logs from core services
 make logs-core
 
 # Run formatting and linting for backend and frontend
