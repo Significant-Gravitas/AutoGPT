@@ -61,14 +61,17 @@ _EXPECTED_SUBSTRINGS: dict[str, list[str]] = {
         "screenshot+action floor",
         "visual replay",
     ],
-    "RECORDING_ALREADY_ACTIVE": ["already in progress", "Stop it"],
+    "RECORDING_ALREADY_ACTIVE": [
+        "already in progress",
+        "AutoGPT recording control",
+    ],
     "CONSENT_REQUIRED": ["consent token", "OS-native", "platform cannot"],
     "INTERPRETATION_UNAVAILABLE": [
         "local model",
         "re-record",
         "screenshots_to_cloud",
     ],
-    "INTERNAL_ERROR": ["unexpected internal error", "audit.log"],
+    "INTERNAL_ERROR": ["unexpected internal error", "autogpt-shim audit tail"],
 }
 
 

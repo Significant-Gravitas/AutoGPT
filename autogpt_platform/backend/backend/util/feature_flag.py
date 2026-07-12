@@ -70,18 +70,18 @@ class Flag(str, Enum):
     # per-user opt-in / staged rollout. Default off.
     LOCAL_PC_EXECUTOR = "local-pc-executor"
     # Workflow recording — record a task the user performs on their machine
-    # and generalize it into a reusable skill (record_workflow /
-    # generate_skill_from_recording / dry_run_skill MCP tools). Gated as
+    # and generalize it into a reusable skill (UI-owned recording/review plus
+    # list/generate/dry-run MCP tools). Gated as
     # `config.use_local_pc_executor AND shim advertises `recording` AND
     # ld(WORKFLOW_RECORDING, user)` — same shape as LOCAL_PC_EXECUTOR.
-    # See `experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md` and
+    # See `autogpt-local-executor/docs/WORKFLOW_RECORDING.md` and
     # `copilot/tools/recording_skill.py`. Default off; per-user rollout.
     WORKFLOW_RECORDING = "workflow-recording"
     # Local LLM routing — when on AND the user's shim advertises
     # `local_llm` + a non-empty `local_llm_models`, copilot turns that
     # match the (mode, tier) policy get routed through the shim's
     # LOCAL_LLM_COMPLETION wire op instead of Anthropic/OpenRouter. See
-    # `experimental/local-pc-executor/docs/LOCAL_LLM.md` and
+    # `autogpt-local-executor/docs/LOCAL_LLM.md` and
     # `copilot/tools/local_llm_router.py`. Default off; per-user rollout.
     LOCAL_LLM_ROUTING = "local-llm-routing"
     # Per-tier preferred local-model lists used by LocalLLMRouter. JSON

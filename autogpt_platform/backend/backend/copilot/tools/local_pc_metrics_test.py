@@ -35,7 +35,7 @@ class TestConnectDisconnect:
             LOCAL_PC_SHIM_CONNECTIONS,
             platform="darwin",
             arch="arm64",
-            shim_version="0.1.0",
+            shim_version="0.1",
         )
         before_active = _gauge_value(
             LOCAL_PC_SHIM_ACTIVE, platform="darwin", arch="arm64"
@@ -46,7 +46,7 @@ class TestConnectDisconnect:
                 LOCAL_PC_SHIM_CONNECTIONS,
                 platform="darwin",
                 arch="arm64",
-                shim_version="0.1.0",
+                shim_version="0.1",
             )
             == before_total + 1
         )
@@ -87,6 +87,54 @@ class TestConnectDisconnect:
         record_shim_disconnected(platform="", arch=None)
         # Labels should resolve to "unknown" — not "".
         # If this raised LabelError we'd see it propagate.
+
+    def test_version_label_is_bounded_to_release_line(self):
+        before = _counter_value(
+            LOCAL_PC_SHIM_CONNECTIONS,
+            platform="linux",
+            arch="x86_64",
+            shim_version="0.1",
+        )
+        record_shim_connected(
+            platform="linux",
+            arch="x86_64",
+            shim_version="v0.1.123+arbitrary-user-build",
+        )
+        assert (
+            _counter_value(
+                LOCAL_PC_SHIM_CONNECTIONS,
+                platform="linux",
+                arch="x86_64",
+                shim_version="0.1",
+            )
+            == before + 1
+        )
+        record_shim_disconnected(platform="linux", arch="x86_64")
+
+    def test_hostile_hello_labels_collapse_to_unknown(self):
+        before = _counter_value(
+            LOCAL_PC_SHIM_CONNECTIONS,
+            platform="unknown",
+            arch="unknown",
+            shim_version="unknown",
+        )
+        record_shim_connected(
+            platform="attacker-platform-123",
+            arch="attacker-arch-456",
+            shim_version="999999.888888.hostile",
+        )
+        assert (
+            _counter_value(
+                LOCAL_PC_SHIM_CONNECTIONS,
+                platform="unknown",
+                arch="unknown",
+                shim_version="unknown",
+            )
+            == before + 1
+        )
+        record_shim_disconnected(
+            platform="attacker-platform-123", arch="attacker-arch-456"
+        )
 
 
 class TestHandshakeFailure:
@@ -139,3 +187,11 @@ class TestRpcMetrics:
         # Falls back to "UNKNOWN" rather than empty-label.
         # Counter exists; reading any value is enough to confirm no raise.
         _ = _counter_value(LOCAL_PC_SHIM_RPC_ERRORS, op="FILE_READ", code="UNKNOWN")
+
+    def test_record_rpc_error_bounds_hostile_op_and_code(self):
+        before = _counter_value(LOCAL_PC_SHIM_RPC_ERRORS, op="UNKNOWN", code="UNKNOWN")
+        record_rpc_error("RANDOM_OP_123", "RANDOM_CODE_456")
+        assert (
+            _counter_value(LOCAL_PC_SHIM_RPC_ERRORS, op="UNKNOWN", code="UNKNOWN")
+            == before + 1
+        )

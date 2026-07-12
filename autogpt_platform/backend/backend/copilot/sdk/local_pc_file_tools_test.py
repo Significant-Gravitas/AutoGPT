@@ -66,6 +66,35 @@ class TestResolveExecutorPath:
         with pytest.raises(ValueError, match="must be within"):
             resolve_executor_path("/Users/test/ws-other/file.txt", shim)
 
+    def test_windows_relative_resolves_with_windows_separators_on_linux(self):
+        shim = _shim(allowed_root=r"C:\Users\test\workspace", platform="windows")
+        assert (
+            resolve_executor_path(r"reports\july.csv", shim)
+            == r"C:\Users\test\workspace\reports\july.csv"
+        )
+
+    def test_windows_absolute_inside_root_is_case_insensitive(self):
+        shim = _shim(allowed_root=r"C:\Users\Test\Workspace", platform="windows")
+        assert (
+            resolve_executor_path(r"c:\users\test\workspace\report.csv", shim)
+            == r"c:\users\test\workspace\report.csv"
+        )
+
+    def test_windows_parent_traversal_is_rejected(self):
+        shim = _shim(allowed_root=r"C:\Users\test\workspace", platform="windows")
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_executor_path(r"C:\Users\test\workspace\..\..\secrets.txt", shim)
+
+    def test_windows_sibling_root_is_rejected(self):
+        shim = _shim(allowed_root=r"C:\workspace", platform="windows")
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_executor_path(r"C:\workspace-old\secret.txt", shim)
+
+    def test_windows_other_drive_is_rejected(self):
+        shim = _shim(allowed_root=r"C:\workspace", platform="windows")
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_executor_path(r"D:\workspace\secret.txt", shim)
+
     def test_e2b_fallback_when_no_sandbox(self):
         """resolve_executor_path(path, None) preserves E2B_WORKDIR semantics."""
         assert resolve_executor_path("file.txt", None) == "/home/user/file.txt"

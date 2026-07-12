@@ -8,6 +8,7 @@ directly rather than spinning up an LD client.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,15 +36,20 @@ def _make_executor(
         local_llm_models=(
             local_llm_models if local_llm_models is not None else ["llama3.2:3b"]
         ),
+        capability_set=frozenset(
+            capabilities
+            if capabilities is not None
+            else ["shell", "files", "local_llm"]
+        ),
     )
 
 
-def _make_config(policy: str = "prefer_for_fast") -> ChatConfig:
+def _make_config(
+    policy: Literal["never", "prefer_for_fast", "always"] = "prefer_for_fast",
+) -> ChatConfig:
     # ChatConfig has many required defaults; instantiation with no
     # overrides picks the defaults. policy is the only one we care about.
-    cfg = ChatConfig()
-    cfg.local_llm_policy = policy  # type: ignore[assignment]
-    return cfg
+    return ChatConfig(local_llm_policy=policy)
 
 
 @pytest.mark.asyncio

@@ -533,8 +533,7 @@ class AgentServer(backend.util.service.AppProcess):
             http="httptools",
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
+            ws="websockets-sansio",
         )
 
     @staticmethod

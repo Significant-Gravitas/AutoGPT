@@ -118,7 +118,7 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
             return remote
         try:
             data = await sandbox.files.read(remote, format="bytes")
-            return bytes(data)
+            return data.encode() if isinstance(data, str) else bytes(data)
         except Exception as exc:
             return ErrorResponse(
                 message=f"Source file not found on sandbox: {source_path} ({exc})",

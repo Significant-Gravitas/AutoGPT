@@ -5,11 +5,16 @@ All context variables and their accessors live here so that
 without creating circular dependencies.
 """
 
+from __future__ import annotations
+
+import ntpath
 import os
+import posixpath
 import re
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias, TypeGuard
 
+from backend.copilot.local_executor import LocalPCExecutorMarker
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.util.workspace import WorkspaceManager
@@ -18,6 +23,11 @@ if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tools.local_pc_shim import LocalPCShim
+
+    ExecutorSandbox: TypeAlias = AsyncSandbox | LocalPCShim
+else:
+    ExecutorSandbox = object
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
@@ -41,7 +51,7 @@ _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
-_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
+_current_sandbox: ContextVar[ExecutorSandbox | None] = ContextVar(
     "_current_sandbox", default=None
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
@@ -70,7 +80,7 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 def set_execution_context(
     user_id: str | None,
     session: ChatSession | None,
-    sandbox: "AsyncSandbox | None" = None,
+    sandbox: ExecutorSandbox | None = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
 ) -> None:
@@ -93,7 +103,7 @@ def get_current_permissions() -> "CopilotPermissions | None":
     return _current_permissions.get()
 
 
-def get_current_sandbox() -> "AsyncSandbox | None":
+def get_current_sandbox() -> ExecutorSandbox | None:
     """Return the E2B sandbox for the current session, or None if not active."""
     return _current_sandbox.get()
 
@@ -108,30 +118,31 @@ E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
 E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
 
 
-def get_workdir(sandbox: "AsyncSandbox | None") -> str:
+def is_local_pc_executor(sandbox: object | None) -> TypeGuard[LocalPCShim]:
+    """Narrow an executor union to the Local PC adapter."""
+    return isinstance(sandbox, LocalPCExecutorMarker)
+
+
+def get_workdir(sandbox: ExecutorSandbox | None) -> str:
     """Return the active executor's working directory.
 
     LocalPCShim advertises its `allowed_root` in HELLO; E2B uses the fixed
     `/home/user`. Falls back to `E2B_WORKDIR` when no sandbox is set so
     legacy callsites keep their prior behavior.
     """
-    from backend.copilot.tools.local_pc_shim import LocalPCShim
-
-    if isinstance(sandbox, LocalPCShim) and sandbox.allowed_root:
+    if is_local_pc_executor(sandbox) and sandbox.allowed_root:
         return sandbox.allowed_root
     return E2B_WORKDIR
 
 
-def get_allowed_dirs(sandbox: "AsyncSandbox | None") -> tuple[str, ...]:
+def get_allowed_dirs(sandbox: ExecutorSandbox | None) -> tuple[str, ...]:
     """Return the active executor's allowed directories.
 
     E2B exposes both `/home/user` and `/tmp`. LocalPCShim exposes only
     the advertised `allowed_root` — no implicit `/tmp` access for the local
     machine.
     """
-    from backend.copilot.tools.local_pc_shim import LocalPCShim
-
-    if isinstance(sandbox, LocalPCShim) and sandbox.allowed_root:
+    if is_local_pc_executor(sandbox) and sandbox.allowed_root:
         return (sandbox.allowed_root,)
     return E2B_ALLOWED_DIRS
 
@@ -185,13 +196,14 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
-def resolve_executor_path(path: str, sandbox: "AsyncSandbox | None") -> str:
+def resolve_executor_path(path: str, sandbox: ExecutorSandbox | None) -> str:
     """Normalise *path* against the active executor's workdir + allowed dirs.
 
     For LocalPCShim: resolves relative paths against `shim.allowed_root` and
     validates against `(shim.allowed_root,)`. Note this is the platform-side
     lexical check only — the shim itself enforces the real path jail per
-    CROSS_PLATFORM.md (realpath + case-fold per FS + reserved-name + ADS
+    autogpt-local-executor/docs/CROSS_PLATFORM.md (realpath + case-fold per FS
+    + reserved-name + ADS
     rejection). Platform-side validation here is best-effort and catches
     obvious-bad inputs before a wire roundtrip.
 
@@ -201,13 +213,23 @@ def resolve_executor_path(path: str, sandbox: "AsyncSandbox | None") -> str:
     """
     workdir = get_workdir(sandbox)
     allowed = get_allowed_dirs(sandbox)
-    candidate = path if os.path.isabs(path) else os.path.join(workdir, path)
-    normalized = os.path.normpath(candidate)
+    windows = is_local_pc_executor(sandbox) and sandbox.platform.lower() == "windows"
+    path_module = ntpath if windows else posixpath
+    candidate = path if path_module.isabs(path) else path_module.join(workdir, path)
+    normalized = path_module.normpath(candidate)
     for root in allowed:
-        if normalized == root or normalized.startswith(root + os.sep):
+        normalized_root = path_module.normpath(root)
+        try:
+            common = path_module.commonpath((normalized_root, normalized))
+        except ValueError:
+            continue
+        if windows:
+            if ntpath.normcase(common) == ntpath.normcase(normalized_root):
+                return normalized
+        elif common == normalized_root:
             return normalized
     raise ValueError(
-        f"Path must be within {' or '.join(allowed)}: {os.path.basename(path)}"
+        f"Path must be within {' or '.join(allowed)}: {path_module.basename(path)}"
     )
 
 

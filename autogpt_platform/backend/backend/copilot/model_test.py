@@ -18,6 +18,9 @@ from backend.util.exceptions import NotFoundError
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     Usage,
     _save_session_to_db,
     append_and_save_message,
@@ -50,6 +53,57 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+def test_legacy_session_metadata_defaults_to_cloud_execution() -> None:
+    metadata = ChatSessionMetadata.model_validate({"dry_run": False})
+    assert metadata.execution_target.kind == "cloud"
+
+
+def test_chat_session_new_preserves_generated_id_and_local_binding() -> None:
+    binding = LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+        revision=1,
+    )
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        session_id="generated-session-id",
+        execution_target=binding,
+    )
+
+    assert session.session_id == "generated-session-id"
+    assert session.metadata.execution_target == binding
+
+
+def test_public_local_session_metadata_redacts_restore_credentials() -> None:
+    metadata = ChatSessionMetadata(
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+            revision=2,
+        )
+    )
+
+    public = PublicChatSessionMetadata.from_internal(metadata).model_dump()
+
+    assert public["execution_target"] == {
+        "kind": "local",
+        "machine_id": "machine-1",
+        "allowed_root": "/workspace",
+        "revision": 2,
+    }
+    serialized = str(public)
+    assert "root_grant" not in serialized
+    assert "root_fingerprint" not in serialized
+    assert "directory_ref" not in serialized
 
 
 @pytest.mark.asyncio(loop_scope="session")

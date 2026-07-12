@@ -1,8 +1,12 @@
 "use client";
 
 import { Flask } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { LocalPCBadge } from "./components/LocalPCBadge/LocalPCBadge";
+import { LocalPCComputerUseConsent } from "./components/LocalPCComputerUseConsent/LocalPCComputerUseConsent";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
+import { RecordWorkflow } from "./components/RecordWorkflow/RecordWorkflow";
 import { useCopilotPage } from "./useCopilotPage";
 
 interface Props {
@@ -19,6 +23,7 @@ export function CopilotChatHost({
   droppedFiles,
   onDroppedFilesConsumed,
 }: Props) {
+  const isRecordingEnabled = useGetFlag(Flag.WORKFLOW_RECORDING);
   const {
     sessionId,
     messages,
@@ -45,11 +50,32 @@ export function CopilotChatHost({
     rateLimitMessage,
     dismissRateLimit,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
   } = useCopilotPage();
+  const isLocalSession =
+    !!sessionId && sessionExecutionTarget?.kind === "local";
 
   return (
     <>
+      {isLocalSession ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-1.5">
+            <LocalPCBadge
+              sessionID={sessionId}
+              machineID={sessionExecutionTarget.machine_id}
+              allowedRoot={sessionExecutionTarget.allowed_root}
+            />
+            {isRecordingEnabled ? (
+              <RecordWorkflow sessionID={sessionId} />
+            ) : null}
+          </div>
+          <LocalPCComputerUseConsent
+            key={`local-pc-consent-${sessionId}`}
+            sessionID={sessionId}
+          />
+        </>
+      ) : null}
       {/* Only shown when the CURRENT session is confirmed dry_run via its
           immutable metadata. Never based on the global isDryRun preference
           (which only predicts future sessions). */}

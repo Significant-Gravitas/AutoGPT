@@ -12,14 +12,15 @@ returns ``needs_confirmation`` with the questions to ask (co-pilot) or a
 Email is probably a parameter") only *seed the question* — they're never a
 basis for auto-save.
 
-See ``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md`` §2, §7, §8.
+See ``autogpt-local-executor/docs/WORKFLOW_RECORDING.md`` §2, §7, §8.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from .recording_models import (
     DESTRUCTIVE_VERBS,
@@ -41,8 +42,7 @@ _PARAMETER_PRIOR_TYPES: frozenset[str] = frozenset({"text", "email", "number", "
 _SECRET_TYPES: frozenset[str] = frozenset({"secret"})
 
 
-@dataclass
-class SkillParameter:
+class SkillParameter(BaseModel):
     """One inferred-and-confirmed parameter of a generated skill."""
 
     name: str
@@ -51,7 +51,7 @@ class SkillParameter:
     confirmed: bool = False
     # The demonstrated values seen for this parameter, in row order. Used
     # to prove variance (≥2 distinct → parameter) and to seed dry-run rows.
-    sample_values: list[Any] = field(default_factory=list)
+    sample_values: list[Any] = Field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,8 +63,7 @@ class SkillParameter:
         }
 
 
-@dataclass
-class ReplayBinding:
+class ReplayBinding(BaseModel):
     """A replay-manifest entry binding one step to a parameter or constant.
 
     ``selector_fallthrough`` is the ordered §7 strategy list the replay
@@ -77,7 +76,7 @@ class ReplayBinding:
     action: str
     parameter: str | None  # None → constant step
     constant_value: Any = None
-    selector_fallthrough: list[dict[str, Any]] = field(default_factory=list)
+    selector_fallthrough: list[dict[str, Any]] = Field(default_factory=list)
     requires_assert: bool = False  # §9 read-back for mutating steps
     destructive: bool = False
 
@@ -93,11 +92,10 @@ class ReplayBinding:
         }
 
 
-@dataclass
-class ReplayManifest:
+class ReplayManifest(BaseModel):
     """The structured replay plan accompanying SKILL.md."""
 
-    bindings: list[ReplayBinding] = field(default_factory=list)
+    bindings: list[ReplayBinding] = Field(default_factory=list)
     data_source_hint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,8 +105,7 @@ class ReplayManifest:
         }
 
 
-@dataclass
-class ClarifyingQuestion:
+class ClarifyingQuestion(BaseModel):
     """A question that must be answered before a skill can be saved (§8)."""
 
     id: str
@@ -126,8 +123,7 @@ class ClarifyingQuestion:
         }
 
 
-@dataclass
-class GeneratedSkill:
+class GeneratedSkill(BaseModel):
     """Result of generalizing a recording.
 
     Exactly one of two terminal shapes:
@@ -146,8 +142,8 @@ class GeneratedSkill:
     needs_confirmation: bool
     skill_md: str
     manifest: ReplayManifest
-    parameters: list[SkillParameter] = field(default_factory=list)
-    questions: list[ClarifyingQuestion] = field(default_factory=list)
+    parameters: list[SkillParameter] = Field(default_factory=list)
+    questions: list[ClarifyingQuestion] = Field(default_factory=list)
     destructive: bool = False
     needs_second_row: bool = False
 
@@ -653,8 +649,7 @@ def propose_clarifications(
     return questions
 
 
-@dataclass
-class StepReplayResult:
+class StepReplayResult(BaseModel):
     seq: int
     action: str
     resolved_via: str | None  # dom | ax | visual | None (skipped)
@@ -673,12 +668,11 @@ class StepReplayResult:
         }
 
 
-@dataclass
-class RowDryRunResult:
+class RowDryRunResult(BaseModel):
     row_index: int
     row: dict[str, Any]
     ok: bool
-    steps: list[StepReplayResult] = field(default_factory=list)
+    steps: list[StepReplayResult] = Field(default_factory=list)
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -691,13 +685,12 @@ class RowDryRunResult:
         }
 
 
-@dataclass
-class DryRunResult:
+class DryRunResult(BaseModel):
     skill_name: str
     rows_attempted: int
     rows_ok: int
     destructive_blocked: bool  # submits skipped because allow_destructive=False
-    per_row: list[RowDryRunResult] = field(default_factory=list)
+    per_row: list[RowDryRunResult] = Field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -720,6 +713,7 @@ async def dry_run(
     *,
     shim: Any,
     allow_destructive: bool = False,
+    connection_guard: Any | None = None,
 ) -> DryRunResult:
     """Drive the skill's replay manifest over MULTIPLE rows via the shim.
 
@@ -750,7 +744,11 @@ async def dry_run(
         try:
             for binding in skill.manifest.bindings:
                 step_res = await _replay_step(
-                    binding, row, shim=shim, allow_destructive=allow_destructive
+                    binding,
+                    row,
+                    shim=shim,
+                    allow_destructive=allow_destructive,
+                    connection_guard=connection_guard,
                 )
                 row_result.steps.append(step_res)
                 if step_res.detail == "destructive_skipped":
@@ -777,6 +775,7 @@ async def _replay_step(
     *,
     shim: Any,
     allow_destructive: bool,
+    connection_guard: Any | None,
 ) -> StepReplayResult:
     """Replay one manifest binding for one row. Pure orchestration over the
     shim's computer surface; selection follows the §7 fall-through."""
@@ -816,15 +815,15 @@ async def _replay_step(
     # unit-testable.
     try:
         if binding.action in ("fill", "select", "paste") and value is not None:
-            await shim.computer.type(str(value))
+            await shim.computer.type(str(value), _guard=connection_guard)
         elif binding.action == "click":
             cursor = _binding_cursor(binding)
             if cursor is not None:
-                await shim.computer.click(cursor)
+                await shim.computer.click(cursor, _guard=connection_guard)
         elif binding.action == "submit" and allow_destructive:
             cursor = _binding_cursor(binding)
             if cursor is not None:
-                await shim.computer.click(cursor)
+                await shim.computer.click(cursor, _guard=connection_guard)
         # navigate / wait / launch_app etc. are no-ops at the floor level
         # for the dry-run logic test; the real replay engine handles them.
     except Exception as exc:
@@ -841,7 +840,12 @@ async def _replay_step(
     asserted = False
     ok = True
     if binding.requires_assert and binding.parameter is not None and value is not None:
-        asserted, ok = await _readback_assert(binding, str(value), shim=shim)
+        asserted, ok = await _readback_assert(
+            binding,
+            str(value),
+            shim=shim,
+            connection_guard=connection_guard,
+        )
 
     return StepReplayResult(
         seq=binding.seq,
@@ -872,7 +876,11 @@ def _binding_cursor(binding: ReplayBinding) -> list[int] | None:
 
 
 async def _readback_assert(
-    binding: ReplayBinding, expected: str, *, shim: Any
+    binding: ReplayBinding,
+    expected: str,
+    *,
+    shim: Any,
+    connection_guard: Any | None,
 ) -> tuple[bool, bool]:
     """Read the value back and compare (§9). Returns (asserted, ok).
 
@@ -885,7 +893,7 @@ async def _readback_assert(
     if reader is None:
         return False, True
     try:
-        actual = await reader()
+        actual = await reader(_guard=connection_guard)
     except Exception:
         return False, True
     if actual is None:

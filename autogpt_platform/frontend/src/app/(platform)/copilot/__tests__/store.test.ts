@@ -255,6 +255,59 @@ describe("useCopilotUIStore", () => {
       showNotificationDialog: false,
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
+      newChatExecutionTarget: { kind: "cloud" },
+      isExecutionTargetPickerOpen: false,
+      executionTargetError: null,
+    });
+  });
+
+  describe("new chat execution target", () => {
+    it("defaults to Cloud", () => {
+      expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual({
+        kind: "cloud",
+      });
+    });
+
+    it("keeps Local PC folder references in memory only", () => {
+      useCopilotUIStore.getState().setNewChatExecutionTarget({
+        kind: "local",
+        machineID: "machine-1",
+        machineLabel: "Workstation",
+        connectionID: "connection-1",
+        browseID: "browse-1",
+        directoryRef: "directory-1",
+        displayPath: "C:\\Users\\Ada\\Projects",
+      });
+
+      expect(window.localStorage.length).toBe(0);
+      expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject(
+        {
+          kind: "local",
+          directoryRef: "directory-1",
+        },
+      );
+    });
+
+    it("resets each new chat to Cloud and closes the folder picker", () => {
+      useCopilotUIStore.getState().setNewChatExecutionTarget({
+        kind: "local",
+        machineID: "machine-1",
+        machineLabel: "Workstation",
+        connectionID: "connection-1",
+        browseID: "browse-1",
+        directoryRef: "directory-1",
+        displayPath: "C:\\Users\\Ada\\Projects",
+      });
+      useCopilotUIStore.getState().setExecutionTargetPickerOpen(true);
+      useCopilotUIStore.getState().setExecutionTargetError("Stale folder");
+
+      useCopilotUIStore.getState().resetNewChatExecutionTarget();
+
+      expect(useCopilotUIStore.getState()).toMatchObject({
+        newChatExecutionTarget: { kind: "cloud" },
+        isExecutionTargetPickerOpen: false,
+        executionTargetError: null,
+      });
     });
   });
 
@@ -450,6 +503,7 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
+      window.localStorage.setItem("copilot-local-pc-warning-acked", "true");
 
       useCopilotUIStore.getState().clearCopilotLocalData();
 
@@ -468,6 +522,9 @@ describe("useCopilotUIStore", () => {
       expect(window.localStorage.getItem("copilot-model")).toBeNull();
       expect(
         window.localStorage.getItem("copilot-completed-sessions"),
+      ).toBeNull();
+      expect(
+        window.localStorage.getItem("copilot-local-pc-warning-acked"),
       ).toBeNull();
     });
   });

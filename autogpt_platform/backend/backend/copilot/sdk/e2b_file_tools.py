@@ -21,7 +21,10 @@ import json
 import logging
 import os
 import shlex
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
+
+if TYPE_CHECKING:
+    from e2b import AsyncSandbox
 
 from backend.copilot.context import (
     E2B_ALLOWED_DIRS,
@@ -33,8 +36,8 @@ from backend.copilot.context import (
     is_sdk_tool_path,
     is_within_allowed_dirs,
     resolve_executor_path,
-    resolve_sandbox_path,
 )
+from backend.copilot.context import resolve_sandbox_path as resolve_sandbox_path
 from backend.copilot.sdk.local_pc_file_tools import (
     is_local_pc,
     list_via_shim,
@@ -174,7 +177,8 @@ async def _check_sandbox_symlink_escape(
     For E2B: ``readlink -f`` follows symlinks on the POSIX sandbox FS.
     For LocalPCShim: FILE_STAT(follow_symlinks=True) returns the canonical
     path per the shim's per-OS realpath (handles junctions on Windows,
-    firmlinks on macOS — see CROSS_PLATFORM.md Path Jail Strategy).
+    firmlinks on macOS — see
+    ``autogpt-local-executor/docs/CROSS_PLATFORM.md`` Path Jail Strategy).
 
     Returns the canonical parent path, or ``None`` if the path escapes
     the executor's allowed dirs.
@@ -409,21 +413,26 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is not None:
         # E2B path — write to sandbox filesystem
         try:
-            remote = resolve_sandbox_path(file_path)
+            remote = resolve_executor_path(file_path, sandbox)
         except ValueError as exc:
             return _mcp(str(exc), error=True)
 
         try:
             parent = os.path.dirname(remote)
-            if parent and parent not in E2B_ALLOWED_DIRS:
-                await sandbox.files.make_dir(parent)
-            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
-            if canonical_parent is None:
-                return _mcp(
-                    f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
-                    error=True,
+            if not is_local_pc(sandbox):
+                e2b_sandbox = cast("AsyncSandbox", sandbox)
+                if parent and parent not in E2B_ALLOWED_DIRS:
+                    await e2b_sandbox.files.make_dir(parent)
+                canonical_parent = await _check_sandbox_symlink_escape(
+                    e2b_sandbox, parent
                 )
-            remote = os.path.join(canonical_parent, os.path.basename(remote))
+                if canonical_parent is None:
+                    return _mcp(
+                        f"Path must be within {E2B_ALLOWED_DIRS_STR}: "
+                        f"{os.path.basename(parent)}",
+                        error=True,
+                    )
+                remote = os.path.join(canonical_parent, os.path.basename(remote))
             await _sandbox_write(sandbox, remote, content)
         except Exception as exc:
             return _mcp(
@@ -516,21 +525,28 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is not None:
         # E2B path — edit in sandbox filesystem
         try:
-            remote = resolve_sandbox_path(file_path)
+            remote = resolve_executor_path(file_path, sandbox)
         except ValueError as exc:
             return _mcp(str(exc), error=True)
 
-        parent = os.path.dirname(remote)
-        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
-        if canonical_parent is None:
-            return _mcp(
-                f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
-                error=True,
-            )
-        remote = os.path.join(canonical_parent, os.path.basename(remote))
+        if not is_local_pc(sandbox):
+            parent = os.path.dirname(remote)
+            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+            if canonical_parent is None:
+                return _mcp(
+                    f"Path must be within {E2B_ALLOWED_DIRS_STR}: "
+                    f"{os.path.basename(parent)}",
+                    error=True,
+                )
+            remote = os.path.join(canonical_parent, os.path.basename(remote))
 
         try:
-            raw = bytes(await sandbox.files.read(remote, format="bytes"))
+            raw_result = await sandbox.files.read(remote, format="bytes")
+            raw = (
+                raw_result.encode("utf-8")
+                if isinstance(raw_result, str)
+                else bytes(raw_result)
+            )
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)

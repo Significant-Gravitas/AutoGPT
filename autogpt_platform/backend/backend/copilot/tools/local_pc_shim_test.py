@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from .local_pc_relay_protocol import RelayPresence
 from .local_pc_shim import (
     _IDEMPOTENT_OPS,
     LocalPCShim,
@@ -16,12 +18,86 @@ from .local_pc_shim import (
     ShimConnectionManager,
     ShimHello,
     ShimOverloadedError,
+    ShimProtocolError,
     WriteUnconfirmedError,
     _CommandsProxy,
     _ComputerProxy,
     _FilesProxy,
     _RpcAttemptFailed,
 )
+
+
+@pytest.mark.asyncio
+async def test_correlated_response_requires_exact_response_type_and_id() -> None:
+    shim = LocalPCShim.__new__(LocalPCShim)
+    future = asyncio.get_running_loop().create_future()
+    shim._pending = {"request-1": (frozenset({"FILE_CONTENTS"}), future)}
+    shim._streaming = {}
+    shim._recording_steps = {}
+    shim._pending_capacity = None
+
+    shim._process_raw_message(
+        json.dumps(
+            {
+                "type": "ACK",
+                "id": "request-1",
+                "payload": {"ok": True},
+            }
+        )
+    )
+
+    with pytest.raises(ShimProtocolError):
+        await future
+
+    other_future = asyncio.get_running_loop().create_future()
+    shim._pending = {"request-2": (frozenset({"FILE_CONTENTS"}), other_future)}
+    shim._process_raw_message(
+        json.dumps(
+            {
+                "type": "FILE_CONTENTS",
+                "id": "wrong-id",
+                "payload": {"content": "secret"},
+            }
+        )
+    )
+    assert not other_future.done()
+    other_future.cancel()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_rpc_removes_pending_future() -> None:
+    sent = asyncio.Event()
+
+    class _SendOnlyTransport:
+        async def send_text(self, _data: str) -> None:
+            sent.set()
+
+        async def iter_text(self):
+            if False:
+                yield ""
+
+        async def close(self) -> None:
+            return None
+
+    shim = LocalPCShim.__new__(LocalPCShim)
+    shim._ws = _SendOnlyTransport()
+    shim._pending = {}
+    request = asyncio.create_task(
+        shim._send_and_wait("FILE_READ", {"path": "inside.txt"}, timeout=30)
+    )
+    await sent.wait()
+    assert len(shim._pending) == 1
+
+    request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    assert shim._pending == {}
+
+
+def test_recording_fetch_is_idempotent_but_apply_review_is_not() -> None:
+    assert "RECORDING_FETCH" in _IDEMPOTENT_OPS
+    assert "APPLY_RECORDING_REVIEW" not in _IDEMPOTENT_OPS
 
 
 def _make_shim_with_rpc(rpc_return: dict) -> LocalPCShim:
@@ -63,18 +139,78 @@ class TestShimHello:
         assert hello.capabilities == ["shell", "files", "computer_use"]
         assert hello.screen_resolution == (1920, 1080)
 
-    def test_from_payload_handles_missing_fields(self):
-        hello = ShimHello.from_payload({})
-        assert hello.machine_id == ""
-        assert hello.capabilities == []
-        assert hello.screen_resolution is None
+    def test_from_payload_rejects_missing_identity_fields(self):
+        with pytest.raises(ValueError):
+            ShimHello.from_payload({})
 
     def test_from_payload_rejects_malformed_screen_resolution(self):
-        hello = ShimHello.from_payload({"screen_resolution": [1920]})
+        hello = ShimHello.from_payload(
+            {
+                "machine_id": "abc-123",
+                "platform": "windows",
+                "arch": "x86_64",
+                "allowed_root": "C:\\workspace",
+                "screen_resolution": [1920],
+            }
+        )
         assert hello.screen_resolution is None
+
+    def test_from_payload_filters_features_by_granularity(self):
+        hello = ShimHello.from_payload(
+            {
+                "machine_id": "abc-123",
+                "platform": "linux",
+                "arch": "x86_64",
+                "allowed_root": "/workspace",
+                "computer_use_features_coarse": [
+                    "screenshot",
+                    "input.click",
+                    "future-feature",
+                ],
+                "computer_use_features": ["input.click", "future-feature"],
+            }
+        )
+
+        assert hello.computer_use_features_coarse == ["screenshot"]
+        assert hello.computer_use_features == ["input.click"]
+
+    def test_from_payload_rejects_feature_whitespace(self):
+        with pytest.raises(ValueError):
+            ShimHello.from_payload(
+                {
+                    "machine_id": "abc-123",
+                    "platform": "linux",
+                    "arch": "x86_64",
+                    "allowed_root": "/workspace",
+                    "computer_use_features_coarse": [" input"],
+                }
+            )
 
 
 class TestShimConnectionManager:
+    class NoPresenceRelay:
+        def __init__(self):
+            self.revocations: list[tuple[str, str | None, str]] = []
+
+        async def get_presence(self, session_id: str):
+            return None
+
+        async def wait_for_presence(self, session_id: str, *, timeout: float):
+            await asyncio.sleep(timeout)
+            raise TimeoutError
+
+        async def open_transport(self, presence):
+            raise AssertionError("no presence")
+
+        async def serve_websocket(self, *args, **kwargs):
+            raise AssertionError("not used")
+
+        async def revoke_owner(
+            self, user_id: str, client_id: str | None, *, reason: str
+        ):
+            self.revocations.append((user_id, client_id, reason))
+            return 0
+
     def test_register_stores_hello_alongside_ws(self):
         manager = ShimConnectionManager()
         ws = MagicMock()
@@ -89,6 +225,317 @@ class TestShimConnectionManager:
         manager.unregister("s1")
         assert manager.get("s1") is None
         assert manager.get_hello("s1") is None
+
+    @pytest.mark.asyncio
+    async def test_for_session_reuses_single_receive_loop_owner(self):
+        release = asyncio.Event()
+
+        class BlockingWebSocket:
+            async def iter_text(self):
+                await release.wait()
+                if False:
+                    yield ""
+
+            async def close(self):
+                release.set()
+
+        manager = ShimConnectionManager()
+        websocket = BlockingWebSocket()
+        manager.register("s1", websocket, ShimHello(machine_id="m1"))
+
+        first = manager.get_or_create_shim("s1")
+        second = await LocalPCShim.for_session("s1", manager=manager)
+
+        assert second is first
+        release.set()
+        await first.wait_closed()
+        assert manager.get("s1") is None
+
+    @pytest.mark.asyncio
+    async def test_wait_for_observes_concurrent_direct_registration(self):
+        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
+        waiter = asyncio.create_task(manager.wait_for("direct", timeout=0.2))
+        await asyncio.sleep(0.01)
+        websocket = MagicMock()
+        manager.register("direct", websocket, ShimHello(machine_id="m1"))
+
+        assert await waiter is websocket
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failing_operation", ["send", "close"])
+    async def test_revocation_reports_direct_transport_failure(
+        self, failing_operation: str
+    ):
+        relay = self.NoPresenceRelay()
+        manager = ShimConnectionManager(relay=relay)
+        websocket = MagicMock()
+        websocket.send_text = AsyncMock()
+        websocket.close = AsyncMock()
+        operation = (
+            websocket.send_text if failing_operation == "send" else websocket.close
+        )
+        operation.side_effect = ConnectionError(f"{failing_operation} failed")
+        manager.register(
+            "direct-session",
+            websocket,
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+
+        with pytest.raises(RuntimeError, match="session revocation"):
+            await manager.revoke_user_shims(
+                "user-1", "autogpt-local-executor", reason="user_revoked"
+            )
+
+        websocket.send_text.assert_awaited_once()
+        websocket.close.assert_awaited_once_with(code=4428, reason="Token revoked")
+        assert relay.revocations == [
+            ("user-1", "autogpt-local-executor", "user_revoked")
+        ]
+        if failing_operation == "close":
+            assert manager.get("direct-session") is websocket
+        else:
+            assert manager.get("direct-session") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("hanging_operation", ["send", "close"])
+    async def test_revocation_times_out_hanging_direct_transport(
+        self, hanging_operation: str, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.local_pc_shim._REVOCATION_OPERATION_TIMEOUT_SECONDS",
+            0.01,
+        )
+        relay = self.NoPresenceRelay()
+        manager = ShimConnectionManager(relay=relay)
+        never_finishes = asyncio.Event()
+
+        async def hang(*_args: object, **_kwargs: object) -> None:
+            await never_finishes.wait()
+
+        websocket = MagicMock()
+        websocket.send_text = AsyncMock()
+        websocket.close = AsyncMock()
+        healthy_websocket = MagicMock()
+        healthy_websocket.send_text = AsyncMock()
+        healthy_websocket.close = AsyncMock()
+        operation = (
+            websocket.send_text if hanging_operation == "send" else websocket.close
+        )
+        operation.side_effect = hang
+        manager.register(
+            "direct-session",
+            websocket,
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+        manager.register(
+            "healthy-session",
+            healthy_websocket,
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+
+        with pytest.raises(RuntimeError, match="session revocation"):
+            await asyncio.wait_for(
+                manager.revoke_user_shims(
+                    "user-1", "autogpt-local-executor", reason="user_revoked"
+                ),
+                timeout=0.2,
+            )
+
+        websocket.send_text.assert_awaited_once()
+        websocket.close.assert_awaited_once_with(code=4428, reason="Token revoked")
+        healthy_websocket.send_text.assert_awaited_once()
+        healthy_websocket.close.assert_awaited_once_with(
+            code=4428, reason="Token revoked"
+        )
+        assert relay.revocations == [
+            ("user-1", "autogpt-local-executor", "user_revoked")
+        ]
+        assert manager.get("healthy-session") is None
+
+    @pytest.mark.asyncio
+    async def test_revocation_times_out_hanging_relay(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.local_pc_shim._REVOCATION_OPERATION_TIMEOUT_SECONDS",
+            0.01,
+        )
+        relay_started = asyncio.Event()
+        never_finishes = asyncio.Event()
+
+        class HangingRelay(self.NoPresenceRelay):
+            async def revoke_owner(
+                self, user_id: str, client_id: str | None, *, reason: str
+            ) -> int:
+                relay_started.set()
+                await never_finishes.wait()
+                return 0
+
+        manager = ShimConnectionManager(relay=HangingRelay())
+
+        with pytest.raises(RuntimeError, match="session revocation"):
+            await asyncio.wait_for(
+                manager.revoke_user_shims(
+                    "user-1", "autogpt-local-executor", reason="user_revoked"
+                ),
+                timeout=0.2,
+            )
+
+        assert relay_started.is_set()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_uses_one_timeout_budget(self):
+        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError):
+            await manager.wait_for("missing", timeout=0.03)
+        elapsed = asyncio.get_running_loop().time() - started
+
+        assert elapsed < 0.08
+
+    @pytest.mark.asyncio
+    async def test_cached_presence_lookup_cannot_miss_direct_registration(self):
+        lookup_started = asyncio.Event()
+        release_lookup = asyncio.Event()
+
+        class RacingRelay(TestShimConnectionManager.NoPresenceRelay):
+            async def get_presence(self, session_id: str):
+                lookup_started.set()
+                await release_lookup.wait()
+                return None
+
+        manager = ShimConnectionManager(relay=RacingRelay())
+        stale_transport = MagicMock()
+        stale_transport.close = AsyncMock()
+        manager._relay_transports["direct"] = stale_transport
+        manager._relay_connection_ids["direct"] = "old-connection"
+        waiter = asyncio.create_task(manager.wait_for("direct", timeout=0.2))
+        await lookup_started.wait()
+
+        direct = MagicMock()
+        manager.register("direct", direct, ShimHello(machine_id="new"))
+        release_lookup.set()
+
+        assert await asyncio.wait_for(waiter, 0.1) is direct
+        stale_transport.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cached_presence_lookup_uses_original_timeout_budget(self):
+        class SlowCachedRelay(TestShimConnectionManager.NoPresenceRelay):
+            async def get_presence(self, session_id: str):
+                await asyncio.sleep(1)
+                return None
+
+        manager = ShimConnectionManager(relay=SlowCachedRelay())
+        manager._relay_transports["stale"] = MagicMock()
+        manager._relay_connection_ids["stale"] = "old-connection"
+        started = asyncio.get_running_loop().time()
+
+        with pytest.raises(TimeoutError):
+            await manager.wait_for("stale", timeout=0.03)
+
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 0.08
+
+    @pytest.mark.asyncio
+    async def test_transport_open_uses_original_timeout_budget(self):
+        class SlowOpenRelay(TestShimConnectionManager.NoPresenceRelay):
+            async def wait_for_presence(self, session_id: str, *, timeout: float):
+                return RelayPresence(
+                    session_id=session_id,
+                    connection_id="connection-1",
+                    user_id="user-1",
+                    client_id="client-1",
+                    expires_at=9999999999,
+                )
+
+            async def open_transport(self, presence):
+                await asyncio.sleep(1)
+                raise AssertionError("open should be cancelled by the timeout")
+
+        manager = ShimConnectionManager(relay=SlowOpenRelay())
+        started = asyncio.get_running_loop().time()
+
+        with pytest.raises(TimeoutError):
+            await manager.wait_for("slow-open", timeout=0.03)
+
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 0.08
+
+    @pytest.mark.asyncio
+    async def test_duplicate_session_revokes_old_connection_without_losing_new(self):
+        class ManagedWebSocket:
+            def __init__(self):
+                self.closed = asyncio.Event()
+                self.sent: list[str] = []
+                self.close_code: int | None = None
+
+            async def iter_text(self):
+                await self.closed.wait()
+                if False:
+                    yield ""
+
+            async def send_text(self, message: str):
+                self.sent.append(message)
+
+            async def close(self, *, code: int = 1000, reason: str = ""):
+                self.close_code = code
+                self.closed.set()
+
+        manager = ShimConnectionManager()
+        old_websocket = ManagedWebSocket()
+        new_websocket = ManagedWebSocket()
+        manager.register("s1", old_websocket, ShimHello(machine_id="old"))
+        shim = manager.get_or_create_shim("s1")
+        old_route = asyncio.create_task(shim.wait_closed())
+        await asyncio.sleep(0)
+
+        manager.register("s1", new_websocket, ShimHello(machine_id="new"))
+        await asyncio.wait_for(old_route, timeout=1)
+
+        assert old_websocket.close_code == 4427
+        revocation = json.loads(old_websocket.sent[0])
+        assert revocation["type"] == "SESSION_REVOKED"
+        assert revocation["payload"]["reason"] == "another_shim_connected"
+        assert manager.get("s1") is new_websocket
+        assert manager.get_or_create_shim("s1") is shim
+
+        await new_websocket.close()
+        await shim.wait_closed()
+
+
+class TestDisconnectCleanup:
+    @pytest.mark.asyncio
+    async def test_disconnect_fails_pending_futures_without_timeout(self):
+        shim = LocalPCShim.__new__(LocalPCShim)
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict] = loop.create_future()
+        shim._pending = {"wire-1": (frozenset({"ACK"}), future)}
+        shim._streaming = {}
+        shim._recording_steps = {}
+
+        shim._fail_in_flight(ConnectionError("connection lost"))
+
+        with pytest.raises(ConnectionError, match="connection lost"):
+            await future
+        assert shim._pending == {}
+
+    def test_disconnect_unblocks_stream_and_recording_consumers(self):
+        shim = LocalPCShim.__new__(LocalPCShim)
+        stream_queue: asyncio.Queue[dict] = asyncio.Queue()
+        recording_queue: asyncio.Queue = asyncio.Queue()
+        shim._pending = {}
+        shim._streaming = {"stream-1": stream_queue}
+        shim._recording_steps = {"rec-1": recording_queue}
+
+        shim._fail_in_flight(ConnectionError("connection lost"))
+
+        assert stream_queue.get_nowait()["payload"]["code"] == "CONNECTION_LOST"
+        assert recording_queue.get_nowait() is None
+        assert shim._recording_steps == {}
 
 
 class TestFilesReadFormatBytes:
@@ -607,7 +1054,9 @@ def _make_shim_with_send_and_wait(side_effect) -> LocalPCShim:
     shim.platform = "darwin"
     shim.arch = "arm64"
     shim.capabilities = ["shell", "files"]
+    shim.computer_use_features_coarse = []
     shim.computer_use_features = []
+    shim._connection_generation = 1
     shim._manager = None
     shim._send_and_wait = AsyncMock(side_effect=side_effect)
     shim._await_reconnect_for_retry = AsyncMock(return_value=None)
@@ -651,6 +1100,28 @@ class TestIdempotencyTable:
 
 
 class TestRpcAutoRetryForIdempotentOps:
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("op", ["SCREENSHOT_REQUEST", "CLIPBOARD_READ"])
+    async def test_computer_read_retry_does_not_cross_reconnect(self, op: str):
+        shim = _make_shim_with_send_and_wait(
+            [_RpcAttemptFailed("id-1", op, timed_out=False)]
+        )
+        shim.capabilities = ["computer_use"]
+        shim.computer_use_features_coarse = ["screenshot"]
+        guard = shim.capture_connection_guard()
+
+        async def reconnect():
+            shim._connection_generation += 1
+            shim.machine_id = "other-machine"
+
+        shim._await_reconnect_for_retry = AsyncMock(side_effect=reconnect)
+
+        with pytest.raises(ShimComputerUseError) as exc_info:
+            await shim._rpc(op, {}, connection_guard=guard)
+
+        assert exc_info.value.code == "COMPUTER_USE_CONNECTION_CHANGED"
+        assert shim._send_and_wait.await_count == 1
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_idempotent_op_retries_once_on_timeout_then_succeeds(self):
         ok = {"type": "FILE_CONTENTS", "payload": {"content": "hello"}}

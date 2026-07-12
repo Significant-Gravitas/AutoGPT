@@ -823,11 +823,61 @@ def _make_truncating_wrapper(
     return wrapper
 
 
+def local_pc_tool_names_for_features(
+    coarse_features: Iterable[str], fine_features: Iterable[str]
+) -> frozenset[str]:
+    coarse = frozenset(coarse_features)
+    fine = frozenset(fine_features)
+    groups: dict[str, frozenset[str]] = {
+        "screenshot": frozenset({"local_pc_screenshot"}),
+        "input": frozenset(
+            {
+                "local_pc_click",
+                "local_pc_type",
+                "local_pc_key",
+                "local_pc_scroll",
+                "local_pc_cursor_position",
+            }
+        ),
+        "windows": frozenset({"local_pc_list_windows", "local_pc_focus_window"}),
+        "apps": frozenset({"local_pc_list_apps", "local_pc_launch_app"}),
+        "clipboard": frozenset({"local_pc_clipboard_read", "local_pc_clipboard_write"}),
+        "permissions": frozenset({"local_pc_permissions_check"}),
+    }
+    allowed: set[str] = set()
+    for feature, names in groups.items():
+        if feature in coarse:
+            allowed.update(names)
+    fine_to_tools = {
+        "screenshot.": {"local_pc_screenshot"},
+        "input.": {
+            "local_pc_click",
+            "local_pc_type",
+            "local_pc_key",
+            "local_pc_scroll",
+        },
+        "cursor.position": {"local_pc_cursor_position"},
+        "window.list": {"local_pc_list_windows"},
+        "window.focus": {"local_pc_focus_window"},
+        "app.list": {"local_pc_list_apps"},
+        "app.launch": {"local_pc_launch_app"},
+        "clipboard.read": {"local_pc_clipboard_read"},
+        "clipboard.write": {"local_pc_clipboard_write"},
+        "permissions.check": {"local_pc_permissions_check"},
+    }
+    for feature in fine:
+        for prefix, names in fine_to_tools.items():
+            if feature == prefix or feature.startswith(prefix):
+                allowed.update(names)
+    return frozenset(allowed)
+
+
 def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
     use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
     use_recording: bool = False,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
@@ -852,9 +902,9 @@ def create_copilot_mcp_server(
     happens at the handler level too so a misconfigured caller still
     fails closed.
 
-    When *use_recording* is True, the workflow-recording MCP tools
-    (``record_workflow``, ``list_recordings``,
-    ``generate_skill_from_recording``, ``dry_run_skill``) are registered.
+    When *use_recording* is True, reviewed-workflow MCP tools
+    (``list_recordings``, ``generate_skill_from_recording``, and
+    ``dry_run_skill``) are registered. Recording and review are UI-owned.
     Set this only when the active executor is a connected ``LocalPCShim``
     AND that shim advertised the ``recording`` capability in HELLO — same
     fail-closed handler-level gating as the computer-use tools.
@@ -924,6 +974,12 @@ def create_copilot_mcp_server(
     if use_local_pc_computer:
         from .computer_use_tools import LOCAL_PC_COMPUTER_TOOLS
 
+        advertised_computer_tools = (
+            frozenset(local_pc_computer_tool_names)
+            if local_pc_computer_tool_names is not None
+            else None
+        )
+
         _LOCAL_PC_MUTATING_TOOLS = {
             "local_pc_click",
             "local_pc_type",
@@ -934,6 +990,11 @@ def create_copilot_mcp_server(
             "local_pc_clipboard_write",
         }
         for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS:
+            if name in hidden or (
+                advertised_computer_tools is not None
+                and name not in advertised_computer_tools
+            ):
+                continue
             ann = (
                 _MUTATING_ANNOTATION
                 if name in _LOCAL_PC_MUTATING_TOOLS
@@ -945,15 +1006,17 @@ def create_copilot_mcp_server(
             sdk_tools.append(decorated)
 
     # Workflow-recording tools — only when the connected shim advertised the
-    # ``recording`` capability. record_workflow + dry_run_skill mutate state
+    # ``recording`` capability. dry_run_skill mutates state
     # on the user's machine (start/stop a recording, drive replay), so they
     # carry the mutating annotation for serialised dispatch. list_recordings
     # + generate_skill_from_recording are read/compute-only.
     if use_recording:
         from .recording_tools import RECORDING_TOOLS
 
-        _RECORDING_MUTATING_TOOLS = {"record_workflow", "dry_run_skill"}
+        _RECORDING_MUTATING_TOOLS = {"dry_run_skill"}
         for name, desc, schema, handler in RECORDING_TOOLS:
+            if name in hidden:
+                continue
             ann = (
                 _MUTATING_ANNOTATION
                 if name in _RECORDING_MUTATING_TOOLS
@@ -1165,7 +1228,9 @@ def get_copilot_tool_names(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
     use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
     use_recording: bool = False,
 ) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
@@ -1182,25 +1247,38 @@ def get_copilot_tool_names(
     boolean to :func:`create_copilot_mcp_server`.
 
     When *use_recording* is True the workflow-recording MCP tool names
-    (``record_workflow`` etc.) are appended under the same allow-list
+    (``list_recordings`` etc.) are appended under the same allow-list
     contract — pass the same boolean to :func:`create_copilot_mcp_server`.
     """
-    hidden_short_names = tool_names_in_groups(disabled_groups)
+    hidden_short_names = tool_names_in_groups(disabled_groups) | frozenset(
+        hidden_tool_names
+    )
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
     local_pc_names: list[str] = []
     if use_local_pc_computer:
         from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
 
+        advertised_computer_tools = (
+            frozenset(local_pc_computer_tool_names)
+            if local_pc_computer_tool_names is not None
+            else frozenset(LOCAL_PC_COMPUTER_TOOL_NAMES)
+        )
         local_pc_names = [
-            f"{MCP_TOOL_PREFIX}{name}" for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+            if name not in hidden_short_names and name in advertised_computer_tools
         ]
 
     recording_names: list[str] = []
     if use_recording:
         from .recording_tools import RECORDING_TOOL_NAMES
 
-        recording_names = [f"{MCP_TOOL_PREFIX}{name}" for name in RECORDING_TOOL_NAMES]
+        recording_names = [
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in RECORDING_TOOL_NAMES
+            if name not in hidden_short_names
+        ]
 
     if not use_e2b:
         base = (

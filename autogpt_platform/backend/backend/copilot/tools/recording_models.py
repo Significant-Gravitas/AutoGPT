@@ -1,7 +1,7 @@
-"""Wire-schema dataclasses for workflow recordings.
+"""Pydantic wire models for workflow recordings.
 
 Mirrors the spec-locked schema in
-``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md`` §1
+``autogpt-local-executor/docs/WORKFLOW_RECORDING.md`` §1
 (``WorkflowRecording`` / ``TrajectoryStep``). These are the platform-side
 parsed forms of the ``RECORDING_DATA`` / ``RECORDING_STEP`` wire payloads.
 
@@ -14,8 +14,9 @@ default them defensively so a malformed step never crashes the recv loop.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 # §1.1 semantic verbs + the two replay-control verbs the recorder
 # synthesizes / the user adds. Kept as a frozenset so the generalizer can
@@ -66,8 +67,32 @@ INTERPRETATION_ROUTES: frozenset[str] = frozenset(
 RECORDING_MODES: frozenset[str] = frozenset({"demonstration", "copilot"})
 
 
-@dataclass
-class StepEnrichment:
+class _WireModel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
+def _optional_string(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+class StepEnrichment(_WireModel):
     """The additive enrichment block on a TrajectoryStep (§1).
 
     ``kind`` is ``dom`` | ``ax`` | ``none``; the floor is always present
@@ -75,7 +100,7 @@ class StepEnrichment:
     """
 
     kind: str = "none"
-    selectors: list[dict[str, str]] = field(default_factory=list)
+    selectors: list[dict[str, str]] = Field(default_factory=list)
     ax_path: str | None = None
     role: str | None = None
     label: str | None = None
@@ -100,25 +125,14 @@ class StepEnrichment:
         return cls(
             kind=str(kind),
             selectors=selectors,
-            ax_path=payload.get("ax_path"),
-            role=payload.get("role"),
-            label=payload.get("label"),
-            url=payload.get("url"),
+            ax_path=_optional_string(payload.get("ax_path")),
+            role=_optional_string(payload.get("role")),
+            label=_optional_string(payload.get("label")),
+            url=_optional_string(payload.get("url")),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "kind": self.kind,
-            "selectors": [dict(s) for s in self.selectors],
-            "ax_path": self.ax_path,
-            "role": self.role,
-            "label": self.label,
-            "url": self.url,
-        }
 
-
-@dataclass
-class StepValue:
+class StepValue(_WireModel):
     """The value block on a TrajectoryStep (§1).
 
     ``raw`` is the demonstration value — handled per interpretation route.
@@ -138,19 +152,15 @@ class StepValue:
         return cls(
             raw=payload.get("raw"),
             type=str(payload.get("type") or "text"),
-            is_parameter=payload.get("is_parameter"),
+            is_parameter=(
+                payload.get("is_parameter")
+                if isinstance(payload.get("is_parameter"), bool)
+                else None
+            ),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "raw": self.raw,
-            "type": self.type,
-            "is_parameter": self.is_parameter,
-        }
 
-
-@dataclass
-class TrajectoryStep:
+class TrajectoryStep(_WireModel):
     """One ordered step in a recording (§1 TrajectoryStep)."""
 
     seq: int = 0
@@ -161,7 +171,7 @@ class TrajectoryStep:
     cursor: list[int] | None = None
     active_app: str | None = None
     active_window: str | None = None
-    enrichment: StepEnrichment = field(default_factory=StepEnrichment)
+    enrichment: StepEnrichment = Field(default_factory=StepEnrichment)
     value: StepValue | None = None
     narration: str | None = None
     outcome: str = "unknown"
@@ -179,37 +189,20 @@ class TrajectoryStep:
             except (TypeError, ValueError):
                 parsed_cursor = None
         return cls(
-            seq=int(payload.get("seq") or 0),
-            ts=float(payload.get("ts") or 0.0),
+            seq=_safe_int(payload.get("seq")),
+            ts=_safe_float(payload.get("ts")),
             actor=str(payload.get("actor") or "human"),
             action=str(payload.get("action") or ""),
-            screenshot_ref=payload.get("screenshot_ref"),
+            screenshot_ref=_optional_string(payload.get("screenshot_ref")),
             cursor=parsed_cursor,
-            active_app=payload.get("active_app"),
-            active_window=payload.get("active_window"),
+            active_app=_optional_string(payload.get("active_app")),
+            active_window=_optional_string(payload.get("active_window")),
             enrichment=StepEnrichment.from_payload(payload.get("enrichment")),
             value=StepValue.from_payload(payload.get("value")),
-            narration=payload.get("narration"),
+            narration=_optional_string(payload.get("narration")),
             outcome=str(payload.get("outcome") or "unknown"),
             redacted=bool(payload.get("redacted", False)),
         )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "seq": self.seq,
-            "ts": self.ts,
-            "actor": self.actor,
-            "action": self.action,
-            "screenshot_ref": self.screenshot_ref,
-            "cursor": list(self.cursor) if self.cursor else None,
-            "active_app": self.active_app,
-            "active_window": self.active_window,
-            "enrichment": self.enrichment.to_dict(),
-            "value": self.value.to_dict() if self.value else None,
-            "narration": self.narration,
-            "outcome": self.outcome,
-            "redacted": self.redacted,
-        }
 
     @property
     def is_mutating(self) -> bool:
@@ -220,8 +213,7 @@ class TrajectoryStep:
         return self.action in DESTRUCTIVE_VERBS
 
 
-@dataclass
-class WorkflowRecording:
+class WorkflowRecording(_WireModel):
     """A full recording as returned by RECORDING_DATA / RECORDING_FETCH (§1)."""
 
     recording_id: str = ""
@@ -229,7 +221,7 @@ class WorkflowRecording:
     created_at: float = 0.0
     machine_id: str = ""
     interpretation_route: str = "extract_then_cloud"
-    steps: list[TrajectoryStep] = field(default_factory=list)
+    steps: list[TrajectoryStep] = Field(default_factory=list)
     redaction_applied: bool = False
 
     @classmethod
@@ -237,6 +229,8 @@ class WorkflowRecording:
         if not isinstance(payload, dict):
             return cls()
         raw_steps = payload.get("steps") or []
+        if not isinstance(raw_steps, list):
+            raw_steps = []
         steps = [
             TrajectoryStep.from_payload(s) for s in raw_steps if isinstance(s, dict)
         ]
@@ -247,7 +241,7 @@ class WorkflowRecording:
         return cls(
             recording_id=str(payload.get("recording_id") or ""),
             version=str(payload.get("version") or "1.0"),
-            created_at=float(payload.get("created_at") or 0.0),
+            created_at=_safe_float(payload.get("created_at")),
             machine_id=str(payload.get("machine_id") or ""),
             interpretation_route=str(
                 payload.get("interpretation_route") or "extract_then_cloud"
@@ -256,25 +250,13 @@ class WorkflowRecording:
             redaction_applied=bool(payload.get("redaction_applied", False)),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "recording_id": self.recording_id,
-            "version": self.version,
-            "created_at": self.created_at,
-            "machine_id": self.machine_id,
-            "interpretation_route": self.interpretation_route,
-            "steps": [s.to_dict() for s in self.steps],
-            "redaction_applied": self.redaction_applied,
-        }
 
-
-@dataclass
-class RecordingSummary:
+class RecordingSummary(_WireModel):
     """RECORDING_SUMMARY payload after STOP_RECORDING (§6)."""
 
     recording_id: str = ""
     step_count: int = 0
-    enrichment_coverage: dict[str, int] = field(default_factory=dict)
+    enrichment_coverage: dict[str, int] = Field(default_factory=dict)
     duration_seconds: float = 0.0
 
     @classmethod
@@ -291,15 +273,57 @@ class RecordingSummary:
                     continue
         return cls(
             recording_id=str(payload.get("recording_id") or ""),
-            step_count=int(payload.get("step_count") or 0),
+            step_count=_safe_int(payload.get("step_count")),
             enrichment_coverage=parsed_coverage,
-            duration_seconds=float(payload.get("duration_seconds") or 0.0),
+            duration_seconds=_safe_float(payload.get("duration_seconds")),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "recording_id": self.recording_id,
-            "step_count": self.step_count,
-            "enrichment_coverage": dict(self.enrichment_coverage),
-            "duration_seconds": self.duration_seconds,
-        }
+
+class RecordingConsentResult(_WireModel):
+    """Shim-issued native consent decision bound to recording parameters."""
+
+    approved: bool = False
+    consent_token: str | None = None
+    expires_at: float | None = None
+    mode: str = "copilot"
+    interpretation_route: str = "extract_then_cloud"
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "RecordingConsentResult":
+        if not isinstance(payload, dict):
+            return cls()
+        token = payload.get("consent_token")
+        expires_at = payload.get("expires_at")
+        try:
+            parsed_expiry = float(expires_at) if expires_at is not None else None
+        except (TypeError, ValueError):
+            parsed_expiry = None
+        return cls(
+            approved=bool(payload.get("approved", False)),
+            consent_token=token if isinstance(token, str) and token else None,
+            expires_at=parsed_expiry,
+            mode=str(payload.get("mode") or "copilot"),
+            interpretation_route=str(
+                payload.get("interpretation_route") or "extract_then_cloud"
+            ),
+        )
+
+
+class RecordingReviewApplied(_WireModel):
+    """Authoritative shim acknowledgement after applying user review edits."""
+
+    recording_id: str = ""
+    step_count: int = 0
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "RecordingReviewApplied":
+        if not isinstance(payload, dict):
+            return cls()
+        try:
+            step_count = max(0, int(payload.get("step_count") or 0))
+        except (TypeError, ValueError):
+            step_count = 0
+        return cls(
+            recording_id=str(payload.get("recording_id") or ""),
+            step_count=step_count,
+        )

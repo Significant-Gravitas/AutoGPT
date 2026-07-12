@@ -655,6 +655,11 @@ class ChatConfig(BaseSettings):
         default="/ws/local-executor",
         description="WebSocket path prefix for the local executor shim endpoint.",
     )
+    local_pc_executor_oauth_client_id: str = Field(
+        default="autogpt-local-executor",
+        min_length=1,
+        description="Only OAuth access tokens issued to this client may bind a local executor.",
+    )
     local_llm_policy: Literal["never", "prefer_for_fast", "always"] = Field(
         default="never",
         description=(
@@ -663,7 +668,7 @@ class ChatConfig(BaseSettings):
             "for the user, this field sets routing aggression: 'never' "
             "disables, 'prefer_for_fast' routes fast-mode only, 'always' "
             "routes any mode that has a tier-matched model. See "
-            "experimental/local-pc-executor/docs/LOCAL_LLM.md."
+            "autogpt-local-executor/docs/LOCAL_LLM.md."
         ),
     )
 

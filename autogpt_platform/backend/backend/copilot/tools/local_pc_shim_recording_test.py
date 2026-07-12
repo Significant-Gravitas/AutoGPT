@@ -4,11 +4,18 @@ RECORDING_STEP buffering). See WORKFLOW_RECORDING.md §6."""
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock
 
 import pytest
 
-from .local_pc_shim import LocalPCShim, ShimRecordingError, _RecordingProxy
+from .local_pc_shim import (
+    _MAX_RECORDING_BUFFERS,
+    _MAX_RECORDING_STEP_BUFFER,
+    LocalPCShim,
+    ShimRecordingError,
+    _RecordingProxy,
+)
 from .recording_models import RecordingSummary, TrajectoryStep, WorkflowRecording
 
 
@@ -22,7 +29,14 @@ def _make_recording_shim(rpc_return: dict | None = None) -> LocalPCShim:
     shim.arch = "arm64"
     shim.capabilities = ["shell", "files", "recording"]
     shim.computer_use_features = []
+    shim.recording_channels = ["floor", "browser", "desktop_ax"]
+    shim.recording_routes = [
+        "extract_then_cloud",
+        "local_vlm",
+        "screenshots_to_cloud",
+    ]
     shim._recording_steps = {}
+    shim._started_recording_ids = set()
     if rpc_return is not None:
         shim._rpc = AsyncMock(return_value=rpc_return)
     shim.recording = _RecordingProxy(shim)
@@ -30,6 +44,95 @@ def _make_recording_shim(rpc_return: dict | None = None) -> LocalPCShim:
 
 
 class TestRecordingStart:
+    @pytest.mark.asyncio
+    async def test_start_with_consent_keeps_token_transient(self):
+        shim = _make_recording_shim()
+        shim._rpc = AsyncMock(
+            side_effect=[
+                {
+                    "type": "RECORDING_CONSENT_RESULT",
+                    "payload": {
+                        "approved": True,
+                        "consent_token": "native-token",
+                        "mode": "copilot",
+                        "interpretation_route": "extract_then_cloud",
+                        "expires_at": time.time() + 60,
+                    },
+                },
+                {
+                    "type": "RECORDING_STARTED",
+                    "payload": {"recording_id": "rec_native"},
+                },
+            ]
+        )
+
+        recording_id = await shim.recording.start_with_consent(
+            mode="copilot",
+            interpretation_route="extract_then_cloud",
+            channels=["floor"],
+        )
+
+        assert recording_id == "rec_native"
+        assert shim._rpc.await_args_list[0].args == (
+            "REQUEST_RECORDING_CONSENT",
+            {
+                "mode": "copilot",
+                "interpretation_route": "extract_then_cloud",
+                "channels": ["floor"],
+            },
+        )
+        assert shim._rpc.await_args_list[1].args[1]["consent_token"] == "native-token"
+
+    @pytest.mark.asyncio
+    async def test_start_with_consent_rejects_denial(self):
+        shim = _make_recording_shim(
+            {
+                "type": "RECORDING_CONSENT_RESULT",
+                "payload": {
+                    "approved": False,
+                    "mode": "copilot",
+                    "interpretation_route": "extract_then_cloud",
+                },
+            }
+        )
+
+        with pytest.raises(ShimRecordingError) as exc:
+            await shim.recording.start_with_consent()
+
+        assert exc.value.code == "CONSENT_DENIED"
+        assert shim._rpc.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_start_with_consent_uses_exact_effective_route(self):
+        shim = _make_recording_shim()
+        shim._rpc = AsyncMock(
+            side_effect=[
+                {
+                    "type": "RECORDING_CONSENT_RESULT",
+                    "payload": {
+                        "approved": True,
+                        "consent_token": "extract-only",
+                        "mode": "copilot",
+                        "interpretation_route": "extract_then_cloud",
+                        "expires_at": time.time() + 60,
+                    },
+                },
+                {
+                    "type": "RECORDING_STARTED",
+                    "payload": {"recording_id": "rec-effective"},
+                },
+            ]
+        )
+
+        recording_id = await shim.recording.start_with_consent(
+            interpretation_route="screenshots_to_cloud"
+        )
+
+        assert recording_id == "rec-effective"
+        assert shim._rpc.await_args_list[1].args[1]["interpretation_route"] == (
+            "extract_then_cloud"
+        )
+
     @pytest.mark.asyncio
     async def test_start_sends_consent_token_and_returns_id(self):
         shim = _make_recording_shim(
@@ -145,6 +248,34 @@ class TestRecordingStop:
         assert exc.value.code == "RECORDING_NOT_FOUND"
 
 
+class TestRecordingReview:
+    @pytest.mark.asyncio
+    async def test_apply_review_forwards_only_authoritative_step_edits(self):
+        shim = _make_recording_shim(
+            {
+                "type": "RECORDING_REVIEW_APPLIED",
+                "payload": {"recording_id": "rec_abc", "step_count": 2},
+            }
+        )
+
+        result = await shim.recording.apply_review(
+            "rec_abc",
+            removed_step_seqs=[2],
+            redacted_step_seqs=[3],
+        )
+
+        assert result.recording_id == "rec_abc"
+        assert result.step_count == 2
+        shim._rpc.assert_awaited_once_with(
+            "APPLY_RECORDING_REVIEW",
+            {
+                "recording_id": "rec_abc",
+                "removed_step_seqs": [2],
+                "redacted_step_seqs": [3],
+            },
+        )
+
+
 class TestRecordingFetch:
     @pytest.mark.asyncio
     async def test_fetch_parses_full_recording(self):
@@ -152,31 +283,33 @@ class TestRecordingFetch:
             {
                 "type": "RECORDING_DATA",
                 "payload": {
-                    "recording_id": "rec_abc",
-                    "version": "1.0",
-                    "created_at": 1712345678.0,
-                    "machine_id": "m1",
-                    "interpretation_route": "extract_then_cloud",
-                    "redaction_applied": True,
-                    "steps": [
-                        {
-                            "seq": 1,
-                            "action": "fill",
-                            "screenshot_ref": "stub_1",
-                            "cursor": [840, 314],
-                            "active_app": "Google Chrome",
-                            "enrichment": {
-                                "kind": "dom",
-                                "selectors": [{"strategy": "id", "value": "#fn"}],
-                                "label": "First Name",
+                    "recording": {
+                        "recording_id": "rec_abc",
+                        "version": "1.0",
+                        "created_at": 1712345678.0,
+                        "machine_id": "m1",
+                        "interpretation_route": "extract_then_cloud",
+                        "redaction_applied": True,
+                        "steps": [
+                            {
+                                "seq": 1,
+                                "action": "fill",
+                                "screenshot_ref": "stub_1",
+                                "cursor": [840, 314],
+                                "active_app": "Google Chrome",
+                                "enrichment": {
+                                    "kind": "dom",
+                                    "selectors": [{"strategy": "id", "value": "#fn"}],
+                                    "label": "First Name",
+                                },
+                                "value": {
+                                    "raw": "John",
+                                    "type": "text",
+                                    "is_parameter": None,
+                                },
                             },
-                            "value": {
-                                "raw": "John",
-                                "type": "text",
-                                "is_parameter": None,
-                            },
-                        }
-                    ],
+                        ],
+                    },
                 },
             }
         )
@@ -249,6 +382,118 @@ class TestRecordingStepStream:
         assert [s.action for s in collected] == ["fill", "submit"]
         # Buffer is dropped after the iterator finishes.
         assert rec_id not in shim._recording_steps
+
+    def test_step_buffer_drops_new_steps_at_the_hard_limit(self):
+        shim = _make_recording_shim()
+        rec_id = "rec_abc"
+        for seq in range(_MAX_RECORDING_STEP_BUFFER + 1):
+            shim._handle_recording_step(
+                {
+                    "type": "RECORDING_STEP",
+                    "payload": {
+                        "recording_id": rec_id,
+                        "step": {"seq": seq, "action": "click"},
+                    },
+                }
+            )
+
+        queue = shim._recording_steps[rec_id]
+        assert queue.qsize() == _MAX_RECORDING_STEP_BUFFER
+        assert [queue.get_nowait().seq for _ in range(queue.qsize())] == list(
+            range(_MAX_RECORDING_STEP_BUFFER)
+        )
+
+    def test_close_removes_full_buffer_and_reserves_sentinel_capacity(self):
+        shim = _make_recording_shim()
+        rec_id = "rec_abc"
+        for seq in range(_MAX_RECORDING_STEP_BUFFER):
+            shim._handle_recording_step(
+                {
+                    "type": "RECORDING_STEP",
+                    "payload": {
+                        "recording_id": rec_id,
+                        "step": {"seq": seq, "action": "click"},
+                    },
+                }
+            )
+        queue = shim._recording_steps[rec_id]
+
+        shim.close_recording(rec_id)
+
+        assert rec_id not in shim._recording_steps
+        buffered = [queue.get_nowait() for _ in range(queue.qsize())]
+        assert len(buffered) == _MAX_RECORDING_STEP_BUFFER + 1
+        assert buffered[-1] is None
+
+    def test_unique_orphan_buffers_evict_the_oldest_at_the_global_limit(self):
+        shim = _make_recording_shim()
+        first_id = "rec_orphan_0"
+        shim._handle_recording_step(
+            {
+                "type": "RECORDING_STEP",
+                "payload": {
+                    "recording_id": first_id,
+                    "step": {"seq": 0, "action": "click"},
+                },
+            }
+        )
+        first_queue = shim._recording_steps[first_id]
+
+        for index in range(1, _MAX_RECORDING_BUFFERS + 1):
+            shim._handle_recording_step(
+                {
+                    "type": "RECORDING_STEP",
+                    "payload": {
+                        "recording_id": f"rec_orphan_{index}",
+                        "step": {"seq": index, "action": "click"},
+                    },
+                }
+            )
+
+        assert len(shim._recording_steps) == _MAX_RECORDING_BUFFERS
+        assert first_id not in shim._recording_steps
+        assert first_queue.get_nowait().seq == 0
+        assert first_queue.get_nowait() is None
+
+    def test_orphan_flood_does_not_evict_a_started_recording(self):
+        shim = _make_recording_shim()
+        started_queue = shim._ensure_recording_buffer("rec_started", started=True)
+
+        for index in range(_MAX_RECORDING_BUFFERS * 2):
+            shim._handle_recording_step(
+                {
+                    "type": "RECORDING_STEP",
+                    "payload": {
+                        "recording_id": f"rec_orphan_{index}",
+                        "step": {"seq": index, "action": "click"},
+                    },
+                }
+            )
+
+        assert len(shim._recording_steps) == _MAX_RECORDING_BUFFERS
+        assert shim._recording_steps["rec_started"] is started_queue
+
+    @pytest.mark.asyncio
+    async def test_real_start_evicts_oldest_started_buffer_when_all_are_started(self):
+        shim = _make_recording_shim(
+            {"type": "RECORDING_STARTED", "payload": {"recording_id": "rec_new"}}
+        )
+        for index in range(_MAX_RECORDING_BUFFERS):
+            shim._ensure_recording_buffer(f"rec_started_{index}", started=True)
+        oldest_queue = shim._recording_steps["rec_started_0"]
+
+        recording_id = await shim.recording.start(
+            mode="copilot",
+            interpretation_route="extract_then_cloud",
+            channels=["floor"],
+            consent_token="tok",
+        )
+
+        assert recording_id == "rec_new"
+        assert len(shim._recording_steps) == _MAX_RECORDING_BUFFERS
+        assert "rec_started_0" not in shim._recording_steps
+        assert "rec_new" in shim._recording_steps
+        assert oldest_queue.get_nowait() is None
 
     @pytest.mark.asyncio
     async def test_step_without_recording_id_is_dropped(self):

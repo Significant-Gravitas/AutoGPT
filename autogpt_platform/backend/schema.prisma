@@ -1706,11 +1706,13 @@ model OAuthAccessToken {
 
   scopes APIKeyPermission[]
 
-  revokedAt DateTime? // Set when token is revoked
+  revokedAt       DateTime? // Set when token is revoked
+  refreshFamilyId String? // Refresh-token rotation family for replay detection
 
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+  @@index([refreshFamilyId])
 }
 
 // Refresh tokens (30 days TTL)
@@ -1728,11 +1730,14 @@ model OAuthRefreshToken {
 
   scopes APIKeyPermission[]
 
-  revokedAt DateTime? // Set when token is revoked
+  revokedAt       DateTime? // Set when token is revoked
+  familyId        String    @default(uuid())
+  familyRevokedAt DateTime? // Set on reuse; invalidates every family descendant
 
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+  @@index([familyId])
 }
 
 ////////////////////////////////////////////////////////////

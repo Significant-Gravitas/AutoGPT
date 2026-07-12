@@ -4,12 +4,17 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
-import { Warning } from "@phosphor-icons/react";
+import { WarningIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
+interface Props {
+  onResolved?: (acknowledged: boolean) => void;
+  onCancel?: () => void;
+}
+
 /**
- * One-time experimental-warning modal shown the first time a user lands in
- * the copilot UI with the `local-pc-executor` LaunchDarkly flag enabled.
+ * One-time experimental-warning modal shown the first time a user chooses
+ * Local PC for a new chat.
  *
  * The flag is gated to a small allowlist of beta testers per the platform
  * config. The modal explains what's actually happening — code runs on the
@@ -21,28 +26,32 @@ import { useEffect, useState } from "react";
  * user can clear it via the browser's site-data tools (no in-app reset
  * yet; not worth the surface area for v1).
  */
-export function LocalPCWarning() {
+export function LocalPCWarning({ onResolved, onCancel }: Props = {}) {
   const [acked, setAcked] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAcked(storage.get(Key.COPILOT_LOCAL_PC_WARNING_ACKED) === "true");
-  }, []);
+    const acknowledged =
+      storage.get(Key.COPILOT_LOCAL_PC_WARNING_ACKED) === "true";
+    setAcked(acknowledged);
+    onResolved?.(acknowledged);
+  }, [onResolved]);
 
   function handleAck() {
     storage.set(Key.COPILOT_LOCAL_PC_WARNING_ACKED, "true");
     setAcked(true);
+    onResolved?.(true);
   }
 
   if (acked === null || acked) return null;
 
   return (
     <Dialog
-      title="Local PC execution is active"
+      title="Run This Chat on Your Local PC?"
       styling={{ maxWidth: "32rem", minWidth: "auto" }}
       controlled={{
         isOpen: true,
-        set: async () => {
-          /* modal must be acknowledged */
+        set: async (open) => {
+          if (!open) onCancel?.();
         },
       }}
     >
@@ -50,42 +59,57 @@ export function LocalPCWarning() {
         <div className="flex flex-col gap-4 py-2">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-              <Warning className="h-5 w-5 text-amber-700" weight="fill" />
+              <WarningIcon
+                className="h-5 w-5 text-amber-700"
+                weight="fill"
+                aria-hidden="true"
+              />
             </div>
             <div className="flex flex-col gap-2">
               <Text variant="body" className="font-medium text-neutral-900">
-                Experimental: code runs on your real machine.
+                Code will run on your real machine.
               </Text>
               <Text variant="body" className="text-sm text-neutral-700">
-                Your copilot session is routed to the{" "}
-                <span className="font-mono text-xs">autogpt-local-executor</span>{" "}
-                shim daemon on your computer instead of a cloud sandbox.
-                Files, shell commands, and (optionally) screen + input
-                control all happen on your actual filesystem.
+                This chat will route files and commands to the{" "}
+                <span className="font-mono text-xs">
+                  autogpt-local-executor
+                </span>{" "}
+                executor on the computer and folder you choose instead of a
+                cloud sandbox. Files, shell commands, and (optionally) screen +
+                input control all happen on that computer.
               </Text>
               <Text variant="body" className="text-sm text-neutral-700">
-                The shim is jailed to the workspace you configured at
-                install time (default{" "}
-                <span className="font-mono text-xs">~/autogpt-workspace</span>
-                ), but a malicious or buggy prompt could still cause damage
-                inside that directory. Review the audit log via{" "}
+                The folder you choose limits only the executor&apos;s{" "}
+                <span className="font-mono text-xs">FILE_*</span> operations. It
+                does not sandbox shell commands. When shell access is enabled,
+                commands run with your full user-level permissions and can read
+                or change anything your OS account can access.
+              </Text>
+              <Text variant="body" className="text-sm text-neutral-700">
+                A malicious or buggy prompt could damage files outside the
+                configured file root. The shim writes operation records to a
+                local audit log. Review it with{" "}
                 <span className="font-mono text-xs">
                   autogpt-shim audit tail
                 </span>{" "}
-                whenever you want to see what ran.
+                to inspect recorded operations.
               </Text>
               <Text variant="body" className="text-sm text-neutral-700">
                 Don&apos;t use this on a machine you can&apos;t afford to
-                rebuild. Don&apos;t point the shim at{" "}
-                <span className="font-mono text-xs">~/</span> or{" "}
-                <span className="font-mono text-xs">/</span>.
+                rebuild. Disable shell access if you only need file operations,
+                and never run the shim as root.
               </Text>
             </div>
           </div>
         </div>
-        <Dialog.Footer className="justify-end">
+        <Dialog.Footer className="flex-wrap justify-end">
+          {onCancel ? (
+            <Button variant="secondary" onClick={onCancel}>
+              Use Cloud Instead
+            </Button>
+          ) : null}
           <Button variant="primary" onClick={handleAck}>
-            I understand — continue
+            I Understand — Continue
           </Button>
         </Dialog.Footer>
       </Dialog.Content>

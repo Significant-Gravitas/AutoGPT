@@ -1,64 +1,63 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
-import { LocalPCWarning } from "../LocalPCWarning";
 import { Key, storage } from "@/services/storage/local-storage";
-
-vi.mock("@sentry/nextjs", () => ({
-  captureException: vi.fn(),
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: {
-    isServerSide: vi.fn(() => false),
-    isClientSide: vi.fn(() => true),
-    getAGPTServerApiUrl: vi.fn(() => "http://localhost:8006/api"),
-  },
-}));
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { LocalPCWarning } from "../LocalPCWarning";
 
 beforeEach(() => {
-  storage.remove(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
+  storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
 });
 
 afterEach(() => {
-  cleanup();
-  storage.remove(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
+  storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
 });
 
 describe("LocalPCWarning", () => {
-  it("shows the modal on first activation", async () => {
+  test("shows the modal on first activation", async () => {
     render(<LocalPCWarning />);
     expect(
-      await screen.findByText(/Experimental: code runs on your real machine/i),
-    ).toBeInTheDocument();
+      await screen.findByText(/Code will run on your real machine/i),
+    ).toBeDefined();
   });
 
-  it("hides itself after acknowledgement and writes the flag", async () => {
-    const user = userEvent.setup();
+  test("hides itself after acknowledgement and writes the flag", async () => {
     render(<LocalPCWarning />);
     const ack = await screen.findByRole("button", {
       name: /I understand — continue/i,
     });
-    await user.click(ack);
+    fireEvent.click(ack);
     expect(
-      screen.queryByText(/Experimental: code runs on your real machine/i),
-    ).not.toBeInTheDocument();
+      screen.queryByText(/Code will run on your real machine/i),
+    ).toBeNull();
     expect(storage.get(Key.COPILOT_LOCAL_PC_WARNING_ACKED)).toBe("true");
   });
 
-  it("does not render when previously acknowledged", () => {
+  test("does not render when previously acknowledged", () => {
     storage.set(Key.COPILOT_LOCAL_PC_WARNING_ACKED, "true");
     render(<LocalPCWarning />);
     expect(
-      screen.queryByText(/Experimental: code runs on your real machine/i),
-    ).not.toBeInTheDocument();
+      screen.queryByText(/Code will run on your real machine/i),
+    ).toBeNull();
   });
 
-  it("explains the workspace jail and points at the audit log CLI", async () => {
+  test("explains that the file root does not sandbox shell access", async () => {
     render(<LocalPCWarning />);
     expect(
-      await screen.findByText(/~\/autogpt-workspace/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/autogpt-shim audit tail/)).toBeInTheDocument();
+      await screen.findByText(/folder you choose limits only/i),
+    ).toBeDefined();
+    expect(screen.getByText(/does not sandbox shell commands/i)).toBeDefined();
+    expect(screen.getByText(/full user-level permissions/i)).toBeDefined();
+    expect(screen.getByText(/autogpt-shim audit tail/)).toBeDefined();
+  });
+
+  test("can return to Cloud without acknowledging the warning", async () => {
+    const onCancel = vi.fn();
+    render(<LocalPCWarning onCancel={onCancel} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Use Cloud Instead" }),
+    );
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(storage.get(Key.COPILOT_LOCAL_PC_WARNING_ACKED)).toBeNull();
   });
 });

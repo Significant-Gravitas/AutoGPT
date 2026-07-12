@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
+    CAPABILITY_TOOL_NAMES,
     DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
@@ -578,6 +579,27 @@ class TestApplyToolPermissions:
         # mcp__copilot__read_tool_result is always preserved for SDK internals
         assert "mcp__copilot__read_tool_result" in allowed
 
+    def test_local_pc_tools_honor_permission_whitelist(self):
+        perms = CopilotPermissions(tools=["local_pc_screenshot"], tools_exclude=False)
+
+        allowed, _ = apply_tool_permissions(
+            perms,
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        assert "mcp__copilot__local_pc_screenshot" in allowed
+        assert "mcp__copilot__local_pc_click" not in allowed
+        assert "mcp__copilot__list_recordings" not in allowed
+
+    def test_recording_tools_honor_permission_blacklist(self):
+        perms = CopilotPermissions(tools=["list_recordings"], tools_exclude=True)
+
+        allowed, _ = apply_tool_permissions(perms, use_recording=True)
+
+        assert "mcp__copilot__list_recordings" not in allowed
+        assert "mcp__copilot__generate_skill_from_recording" in allowed
+
 
 # ---------------------------------------------------------------------------
 # SDK_BUILTIN_TOOL_NAMES sanity check
@@ -614,8 +636,10 @@ class TestSdkBuiltinToolNames:
         )
 
     def test_all_tool_names_is_union(self):
-        """ALL_TOOL_NAMES must equal PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES."""
-        assert ALL_TOOL_NAMES == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES
+        """ALL_TOOL_NAMES includes registry, SDK, and capability-gated tools."""
+        assert ALL_TOOL_NAMES == (
+            PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES | CAPABILITY_TOOL_NAMES
+        )
 
     def test_no_overlap_between_platform_and_sdk(self):
         """Platform and SDK built-in names must not overlap."""

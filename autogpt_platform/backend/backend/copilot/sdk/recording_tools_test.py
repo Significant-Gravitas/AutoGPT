@@ -8,14 +8,25 @@ the multi-row dry-run requirement.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import backend.copilot.sdk.recording_tools as rt
-from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimRecordingError
-from backend.copilot.tools.recording_models import RecordingSummary, WorkflowRecording
+from backend.api.features.local_executor.state import RecordingState
+from backend.copilot.tools.local_pc_shim import (
+    LocalPCShim,
+    ShimConnectionGuard,
+    ShimRecordingError,
+)
+from backend.copilot.tools.recording_models import (
+    RecordingReviewApplied,
+    RecordingSummary,
+    WorkflowRecording,
+)
 
 
 def _parse(result: dict) -> dict:
@@ -26,7 +37,18 @@ def _shim(*, capabilities=("recording",)):
     # spec=LocalPCShim so the handler's isinstance(sb, LocalPCShim) gate passes.
     shim = MagicMock(spec=LocalPCShim)
     shim.sandbox_id = "sess-1"
+    shim.machine_id = "machine-1"
     shim.capabilities = list(capabilities)
+    shim.computer_use_features_coarse = ["screenshot", "input"]
+    shim.computer_use_features = ["screenshot.capture", "input.click"]
+    guard = ShimConnectionGuard(
+        generation=1,
+        machine_id="machine-1",
+        computer_use_features_coarse=("screenshot", "input"),
+        computer_use_features=("screenshot.capture", "input.click"),
+    )
+    shim.capture_connection_guard.return_value = guard
+    shim.connection_guard_matches.return_value = True
     shim.recording = MagicMock()
     shim.computer = MagicMock()
     shim.computer.type = AsyncMock()
@@ -38,8 +60,36 @@ def _shim(*, capabilities=("recording",)):
 
 def _install(monkeypatch, shim):
     monkeypatch.setattr(rt, "get_current_sandbox", lambda: shim)
+    monkeypatch.setattr(
+        rt,
+        "get_execution_context",
+        lambda: ("user-1", SimpleNamespace(session_id=shim.sandbox_id)),
+    )
+    monkeypatch.setattr(
+        rt,
+        "is_computer_use_approved",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        rt,
+        "get_recording_state",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        rt,
+        "list_recording_states",
+        AsyncMock(return_value=[]),
+    )
     # Fresh per-session state for each test.
     rt._SESSION_STATE.clear()
+
+
+def _mark_reviewed(shim, recording_id: str) -> None:
+    rt.register_recording_reviewed(
+        shim,
+        recording_id,
+        RecordingReviewApplied(recording_id=recording_id, step_count=2),
+    )
 
 
 def _single_row_recording():
@@ -119,29 +169,33 @@ class TestGating:
 
 class TestRecordWorkflowStart:
     @pytest.mark.asyncio
-    async def test_start_requires_consent_token(self, monkeypatch):
+    async def test_start_requests_native_consent(self, monkeypatch):
         shim = _shim()
+        shim.recording.start_with_consent = AsyncMock(return_value="rec_1")
         _install(monkeypatch, shim)
         out = await rt._h_record_workflow({"action": "start"})
-        assert out["isError"] is True
-        assert _parse(out)["code"] == "CONSENT_REQUIRED"
+        assert out["isError"] is False
+        shim.recording.start_with_consent.assert_awaited_once_with(
+            mode="copilot",
+            interpretation_route="extract_then_cloud",
+            channels=["floor"],
+        )
 
     @pytest.mark.asyncio
     async def test_start_passes_token_and_tracks_recording(self, monkeypatch):
         shim = _shim()
-        shim.recording.start = AsyncMock(return_value="rec_1")
+        shim.recording.start_with_consent = AsyncMock(return_value="rec_1")
         _install(monkeypatch, shim)
         out = await rt._h_record_workflow(
             {
                 "action": "start",
-                "consent_token": "tok",
                 "mode": "copilot",
                 "channels": ["floor", "browser"],
             }
         )
         assert out["isError"] is False
         assert _parse(out)["recording_id"] == "rec_1"
-        shim.recording.start.assert_awaited_once()
+        shim.recording.start_with_consent.assert_awaited_once()
         # Tracked in session state for list_recordings.
         listed = _parse(await rt._h_list_recordings({}))
         assert listed["recordings"][0]["recording_id"] == "rec_1"
@@ -150,13 +204,24 @@ class TestRecordWorkflowStart:
     @pytest.mark.asyncio
     async def test_start_surfaces_shim_consent_error(self, monkeypatch):
         shim = _shim()
-        shim.recording.start = AsyncMock(
+        shim.recording.start_with_consent = AsyncMock(
             side_effect=ShimRecordingError("CONSENT_REQUIRED", "bad token")
         )
         _install(monkeypatch, shim)
-        out = await rt._h_record_workflow({"action": "start", "consent_token": "tok"})
+        out = await rt._h_record_workflow({"action": "start"})
         assert out["isError"] is True
         assert _parse(out)["code"] == "CONSENT_REQUIRED"
+
+
+def test_session_recording_state_is_lru_bounded():
+    rt._SESSION_STATE.clear()
+    for index in range(rt._MAX_SESSION_STATES + 1):
+        shim = _shim()
+        shim.sandbox_id = f"session-{index}"
+        rt._state_for(shim)
+
+    assert len(rt._SESSION_STATE) == rt._MAX_SESSION_STATES
+    assert "session-0" not in rt._SESSION_STATE
 
 
 class TestRecordWorkflowStop:
@@ -177,10 +242,53 @@ class TestRecordWorkflowStop:
 
 class TestGenerateSkill:
     @pytest.mark.asyncio
+    async def test_shared_review_state_unblocks_separate_executor_process(
+        self, monkeypatch
+    ):
+        shim = _shim()
+        shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
+        _install(monkeypatch, shim)
+        monkeypatch.setattr(
+            rt,
+            "get_recording_state",
+            AsyncMock(
+                return_value=RecordingState(
+                    recording_id="rec_1",
+                    status="reviewed",
+                    step_count=2,
+                )
+            ),
+        )
+
+        out = await rt._h_generate_skill({"recording_id": "rec_1"})
+
+        assert out["isError"] is False
+        assert _parse(out)["recording_id"] == "rec_1"
+        shim.recording.fetch.assert_awaited_once_with("rec_1")
+
+    @pytest.mark.asyncio
+    async def test_stopped_recording_requires_authoritative_review(self, monkeypatch):
+        shim = _shim()
+        shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
+        _install(monkeypatch, shim)
+        rt.register_recording_stopped(
+            shim,
+            "rec_1",
+            RecordingSummary(recording_id="rec_1", step_count=2),
+        )
+
+        out = await rt._h_generate_skill({"recording_id": "rec_1"})
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "RECORDING_REVIEW_REQUIRED"
+        shim.recording.fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_single_row_needs_confirmation(self, monkeypatch):
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
         _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
         out = await rt._h_generate_skill({"recording_id": "rec_1"})
         body = _parse(out)
         assert body["needs_confirmation"] is True
@@ -193,6 +301,7 @@ class TestGenerateSkill:
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
         _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
         out = await rt._h_generate_skill(
             {
                 "recording_id": "rec_1",
@@ -204,6 +313,52 @@ class TestGenerateSkill:
 
 
 class TestDryRunSkill:
+    @pytest.mark.asyncio
+    async def test_dry_run_reconnect_during_consent_check_blocks_replay(
+        self, monkeypatch
+    ):
+        shim = _shim()
+        _install(monkeypatch, shim)
+        consent_started = asyncio.Event()
+        release_consent = asyncio.Event()
+
+        async def delayed_approval(*_args, **_kwargs):
+            consent_started.set()
+            await release_consent.wait()
+            return True
+
+        monkeypatch.setattr(rt, "is_computer_use_approved", delayed_approval)
+        task = asyncio.create_task(
+            rt._h_dry_run_skill({"recording_id": "rec_x", "data_rows": [{"a": 1}]})
+        )
+        await consent_started.wait()
+        shim.connection_guard_matches.return_value = False
+        release_consent.set()
+
+        out = await task
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "COMPUTER_USE_CONNECTION_CHANGED"
+        shim.computer.type.assert_not_awaited()
+        shim.computer.click.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dry_run_rechecks_revoked_computer_use_consent(self, monkeypatch):
+        shim = _shim()
+        _install(monkeypatch, shim)
+        monkeypatch.setattr(
+            rt,
+            "is_computer_use_approved",
+            AsyncMock(return_value=False),
+        )
+
+        out = await rt._h_dry_run_skill(
+            {"recording_id": "rec_x", "data_rows": [{"a": 1}]}
+        )
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "COMPUTER_USE_CONSENT_REQUIRED"
+
     @pytest.mark.asyncio
     async def test_dry_run_requires_generated_skill(self, monkeypatch):
         shim = _shim()
@@ -219,6 +374,7 @@ class TestDryRunSkill:
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
         _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
         await rt._h_generate_skill({"recording_id": "rec_1"})  # unconfirmed
         out = await rt._h_dry_run_skill(
             {"recording_id": "rec_1", "data_rows": [{"first_name": "A"}]}
@@ -231,6 +387,7 @@ class TestDryRunSkill:
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_two_row_recording())
         _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_2")
         await rt._h_generate_skill({"recording_id": "rec_2"})  # confirmed (2 rows)
         out = await rt._h_dry_run_skill({"recording_id": "rec_2", "data_rows": []})
         assert out["isError"] is True
@@ -241,6 +398,7 @@ class TestDryRunSkill:
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_two_row_recording())
         _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_2")
         await rt._h_generate_skill({"recording_id": "rec_2"})
         out = await rt._h_dry_run_skill(
             {
@@ -252,3 +410,9 @@ class TestDryRunSkill:
         assert out["isError"] is False
         assert body["rows_attempted"] == 2
         assert body["destructive_blocked"] is True  # submit skipped by default
+        guard = shim.capture_connection_guard.return_value
+        assert shim.computer.type.await_args_list
+        assert all(
+            call.kwargs["_guard"] == guard
+            for call in shim.computer.type.await_args_list
+        )

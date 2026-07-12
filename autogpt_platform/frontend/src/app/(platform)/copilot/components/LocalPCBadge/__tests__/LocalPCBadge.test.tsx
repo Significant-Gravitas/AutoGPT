@@ -1,70 +1,107 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  getGetExperimentalGetSessionExecutorMockHandler200,
+  getGetExperimentalGetSessionExecutorMockHandler401,
+} from "@/app/api/__generated__/endpoints/copilot/copilot.msw";
+import { server } from "@/mocks/mock-server";
+import { render, screen } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { delay, http, HttpResponse } from "msw";
+import { describe, expect, test } from "vitest";
 import { LocalPCBadge } from "../LocalPCBadge";
 
-vi.mock("@sentry/nextjs", () => ({
-  captureException: vi.fn(),
-}));
-
-vi.mock("nuqs", () => ({
-  parseAsString: { parse: (v: string | null) => v },
-  useQueryState: () => ["test-session-id", vi.fn()],
-}));
-
-const mockExecutor = vi.fn();
-vi.mock("../../../hooks/useLocalPCExecutor", () => ({
-  useLocalPCExecutor: () => mockExecutor(),
-}));
-
-afterEach(() => {
-  cleanup();
-  mockExecutor.mockReset();
-});
+const EXECUTOR_URL =
+  "http://localhost:3000/api/proxy/api/copilot/sessions/:sessionId/executor";
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("LocalPCBadge", () => {
-  it("falls back to the static 'Local PC mode' label when no shim is connected", () => {
-    mockExecutor.mockReturnValue({ data: { kind: "none" } });
-    render(<LocalPCBadge />);
-    expect(screen.getByText("Local PC mode")).toBeInTheDocument();
-  });
+  test("explains how to reconnect the established Local PC session", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getGetExperimentalGetSessionExecutorMockHandler200({
+        kind: "none",
+        computer_use_consent: "pending",
+      }),
+    );
 
-  it("renders the user's machine when a shim is connected", () => {
-    mockExecutor.mockReturnValue({
-      data: {
-        kind: "shim",
-        platform: "darwin",
-        arch: "arm64",
-        allowed_root: "/Users/test/autogpt-workspace",
-        machine_id: "abcdef1234567890",
-        shim_version: "0.1.0",
-        capabilities: ["shell", "files", "computer_use"],
-        computer_use_features: ["screenshot", "input"],
-      },
+    render(
+      <LocalPCBadge
+        sessionID={SESSION_ID}
+        machineID="machine-123456789"
+        allowedRoot={"C:\\Users\\Ada\\Projects"}
+      />,
+    );
+
+    const trigger = await screen.findByRole("button", {
+      name: /local pc disconnected.*open local pc details/i,
     });
-    render(<LocalPCBadge />);
-    expect(screen.getByText(/Local PC: macOS arm64/i)).toBeInTheDocument();
+    await user.click(trigger);
+
+    expect(
+      await screen.findByText(/restart autogpt-shim.*to reconnect/i),
+    ).toBeDefined();
+    expect(screen.getByText(/machine machine-1234/i)).toBeDefined();
+    expect(screen.getByText("C:\\Users\\Ada\\Projects")).toBeDefined();
   });
 
-  it("renders WSL2 with the disambiguating label", () => {
-    mockExecutor.mockReturnValue({
-      data: {
-        kind: "shim",
-        platform: "wsl2",
-        arch: "x86_64",
-        allowed_root: "/home/test/autogpt-workspace",
-        machine_id: null,
-        shim_version: null,
-        capabilities: null,
-        computer_use_features: null,
-      },
-    });
-    render(<LocalPCBadge />);
-    expect(screen.getByText(/Windows \(WSL2\)/)).toBeInTheDocument();
+  test("opens details for the connected machine", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get(EXECUTOR_URL, () =>
+        HttpResponse.json({
+          kind: "shim",
+          platform: "darwin",
+          arch: "arm64",
+          allowed_root: "/Users/test/autogpt-workspace",
+          machine_id: "abcdef1234567890",
+          shim_version: "0.1.0",
+          capabilities: ["shell", "files", "computer_use"],
+          computer_use_features: [],
+          computer_use_features_coarse: ["screenshot", "input"],
+        }),
+      ),
+    );
+
+    render(<LocalPCBadge sessionID={SESSION_ID} />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /local pc connected: macos arm64/i,
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        /shell commands are not limited by that file root/i,
+      ),
+    ).toBeDefined();
+    expect(screen.getByText(/FILE_\*/)).toBeDefined();
+    expect(screen.getByText(/computer-use: screenshot, input/i)).toBeDefined();
   });
 
-  it("renders the generic label while the executor query is loading", () => {
-    mockExecutor.mockReturnValue({ data: undefined });
-    render(<LocalPCBadge />);
-    expect(screen.getByText("Local PC mode")).toBeInTheDocument();
+  test("shows a distinct loading status", () => {
+    server.use(
+      http.get(EXECUTOR_URL, async () => {
+        await delay("infinite");
+        return HttpResponse.json({ kind: "none" });
+      }),
+    );
+
+    render(<LocalPCBadge sessionID={SESSION_ID} />);
+
+    expect(
+      screen.getByRole("button", { name: /checking local pc/i }),
+    ).toBeDefined();
+  });
+
+  test("announces when the status request fails", async () => {
+    server.use(getGetExperimentalGetSessionExecutorMockHandler401());
+
+    render(<LocalPCBadge sessionID={SESSION_ID} />);
+
+    expect(
+      await screen.findByRole("button", {
+        name: /local pc status unavailable/i,
+      }),
+    ).toBeDefined();
   });
 });

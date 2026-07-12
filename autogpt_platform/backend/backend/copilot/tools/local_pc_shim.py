@@ -8,16 +8,33 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
+import unicodedata
 import uuid
-from dataclasses import dataclass, field
+import weakref
 from typing import Any
 
-from fastapi import WebSocket
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.copilot.local_executor import LocalPCExecutorMarker
 
 from .local_pc_errors import translate_shim_error
 from .local_pc_metrics import record_rpc_retry
-from .recording_models import RecordingSummary, TrajectoryStep, WorkflowRecording
+from .local_pc_relay import get_local_pc_relay
+from .local_pc_relay_protocol import (
+    EXPECTED_RESPONSE_TYPES,
+    RelayBackend,
+    RelayWebSocket,
+    TextTransport,
+)
+from .recording_models import (
+    RecordingConsentResult,
+    RecordingReviewApplied,
+    RecordingSummary,
+    TrajectoryStep,
+    WorkflowRecording,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +56,7 @@ _IDEMPOTENT_OPS: frozenset[str] = frozenset(
         "CLIPBOARD_READ",
         "PERMISSIONS_CHECK_REQUEST",
         "SCREENSHOT_REQUEST",
+        "RECORDING_FETCH",
     }
 )
 
@@ -99,6 +117,10 @@ class WriteUnconfirmedError(OpUnconfirmedError):
 # ``ShimOverloadedError``. Matches the wire-level ``SHIM_OVERLOADED``
 # semantic so the translator can render the same recovery hint either way.
 _CAPACITY_WAIT_TIMEOUT_SECONDS: float = 30.0
+_DUPLICATE_SESSION_CLOSE_CODE = 4427
+_REVOCATION_OPERATION_TIMEOUT_SECONDS = 2.0
+_MAX_RECORDING_BUFFERS = 8
+_MAX_RECORDING_STEP_BUFFER = 256
 
 
 class ShimOverloadedError(RuntimeError):
@@ -114,6 +136,10 @@ class ShimOverloadedError(RuntimeError):
     """
 
     code = "SHIM_OVERLOADED"
+
+
+class ShimProtocolError(RuntimeError):
+    """Raised when a correlated shim response violates the wire contract."""
 
 
 def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
@@ -164,74 +190,350 @@ def get_shim_manager() -> "ShimConnectionManager":
     return _shim_manager
 
 
-@dataclass
-class ShimHello:
+def _hello_string_list(payload: dict, field_name: str) -> list[str]:
+    value = payload.get(field_name, [])
+    if value is None:
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"HELLO.{field_name} must be a list of strings")
+    return value
+
+
+def _required_hello_string(payload: dict, field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"HELLO.{field_name} must be a non-empty string")
+    return value
+
+
+def _optional_hello_string(payload: dict, field_name: str, *, default: str = "") -> str:
+    value = payload.get(field_name, default)
+    if not isinstance(value, str):
+        raise ValueError(f"HELLO.{field_name} must be a string")
+    return value
+
+
+def _validate_safe_hello_text(value: str, field_name: str) -> str:
+    if "<" in value or ">" in value:
+        raise ValueError(f"{field_name} cannot contain angle brackets")
+    if any(
+        unicodedata.category(character).startswith("C")
+        or character in {"\u2028", "\u2029"}
+        for character in value
+    ):
+        raise ValueError(f"{field_name} cannot contain control characters")
+    return value
+
+
+_COMPUTER_USE_FEATURES_COARSE = frozenset(
+    {"screenshot", "input", "windows", "apps", "clipboard", "permissions"}
+)
+_COMPUTER_USE_FEATURES = frozenset(
+    {
+        "screenshot.capture",
+        "screenshot.region",
+        "screenshot.window",
+        "input.click",
+        "input.click.modifiers",
+        "input.click.button",
+        "input.drag.path",
+        "input.key.hold",
+        "input.mouse.down_up",
+        "input.scroll.amount",
+        "input.wait",
+        "cursor.position",
+        "display.info",
+        "window.list",
+        "window.focus",
+        "app.list",
+        "app.launch",
+        "clipboard.read",
+        "clipboard.write",
+        "permissions.check",
+    }
+)
+
+
+def _canonical_computer_use_features(
+    values: list[str], *, supported: frozenset[str], field_name: str
+) -> list[str]:
+    if len(values) > 128:
+        raise ValueError(f"{field_name} contains too many entries")
+    for value in values:
+        if len(value) > 128:
+            raise ValueError(f"{field_name} contains an oversized entry")
+        _validate_safe_hello_text(value, field_name)
+        if value != value.strip():
+            raise ValueError(
+                f"{field_name} entries cannot contain surrounding whitespace"
+            )
+    return list(dict.fromkeys(value for value in values if value in supported))
+
+
+class ShimHello(BaseModel):
     """HELLO payload captured by the route on connect, surfaced to LocalPCShim."""
 
-    machine_id: str = ""
+    machine_id: str = Field(default="", max_length=128)
+    display_name: str = Field(default="", max_length=128)
     platform: str = ""
     arch: str = ""
-    shim_version: str = ""
-    allowed_root: str = ""
-    capabilities: list[str] = field(default_factory=list)
+    shim_version: str = Field(default="", max_length=64)
+    allowed_root: str = Field(default="", max_length=4096)
+    capabilities: list[str] = Field(default_factory=list)
     screen_resolution: tuple[int, int] | None = None
-    local_llm_models: list[str] = field(default_factory=list)
-    hardware_devices: list[dict] = field(default_factory=list)
-    computer_use_features: list[str] = field(default_factory=list)
+    local_llm_models: list[str] = Field(default_factory=list)
+    hardware_devices: list[dict] = Field(default_factory=list)
+    computer_use_features: list[str] = Field(default_factory=list)
+    computer_use_features_coarse: list[str] = Field(default_factory=list)
+    recording_channels: list[str] = Field(default_factory=list)
+    recording_routes: list[str] = Field(default_factory=list)
+    protocol_version: str = Field(default="1.0", max_length=16)
+
+    @field_validator("machine_id")
+    @classmethod
+    def validate_machine_id(cls, value: str) -> str:
+        _validate_safe_hello_text(value, "machine_id")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", value) is None:
+            raise ValueError("machine_id contains unsupported characters")
+        return value
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        return _validate_safe_hello_text(value, "display_name")
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        if value not in {"darwin", "linux", "windows", "wsl2"}:
+            raise ValueError("platform is unsupported")
+        return value
+
+    @field_validator("arch")
+    @classmethod
+    def validate_arch(cls, value: str) -> str:
+        if value not in {"x86_64", "arm64"}:
+            raise ValueError("arch is unsupported")
+        return value
+
+    @field_validator("shim_version")
+    @classmethod
+    def validate_shim_version(cls, value: str) -> str:
+        if not value:
+            return value
+        _validate_safe_hello_text(value, "shim_version")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", value) is None:
+            raise ValueError("shim_version contains unsupported characters")
+        return value
+
+    @field_validator("allowed_root")
+    @classmethod
+    def validate_allowed_root(cls, value: str) -> str:
+        _validate_safe_hello_text(value, "allowed_root")
+        if not value.strip():
+            raise ValueError("allowed_root must be non-empty")
+        return value
+
+    @field_validator("protocol_version")
+    @classmethod
+    def validate_protocol_version(cls, value: str) -> str:
+        if re.fullmatch(r"\d+\.\d+", value) is None:
+            raise ValueError("protocol_version must use major.minor format")
+        return value
+
+    @field_validator("recording_channels")
+    @classmethod
+    def validate_recording_channels(cls, values: list[str]) -> list[str]:
+        allowed = {"floor", "browser", "desktop_ax"}
+        if any(value not in allowed for value in values):
+            raise ValueError("recording_channels contains an unsupported channel")
+        return list(dict.fromkeys(values))
+
+    @field_validator("computer_use_features_coarse")
+    @classmethod
+    def validate_computer_use_features_coarse(cls, values: list[str]) -> list[str]:
+        return _canonical_computer_use_features(
+            values,
+            supported=_COMPUTER_USE_FEATURES_COARSE,
+            field_name="computer_use_features_coarse",
+        )
+
+    @field_validator("computer_use_features")
+    @classmethod
+    def validate_computer_use_features(cls, values: list[str]) -> list[str]:
+        return _canonical_computer_use_features(
+            values,
+            supported=_COMPUTER_USE_FEATURES,
+            field_name="computer_use_features",
+        )
+
+    @field_validator("recording_routes")
+    @classmethod
+    def validate_recording_routes(cls, values: list[str]) -> list[str]:
+        allowed = {"extract_then_cloud", "local_vlm", "screenshots_to_cloud"}
+        if any(value not in allowed for value in values):
+            raise ValueError("recording_routes contains an unsupported route")
+        return list(dict.fromkeys(values))
 
     @classmethod
     def from_payload(cls, payload: dict) -> "ShimHello":
         sr = payload.get("screen_resolution")
+        screen_resolution: tuple[int, int] | None = None
+        if isinstance(sr, (list, tuple)) and len(sr) == 2:
+            try:
+                screen_resolution = (int(sr[0]), int(sr[1]))
+            except (TypeError, ValueError):
+                screen_resolution = None
         return cls(
-            machine_id=payload.get("machine_id", ""),
-            platform=payload.get("platform", ""),
-            arch=payload.get("arch", ""),
-            shim_version=payload.get("shim_version", ""),
-            allowed_root=payload.get("allowed_root", ""),
-            capabilities=list(payload.get("capabilities") or []),
-            screen_resolution=(
-                tuple(sr) if isinstance(sr, (list, tuple)) and len(sr) == 2 else None
+            machine_id=_required_hello_string(payload, "machine_id"),
+            display_name=_optional_hello_string(payload, "display_name"),
+            platform=_required_hello_string(payload, "platform"),
+            arch=_required_hello_string(payload, "arch"),
+            shim_version=_optional_hello_string(payload, "shim_version"),
+            allowed_root=_required_hello_string(payload, "allowed_root"),
+            capabilities=_hello_string_list(payload, "capabilities"),
+            screen_resolution=screen_resolution,
+            local_llm_models=_hello_string_list(payload, "local_llm_models"),
+            hardware_devices=[
+                device
+                for device in payload.get("hardware_devices") or []
+                if isinstance(device, dict)
+            ],
+            computer_use_features=_hello_string_list(payload, "computer_use_features"),
+            computer_use_features_coarse=_hello_string_list(
+                payload, "computer_use_features_coarse"
             ),
-            local_llm_models=list(payload.get("local_llm_models") or []),
-            hardware_devices=list(payload.get("hardware_devices") or []),
-            computer_use_features=list(payload.get("computer_use_features") or []),
+            recording_channels=_hello_string_list(payload, "recording_channels"),
+            recording_routes=_hello_string_list(payload, "recording_routes"),
+            protocol_version=_optional_hello_string(
+                payload, "protocol_version", default="1.0"
+            ),
         )
 
 
+class ShimConnectionGuard(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    generation: int
+    machine_id: str
+    computer_use_features_coarse: tuple[str, ...]
+    computer_use_features: tuple[str, ...]
+
+
 class ShimConnectionManager:
-    def __init__(self) -> None:
-        self._connections: dict[str, WebSocket] = {}
+    def __init__(self, *, relay: RelayBackend | None = None) -> None:
+        self._connections: dict[str, RelayWebSocket] = {}
+        self._relay_transports: dict[str, TextTransport] = {}
+        self._relay_connection_ids: dict[str, str] = {}
         self._hellos: dict[str, ShimHello] = {}
-        self._waiters: dict[str, list[asyncio.Future[WebSocket]]] = {}
+        self._shims: weakref.WeakValueDictionary[str, LocalPCShim] = (
+            weakref.WeakValueDictionary()
+        )
+        self._background_tasks: set[asyncio.Task[None]] = set()
+        self._waiters: dict[str, list[asyncio.Future[RelayWebSocket]]] = {}
         # (user_id, client_id) -> set[session_id]. Lets revoke_user_shims
         # find every active shim belonging to a user+app without scanning
         # the full connection dict.
         self._by_owner: dict[tuple[str | None, str | None], set[str]] = {}
         # Reverse index for fast unregister cleanup.
         self._owner_of: dict[str, tuple[str | None, str | None]] = {}
+        self._relay = relay or get_local_pc_relay()
 
     def register(
         self,
         session_id: str,
-        ws: WebSocket,
+        ws: RelayWebSocket,
         hello: ShimHello | None = None,
         *,
         user_id: str | None = None,
         client_id: str | None = None,
     ) -> None:
+        previous_websocket = self._connections.get(session_id)
         self._connections[session_id] = ws
         if hello is not None:
             self._hellos[session_id] = hello
+        shim = self._shims.get(session_id)
+        previous_reader: asyncio.Task[None] | None = None
+        if shim is not None:
+            if previous_websocket is not None and previous_websocket is not ws:
+                shim._fail_in_flight(
+                    ConnectionError(
+                        f"[LocalPC] Another shim replaced session {session_id[:12]}"
+                    )
+                )
+            previous_reader = shim._replace_connection(ws, hello or ShimHello())
         owner = (user_id, client_id)
+        previous_owner = self._owner_of.get(session_id)
+        if previous_owner is not None and previous_owner != owner:
+            previous_sessions = self._by_owner.get(previous_owner)
+            if previous_sessions is not None:
+                previous_sessions.discard(session_id)
+                if not previous_sessions:
+                    self._by_owner.pop(previous_owner, None)
         self._owner_of[session_id] = owner
         self._by_owner.setdefault(owner, set()).add(session_id)
         for fut in self._waiters.pop(session_id, []):
             if not fut.done():
                 fut.set_result(ws)
+        if previous_websocket is not None and previous_websocket is not ws:
+            task = asyncio.create_task(
+                self._close_superseded_connection(
+                    session_id, previous_websocket, previous_reader
+                )
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
         logger.info("[LocalPC] Shim registered for session %s", session_id[:12])
 
-    def unregister(self, session_id: str) -> None:
-        self._connections.pop(session_id, None)
+    async def _close_superseded_connection(
+        self,
+        session_id: str,
+        websocket: RelayWebSocket,
+        reader: asyncio.Task[None] | None,
+    ) -> None:
+        envelope = {
+            "type": "SESSION_REVOKED",
+            "id": str(uuid.uuid4()),
+            "ts": time.time(),
+            "payload": {"reason": "another_shim_connected"},
+        }
+        try:
+            await websocket.send_text(json.dumps(envelope))
+        except Exception:
+            logger.debug(
+                "[LocalPC] Failed to notify superseded shim for session %s",
+                session_id[:12],
+            )
+        try:
+            await websocket.close(
+                code=_DUPLICATE_SESSION_CLOSE_CODE,
+                reason="Another shim connected for this session",
+            )
+        except Exception:
+            logger.debug(
+                "[LocalPC] Failed to close superseded shim for session %s",
+                session_id[:12],
+            )
+        if reader is not None and not reader.done():
+            reader.cancel()
+
+    def unregister(
+        self, session_id: str, *, websocket: TextTransport | None = None
+    ) -> None:
+        current_direct = self._connections.get(session_id)
+        current_relay = self._relay_transports.get(session_id)
+        if websocket is not None:
+            if current_direct is websocket:
+                self._connections.pop(session_id, None)
+            elif current_relay is websocket:
+                self._relay_transports.pop(session_id, None)
+                self._relay_connection_ids.pop(session_id, None)
+            else:
+                return
+        else:
+            self._connections.pop(session_id, None)
+            self._relay_transports.pop(session_id, None)
+            self._relay_connection_ids.pop(session_id, None)
         self._hellos.pop(session_id, None)
         owner = self._owner_of.pop(session_id, None)
         if owner is not None:
@@ -241,6 +543,41 @@ class ShimConnectionManager:
                 if not sessions:
                     self._by_owner.pop(owner, None)
         logger.info("[LocalPC] Shim unregistered for session %s", session_id[:12])
+
+    def get_or_create_shim(self, session_id: str) -> "LocalPCShim":
+        """Return the one receive-loop owner for a registered session."""
+        transport: TextTransport | None = self._connections.get(session_id)
+        if transport is None:
+            transport = self._relay_transports.get(session_id)
+        if transport is None:
+            raise ConnectionError(
+                f"[LocalPC] Shim for session {session_id[:12]} is not connected"
+            )
+        shim = self._shims.get(session_id)
+        if shim is None:
+            shim = LocalPCShim(
+                session_id,
+                transport,
+                self._hellos.get(session_id),
+                manager=self,
+            )
+            self._shims[session_id] = shim
+        elif shim._ws is not transport:
+            shim._replace_connection(
+                transport, self._hellos.get(session_id) or ShimHello()
+            )
+        return shim
+
+    async def get_or_create_shim_for_session(
+        self, session_id: str, *, timeout: float = 1.0
+    ) -> "LocalPCShim":
+        await self.wait_for(session_id, timeout=timeout)
+        return self.get_or_create_shim(session_id)
+
+    def remove_shim(self, session_id: str, shim: "LocalPCShim") -> None:
+        """Forget a cached adapter if it is still the current instance."""
+        if self._shims.get(session_id) is shim:
+            self._shims.pop(session_id, None)
 
     async def revoke_user_shims(
         self,
@@ -269,6 +606,7 @@ class ShimConnectionManager:
             target_owners = [k for k in self._by_owner if k[0] == user_id]
 
         notified = 0
+        delivery_failures: list[Exception] = []
         for owner in target_owners:
             # Snapshot — sending SESSION_REVOKED eventually closes the WS,
             # which calls unregister, which mutates _by_owner.
@@ -283,19 +621,30 @@ class ShimConnectionManager:
                     "payload": {"reason": reason},
                 }
                 try:
-                    await ws.send_text(json.dumps(envelope))
+                    async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
+                        await ws.send_text(json.dumps(envelope))
                     notified += 1
-                except Exception:
+                except Exception as exc:
+                    delivery_failures.append(exc)
                     logger.debug(
                         "[LocalPC] SESSION_REVOKED send failed for session %s "
                         "(ws likely already closed)",
                         session_id[:12],
+                        exc_info=True,
                     )
                 # Close ourselves; 4428 disables shim auto-reconnect per spec.
                 try:
-                    await ws.close(code=4428, reason="Token revoked")
-                except Exception:
-                    pass
+                    async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
+                        await ws.close(code=4428, reason="Token revoked")
+                except Exception as exc:
+                    delivery_failures.append(exc)
+                    logger.debug(
+                        "[LocalPC] SESSION_REVOKED close failed for session %s",
+                        session_id[:12],
+                        exc_info=True,
+                    )
+                else:
+                    self.unregister(session_id, websocket=ws)
         if notified:
             logger.info(
                 "[LocalPC] Revoked %d shim session(s) for user %s app %s",
@@ -303,26 +652,161 @@ class ShimConnectionManager:
                 user_id[:12] if user_id else "?",
                 client_id or "*",
             )
-        return notified
-
-    async def wait_for(self, session_id: str, timeout: float = 30.0) -> WebSocket:
-        if session_id in self._connections:
-            return self._connections[session_id]
-        loop = asyncio.get_event_loop()
-        fut: asyncio.Future[WebSocket] = loop.create_future()
-        self._waiters.setdefault(session_id, []).append(fut)
         try:
-            return await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise TimeoutError(
-                f"[LocalPC] Shim for session {session_id[:12]} did not connect within {timeout}s"
-            )
+            async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
+                relay_notified = await self._relay.revoke_owner(
+                    user_id, client_id, reason=reason
+                )
+        except Exception as exc:
+            delivery_failures.append(exc)
+            relay_notified = 0
+        if delivery_failures:
+            raise RuntimeError(
+                "Failed to deliver Local PC session revocation through "
+                f"{len(delivery_failures)} transport operation(s)"
+            ) from delivery_failures[0]
+        return max(notified, relay_notified)
 
-    def get(self, session_id: str) -> WebSocket | None:
+    async def wait_for(self, session_id: str, timeout: float = 30.0) -> TextTransport:
+        direct = self._connections.get(session_id)
+        if direct is not None:
+            return direct
+        loop = asyncio.get_running_loop()
+        timeout = max(0.0, timeout)
+        deadline = loop.time() + timeout
+        try:
+            async with asyncio.timeout(timeout):
+                cached = await self._reuse_cached_transport(session_id)
+                if cached is not None:
+                    return cached
+                return await self._wait_for_new_transport(session_id, deadline)
+        except TimeoutError as exc:
+            direct = self._connections.get(session_id)
+            if direct is not None:
+                return direct
+            raise TimeoutError(
+                f"[LocalPC] Shim for session {session_id[:12]} did not connect "
+                f"within {timeout}s"
+            ) from exc
+
+    async def _reuse_cached_transport(self, session_id: str) -> TextTransport | None:
+        relay_transport = self._relay_transports.get(session_id)
+        if relay_transport is None:
+            return None
+        presence = await self._relay.get_presence(session_id)
+        direct = self._connections.get(session_id)
+        if direct is not None:
+            self._drop_relay_transport(session_id, fail_in_flight=False)
+            await relay_transport.close()
+            return direct
+        if (
+            presence is not None
+            and self._relay_connection_ids.get(session_id) == presence.connection_id
+        ):
+            return relay_transport
+        self._drop_relay_transport(session_id, fail_in_flight=True)
+        await relay_transport.close()
+        return None
+
+    def _drop_relay_transport(self, session_id: str, *, fail_in_flight: bool) -> None:
+        self._relay_transports.pop(session_id, None)
+        self._relay_connection_ids.pop(session_id, None)
+        if fail_in_flight:
+            self._hellos.pop(session_id, None)
+            shim = self._shims.get(session_id)
+            if shim is not None:
+                shim._fail_in_flight(
+                    ConnectionError(
+                        f"[LocalPC] Shim connection closed for session {session_id[:12]}"
+                    )
+                )
+
+    async def _wait_for_new_transport(
+        self, session_id: str, deadline: float
+    ) -> TextTransport:
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[RelayWebSocket] = loop.create_future()
+        self._waiters.setdefault(session_id, []).append(fut)
+        direct = self._connections.get(session_id)
+        if direct is not None:
+            fut.set_result(direct)
+        relay_task = asyncio.create_task(
+            self._relay.wait_for_presence(
+                session_id, timeout=max(0.0, deadline - loop.time())
+            )
+        )
+        try:
+            done, _pending = await asyncio.wait(
+                {fut, relay_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if fut in done:
+                return fut.result()
+            try:
+                presence = relay_task.result()
+            except TimeoutError:
+                return await fut
+            transport = await self._relay.open_transport(presence)
+            if fut.done():
+                await transport.close()
+                return fut.result()
+            self._relay_transports[session_id] = transport
+            self._relay_connection_ids[session_id] = presence.connection_id
+            self._hellos[session_id] = ShimHello.from_payload(presence.hello)
+            shim = self._shims.get(session_id)
+            if shim is not None:
+                shim._replace_connection(transport, self._hellos[session_id])
+            return transport
+        finally:
+            if not relay_task.done():
+                relay_task.cancel()
+            await asyncio.gather(relay_task, return_exceptions=True)
+            if not fut.done():
+                fut.cancel()
+            waiters = self._waiters.get(session_id)
+            if waiters is not None:
+                if fut in waiters:
+                    waiters.remove(fut)
+                if not waiters:
+                    self._waiters.pop(session_id, None)
+
+    def get(self, session_id: str) -> RelayWebSocket | None:
         return self._connections.get(session_id)
 
     def get_hello(self, session_id: str) -> ShimHello | None:
         return self._hellos.get(session_id)
+
+    def remember_hello(self, session_id: str, hello: ShimHello) -> None:
+        self._hellos[session_id] = hello
+
+    async def get_hello_async(self, session_id: str) -> ShimHello | None:
+        presence = await self._relay.get_presence(session_id)
+        if presence is None:
+            if session_id in self._connections:
+                return self._hellos.get(session_id)
+            self._relay_transports.pop(session_id, None)
+            self._relay_connection_ids.pop(session_id, None)
+            self._hellos.pop(session_id, None)
+            return None
+        hello = ShimHello.from_payload(presence.hello)
+        self._hellos[session_id] = hello
+        return hello
+
+    async def serve_websocket(
+        self,
+        session_id: str,
+        websocket: RelayWebSocket,
+        hello: ShimHello,
+        *,
+        user_id: str,
+        client_id: str,
+    ) -> None:
+        await self._relay.serve_websocket(
+            session_id,
+            websocket,
+            hello=hello.model_dump(mode="json"),
+            user_id=user_id,
+            client_id=client_id,
+        )
 
 
 class _FilesProxy:
@@ -496,7 +980,7 @@ class _ComputerProxy:
     """Wire-op wrapper for the shim's computer-use surface.
 
     Mirrors the spec in
-    ``experimental/local-pc-executor/docs/COMPUTER_USE.md``. Each method
+    ``autogpt-local-executor/docs/COMPUTER_USE.md``. Each method
     sends one wire op and returns the parsed payload (or raises
     :class:`ShimComputerUseError` on a structured ERROR response). The
     MCP-tool layer in ``tool_adapter.py`` translates the typed error to a
@@ -517,6 +1001,7 @@ class _ComputerProxy:
         format: str = "png",
         include_cursor: bool = False,
         quality: int = 75,
+        _guard: ShimConnectionGuard | None = None,
     ) -> dict:
         if region is not None and window_id is not None:
             raise ValueError(
@@ -532,19 +1017,29 @@ class _ComputerProxy:
             payload["region"] = list(region)
         if window_id is not None:
             payload["window_id"] = window_id
-        resp = await self._shim._rpc("SCREENSHOT_REQUEST", payload)
+        resp = await self._shim._rpc(
+            "SCREENSHOT_REQUEST", payload, connection_guard=_guard
+        )
         _raise_computer_use(resp, self._shim, "SCREENSHOT_REQUEST failed")
         return resp.get("payload") or {}
 
     # --- INPUT_ACTION verbs ------------------------------------------------
 
-    async def _input(self, action: str, **fields: Any) -> dict:
+    async def _input(
+        self,
+        action: str,
+        *,
+        _guard: ShimConnectionGuard | None = None,
+        **fields: Any,
+    ) -> dict:
         payload: dict[str, Any] = {"action": action}
         for k, v in fields.items():
             if v is not None:
                 payload[k] = v
         try:
-            resp = await self._shim._rpc("INPUT_ACTION", payload)
+            resp = await self._shim._rpc(
+                "INPUT_ACTION", payload, connection_guard=_guard
+            )
         except OpUnconfirmedError as exc:
             # INPUT_ACTION is non-idempotent (clicks at the same coord
             # are NOT the same op — the OS might have a different element
@@ -570,6 +1065,7 @@ class _ComputerProxy:
         *,
         button: str = "left",
         modifiers: list[str] | None = None,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         action = {
             "left": "left_click",
@@ -581,6 +1077,7 @@ class _ComputerProxy:
             coordinate=list(coordinate),
             button=button,
             modifiers=modifiers,
+            _guard=_guard,
         )
 
     async def double_click(
@@ -588,9 +1085,13 @@ class _ComputerProxy:
         coordinate: list[int] | tuple[int, int],
         *,
         modifiers: list[str] | None = None,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         await self._input(
-            "double_click", coordinate=list(coordinate), modifiers=modifiers
+            "double_click",
+            coordinate=list(coordinate),
+            modifiers=modifiers,
+            _guard=_guard,
         )
 
     async def triple_click(
@@ -598,32 +1099,52 @@ class _ComputerProxy:
         coordinate: list[int] | tuple[int, int],
         *,
         modifiers: list[str] | None = None,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         await self._input(
-            "triple_click", coordinate=list(coordinate), modifiers=modifiers
+            "triple_click",
+            coordinate=list(coordinate),
+            modifiers=modifiers,
+            _guard=_guard,
         )
 
-    async def middle_click(self, coordinate: list[int] | tuple[int, int]) -> None:
-        await self._input("middle_click", coordinate=list(coordinate))
+    async def middle_click(
+        self,
+        coordinate: list[int] | tuple[int, int],
+        *,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> None:
+        await self._input("middle_click", coordinate=list(coordinate), _guard=_guard)
 
-    async def mouse_move(self, coordinate: list[int] | tuple[int, int]) -> None:
-        await self._input("mouse_move", coordinate=list(coordinate))
+    async def mouse_move(
+        self,
+        coordinate: list[int] | tuple[int, int],
+        *,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> None:
+        await self._input("mouse_move", coordinate=list(coordinate), _guard=_guard)
 
     async def mouse_down(
         self,
         coordinate: list[int] | tuple[int, int],
         *,
         button: str = "left",
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
-        await self._input("mouse_down", coordinate=list(coordinate), button=button)
+        await self._input(
+            "mouse_down", coordinate=list(coordinate), button=button, _guard=_guard
+        )
 
     async def mouse_up(
         self,
         coordinate: list[int] | tuple[int, int],
         *,
         button: str = "left",
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
-        await self._input("mouse_up", coordinate=list(coordinate), button=button)
+        await self._input(
+            "mouse_up", coordinate=list(coordinate), button=button, _guard=_guard
+        )
 
     async def drag(
         self,
@@ -631,12 +1152,14 @@ class _ComputerProxy:
         *,
         button: str = "left",
         duration_ms: int | None = None,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         await self._input(
             "drag",
             path=[list(pt) for pt in path],
             button=button,
             duration_ms=duration_ms,
+            _guard=_guard,
         )
 
     async def scroll(
@@ -646,6 +1169,7 @@ class _ComputerProxy:
         direction: str = "down",
         scroll_amount: int = 1,
         modifiers: list[str] | None = None,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         await self._input(
             "scroll",
@@ -653,6 +1177,7 @@ class _ComputerProxy:
             scroll_direction=direction,
             scroll_amount=scroll_amount,
             modifiers=modifiers,
+            _guard=_guard,
         )
 
     async def type(
@@ -661,32 +1186,48 @@ class _ComputerProxy:
         *,
         paste: bool = False,
         preserve_clipboard: bool = False,
+        _guard: ShimConnectionGuard | None = None,
     ) -> None:
         await self._input(
             "type",
             text=text,
             paste=paste,
             preserve_clipboard=preserve_clipboard,
+            _guard=_guard,
         )
 
-    async def key(self, key: str) -> None:
-        await self._input("key", key=key)
+    async def key(self, key: str, *, _guard: ShimConnectionGuard | None = None) -> None:
+        await self._input("key", key=key, _guard=_guard)
 
-    async def hold_key(self, key: str, duration_ms: int) -> None:
-        await self._input("hold_key", key=key, duration_ms=duration_ms)
+    async def hold_key(
+        self,
+        key: str,
+        duration_ms: int,
+        *,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> None:
+        await self._input("hold_key", key=key, duration_ms=duration_ms, _guard=_guard)
 
-    async def wait(self, duration_ms: int) -> None:
-        await self._input("wait", duration_ms=duration_ms)
+    async def wait(
+        self, duration_ms: int, *, _guard: ShimConnectionGuard | None = None
+    ) -> None:
+        await self._input("wait", duration_ms=duration_ms, _guard=_guard)
 
     # --- Cursor / display --------------------------------------------------
 
-    async def cursor_position(self) -> dict:
-        resp = await self._shim._rpc("CURSOR_POSITION_REQUEST", {})
+    async def cursor_position(
+        self, *, _guard: ShimConnectionGuard | None = None
+    ) -> dict:
+        resp = await self._shim._rpc(
+            "CURSOR_POSITION_REQUEST", {}, connection_guard=_guard
+        )
         _raise_computer_use(resp, self._shim, "CURSOR_POSITION_REQUEST failed")
         return resp.get("payload") or {}
 
-    async def display_info(self) -> dict:
-        resp = await self._shim._rpc("DISPLAY_INFO_REQUEST", {})
+    async def display_info(self, *, _guard: ShimConnectionGuard | None = None) -> dict:
+        resp = await self._shim._rpc(
+            "DISPLAY_INFO_REQUEST", {}, connection_guard=_guard
+        )
         _raise_computer_use(resp, self._shim, "DISPLAY_INFO_REQUEST failed")
         return resp.get("payload") or {}
 
@@ -698,6 +1239,7 @@ class _ComputerProxy:
         app_bundle_id: str | None = None,
         include_minimized: bool = False,
         include_offscreen: bool = False,
+        _guard: ShimConnectionGuard | None = None,
     ) -> list[dict]:
         resp = await self._shim._rpc(
             "WINDOW_LIST_REQUEST",
@@ -706,14 +1248,23 @@ class _ComputerProxy:
                 "include_minimized": include_minimized,
                 "include_offscreen": include_offscreen,
             },
+            connection_guard=_guard,
         )
         _raise_computer_use(resp, self._shim, "WINDOW_LIST_REQUEST failed")
         return list((resp.get("payload") or {}).get("windows") or [])
 
-    async def focus_window(self, window_id: str, *, raise_: bool = True) -> None:
+    async def focus_window(
+        self,
+        window_id: str,
+        *,
+        raise_: bool = True,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> None:
         try:
             resp = await self._shim._rpc(
-                "WINDOW_FOCUS", {"window_id": window_id, "raise": raise_}
+                "WINDOW_FOCUS",
+                {"window_id": window_id, "raise": raise_},
+                connection_guard=_guard,
             )
         except OpUnconfirmedError as exc:
             raise ShimComputerUseError(
@@ -730,9 +1281,16 @@ class _ComputerProxy:
 
     # --- Apps --------------------------------------------------------------
 
-    async def list_apps(self, *, include_background: bool = False) -> list[dict]:
+    async def list_apps(
+        self,
+        *,
+        include_background: bool = False,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> list[dict]:
         resp = await self._shim._rpc(
-            "APP_LIST_REQUEST", {"include_background": include_background}
+            "APP_LIST_REQUEST",
+            {"include_background": include_background},
+            connection_guard=_guard,
         )
         _raise_computer_use(resp, self._shim, "APP_LIST_REQUEST failed")
         return list((resp.get("payload") or {}).get("apps") or [])
@@ -744,6 +1302,7 @@ class _ComputerProxy:
         executable_path: str | None = None,
         args: list[str] | None = None,
         activate: bool = True,
+        _guard: ShimConnectionGuard | None = None,
     ) -> dict:
         if not bundle_id and not executable_path:
             raise ValueError(
@@ -758,6 +1317,7 @@ class _ComputerProxy:
                     "args": list(args or []),
                     "activate": activate,
                 },
+                connection_guard=_guard,
             )
         except OpUnconfirmedError as exc:
             raise ShimComputerUseError(
@@ -778,15 +1338,30 @@ class _ComputerProxy:
 
     # --- Clipboard ---------------------------------------------------------
 
-    async def clipboard_read(self, *, format: str = "text") -> str | None:
-        resp = await self._shim._rpc("CLIPBOARD_READ", {"format": format})
+    async def clipboard_read(
+        self,
+        *,
+        format: str = "text",
+        _guard: ShimConnectionGuard | None = None,
+    ) -> str | None:
+        resp = await self._shim._rpc(
+            "CLIPBOARD_READ", {"format": format}, connection_guard=_guard
+        )
         _raise_computer_use(resp, self._shim, "CLIPBOARD_READ failed")
         return (resp.get("payload") or {}).get("content")
 
-    async def clipboard_write(self, content: str, *, format: str = "text") -> None:
+    async def clipboard_write(
+        self,
+        content: str,
+        *,
+        format: str = "text",
+        _guard: ShimConnectionGuard | None = None,
+    ) -> None:
         try:
             resp = await self._shim._rpc(
-                "CLIPBOARD_WRITE", {"format": format, "content": content}
+                "CLIPBOARD_WRITE",
+                {"format": format, "content": content},
+                connection_guard=_guard,
             )
         except OpUnconfirmedError as exc:
             raise ShimComputerUseError(
@@ -803,13 +1378,19 @@ class _ComputerProxy:
 
     # --- Permissions -------------------------------------------------------
 
-    async def permissions_check(self, permissions: list[str] | None = None) -> dict:
+    async def permissions_check(
+        self,
+        permissions: list[str] | None = None,
+        *,
+        _guard: ShimConnectionGuard | None = None,
+    ) -> dict:
         resp = await self._shim._rpc(
             "PERMISSIONS_CHECK_REQUEST",
             {
                 "permissions": permissions
                 or ["screen_recording", "accessibility", "input_monitoring"]
             },
+            connection_guard=_guard,
         )
         _raise_computer_use(resp, self._shim, "PERMISSIONS_CHECK_REQUEST failed")
         return (resp.get("payload") or {}).get("permissions") or {}
@@ -869,6 +1450,7 @@ class _CommandResult:
         self.stderr = payload.get("stderr", "")
         self.exit_code = payload.get("exit_code", -1)
         self.timed_out = payload.get("timed_out", False)
+        self.output_truncated = bool(payload.get("output_truncated", False))
 
 
 # ── Local LLM routing ────────────────────────────────────────────────────────
@@ -876,7 +1458,7 @@ class _CommandResult:
 # When ``LocalLLMRouter`` greenlights local routing, ``_LocalLLMProxy`` sends
 # a LOCAL_LLM_COMPLETION over the WS and consumes the shim's streaming
 # LOCAL_LLM_COMPLETION_CHUNK frames + terminal LOCAL_LLM_COMPLETION_RESPONSE.
-# See experimental/local-pc-executor/docs/LOCAL_LLM.md for the wire spec.
+# See autogpt-local-executor/docs/LOCAL_LLM.md for the wire spec.
 
 
 class LocalLLMError(RuntimeError):
@@ -1019,7 +1601,7 @@ class _LocalLLMProxy:
 # (§6) — which the recv loop fans out per recording_id into a queue the live
 # co-pilot loop drains via `stream_steps()`.
 #
-# See experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md.
+# See autogpt-local-executor/docs/WORKFLOW_RECORDING.md.
 
 
 class ShimRecordingError(RuntimeError):
@@ -1055,7 +1637,7 @@ def _raise_recording(resp: dict, shim: "LocalPCShim | None", fallback: str) -> N
 class _RecordingProxy:
     """Wire-op wrapper for the shim's workflow-recording surface.
 
-    Mirrors ``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md``
+    Mirrors ``autogpt-local-executor/docs/WORKFLOW_RECORDING.md``
     §6. ``start`` / ``stop`` / ``fetch`` are request/response (count against
     in-flight). RECORDING_STEP frames (co-pilot mode) arrive out-of-band and
     are exposed via :meth:`stream_steps`.
@@ -1063,6 +1645,115 @@ class _RecordingProxy:
 
     def __init__(self, shim: "LocalPCShim") -> None:
         self._shim = shim
+        self._effective_routes: dict[str, str] = {}
+
+    def _validate_advertised(
+        self, *, interpretation_route: str, channels: list[str]
+    ) -> None:
+        unavailable_channels = sorted(
+            set(channels) - set(self._shim.recording_channels)
+        )
+        if unavailable_channels:
+            raise ShimRecordingError(
+                "RECORDING_CHANNEL_UNAVAILABLE",
+                "The requested recording channel was not advertised by the local executor.",
+                {"unavailable_channels": unavailable_channels},
+            )
+        if interpretation_route not in self._shim.recording_routes:
+            raise ShimRecordingError(
+                "INTERPRETATION_UNAVAILABLE",
+                "The requested interpretation route was not advertised by the local executor.",
+                {"interpretation_route": interpretation_route},
+            )
+
+    def effective_route_for(self, recording_id: str, fallback: str) -> str:
+        return self._effective_routes.get(recording_id, fallback)
+
+    async def request_consent(
+        self,
+        *,
+        mode: str = "copilot",
+        interpretation_route: str = "extract_then_cloud",
+        channels: list[str] | None = None,
+    ) -> RecordingConsentResult:
+        """Ask the shim to show its native recording-consent prompt."""
+        capture_channels = list(channels or ["floor"])
+        self._validate_advertised(
+            interpretation_route=interpretation_route, channels=capture_channels
+        )
+        resp = await self._shim._rpc(
+            "REQUEST_RECORDING_CONSENT",
+            {
+                "mode": mode,
+                "interpretation_route": interpretation_route,
+                "channels": capture_channels,
+            },
+        )
+        _raise_recording(resp, self._shim, "Recording consent request failed")
+        if resp.get("type") != "RECORDING_CONSENT_RESULT":
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned an invalid recording consent response.",
+            )
+        result = RecordingConsentResult.from_payload(resp.get("payload") or {})
+        if result.mode != mode:
+            raise ShimRecordingError(
+                "CONSENT_SCOPE_MISMATCH",
+                "The local executor consent was issued for different recording settings.",
+                {
+                    "requested_mode": mode,
+                    "approved_mode": result.mode,
+                },
+            )
+        if result.interpretation_route not in self._shim.recording_routes:
+            raise ShimRecordingError(
+                "CONSENT_SCOPE_MISMATCH",
+                "The local executor returned a consent route it did not advertise.",
+                {
+                    "requested_interpretation_route": interpretation_route,
+                    "approved_interpretation_route": result.interpretation_route,
+                },
+            )
+        if result.approved and (
+            result.expires_at is None or result.expires_at <= time.time()
+        ):
+            raise ShimRecordingError(
+                "CONSENT_REQUIRED",
+                "The local executor returned expired recording consent.",
+            )
+        return result
+
+    async def start_with_consent(
+        self,
+        *,
+        mode: str = "copilot",
+        interpretation_route: str = "extract_then_cloud",
+        channels: list[str] | None = None,
+    ) -> str:
+        """Obtain native consent and start without exposing its token."""
+        capture_channels = list(channels or ["floor"])
+        consent = await self.request_consent(
+            mode=mode,
+            interpretation_route=interpretation_route,
+            channels=capture_channels,
+        )
+        if not consent.approved:
+            raise ShimRecordingError(
+                "CONSENT_DENIED", "The user declined workflow recording."
+            )
+        if not consent.consent_token:
+            raise ShimRecordingError(
+                "CONSENT_REQUIRED",
+                "The local executor approved recording without issuing a consent token.",
+            )
+        recording_id = await self.start(
+            mode=mode,
+            interpretation_route=consent.interpretation_route,
+            channels=capture_channels,
+            consent_token=consent.consent_token,
+        )
+        self._effective_routes[recording_id] = consent.interpretation_route
+        return recording_id
 
     async def start(
         self,
@@ -1077,6 +1768,9 @@ class _RecordingProxy:
         ``consent_token`` is REQUIRED — the platform cannot self-assert it
         (§9); START without a valid shim-issued token gets CONSENT_REQUIRED.
         """
+        self._validate_advertised(
+            interpretation_route=interpretation_route, channels=list(channels)
+        )
         resp = await self._shim._rpc(
             "START_RECORDING",
             {
@@ -1088,17 +1782,55 @@ class _RecordingProxy:
         )
         _raise_recording(resp, self._shim, "START_RECORDING failed")
         recording_id = str((resp.get("payload") or {}).get("recording_id") or "")
-        if recording_id:
-            # Pre-create the step buffer so a fast first RECORDING_STEP frame
-            # (co-pilot mode) doesn't race the START response and get dropped.
-            self._shim._ensure_recording_buffer(recording_id)
+        if not recording_id:
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned an empty recording ID.",
+            )
+        self._shim._ensure_recording_buffer(recording_id, started=True)
         return recording_id
 
     async def stop(self, recording_id: str) -> "RecordingSummary":
         """STOP_RECORDING → return the RECORDING_SUMMARY."""
         resp = await self._shim._rpc("STOP_RECORDING", {"recording_id": recording_id})
         _raise_recording(resp, self._shim, "STOP_RECORDING failed")
-        return RecordingSummary.from_payload(resp.get("payload") or {})
+        summary = RecordingSummary.from_payload(resp.get("payload") or {})
+        if summary.recording_id != recording_id:
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned a summary for a different recording.",
+            )
+        return summary
+
+    async def apply_review(
+        self,
+        recording_id: str,
+        *,
+        removed_step_seqs: list[int],
+        redacted_step_seqs: list[int],
+    ) -> RecordingReviewApplied:
+        """Persist authoritative user review edits in shim-owned storage."""
+        resp = await self._shim._rpc(
+            "APPLY_RECORDING_REVIEW",
+            {
+                "recording_id": recording_id,
+                "removed_step_seqs": list(removed_step_seqs),
+                "redacted_step_seqs": list(redacted_step_seqs),
+            },
+        )
+        _raise_recording(resp, self._shim, "Applying recording review failed")
+        if resp.get("type") != "RECORDING_REVIEW_APPLIED":
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned an invalid recording review response.",
+            )
+        applied = RecordingReviewApplied.from_payload(resp.get("payload") or {})
+        if applied.recording_id != recording_id:
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor applied review to a different recording.",
+            )
+        return applied
 
     async def fetch(self, recording_id: str) -> "WorkflowRecording":
         """RECORDING_FETCH → return the full post-redaction WorkflowRecording.
@@ -1109,7 +1841,20 @@ class _RecordingProxy:
         """
         resp = await self._shim._rpc("RECORDING_FETCH", {"recording_id": recording_id})
         _raise_recording(resp, self._shim, "RECORDING_FETCH failed")
-        return WorkflowRecording.from_payload(resp.get("payload") or {})
+        payload = resp.get("payload") or {}
+        recording = payload.get("recording") if isinstance(payload, dict) else None
+        if not isinstance(recording, dict):
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned an invalid recording payload.",
+            )
+        parsed = WorkflowRecording.from_payload(recording)
+        if parsed.recording_id != recording_id:
+            raise ShimRecordingError(
+                "PROTOCOL_ERROR",
+                "The local executor returned data for a different recording.",
+            )
+        return parsed
 
     def stream_steps(self, recording_id: str):
         """Async iterator over live RECORDING_STEP frames (co-pilot mode).
@@ -1138,13 +1883,13 @@ class _RpcAttemptFailed(Exception):
         self.timed_out = timed_out
 
 
-class LocalPCShim:
+class LocalPCShim(LocalPCExecutorMarker):
     """
     Drop-in replacement for E2B AsyncSandbox that routes execution to the
     user's local machine via the autogpt-local-executor shim.
 
-    Duck-type contract: .commands.run(), .files.read(), .files.write(),
-                        .pause(), .kill(), .sandbox_id
+    Executor contract: .commands.run(), .files.read(), .files.write(),
+                       .pause(), .kill(), .sandbox_id
 
     Extended attributes (LocalPC-only; safe to read via isinstance check):
         .allowed_root, .machine_id, .platform, .arch, .capabilities,
@@ -1154,26 +1899,26 @@ class LocalPCShim:
     Computer-use surface:
         .computer.screenshot(...), .computer.click(...), .computer.type(...),
         and friends — see ``_ComputerProxy`` and
-        ``experimental/local-pc-executor/docs/COMPUTER_USE.md``.
+        ``autogpt-local-executor/docs/COMPUTER_USE.md``.
 
     Local LLM surface:
         .local_llm.complete(...) (async iterator of deltas) and
         .local_llm.complete_blocking(...) (string). Routed only when
         ``LocalLLMRouter.should_route`` returns a model — see
         ``local_llm_router.py`` and
-        ``experimental/local-pc-executor/docs/LOCAL_LLM.md``.
+        ``autogpt-local-executor/docs/LOCAL_LLM.md``.
 
     Workflow-recording surface:
         .recording.start(...), .recording.stop(...), .recording.fetch(...),
         and .recording.stream_steps(...) — see ``_RecordingProxy`` and
-        ``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md``.
+        ``autogpt-local-executor/docs/WORKFLOW_RECORDING.md``.
         Only usable when the shim advertised the ``recording`` capability.
     """
 
     def __init__(
         self,
         session_id: str,
-        ws: WebSocket,
+        ws: TextTransport,
         hello: ShimHello | None = None,
         *,
         manager: "ShimConnectionManager | None" = None,
@@ -1181,18 +1926,10 @@ class LocalPCShim:
         self.sandbox_id = session_id
         self._ws = ws
         self._manager = manager
+        self._connection_generation = 1
         hello = hello or ShimHello()
-        self.machine_id = hello.machine_id
-        self.platform = hello.platform
-        self.arch = hello.arch
-        self.shim_version = hello.shim_version
-        self.allowed_root = hello.allowed_root
-        self.capabilities = hello.capabilities
-        self.screen_resolution = hello.screen_resolution
-        self.local_llm_models = hello.local_llm_models
-        self.hardware_devices = hello.hardware_devices
-        self.computer_use_features = hello.computer_use_features
-        self._pending: dict[str, asyncio.Future[dict]] = {}
+        self._apply_hello(hello)
+        self._pending: dict[str, tuple[frozenset[str], asyncio.Future[dict]]] = {}
         # Streaming requests (LOCAL_LLM_COMPLETION) accumulate multiple
         # frames per request id. The queue collects every CHUNK + the
         # terminal RESPONSE (or ERROR); the consumer in _LocalLLMProxy
@@ -1204,6 +1941,7 @@ class LocalPCShim:
         # `recording.stream_steps()`. A sentinel `None` put on the queue
         # signals the iterator to stop (set by `close_recording`).
         self._recording_steps: dict[str, asyncio.Queue[TrajectoryStep | None]] = {}
+        self._started_recording_ids: set[str] = set()
         # Backpressure — see PROTOCOL.md §Concurrency + STATUS frame
         # support. `pending_capacity` is the shim's self-reported headroom:
         # 0 = at the concurrency cap, refuse-new-work; >0 = slots free; None
@@ -1217,7 +1955,7 @@ class LocalPCShim:
         self.computer = _ComputerProxy(self)
         self.local_llm = _LocalLLMProxy(self)
         self.recording = _RecordingProxy(self)
-        self._recv_task = asyncio.create_task(self._recv_loop())
+        self._recv_task = asyncio.create_task(self._recv_loop(ws))
 
     @property
     def pending_capacity(self) -> int | None:
@@ -1239,9 +1977,59 @@ class LocalPCShim:
         manager: ShimConnectionManager,
         connect_timeout: float = 30.0,
     ) -> "LocalPCShim":
-        ws = await manager.wait_for(session_id, timeout=connect_timeout)
-        hello = manager.get_hello(session_id)
-        return cls(session_id, ws, hello, manager=manager)
+        await manager.wait_for(session_id, timeout=connect_timeout)
+        return manager.get_or_create_shim(session_id)
+
+    def _apply_hello(self, hello: ShimHello) -> None:
+        self.machine_id = hello.machine_id
+        self.platform = hello.platform
+        self.arch = hello.arch
+        self.shim_version = hello.shim_version
+        self.allowed_root = hello.allowed_root
+        self.capabilities = list(hello.capabilities)
+        self.capability_set = frozenset(hello.capabilities)
+        self.screen_resolution = hello.screen_resolution
+        self.local_llm_models = list(hello.local_llm_models)
+        self.hardware_devices = list(hello.hardware_devices)
+        self.computer_use_features = list(hello.computer_use_features)
+        self.computer_use_features_coarse = list(hello.computer_use_features_coarse)
+        self.recording_channels = list(hello.recording_channels)
+        self.recording_routes = list(hello.recording_routes)
+        self.protocol_version = hello.protocol_version
+
+    def capture_connection_guard(self) -> ShimConnectionGuard:
+        return ShimConnectionGuard(
+            generation=getattr(self, "_connection_generation", 0),
+            machine_id=self.machine_id,
+            computer_use_features_coarse=tuple(self.computer_use_features_coarse),
+            computer_use_features=tuple(self.computer_use_features),
+        )
+
+    def connection_guard_matches(self, guard: ShimConnectionGuard) -> bool:
+        return guard == self.capture_connection_guard()
+
+    def _replace_connection(
+        self, websocket: TextTransport, hello: ShimHello
+    ) -> asyncio.Task[None] | None:
+        """Attach a reconnect to this adapter without creating a second reader."""
+        self._connection_generation += 1
+        self._apply_hello(hello)
+        if websocket is self._ws and not self._recv_task.done():
+            return None
+        previous_reader = self._recv_task
+        self._ws = websocket
+        self._recv_task = asyncio.create_task(self._recv_loop(websocket))
+        return previous_reader
+
+    async def wait_closed(self) -> None:
+        """Wait for the adapter-owned receive loop to finish."""
+        reader = self._recv_task
+        try:
+            await reader
+        except asyncio.CancelledError:
+            if reader is not self._recv_task:
+                return
+            raise
 
     def _update_pending_capacity(self, value: Any, *, source: str) -> None:
         """Defensive: accept whatever the shim sent and only honor sane ints.
@@ -1307,22 +2095,36 @@ class LocalPCShim:
         payload: dict,
         *,
         timeout: float,
+        connection_guard: ShimConnectionGuard | None = None,
     ) -> dict:
         """One attempt at sending a wire op and awaiting its response.
 
         Raises ``TimeoutError`` if the response doesn't arrive within
         ``timeout`` or the underlying WS send fails before the response.
         """
+        if connection_guard is not None and not self.connection_guard_matches(
+            connection_guard
+        ):
+            raise ShimComputerUseError(
+                "COMPUTER_USE_CONNECTION_CHANGED",
+                "The Local PC executor reconnected while computer access was being "
+                "checked. Retry after the current machine and capabilities are reviewed.",
+            )
+        websocket = self._ws
         msg_id = str(uuid.uuid4())
         msg = {"type": msg_type, "id": msg_id, "ts": time.time(), "payload": payload}
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         fut: asyncio.Future[dict] = loop.create_future()
-        self._pending[msg_id] = fut
+        expected_types = EXPECTED_RESPONSE_TYPES.get(msg_type)
+        if expected_types is None:
+            raise ShimProtocolError(f"No response contract is defined for {msg_type}")
+        self._pending[msg_id] = (expected_types, fut)
         try:
-            await self._ws.send_text(json.dumps(msg))
+            await websocket.send_text(json.dumps(msg))
             return await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
+        except ShimProtocolError:
+            raise
         except asyncio.TimeoutError as exc:
-            self._pending.pop(msg_id, None)
             # Tag the timeout with the wire id so the caller can convert it
             # into a typed OpUnconfirmedError (non-idempotent ops) or trigger
             # a single auto-retry (idempotent ops).
@@ -1331,16 +2133,24 @@ class LocalPCShim:
             # WS disconnect / send error / recv loop closure — the response
             # cannot arrive on this connection. Surface as unconfirmed so the
             # caller decides retry vs. raise based on idempotency.
-            self._pending.pop(msg_id, None)
             raise _RpcAttemptFailed(msg_id, msg_type, timed_out=False) from exc
+        finally:
+            pending = self._pending.pop(msg_id, None)
+            if pending is not None and not fut.done():
+                fut.cancel()
 
     async def _rpc(
-        self, msg_type: str, payload: dict, *, timeout: float = 30.0
+        self,
+        msg_type: str,
+        payload: dict,
+        *,
+        timeout: float = 30.0,
+        connection_guard: ShimConnectionGuard | None = None,
     ) -> dict:
         """Send a wire op and await its response.
 
         Disconnect/timeout semantics follow the per-op idempotency table in
-        ``experimental/local-pc-executor/docs/PROTOCOL.md``:
+        ``autogpt-local-executor/docs/PROTOCOL.md``:
 
         - Idempotent ops (FILE_READ, FILE_STAT, ...): on
           timeout/disconnect, schedule one automatic retry once the WS is
@@ -1357,7 +2167,11 @@ class LocalPCShim:
         """
         await self._await_capacity(msg_type)
         try:
-            return await self._send_and_wait(msg_type, payload, timeout=timeout)
+            if connection_guard is None:
+                return await self._send_and_wait(msg_type, payload, timeout=timeout)
+            return await self._send_and_wait(
+                msg_type, payload, timeout=timeout, connection_guard=connection_guard
+            )
         except _RpcAttemptFailed as first:
             if msg_type in _IDEMPOTENT_OPS:
                 # One retry, after the WS is back. wait_for_reconnect is a
@@ -1366,10 +2180,27 @@ class LocalPCShim:
                     await self._await_reconnect_for_retry()
                 except Exception:
                     pass
-                try:
-                    result = await self._send_and_wait(
-                        msg_type, payload, timeout=timeout
+                if connection_guard is not None and not self.connection_guard_matches(
+                    connection_guard
+                ):
+                    raise ShimComputerUseError(
+                        "COMPUTER_USE_CONNECTION_CHANGED",
+                        "The Local PC executor reconnected before this computer-use "
+                        "operation could be retried. Review the current machine and "
+                        "capabilities before trying again.",
                     )
+                try:
+                    if connection_guard is None:
+                        result = await self._send_and_wait(
+                            msg_type, payload, timeout=timeout
+                        )
+                    else:
+                        result = await self._send_and_wait(
+                            msg_type,
+                            payload,
+                            timeout=timeout,
+                            connection_guard=connection_guard,
+                        )
                 except _RpcAttemptFailed as second:
                     record_rpc_retry(msg_type, recovered=False)
                     if second.timed_out:
@@ -1423,45 +2254,94 @@ class LocalPCShim:
         # If the manager produced a fresh WS, swap it in so the retry rides
         # the new connection.
         if ws is not self._ws:
-            self._ws = ws
+            self._replace_connection(
+                ws, manager.get_hello(self.sandbox_id) or ShimHello()
+            )
 
-    async def _recv_loop(self) -> None:
+    async def _recv_loop(self, websocket: TextTransport) -> None:
+        disconnect_error = ConnectionError(
+            f"[LocalPC] Shim connection closed for session {self.sandbox_id[:12]}"
+        )
         try:
-            async for raw in self._ws.iter_text():
-                try:
-                    msg = json.loads(raw)
-                    self._handle_envelope_capacity(msg)
-                    msg_type = msg.get("type")
-                    if msg_type == "STATUS":
-                        self._handle_status_frame(msg)
-                        continue
-                    if msg_type == "RECORDING_STEP":
-                        # Unsolicited, non-acked, out-of-band (co-pilot
-                        # mode only — §6). Buffered per recording_id; never
-                        # routed through _pending and never auto-retried.
-                        self._handle_recording_step(msg)
-                        continue
-                    msg_id = msg.get("id")
-                    # Streaming dispatch: LOCAL_LLM_COMPLETION_CHUNK and the
-                    # terminal LOCAL_LLM_COMPLETION_RESPONSE share a wire id
-                    # with the original LOCAL_LLM_COMPLETION request. ERROR
-                    # for a streaming op also flows through the same queue.
-                    if msg_id and msg_id in self._streaming:
-                        if msg_type in (
-                            "LOCAL_LLM_COMPLETION_CHUNK",
-                            "LOCAL_LLM_COMPLETION_RESPONSE",
-                            "ERROR",
-                        ):
-                            await self._streaming[msg_id].put(msg)
-                            continue
-                    if msg_id and msg_id in self._pending:
-                        fut = self._pending.pop(msg_id)
-                        if not fut.done():
-                            fut.set_result(msg)
-                except Exception:
-                    logger.exception("[LocalPC] Error processing shim message")
+            async for raw in websocket.iter_text():
+                self._process_raw_message(raw)
+        except asyncio.CancelledError:
+            disconnect_error = ConnectionError(
+                f"[LocalPC] Shim connection cancelled for session {self.sandbox_id[:12]}"
+            )
+            raise
         except Exception:
-            logger.debug("[LocalPC] Shim recv loop ended for %s", self.sandbox_id[:12])
+            disconnect_error = ConnectionError(
+                f"[LocalPC] Shim connection lost for session {self.sandbox_id[:12]}"
+            )
+            logger.debug(
+                "[LocalPC] Shim recv loop ended for %s",
+                self.sandbox_id[:12],
+                exc_info=True,
+            )
+        finally:
+            if websocket is self._ws:
+                self._fail_in_flight(disconnect_error)
+                if self._manager is not None:
+                    self._manager.unregister(self.sandbox_id, websocket=websocket)
+
+    def _process_raw_message(self, raw: str) -> None:
+        try:
+            msg = json.loads(raw)
+            if not isinstance(msg, dict):
+                return
+            self._handle_envelope_capacity(msg)
+            msg_type = msg.get("type")
+            if msg_type == "STATUS":
+                self._handle_status_frame(msg)
+                return
+            if msg_type == "RECORDING_STEP":
+                self._handle_recording_step(msg)
+                return
+            msg_id = msg.get("id")
+            if isinstance(msg_id, str) and msg_id in self._streaming:
+                if msg_type in (
+                    "LOCAL_LLM_COMPLETION_CHUNK",
+                    "LOCAL_LLM_COMPLETION_RESPONSE",
+                    "ERROR",
+                ):
+                    self._streaming[msg_id].put_nowait(msg)
+                    return
+            if isinstance(msg_id, str) and msg_id in self._pending:
+                expected_types, future = self._pending.pop(msg_id)
+                if msg_type != "ERROR" and msg_type not in expected_types:
+                    if not future.done():
+                        future.set_exception(
+                            ShimProtocolError(
+                                f"Unexpected {msg_type!r} response for correlation id "
+                                f"{msg_id}; expected {sorted(expected_types)}"
+                            )
+                        )
+                    return
+                if not future.done():
+                    future.set_result(msg)
+        except Exception:
+            logger.exception("[LocalPC] Error processing shim message")
+
+    def _fail_in_flight(self, error: ConnectionError) -> None:
+        """Fail every waiter immediately when its connection cannot respond."""
+        pending = [future for _expected, future in self._pending.values()]
+        self._pending.clear()
+        for future in pending:
+            if not future.done():
+                future.set_exception(error)
+
+        stream_error = {
+            "type": "ERROR",
+            "payload": {
+                "code": "CONNECTION_LOST",
+                "message": str(error),
+            },
+        }
+        for queue in self._streaming.values():
+            queue.put_nowait(stream_error)
+        for recording_id in list(self._recording_steps):
+            self.close_recording(recording_id)
 
     def _register_stream(self, msg_id: str) -> asyncio.Queue[dict]:
         """Register a streaming request and return its inbound-frame queue.
@@ -1547,18 +2427,75 @@ class LocalPCShim:
     # --- Workflow recording (RECORDING_STEP buffering) ---------------------
 
     def _ensure_recording_buffer(
-        self, recording_id: str
-    ) -> "asyncio.Queue[TrajectoryStep | None]":
+        self, recording_id: str, *, started: bool = False
+    ) -> "asyncio.Queue[TrajectoryStep | None] | None":
         """Return (creating if needed) the per-recording step queue.
 
-        Pre-created on START_RECORDING so a fast first RECORDING_STEP frame
-        can't race the START response and be dropped.
+        A confirmed START can always make room. Unsolicited frames may evict
+        the oldest orphan buffer, but never a confirmed recording buffer.
         """
+        started_recording_ids = self._get_started_recording_ids()
         queue = self._recording_steps.get(recording_id)
-        if queue is None:
-            queue = asyncio.Queue()
-            self._recording_steps[recording_id] = queue
+        if queue is not None:
+            if started:
+                started_recording_ids.add(recording_id)
+                self._recording_steps.pop(recording_id)
+                self._recording_steps[recording_id] = queue
+            return queue
+
+        if len(self._recording_steps) >= _MAX_RECORDING_BUFFERS:
+            orphan_id = next(
+                (
+                    buffered_id
+                    for buffered_id in self._recording_steps
+                    if buffered_id not in started_recording_ids
+                ),
+                None,
+            )
+            if orphan_id is not None:
+                self._drop_recording_buffer(orphan_id)
+            elif started:
+                self._drop_recording_buffer(next(iter(self._recording_steps)))
+            else:
+                logger.debug(
+                    "[LocalPC] Recording buffer limit reached; dropping orphan %s",
+                    recording_id,
+                )
+                return None
+
+        # Reserve one slot beyond the step cap so close_recording can always
+        # enqueue its sentinel without blocking or raising QueueFull.
+        queue = asyncio.Queue(maxsize=_MAX_RECORDING_STEP_BUFFER + 1)
+        self._recording_steps[recording_id] = queue
+        if started:
+            started_recording_ids.add(recording_id)
         return queue
+
+    def _get_started_recording_ids(self) -> set[str]:
+        started_recording_ids = getattr(self, "_started_recording_ids", None)
+        if started_recording_ids is None:
+            started_recording_ids = set()
+            self._started_recording_ids = started_recording_ids
+        return started_recording_ids
+
+    @staticmethod
+    def _signal_recording_buffer_closed(
+        queue: "asyncio.Queue[TrajectoryStep | None]",
+    ) -> None:
+        try:
+            queue.put_nowait(None)
+        except asyncio.QueueFull:
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            queue.put_nowait(None)
+
+    def _drop_recording_buffer(self, recording_id: str) -> None:
+        queue = self._recording_steps.pop(recording_id, None)
+        self._get_started_recording_ids().discard(recording_id)
+        if queue is not None:
+            self._signal_recording_buffer_closed(queue)
 
     def _handle_recording_step(self, msg: Any) -> None:
         """Fan a RECORDING_STEP frame into its per-recording queue.
@@ -1567,9 +2504,8 @@ class LocalPCShim:
             {type: "RECORDING_STEP",
              payload: {recording_id, step: {TrajectoryStep}}}
 
-        A frame for an unknown recording_id is buffered anyway (the START
-        response may still be in flight) so nothing is lost; if it's truly
-        orphaned it's harmless — the queue is dropped on close_recording.
+        A frame for an unknown recording_id is buffered because the START
+        response may still be in flight. Orphan buffers are globally bounded.
         """
         if not isinstance(msg, dict):
             return
@@ -1589,6 +2525,15 @@ class LocalPCShim:
             return
         step = TrajectoryStep.from_payload(step_payload)
         queue = self._ensure_recording_buffer(recording_id)
+        if queue is None:
+            return
+        if queue.qsize() >= _MAX_RECORDING_STEP_BUFFER:
+            logger.debug(
+                "[LocalPC] Recording step buffer full for %s; dropping seq=%s",
+                recording_id,
+                step.seq,
+            )
+            return
         queue.put_nowait(step)
 
     async def _iter_recording_steps(self, recording_id: str):
@@ -1598,7 +2543,8 @@ class LocalPCShim:
         is enqueued by :meth:`close_recording`, then stops and drops the
         buffer.
         """
-        queue = self._ensure_recording_buffer(recording_id)
+        queue = self._ensure_recording_buffer(recording_id, started=True)
+        assert queue is not None
         try:
             while True:
                 step = await queue.get()
@@ -1606,7 +2552,9 @@ class LocalPCShim:
                     return
                 yield step
         finally:
-            self._recording_steps.pop(recording_id, None)
+            if self._recording_steps.get(recording_id) is queue:
+                self._recording_steps.pop(recording_id, None)
+                self._get_started_recording_ids().discard(recording_id)
 
     def close_recording(self, recording_id: str) -> None:
         """Signal the step iterator for ``recording_id`` to stop.
@@ -1615,9 +2563,7 @@ class LocalPCShim:
         finishes cleanly after STOP_RECORDING. Safe to call multiple times
         and for recordings that never streamed.
         """
-        queue = self._recording_steps.get(recording_id)
-        if queue is not None:
-            queue.put_nowait(None)
+        self._drop_recording_buffer(recording_id)
 
     async def pause(self) -> None:
         pass  # no billing on local machine
@@ -1629,3 +2575,9 @@ class LocalPCShim:
             pass
         if not self._recv_task.done():
             self._recv_task.cancel()
+            try:
+                await self._recv_task
+            except asyncio.CancelledError:
+                pass
+        if self._manager is not None:
+            self._manager.remove_shim(self.sandbox_id, self)

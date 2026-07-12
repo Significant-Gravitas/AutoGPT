@@ -6,7 +6,7 @@ working local LLM backend AND the LaunchDarkly flag fires AND the per-
 ``LOCAL_LLM_COMPLETION`` wire op instead of Anthropic / OpenRouter. The
 prompt + response never leave the user's machine.
 
-See ``experimental/local-pc-executor/docs/LOCAL_LLM.md`` for the full
+See ``autogpt-local-executor/docs/LOCAL_LLM.md`` for the full
 spec — this module implements the activation gate described in
 "Activation gate" and "Routing policy" sections.
 
@@ -102,13 +102,12 @@ class LocalLLMRouter:
             return None
 
         # Gate 2: capability advertised
-        caps = getattr(executor, "capabilities", None) or []
-        if "local_llm" not in caps:
+        if "local_llm" not in executor.capability_set:
             logger.debug("[LocalLLM] Shim missing local_llm capability — cloud route")
             return None
 
         # Gate 3: at least one model loaded
-        advertised = list(getattr(executor, "local_llm_models", None) or [])
+        advertised = list(executor.local_llm_models)
         if not advertised:
             logger.debug("[LocalLLM] Shim has empty local_llm_models — cloud route")
             return None

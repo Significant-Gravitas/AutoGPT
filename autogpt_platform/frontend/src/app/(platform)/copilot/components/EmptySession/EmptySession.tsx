@@ -20,6 +20,8 @@ import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
+import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
+import { useCopilotUIStore } from "../../store";
 
 interface Props {
   inputLayoutId: string;
@@ -46,6 +48,13 @@ export function EmptySession({
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const resetNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.resetNewChatExecutionTarget,
+  );
+  const newChatExecutionTarget = useCopilotUIStore(
+    (state) => state.newChatExecutionTarget,
+  );
   const pulseChips = usePulseChips();
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
@@ -61,6 +70,10 @@ export function EmptySession({
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),
   );
+
+  useEffect(() => {
+    resetNewChatExecutionTarget();
+  }, [resetNewChatExecutionTarget]);
 
   useEffect(() => {
     function handleResize() {
@@ -109,6 +122,9 @@ export function EmptySession({
           )}
 
           <div className="mb-6">
+            {isLocalPCEnabled || newChatExecutionTarget.kind === "local" ? (
+              <ExecutionTargetPicker />
+            ) : null}
             <motion.div
               layoutId={inputLayoutId}
               transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}

@@ -21,8 +21,8 @@ HELLO metadata (allowed_root, platform, arch, ...) plus the per-code
 `details` dict so the message tells the LLM *what to do next*, not just
 *what went wrong*.
 
-See `experimental/local-pc-executor/docs/PROTOCOL.md` (Error codes) and
-`experimental/local-pc-executor/docs/COMPUTER_USE.md` (per-code `details`
+See `autogpt-local-executor/docs/PROTOCOL.md` (Error codes) and
+`autogpt-local-executor/docs/COMPUTER_USE.md` (per-code `details`
 examples) for the source of truth.
 """
 
@@ -35,15 +35,19 @@ if TYPE_CHECKING:
 
 
 def _shim_allowed_root(shim: "LocalPCShim | None") -> str:
-    return getattr(shim, "allowed_root", "") or "the workspace root"
+    return (
+        shim.allowed_root
+        if shim is not None and shim.allowed_root
+        else "the workspace root"
+    )
 
 
 def _shim_platform(shim: "LocalPCShim | None") -> str:
-    return getattr(shim, "platform", "") or "this OS"
+    return shim.platform if shim is not None and shim.platform else "this OS"
 
 
 def _shim_arch(shim: "LocalPCShim | None") -> str:
-    return getattr(shim, "arch", "") or "unknown"
+    return shim.arch if shim is not None and shim.arch else "unknown"
 
 
 def _details_path(details: dict, message: str) -> str:
@@ -318,8 +322,8 @@ def _recording_not_found(
     return (
         f"No recording with id `{rec_id}` exists on the shim. It may have "
         "been secure-erased after skill generation, or never started. Use "
-        "`list_recordings` to see what's still buffered, or start a new "
-        "recording with `record_workflow`."
+        "`list_recordings` to see what's still buffered, or ask the user to "
+        "start a new recording from the AutoGPT recording control."
     )
 
 
@@ -343,8 +347,8 @@ def _recording_already_active(
     rec_id = details.get("recording_id") or "<active recording>"
     return (
         f"A recording (`{rec_id}`) is already in progress on this machine. "
-        "Only one recording can be active at a time. Stop it with "
-        "`record_workflow(action=stop)` before starting another."
+        "Only one recording can be active at a time. Ask the user to stop it "
+        "from the AutoGPT recording control before starting another."
     )
 
 
@@ -379,9 +383,8 @@ def _internal_error(
 ) -> str:
     return (
         f"The shim hit an unexpected internal error: `{message or '<no message>'}`. "
-        "Try again; if it persists, ask the user to check "
-        "`~/Library/Logs/autogpt-local-executor/audit.log` (or the equivalent "
-        "on their OS) for details."
+        "Try again; if it persists, ask the user to inspect the local audit log "
+        "with `autogpt-shim audit tail`."
     )
 
 

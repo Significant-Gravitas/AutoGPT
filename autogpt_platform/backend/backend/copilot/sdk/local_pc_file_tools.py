@@ -2,17 +2,18 @@
 
 When the active executor is a :class:`LocalPCShim`, the platform's file
 tools delegate here instead of running POSIX shell commands. Each helper
-maps directly onto a wire-level FILE_* message (defined in PROTOCOL.md)
-and trusts the shim to enforce the real path jail (CROSS_PLATFORM.md
+maps directly onto a wire-level FILE_* message (defined in
+``autogpt-local-executor/docs/PROTOCOL.md``) and trusts the shim to enforce
+the real path jail (``autogpt-local-executor/docs/CROSS_PLATFORM.md``
 "Path Jail Strategy"). Platform-side validation in :func:`resolve_executor_path`
 is a best-effort lexical check, not a security boundary.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypeGuard
 
-from backend.copilot.context import resolve_executor_path
+from backend.copilot.context import is_local_pc_executor, resolve_executor_path
 from backend.copilot.tools.local_pc_shim import LocalPCShim
 
 
@@ -99,16 +100,16 @@ async def move_via_shim(
     await sandbox.files.move(remote_src, remote_dst, overwrite=overwrite)
 
 
-def is_local_pc(sandbox: Any) -> bool:
-    """Type-guard helper. Cheap isinstance check.
+def is_local_pc(sandbox: object | None) -> TypeGuard[LocalPCShim]:
+    """Narrow an executor to the Local PC adapter.
 
     Use this at the top of e2b_file_tools handlers to branch on executor
     kind before falling into E2B-specific shell quirks.
     """
-    return isinstance(sandbox, LocalPCShim)
+    return is_local_pc_executor(sandbox)
 
 
-def describe_workspace(sandbox: Any) -> str:
+def describe_workspace(sandbox: object | None) -> str:
     """Render a human-readable workspace description for MCP tool prompts.
 
     E2B: "cloud sandbox (/home/user or /tmp)".
@@ -118,7 +119,7 @@ def describe_workspace(sandbox: Any) -> str:
     Used by tool description renderers to avoid hard-coding `/home/user`
     in prompts that may target a shim with allowed_root=`C:\\workspace`.
     """
-    if isinstance(sandbox, LocalPCShim):
+    if is_local_pc(sandbox):
         platform_display = {
             "darwin": "macOS",
             "linux": "Linux",

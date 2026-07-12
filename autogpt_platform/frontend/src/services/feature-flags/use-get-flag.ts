@@ -102,6 +102,10 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
     case Flag.AGENT_BRIEFING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
+    case Flag.LOCAL_PC_EXECUTOR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR;
+    case Flag.WORKFLOW_RECORDING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:

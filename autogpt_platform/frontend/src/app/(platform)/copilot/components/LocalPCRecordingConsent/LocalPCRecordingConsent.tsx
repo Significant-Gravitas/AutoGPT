@@ -3,19 +3,12 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useState } from "react";
-import { rememberRecordingConsent } from "./helpers";
 
 interface Props {
-  /** Whether the dialog is open. The recording flow opens it only for the
-   *  `screenshots_to_cloud` route when there's no remembered consent. */
   isOpen: boolean;
-  /** Stable per-kind key (see helpers.recordingKind) — what a remembered
-   *  "yes" applies to. */
-  recordingKind: string;
-  /** User chose to send screenshots and build in the cloud. */
+  isSubmitting?: boolean;
+  errorMessage?: string | null;
   onSendAndBuild: () => void;
-  /** User chose to keep everything on their machine (decline). */
   onKeepLocal: () => void;
 }
 
@@ -37,32 +30,23 @@ interface Props {
  *   - No fear register ("hackers could steal your data").
  *   - No minimizing register ("totally chill thing to hit yes on").
  *
- * The remembered preference is per-*kind* of recording, not global, and is
- * revocable in settings (see helpers.revokeAllRecordingConsents).
+ * v1 never remembers this decision. Every screenshot transfer requires a new
+ * prompt for the recording being reviewed.
  */
 export function LocalPCRecordingConsent({
   isOpen,
-  recordingKind,
+  isSubmitting = false,
+  errorMessage,
   onSendAndBuild,
   onKeepLocal,
 }: Props) {
-  const [remember, setRemember] = useState(false);
-
-  function handleSend() {
-    if (remember) {
-      rememberRecordingConsent(recordingKind);
-    }
-    onSendAndBuild();
-  }
-
   return (
     <Dialog
-      title="Build this skill using the cloud?"
+      title="Allow cloud processing for this recording?"
       styling={{ maxWidth: "34rem", minWidth: "auto" }}
       controlled={{
         isOpen,
         set: async (open) => {
-          // Dismissing without choosing = keep it local (the safe default).
           if (!open) onKeepLocal();
         },
       }}
@@ -71,10 +55,12 @@ export function LocalPCRecordingConsent({
         <div className="flex flex-col gap-4 py-2">
           <Text variant="body" className="text-neutral-800">
             Your computer doesn&apos;t have a local model that can read these
-            screenshots, so building this skill needs AutoGPT&apos;s cloud. If
-            you continue, the screen images from this recording go to our
-            servers, a capable model reads them to write the skill, then
-            they&apos;re deleted (or kept per your data settings).
+            screenshots, so later skill generation needs cloud processing
+            through this AutoGPT deployment. If you ask Copilot to generate the
+            skill, the raw screen images from this recording go to the servers
+            configured for this deployment, a capable model reads them to write
+            the skill, and your deployment&apos;s data policy and configured
+            data settings govern how they are retained and used.
           </Text>
 
           <div className="flex flex-col gap-1">
@@ -88,7 +74,8 @@ export function LocalPCRecordingConsent({
                 visible.
               </li>
               <li>
-                They&apos;re used to build your skill, not to train models.
+                Your deployment&apos;s data policy defines whether submitted
+                data may be used for model improvement.
               </li>
               <li>
                 It&apos;s the same trust you already place in AutoGPT to act on
@@ -98,27 +85,33 @@ export function LocalPCRecordingConsent({
           </div>
 
           <Text variant="body" className="text-sm text-neutral-700">
-            Prefer to keep everything on your machine? Install a local model and
-            re-record — nothing leaves.
+            Prefer to keep raw screenshots on your machine? Install a local
+            model and re-record. The hygiene-redacted structured steps shown in
+            review have already been transferred to this authenticated browser.
           </Text>
 
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-neutral-300"
-            />
-            Remember my choice for recordings like this
-          </label>
+          {errorMessage ? (
+            <Text variant="body" role="alert" className="text-sm text-red-700">
+              {errorMessage}
+            </Text>
+          ) : null}
         </div>
 
-        <Dialog.Footer className="justify-end">
-          <Button variant="secondary" onClick={onKeepLocal}>
-            Keep it on my machine
+        <Dialog.Footer className="flex-wrap justify-end">
+          <Button
+            variant="secondary"
+            disabled={isSubmitting}
+            onClick={onKeepLocal}
+          >
+            Keep screenshots local
           </Button>
-          <Button variant="primary" onClick={handleSend}>
-            Send and build
+          <Button
+            variant="primary"
+            disabled={isSubmitting}
+            loading={isSubmitting}
+            onClick={onSendAndBuild}
+          >
+            Allow cloud processing
           </Button>
         </Dialog.Footer>
       </Dialog.Content>

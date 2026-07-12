@@ -18,12 +18,15 @@ import logging
 import shlex
 from typing import Any
 
-from e2b import AsyncSandbox, CommandExitException
+from e2b import CommandExitException
 from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import (
     E2B_WORKDIR,
+    ExecutorSandbox,
     get_current_sandbox,
+    get_workdir,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
@@ -46,6 +49,9 @@ def _build_completion_response(
     exit_code: int,
     secret_values: list[str],
     session_id: str | None,
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
 ) -> BashExecResponse:
     out = stdout or ""
     err = stderr or ""
@@ -53,11 +59,25 @@ def _build_completion_response(
         out = out.replace(secret, "[REDACTED]")
         err = err.replace(secret, "[REDACTED]")
     return BashExecResponse(
-        message=f"Command executed with status code {exit_code}",
+        message=(
+            "Execution timed out and output was truncated by the Local PC executor limit."
+            if timed_out and output_truncated
+            else (
+                "Execution timed out"
+                if timed_out
+                else (
+                    f"Command executed with status code {exit_code}. Output was truncated "
+                    "by the Local PC executor limit."
+                    if output_truncated
+                    else f"Command executed with status code {exit_code}"
+                )
+            )
+        ),
         stdout=out,
         stderr=err,
         exit_code=exit_code,
-        timed_out=False,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
         session_id=session_id,
     )
 
@@ -71,6 +91,19 @@ class BashExecTool(BaseTool):
 
     @property
     def description(self) -> str:
+        sandbox = get_current_sandbox()
+        if is_local_pc_executor(sandbox):
+            shell = (
+                "the Windows command shell"
+                if sandbox.platform.lower() == "windows"
+                else "the machine's POSIX shell"
+            )
+            return (
+                f"Execute a command with {shell} on the user's Local PC. "
+                "This is explicitly enabled, full user-level command execution; "
+                "the file API workspace jail does not confine shell commands. "
+                "Killed after `timeout` seconds."
+            )
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
@@ -79,12 +112,18 @@ class BashExecTool(BaseTool):
 
     @property
     def parameters(self) -> dict[str, Any]:
+        sandbox = get_current_sandbox()
+        command_description = (
+            "Windows command-shell input."
+            if is_local_pc_executor(sandbox) and sandbox.platform.lower() == "windows"
+            else "Bash or POSIX-shell command or script."
+        )
         return {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Bash command or script.",
+                    "description": command_description,
                 },
                 "timeout": {
                     "type": "integer",
@@ -177,7 +216,7 @@ class BashExecTool(BaseTool):
 
     async def _execute_on_e2b(
         self,
-        sandbox: AsyncSandbox,
+        sandbox: ExecutorSandbox,
         command: str,
         timeout: int,
         session_id: str | None,
@@ -189,12 +228,13 @@ class BashExecTool(BaseTool):
         for any user with connected accounts. E2B has full internet access, so
         CLI tools like ``gh`` work without manual authentication.
         """
-        envs: dict[str, str] = {
-            "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        }
+        local_pc = is_local_pc_executor(sandbox)
+        envs: dict[str, str] = (
+            {} if local_pc else {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
+        )
         # Collect injected secret values so we can scrub them from output.
         secret_values: list[str] = []
-        if user_id is not None:
+        if user_id is not None and not local_pc:
             integration_env = await get_integration_env_vars(user_id)
             secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
@@ -206,27 +246,33 @@ class BashExecTool(BaseTool):
                 envs.update(git_identity)
 
         try:
-            from backend.copilot.context import get_workdir
-            from backend.copilot.tools.local_pc_shim import LocalPCShim
-
-            if isinstance(sandbox, LocalPCShim):
+            if local_pc:
                 # LocalPCShim: don't assume bash exists. shell="auto" picks
                 # bash on POSIX, cmd.exe on Windows; shim returns
                 # SHELL_NOT_AVAILABLE if no compatible shell is installed.
-                result = await sandbox.commands.run(
+                local_result = await sandbox.commands.run(
                     command,
                     shell="auto",
                     cwd=get_workdir(sandbox),
                     timeout=timeout,
                     envs=envs,
                 )
-            else:
-                result = await sandbox.commands.run(
-                    f"bash -c {shlex.quote(command)}",
-                    cwd=E2B_WORKDIR,
-                    timeout=timeout,
-                    envs=envs,
+                return _build_completion_response(
+                    local_result.stdout,
+                    local_result.stderr,
+                    local_result.exit_code,
+                    secret_values,
+                    session_id,
+                    timed_out=local_result.timed_out,
+                    output_truncated=local_result.output_truncated,
                 )
+
+            result = await sandbox.commands.run(
+                f"bash -c {shlex.quote(command)}",
+                cwd=E2B_WORKDIR,
+                timeout=timeout,
+                envs=envs,
+            )
             return _build_completion_response(
                 result.stdout,
                 result.stderr,

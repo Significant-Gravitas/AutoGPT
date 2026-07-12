@@ -10,7 +10,7 @@ also opt into Anthropic's native ``computer_20251124`` beta tool (via
 covers only screenshot+click+type+key+scroll — it can't list windows,
 launch apps, or read the clipboard. Exposing those shim ops as MCP tools
 gives Claude leverage the native tool family doesn't have. See
-``experimental/local-pc-executor/docs/COMPUTER_USE.md`` for the full
+``autogpt-local-executor/docs/COMPUTER_USE.md`` for the full
 wire surface, and ``PLATFORM_HOOKS.md §10.9`` for the integration
 rationale.
 
@@ -34,8 +34,18 @@ import json
 import logging
 from typing import Any, Callable
 
-from backend.copilot.context import get_current_sandbox
-from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimComputerUseError
+from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.copilot.context import (
+    get_current_sandbox,
+    get_execution_context,
+    is_local_pc_executor,
+    resolve_executor_path,
+)
+from backend.copilot.tools.local_pc_shim import (
+    LocalPCShim,
+    ShimComputerUseError,
+    ShimConnectionGuard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,29 +78,71 @@ def _err(code: str, message: str, details: dict | None = None) -> dict[str, Any]
 
 def _get_local_pc_shim() -> LocalPCShim | None:
     sb = get_current_sandbox()
-    return sb if isinstance(sb, LocalPCShim) else None
+    return sb if is_local_pc_executor(sb) else None
 
 
-def _require_computer_use() -> tuple[LocalPCShim | None, dict[str, Any] | None]:
-    """Resolve the active LocalPCShim, refusing if capability isn't granted."""
+async def _require_computer_use() -> (
+    tuple[LocalPCShim | None, ShimConnectionGuard | None, dict[str, Any] | None]
+):
+    """Resolve the shim and revalidate revocable per-session consent."""
     shim = _get_local_pc_shim()
     if shim is None:
-        return None, _err(
-            "NO_LOCAL_PC_EXECUTOR",
-            "No LocalPC shim is connected for this session. The computer-use "
-            "tools require the autogpt-local-executor daemon to be running on "
-            "the user's machine.",
+        return (
+            None,
+            None,
+            _err(
+                "NO_LOCAL_PC_EXECUTOR",
+                "No LocalPC shim is connected for this session. The computer-use "
+                "tools require the autogpt-local-executor daemon to be running on "
+                "the user's machine.",
+            ),
         )
-    if "computer_use" not in (shim.capabilities or []):
-        return None, _err(
-            "CAPABILITY_NOT_GRANTED",
-            "The connected shim did not advertise the `computer_use` capability. "
-            "Either the shim's OS denied the necessary permissions "
-            "(Accessibility / Screen Recording) or the user disabled the "
-            "capability at install time. Skip computer-use for this turn.",
-            details={"capabilities": list(shim.capabilities or [])},
+    if "computer_use" not in shim.capability_set:
+        return (
+            None,
+            None,
+            _err(
+                "CAPABILITY_NOT_GRANTED",
+                "The connected shim did not advertise the `computer_use` capability. "
+                "Either the shim's OS denied the necessary permissions "
+                "(Accessibility / Screen Recording) or the user disabled the "
+                "capability at install time. Skip computer-use for this turn.",
+                details={"capabilities": list(shim.capabilities or [])},
+            ),
         )
-    return shim, None
+    user_id, session = get_execution_context()
+    guard = shim.capture_connection_guard()
+    if (
+        not user_id
+        or session is None
+        or not await is_computer_use_approved(
+            session.session_id,
+            user_id,
+            machine_id=guard.machine_id,
+            features_coarse=guard.computer_use_features_coarse,
+            features=guard.computer_use_features,
+        )
+    ):
+        return (
+            None,
+            None,
+            _err(
+                "COMPUTER_USE_CONSENT_REQUIRED",
+                "Computer control is not approved for this chat session. Stop and "
+                "ask the user to approve Local PC computer use in the AutoGPT UI.",
+            ),
+        )
+    if not shim.connection_guard_matches(guard):
+        return (
+            None,
+            None,
+            _err(
+                "COMPUTER_USE_CONNECTION_CHANGED",
+                "The Local PC executor reconnected while computer access was being "
+                "checked. Retry after the current machine and capabilities are reviewed.",
+            ),
+        )
+    return shim, guard, None
 
 
 def _handle_shim_error(exc: ShimComputerUseError) -> dict[str, Any]:
@@ -103,17 +155,20 @@ def _handle_shim_error(exc: ShimComputerUseError) -> dict[str, Any]:
 
 
 async def _h_screenshot(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         payload = await shim.computer.screenshot(
             monitor=int(args.get("monitor", 0)),
             region=args.get("region"),
             window_id=args.get("window_id"),
-            format=str(args.get("format", "png")),
+            format=str(args.get("format", "jpeg")),
             include_cursor=bool(args.get("include_cursor", False)),
             quality=int(args.get("quality", 75)),
+            _guard=guard,
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -122,7 +177,9 @@ async def _h_screenshot(args: dict[str, Any]) -> dict[str, Any]:
 
     image_b64 = payload.get("image_base64") or ""
     mime = payload.get("mime_type") or (
-        "image/png" if str(args.get("format", "png")).lower() == "png" else "image/jpeg"
+        "image/png"
+        if str(args.get("format", "jpeg")).lower() == "png"
+        else "image/jpeg"
     )
     meta = {
         "width": payload.get("width"),
@@ -155,14 +212,17 @@ def _coord(args: dict[str, Any]) -> list[int]:
 
 
 async def _h_click(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         await shim.computer.click(
             _coord(args),
             button=str(args.get("button", "left")),
             modifiers=args.get("modifiers"),
+            _guard=guard,
         )
     except ValueError as exc:
         return _err("INVALID_ARGUMENT", str(exc))
@@ -172,9 +232,11 @@ async def _h_click(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_type(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     text = args.get("text", "")
     if not isinstance(text, str):
         return _err("INVALID_ARGUMENT", "text must be a string")
@@ -183,6 +245,7 @@ async def _h_type(args: dict[str, Any]) -> dict[str, Any]:
             text,
             paste=bool(args.get("paste", False)),
             preserve_clipboard=bool(args.get("preserve_clipboard", False)),
+            _guard=guard,
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -190,29 +253,34 @@ async def _h_type(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_key(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     key = args.get("key", "")
     if not isinstance(key, str) or not key:
         return _err("INVALID_ARGUMENT", "key is required (e.g. 'enter', 'ctrl+s')")
     try:
-        await shim.computer.key(key)
+        await shim.computer.key(key, _guard=guard)
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
     return _ok({"ok": True})
 
 
 async def _h_scroll(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         await shim.computer.scroll(
             _coord(args),
             direction=str(args.get("direction", "down")),
             scroll_amount=int(args.get("scroll_amount", 1)),
             modifiers=args.get("modifiers"),
+            _guard=guard,
         )
     except ValueError as exc:
         return _err("INVALID_ARGUMENT", str(exc))
@@ -222,25 +290,30 @@ async def _h_scroll(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_cursor_position(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
-        payload = await shim.computer.cursor_position()
+        payload = await shim.computer.cursor_position(_guard=guard)
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
     return _ok(payload)
 
 
 async def _h_list_windows(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         windows = await shim.computer.list_windows(
             app_bundle_id=args.get("app_bundle_id"),
             include_minimized=bool(args.get("include_minimized", False)),
             include_offscreen=bool(args.get("include_offscreen", False)),
+            _guard=guard,
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -248,15 +321,17 @@ async def _h_list_windows(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_focus_window(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     window_id = args.get("window_id", "")
     if not isinstance(window_id, str) or not window_id:
         return _err("INVALID_ARGUMENT", "window_id is required")
     try:
         await shim.computer.focus_window(
-            window_id, raise_=bool(args.get("raise", True))
+            window_id, raise_=bool(args.get("raise", True)), _guard=guard
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -264,12 +339,15 @@ async def _h_focus_window(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_list_apps(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         apps = await shim.computer.list_apps(
-            include_background=bool(args.get("include_background", False))
+            include_background=bool(args.get("include_background", False)),
+            _guard=guard,
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -277,15 +355,34 @@ async def _h_list_apps(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_launch_app(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
+    bundle_id = args.get("bundle_id")
+    executable_path = args.get("executable_path")
+    if bundle_id is not None and not isinstance(bundle_id, str):
+        return _err("INVALID_ARGUMENT", "bundle_id must be a string")
+    if executable_path is not None and not isinstance(executable_path, str):
+        return _err("INVALID_ARGUMENT", "executable_path must be a string")
+    if executable_path:
+        try:
+            executable_path = resolve_executor_path(executable_path, shim)
+        except ValueError as exc:
+            return _err("PATH_OUTSIDE_ALLOWED_ROOT", str(exc))
+    launch_args = args.get("args") or []
+    if not isinstance(launch_args, list) or not all(
+        isinstance(arg, str) for arg in launch_args
+    ):
+        return _err("INVALID_ARGUMENT", "args must be a list of strings")
     try:
         payload = await shim.computer.launch_app(
-            bundle_id=args.get("bundle_id"),
-            executable_path=args.get("executable_path"),
-            args=args.get("args") or [],
+            bundle_id=bundle_id,
+            executable_path=executable_path,
+            args=launch_args,
             activate=bool(args.get("activate", True)),
+            _guard=guard,
         )
     except ValueError as exc:
         return _err("INVALID_ARGUMENT", str(exc))
@@ -295,12 +392,14 @@ async def _h_launch_app(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_clipboard_read(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
         content = await shim.computer.clipboard_read(
-            format=str(args.get("format", "text"))
+            format=str(args.get("format", "text")), _guard=guard
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -308,15 +407,17 @@ async def _h_clipboard_read(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_clipboard_write(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     content = args.get("content", "")
     if not isinstance(content, str):
         return _err("INVALID_ARGUMENT", "content must be a string")
     try:
         await shim.computer.clipboard_write(
-            content, format=str(args.get("format", "text"))
+            content, format=str(args.get("format", "text")), _guard=guard
         )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
@@ -324,11 +425,15 @@ async def _h_clipboard_write(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _h_permissions_check(args: dict[str, Any]) -> dict[str, Any]:
-    shim, gate = _require_computer_use()
+    shim, guard, gate = await _require_computer_use()
     if shim is None:
-        return gate  # type: ignore[return-value]
+        assert gate is not None
+        return gate
+    assert guard is not None
     try:
-        result = await shim.computer.permissions_check(args.get("permissions"))
+        result = await shim.computer.permissions_check(
+            args.get("permissions"), _guard=guard
+        )
     except ShimComputerUseError as exc:
         return _handle_shim_error(exc)
     return _ok(result)
@@ -381,7 +486,7 @@ LOCAL_PC_COMPUTER_TOOLS: list[
                 "format": {
                     "type": "string",
                     "enum": ["png", "jpeg"],
-                    "description": "Image format. Default: png.",
+                    "description": "Image format. Default: jpeg to keep relay payloads bounded.",
                 },
                 "include_cursor": {
                     "type": "boolean",

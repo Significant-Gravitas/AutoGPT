@@ -18,6 +18,7 @@ import hashlib
 import secrets
 import uuid
 from typing import AsyncGenerator
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -118,6 +119,39 @@ async def test_oauth_app(test_user: str):
     }
 
     # Cleanup is handled by test_user fixture (cascade delete)
+
+
+@pytest_asyncio.fixture
+async def test_public_oauth_app(test_user: str):
+    """Create a secretless PKCE OAuth application for desktop-client tests."""
+    app_id = str(uuid.uuid4())
+    client_id = f"test_public_client_{secrets.token_urlsafe(8)}"
+    placeholder_hash, placeholder_salt = keysmith.hash_key(
+        f"agpt_unused_{secrets.token_urlsafe(16)}"
+    )
+
+    await PrismaOAuthApplication.prisma().create(
+        data={
+            "id": app_id,
+            "name": "Test Public OAuth App",
+            "description": "Secretless desktop application for integration tests",
+            "clientId": client_id,
+            "clientSecret": placeholder_hash,
+            "clientSecretSalt": placeholder_salt,
+            "redirectUris": ["http://localhost:41899/callback"],
+            "grantTypes": ["authorization_code", "refresh_token"],
+            "scopes": [APIKeyPermission.USE_TOOLS],
+            "ownerId": test_user,
+            "isActive": True,
+            "isPublic": True,
+        }
+    )
+
+    yield {
+        "id": app_id,
+        "client_id": client_id,
+        "redirect_uri": "http://localhost:41899/callback",
+    }
 
 
 def generate_pkce() -> tuple[str, str]:
@@ -295,11 +329,8 @@ async def test_authorize_invalid_client_returns_error(
         follow_redirects=False,
     )
 
-    assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
-    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
-    assert query_params["error"][0] == "invalid_client"
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
 
 
 @pytest_asyncio.fixture
@@ -357,11 +388,8 @@ async def test_authorize_inactive_app(
         follow_redirects=False,
     )
 
-    assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
-    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
-    assert query_params["error"][0] == "invalid_client"
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -390,6 +418,101 @@ async def test_authorize_invalid_redirect_uri(
     # Invalid redirect_uri should return HTTP 400, not a redirect
     assert response.status_code == 400
     assert "redirect_uri" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "javascript:alert(document.domain)",
+        "https://example.com/callback.evil.test",
+    ],
+)
+async def test_authorize_never_redirects_to_unregistered_uri(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+    redirect_uri: str,
+):
+    """Client-controlled error paths never redirect to an unregistered URI."""
+    _, challenge = generate_pkce()
+
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": redirect_uri,
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "malicious_redirect_test",
+            "response_type": "token",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_authorize_rejects_dangerous_registered_redirect_uri(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    dangerous_redirect = "javascript:alert(document.domain)"
+    await PrismaOAuthApplication.prisma().update(
+        where={"id": test_oauth_app["id"]},
+        data={"redirectUris": [test_oauth_app["redirect_uri"], dangerous_redirect]},
+    )
+    _, challenge = generate_pkce()
+
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": dangerous_redirect,
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "registered-dangerous-redirect",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deny_authorization_uses_only_registered_redirect(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    from urllib.parse import parse_qs, urlparse
+
+    accepted = await client.post(
+        "/api/oauth/authorize/deny",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "state": "deny-state",
+        },
+    )
+    rejected = await client.post(
+        "/api/oauth/authorize/deny",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": "javascript:alert(document.domain)",
+            "state": "deny-state",
+        },
+    )
+
+    assert accepted.status_code == 200
+    query = parse_qs(urlparse(accepted.json()["redirect_url"]).query)
+    assert query["error"] == ["access_denied"]
+    assert query["state"] == ["deny-state"]
+    assert rejected.status_code == 400
+    assert "redirect_url" not in rejected.json()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -562,6 +685,7 @@ async def test_token_exchange_creates_tokens_in_database(
     assert db_refresh_token.userId == test_user
     assert db_refresh_token.applicationId == test_oauth_app["id"]
     assert db_refresh_token.revokedAt is None
+    assert db_access_token.refreshFamilyId == db_refresh_token.familyId
 
     # Verify authorization code is marked as used
     db_code = await PrismaOAuthAuthorizationCode.prisma().find_unique(
@@ -569,6 +693,164 @@ async def test_token_exchange_creates_tokens_in_database(
     )
     assert db_code is not None
     assert db_code.usedAt is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_public_client_accepts_shim_form_pkce_and_refresh(
+    client: httpx.AsyncClient,
+    test_public_oauth_app: dict,
+):
+    """The desktop shim can exchange and refresh with standard form encoding."""
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_public_oauth_app["client_id"],
+            "redirect_uri": test_public_oauth_app["redirect_uri"],
+            "scopes": ["USE_TOOLS"],
+            "state": "public_form_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+
+    token_response = await client.post(
+        "/api/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_public_oauth_app["redirect_uri"],
+            "client_id": test_public_oauth_app["client_id"],
+            "code_verifier": verifier,
+        },
+    )
+
+    assert token_response.status_code == 200
+    tokens = token_response.json()
+    refresh_response = await client.post(
+        "/api/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": test_public_oauth_app["client_id"],
+        },
+    )
+    assert refresh_response.status_code == 200
+    assert refresh_response.json()["access_token"] != tokens["access_token"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("encoding", ["form", "json"])
+async def test_invalid_token_request_does_not_echo_or_log_secrets(
+    client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+    encoding: str,
+):
+    sentinels = {
+        "grant_type": "sentinel-grant-secret",
+        "refresh_token": "sentinel-refresh-secret",
+        "client_secret": "sentinel-client-secret",
+        "code_verifier": "sentinel-verifier-secret",
+        "client_id": "sentinel-client-id",
+    }
+
+    if encoding == "form":
+        response = await client.post("/api/oauth/token", data=sentinels)
+    else:
+        response = await client.post("/api/oauth/token", json=sentinels)
+
+    assert response.status_code == 422
+    for sentinel in sentinels.values():
+        assert sentinel not in response.text
+        assert sentinel not in caplog.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_public_client_form_rejects_wrong_pkce_verifier(
+    client: httpx.AsyncClient,
+    test_public_oauth_app: dict,
+):
+    """A public client remains bound to the challenge from authorization."""
+    from urllib.parse import parse_qs, urlparse
+
+    _, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_public_oauth_app["client_id"],
+            "redirect_uri": test_public_oauth_app["redirect_uri"],
+            "scopes": ["USE_TOOLS"],
+            "state": "public_bad_pkce_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+
+    response = await client.post(
+        "/api/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_public_oauth_app["redirect_uri"],
+            "client_id": test_public_oauth_app["client_id"],
+            "code_verifier": "b" * 43,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "pkce" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_confidential_client_form_requires_valid_secret(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    """Form compatibility does not weaken confidential-client authentication."""
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "confidential_form_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    payload = {
+        "grant_type": "authorization_code",
+        "code": auth_code,
+        "redirect_uri": test_oauth_app["redirect_uri"],
+        "client_id": test_oauth_app["client_id"],
+        "code_verifier": verifier,
+    }
+
+    missing_secret = await client.post("/api/oauth/token", data=payload)
+    assert missing_secret.status_code == 401
+
+    token_response = await client.post(
+        "/api/oauth/token",
+        data={**payload, "client_secret": test_oauth_app["client_secret"]},
+    )
+    assert token_response.status_code == 200
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -629,6 +911,48 @@ async def test_authorization_code_cannot_be_reused(
     )
     assert second_response.status_code == 400
     assert "already used" in second_response.json()["detail"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_authorization_code_concurrent_exchange_has_one_winner(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "concurrent-code-exchange",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    payload = {
+        "grant_type": "authorization_code",
+        "code": auth_code,
+        "redirect_uri": test_oauth_app["redirect_uri"],
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+        "code_verifier": verifier,
+    }
+
+    responses = await asyncio.gather(
+        client.post("/api/oauth/token", json=payload),
+        client.post("/api/oauth/token", json=payload),
+    )
+
+    assert sorted(response.status_code for response in responses) == [200, 400]
+    failure = next(response for response in responses if response.status_code == 400)
+    assert "already used" in failure.json()["detail"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -923,6 +1247,98 @@ async def test_refresh_token_creates_new_tokens(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_refresh_replay_revokes_entire_family(
+    client: httpx.AsyncClient,
+    test_user: str,
+    test_oauth_app: dict,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from urllib.parse import parse_qs, urlparse
+
+    push_revocation = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.features.oauth._push_shim_revocation", push_revocation
+    )
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "concurrent-refresh-replay",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    initial_response = await client.post(
+        "/api/oauth/token",
+        json={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+            "code_verifier": verifier,
+        },
+    )
+    initial_tokens = initial_response.json()
+    refresh_payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": initial_tokens["refresh_token"],
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+    }
+
+    responses = await asyncio.gather(
+        client.post("/api/oauth/token", json=refresh_payload),
+        client.post("/api/oauth/token", json=refresh_payload),
+    )
+
+    statuses = sorted(response.status_code for response in responses)
+    assert statuses in ([200, 400], [400, 400])
+    successful_responses = [
+        response for response in responses if response.status_code == 200
+    ]
+    if successful_responses:
+        winner_tokens = successful_responses[0].json()
+        replay_descendant = await client.post(
+            "/api/oauth/token",
+            json={
+                **refresh_payload,
+                "refresh_token": winner_tokens["refresh_token"],
+            },
+        )
+        winner_access = await client.post(
+            "/api/oauth/introspect",
+            json={
+                "token": winner_tokens["access_token"],
+                "client_id": test_oauth_app["client_id"],
+                "client_secret": test_oauth_app["client_secret"],
+            },
+        )
+        assert replay_descendant.status_code == 400
+        assert winner_access.json()["active"] is False
+
+    initial_access = await client.post(
+        "/api/oauth/introspect",
+        json={
+            "token": initial_tokens["access_token"],
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+        },
+    )
+
+    assert initial_access.json()["active"] is False
+    assert push_revocation.await_count == 2
+    push_revocation.assert_awaited_with(test_user, test_oauth_app["client_id"])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_token_refresh_invalid_token(
     client: httpx.AsyncClient,
     test_oauth_app: dict,
@@ -985,9 +1401,15 @@ async def test_token_refresh_revoked(
     client: httpx.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Test token refresh with revoked refresh token."""
     from datetime import datetime, timedelta, timezone
+
+    push_revocation = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.features.oauth._push_shim_revocation", push_revocation
+    )
 
     # Create a revoked refresh token directly in the database
     revoked_token_value = f"revoked_refresh_{secrets.token_urlsafe(16)}"
@@ -1017,6 +1439,7 @@ async def test_token_refresh_revoked(
 
     assert response.status_code == 400
     assert "revoked" in response.json()["detail"].lower()
+    push_revocation.assert_awaited_once_with(test_user, test_oauth_app["client_id"])
 
 
 @pytest_asyncio.fixture
@@ -1262,6 +1685,51 @@ async def test_introspect_invalid_client(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_introspection_returns_inactive_when_token_app_is_disabled(
+    client: httpx.AsyncClient,
+    test_user: str,
+    test_oauth_app: dict,
+    other_oauth_app: dict,
+):
+    from backend.data.auth.oauth import create_access_token, create_refresh_token
+
+    family_id = str(uuid.uuid4())
+    refresh_token = await create_refresh_token(
+        test_oauth_app["id"],
+        test_user,
+        [APIKeyPermission.EXECUTE_GRAPH],
+        family_id=family_id,
+    )
+    access_token = await create_access_token(
+        test_oauth_app["id"],
+        test_user,
+        [APIKeyPermission.EXECUTE_GRAPH],
+        refresh_family_id=family_id,
+    )
+    await PrismaOAuthApplication.prisma().update(
+        where={"id": test_oauth_app["id"]},
+        data={"isActive": False},
+    )
+
+    for plaintext_token, token_type in (
+        (access_token.token.get_secret_value(), "access_token"),
+        (refresh_token.token.get_secret_value(), "refresh_token"),
+    ):
+        response = await client.post(
+            "/api/oauth/introspect",
+            json={
+                "token": plaintext_token,
+                "token_type_hint": token_type,
+                "client_id": other_oauth_app["client_id"],
+                "client_secret": other_oauth_app["client_secret"],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["active"] is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_validate_access_token_fails_when_app_disabled(
     test_user: str,
 ):
@@ -1340,10 +1808,15 @@ async def test_revoke_access_token_updates_database(
     client: httpx.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that revoking access token updates database."""
     from urllib.parse import parse_qs, urlparse
 
+    push_revocation = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.features.oauth._push_shim_revocation", push_revocation
+    )
     verifier, challenge = generate_pkce()
 
     # Get tokens
@@ -1406,6 +1879,19 @@ async def test_revoke_access_token_updates_database(
     )
     assert db_token_after is not None
     assert db_token_after.revokedAt is not None
+    push_revocation.assert_awaited_once_with(test_user, test_oauth_app["client_id"])
+
+    retry_response = await client.post(
+        "/api/oauth/revoke",
+        json={
+            "token": tokens["access_token"],
+            "token_type_hint": "access_token",
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+        },
+    )
+    assert retry_response.status_code == 200
+    assert push_revocation.await_count == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1433,10 +1919,15 @@ async def test_revoke_refresh_token_updates_database(
     client: httpx.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that revoking refresh token updates database."""
     from urllib.parse import parse_qs, urlparse
 
+    push_revocation = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.features.oauth._push_shim_revocation", push_revocation
+    )
     verifier, challenge = generate_pkce()
 
     # Get tokens
@@ -1499,6 +1990,13 @@ async def test_revoke_refresh_token_updates_database(
     )
     assert db_token_after is not None
     assert db_token_after.revokedAt is not None
+    access_hash = hashlib.sha256(tokens["access_token"].encode()).hexdigest()
+    db_access_after = await PrismaOAuthAccessToken.prisma().find_unique(
+        where={"token": access_hash}
+    )
+    assert db_access_after is not None
+    assert db_access_after.revokedAt is not None
+    push_revocation.assert_awaited_once_with(test_user, test_oauth_app["client_id"])
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1524,6 +2022,7 @@ async def test_revoke_token_from_different_app_fails_silently(
     client: httpx.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """
     Test that an app cannot revoke tokens belonging to a different app.
@@ -1533,6 +2032,7 @@ async def test_revoke_token_from_different_app_fails_silently(
     """
     from urllib.parse import parse_qs, urlparse
 
+    monkeypatch.setattr("backend.api.features.oauth._push_shim_revocation", AsyncMock())
     verifier, challenge = generate_pkce()
 
     # Get tokens for app 1
@@ -1649,6 +2149,7 @@ async def test_complete_oauth_flow_end_to_end(
     test_user: str,
     test_oauth_app: dict,
     pkce_credentials: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """
     Test the complete OAuth 2.0 flow from authorization to token refresh.
@@ -1658,6 +2159,7 @@ async def test_complete_oauth_flow_end_to_end(
     """
     from urllib.parse import parse_qs, urlparse
 
+    monkeypatch.setattr("backend.api.features.oauth._push_shim_revocation", AsyncMock())
     verifier, challenge = pkce_credentials
 
     # Step 1: Authorization request with PKCE

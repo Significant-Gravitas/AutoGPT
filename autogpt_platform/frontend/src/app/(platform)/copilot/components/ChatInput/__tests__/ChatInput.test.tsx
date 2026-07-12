@@ -529,6 +529,7 @@ describe("ChatInput submit behavior", () => {
       await waitFor(() => {
         expect(onSend).toHaveBeenCalledTimes(1);
       });
+      expect(textarea.value).toBe("hello");
       fireEvent.change(textarea, { target: { value: "retry" } });
       fireEvent.submit(form);
       await waitFor(() => {

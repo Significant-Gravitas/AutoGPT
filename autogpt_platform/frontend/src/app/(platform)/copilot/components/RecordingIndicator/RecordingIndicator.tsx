@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { Record } from "@phosphor-icons/react";
+import { RecordIcon } from "@phosphor-icons/react";
 
 interface Props {
   stepCount: number;
@@ -23,9 +23,10 @@ export function RecordingIndicator({ stepCount }: Props) {
       aria-live="polite"
       className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-900"
     >
-      <Record
-        className="h-3.5 w-3.5 animate-pulse text-red-600"
+      <RecordIcon
+        className="h-3.5 w-3.5 text-red-600 motion-safe:animate-pulse"
         weight="fill"
+        aria-hidden="true"
       />
       <Text variant="body" className="text-xs font-medium">
         Recording{stepCount > 0 ? ` · ${stepCount} steps` : ""}

@@ -10,6 +10,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ImageIcon, SealCheckIcon } from "@phosphor-icons/react";
 import {
   postOauthAuthorize,
+  postOauthDenyAuthorization,
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
@@ -107,14 +108,30 @@ export default function AuthorizePage() {
     }
   }
 
-  function handleDeny() {
-    // Redirect back to client with access_denied error
-    const params = new URLSearchParams({
-      error: "access_denied",
-      error_description: "User denied access",
-      state: state || "",
-    });
-    window.location.href = `${redirectURI}?${params.toString()}`;
+  async function handleDeny() {
+    setIsAuthorizing(true);
+    setAuthorizeError(null);
+
+    try {
+      const response = await postOauthDenyAuthorization({
+        client_id: clientID!,
+        redirect_uri: redirectURI!,
+        state: state!,
+      });
+
+      if (response.status === 200 && response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      } else {
+        setAuthorizeError("Authorization denial failed");
+        setIsAuthorizing(false);
+      }
+    } catch (err) {
+      console.error("Authorization denial error:", err);
+      setAuthorizeError(
+        err instanceof Error ? err.message : "Authorization denial failed",
+      );
+      setIsAuthorizing(false);
+    }
   }
 
   // Show error if missing required parameters

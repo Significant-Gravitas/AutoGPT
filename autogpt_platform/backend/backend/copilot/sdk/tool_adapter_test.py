@@ -24,6 +24,7 @@ from .tool_adapter import (
     _text_from_mcp_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    local_pc_tool_names_for_features,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -31,6 +32,37 @@ from .tool_adapter import (
     stash_pending_tool_output,
     wait_for_stash,
 )
+
+
+def test_local_pc_tool_names_follow_advertised_feature_groups() -> None:
+    names = local_pc_tool_names_for_features(
+        ["screenshot", "apps", "permissions"],
+        ["cursor.position"],
+    )
+    assert names == {
+        "local_pc_screenshot",
+        "local_pc_list_apps",
+        "local_pc_launch_app",
+        "local_pc_permissions_check",
+        "local_pc_cursor_position",
+    }
+    assert "local_pc_clipboard_read" not in names
+    assert "local_pc_list_windows" not in names
+
+
+@pytest.mark.asyncio
+async def test_mcp_registration_filters_unadvertised_local_pc_features() -> None:
+    server = create_copilot_mcp_server(
+        use_local_pc_computer=True,
+        local_pc_computer_tool_names={"local_pc_screenshot"},
+    )
+    instance = server["instance"]
+    handler = instance.request_handlers[ListToolsRequest]
+    result = await handler(ListToolsRequest(method="tools/list"))
+    names = {tool.name for tool in result.root.tools}
+    assert "local_pc_screenshot" in names
+    assert "local_pc_clipboard_read" not in names
+
 
 # ---------------------------------------------------------------------------
 # _text_from_mcp_result
@@ -1258,6 +1290,21 @@ class TestCreateCopilotMcpServerHidden:
         # All real tools still register.
         for short in TOOL_REGISTRY:
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_local_pc_and_ui_owned_recording_start_not_registered(self):
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["local_pc_click"],
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "local_pc_click" not in registered
+        assert "record_workflow" not in registered
+        assert "local_pc_screenshot" in registered
+        assert "list_recordings" in registered
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:

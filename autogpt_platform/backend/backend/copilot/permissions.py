@@ -129,6 +129,23 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability-gated Local PC tools
+    "local_pc_screenshot",
+    "local_pc_click",
+    "local_pc_type",
+    "local_pc_key",
+    "local_pc_scroll",
+    "local_pc_cursor_position",
+    "local_pc_list_windows",
+    "local_pc_focus_window",
+    "local_pc_list_apps",
+    "local_pc_launch_app",
+    "local_pc_clipboard_read",
+    "local_pc_clipboard_write",
+    "local_pc_permissions_check",
+    "list_recordings",
+    "generate_skill_from_recording",
+    "dry_run_skill",
     # SDK built-ins
     "Agent",
     "Edit",
@@ -164,8 +181,31 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
+CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "local_pc_screenshot",
+        "local_pc_click",
+        "local_pc_type",
+        "local_pc_key",
+        "local_pc_scroll",
+        "local_pc_cursor_position",
+        "local_pc_list_windows",
+        "local_pc_focus_window",
+        "local_pc_list_apps",
+        "local_pc_launch_app",
+        "local_pc_clipboard_read",
+        "local_pc_clipboard_write",
+        "local_pc_permissions_check",
+        "list_recordings",
+        "generate_skill_from_recording",
+        "dry_run_skill",
+    }
+)
+
 # Platform tool names — everything that isn't an SDK built-in.
-PLATFORM_TOOL_NAMES: frozenset[str] = ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES
+PLATFORM_TOOL_NAMES: frozenset[str] = (
+    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_TOOL_NAMES
+)
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -403,6 +443,9 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -430,7 +473,11 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
     )
     base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
@@ -473,6 +520,8 @@ def apply_tool_permissions(
             # matches.
             names.append(short)
         elif short in TOOL_REGISTRY:
+            names.append(f"{MCP_TOOL_PREFIX}{short}")
+        elif short in CAPABILITY_TOOL_NAMES:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Map SDK built-in file tool to its MCP equivalent.
