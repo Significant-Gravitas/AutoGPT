@@ -1,5 +1,5 @@
 "use client";
-import { SignOutIcon } from "@phosphor-icons/react";
+import { SignOutIcon } from "@/components/icons/pika/adapter";
 import { useRouter } from "next/navigation";
 import { AccountMenuRow } from "./AccountMenuRow";
 

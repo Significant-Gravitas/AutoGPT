@@ -10,7 +10,7 @@ import {
   CheckCircleIcon,
   CubeIcon,
   PlusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { TourPlan, TourPlanStep } from "../../script/types";
 
 const STEP_STAGGER_MS = 200;

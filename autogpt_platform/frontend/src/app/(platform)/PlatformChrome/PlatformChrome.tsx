@@ -24,7 +24,7 @@ interface Props {
 }
 
 export function PlatformChrome({ children }: Props) {
-  const { showNewLayout, showTourSidebar } = usePlatformChrome();
+  const { showNewLayout, showTourSidebar, showNavbar } = usePlatformChrome();
 
   const content = (
     <TopUpPromptProvider>
@@ -36,7 +36,9 @@ export function PlatformChrome({ children }: Props) {
   // upsell — clicking a demo session takes them into /tour/chat.
   if (showTourSidebar) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+      >
         <TourSidebar variant="marketplace" />
         <SidebarInset className="bg-[#f9f9f9]">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
@@ -50,7 +52,9 @@ export function PlatformChrome({ children }: Props) {
 
   if (showNewLayout) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+      >
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
           <header className="relative flex shrink-0 items-center pb-4 pt-6">
@@ -74,7 +78,7 @@ export function PlatformChrome({ children }: Props) {
 
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
+      {showNavbar && <Navbar />}
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

@@ -7,7 +7,7 @@ import {
   ArticleIcon,
   FileMagnifyingGlassIcon,
   FileTextIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { ToolUIPart } from "ai";
 
 export interface SearchDocsInput {

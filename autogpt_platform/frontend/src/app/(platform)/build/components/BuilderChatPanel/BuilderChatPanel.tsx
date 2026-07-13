@@ -4,7 +4,7 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { cn } from "@/lib/utils";
-import { ChatCircle, X } from "@phosphor-icons/react";
+import { ChatCircle, X } from "@/components/icons/pika/adapter";
 import { useRef } from "react";
 import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";

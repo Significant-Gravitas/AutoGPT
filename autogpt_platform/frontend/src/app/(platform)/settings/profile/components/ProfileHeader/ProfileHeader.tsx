@@ -2,7 +2,11 @@
 
 import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { CameraIcon, PencilSimpleIcon, UserIcon } from "@phosphor-icons/react";
+import {
+  CameraIcon,
+  PencilSimpleIcon,
+  UserIcon,
+} from "@/components/icons/pika/adapter";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 
 import {

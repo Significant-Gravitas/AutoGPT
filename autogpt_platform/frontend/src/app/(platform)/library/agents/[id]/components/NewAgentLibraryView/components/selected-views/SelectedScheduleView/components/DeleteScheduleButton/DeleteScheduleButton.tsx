@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { TrashIcon } from "@phosphor-icons/react";
+import { TrashIcon } from "@/components/icons/pika/adapter";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useScheduleDetailHeader } from "../../../RunDetailHeader/useScheduleDetailHeader";
 

@@ -31,7 +31,7 @@ export function InsetHeaderActions() {
 
   return (
     <div className="flex items-center gap-4">
-      <div className="[&_button:hover]:bg-zinc-200 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_svg]:!size-5">
+      <div className="[&_button:hover]:bg-zinc-200 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_svg]:!size-4">
         <AgentActivityDropdown />
       </div>
       <UsageIndicator />

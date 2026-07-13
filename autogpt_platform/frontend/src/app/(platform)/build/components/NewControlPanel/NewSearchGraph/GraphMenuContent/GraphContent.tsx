@@ -3,7 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { ArrowBendUpRight } from "@phosphor-icons/react";
+import { ArrowBendUpRight } from "@/components/icons/pika/adapter";
 import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";
 import { getNodeInputOutputSummary } from "./helpers";
 import { useGraphContent } from "./useGraphContent";

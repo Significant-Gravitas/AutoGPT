@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { FolderIcon, type Icon } from "@phosphor-icons/react";
+import { FolderIcon, type Icon } from "@/components/icons/pika/adapter";
 import { usePathname } from "next/navigation";
 
 const ROUTE_TITLES: Record<string, { title: string; icon: Icon }> = {

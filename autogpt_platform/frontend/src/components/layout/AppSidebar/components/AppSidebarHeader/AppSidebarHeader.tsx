@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { SidebarSimpleIcon } from "@/components/icons/pika/adapter";
 import Link from "next/link";
 
 export function AppSidebarHeader() {
@@ -16,17 +16,17 @@ export function AppSidebarHeader() {
   const isCollapsed = state === "collapsed";
 
   return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
+    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 px-4 pb-4 pt-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:px-2">
       <Link
         href="/copilot"
         aria-label="AutoGPT"
         className={cn(
-          "flex items-center",
+          "flex h-8 items-center",
           isCollapsed && "group-focus-within:hidden group-hover:hidden",
         )}
       >
         {isCollapsed ? (
-          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
+          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-6" />
         ) : (
           <AutoGPTLogo className="h-7 w-auto" />
         )}
@@ -45,7 +45,7 @@ export function AppSidebarHeader() {
                 : "flex",
             )}
           >
-            <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />
+            <SidebarSimpleIcon className="size-4 text-sidebar-foreground" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">

@@ -4,7 +4,10 @@ import type { MCPToolOutputResponse } from "@/app/api/__generated__/models/mCPTo
 import type { MCPToolsDiscoveredResponse } from "@/app/api/__generated__/models/mCPToolsDiscoveredResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
+import {
+  WarningDiamondIcon,
+  PlugsConnectedIcon,
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 

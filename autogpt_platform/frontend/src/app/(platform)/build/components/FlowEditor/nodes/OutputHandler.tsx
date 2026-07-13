@@ -1,6 +1,10 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
+import {
+  CaretDownIcon,
+  CaretRightIcon,
+  InfoIcon,
+} from "@/components/icons/pika/adapter";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 

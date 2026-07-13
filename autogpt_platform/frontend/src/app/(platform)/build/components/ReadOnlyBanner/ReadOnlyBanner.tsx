@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CopyIcon, XIcon } from "@phosphor-icons/react";
+import { CopyIcon, XIcon } from "@/components/icons/pika/adapter";
 import { useState } from "react";
 import { useDuplicateGraph } from "../../hooks/useDuplicateGraph";
 

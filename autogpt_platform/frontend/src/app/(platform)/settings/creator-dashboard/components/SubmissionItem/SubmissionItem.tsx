@@ -10,7 +10,7 @@ import {
   ImageBrokenIcon,
   PencilSimpleIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";

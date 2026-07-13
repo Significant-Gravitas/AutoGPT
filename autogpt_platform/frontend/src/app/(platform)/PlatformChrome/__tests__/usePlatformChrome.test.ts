@@ -88,6 +88,24 @@ describe("usePlatformChrome", () => {
     },
   );
 
+  it("hides the classic Navbar on /settings routes", async () => {
+    pathnameMock.mockReturnValue("/settings/account");
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showNavbar).toBe(false);
+    });
+  });
+
+  it("keeps the classic Navbar on non-settings routes", async () => {
+    pathnameMock.mockReturnValue("/library");
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      expect(result.current.showNavbar).toBe(true);
+    });
+  });
+
   it("passes the flag enum to useGetFlag", async () => {
     renderHook(() => usePlatformChrome());
     await waitFor(() => {

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@/components/icons/pika/adapter";
 import { ChangeEvent, KeyboardEvent, useEffect, useState } from "react";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import {

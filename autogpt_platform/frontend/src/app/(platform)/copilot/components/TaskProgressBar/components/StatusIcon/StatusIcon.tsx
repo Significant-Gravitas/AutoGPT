@@ -1,5 +1,9 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { CheckIcon, CircleIcon, PauseCircleIcon } from "@phosphor-icons/react";
+import {
+  CheckIcon,
+  CircleIcon,
+  PauseCircleIcon,
+} from "@/components/icons/pika/adapter";
 import type { DisplayStatus } from "../../helpers";
 
 interface Props {

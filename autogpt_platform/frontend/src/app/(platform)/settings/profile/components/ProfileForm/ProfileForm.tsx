@@ -9,7 +9,7 @@ import {
   TextBIcon,
   TextItalicIcon,
   TextStrikethroughIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { type ReactNode, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";

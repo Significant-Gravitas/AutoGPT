@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { WalletIcon } from "@phosphor-icons/react";
+import { WalletIcon } from "@/components/icons/pika/adapter";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
@@ -279,7 +279,7 @@ export function Wallet({ compact = false }: Props) {
             onClick={onWalletOpen}
           >
             <WalletIcon
-              size={20}
+              size={16}
               className={cn("inline-block", !compact && "xl:hidden")}
             />
             <div>

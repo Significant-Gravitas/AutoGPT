@@ -11,7 +11,7 @@ import {
   StopCircleIcon,
   WarningCircleIcon,
   XCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { formatDistanceToNow } from "date-fns";
 import React from "react";
 import { IconWrapper } from "./IconWrapper";

@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
+import { ArrowsOutIcon } from "@/components/icons/pika/adapter";
 import { InputExpanderModal } from "./TextInputExpanderModal";
 
 export default function TextWidget(props: WidgetProps) {

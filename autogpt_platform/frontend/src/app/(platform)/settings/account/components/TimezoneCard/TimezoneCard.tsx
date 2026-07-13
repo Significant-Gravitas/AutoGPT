@@ -1,6 +1,6 @@
 "use client";
 
-import { InfoIcon } from "@phosphor-icons/react";
+import { InfoIcon } from "@/components/icons/pika/adapter";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Select } from "@/components/atoms/Select/Select";

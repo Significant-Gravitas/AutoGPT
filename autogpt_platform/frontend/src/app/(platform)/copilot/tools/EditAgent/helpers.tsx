@@ -6,7 +6,7 @@ import {
   NotePencilIcon,
   PencilLineIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 

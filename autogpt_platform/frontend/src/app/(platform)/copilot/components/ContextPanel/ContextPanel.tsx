@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@/components/icons/pika/adapter";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { FilesTab } from "./components/FilesTab/FilesTab";

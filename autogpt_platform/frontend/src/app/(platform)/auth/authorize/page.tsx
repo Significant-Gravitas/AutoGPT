@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ImageIcon, SealCheckIcon } from "@phosphor-icons/react";
+import { ImageIcon, SealCheckIcon } from "@/components/icons/pika/adapter";
 import {
   postOauthAuthorize,
   useGetOauthGetOauthAppInfo,

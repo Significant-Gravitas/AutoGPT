@@ -18,7 +18,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CaretUpDownIcon, CheckIcon } from "@phosphor-icons/react";
+import { CaretUpDownIcon, CheckIcon } from "@/components/icons/pika/adapter";
 
 import { useOrgTeamSwitcher } from "@/components/layout/Navbar/components/OrgTeamSwitcher/useOrgTeamSwitcher";
 

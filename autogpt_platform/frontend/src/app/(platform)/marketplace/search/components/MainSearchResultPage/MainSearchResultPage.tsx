@@ -3,7 +3,7 @@ import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/icons/pika/adapter";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";

@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowUp as ArrowUpIcon,
   Stop as StopIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { Children, useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================================================

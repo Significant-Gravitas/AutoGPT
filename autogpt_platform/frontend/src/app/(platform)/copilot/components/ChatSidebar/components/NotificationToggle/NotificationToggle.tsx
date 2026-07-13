@@ -9,7 +9,7 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bell, BellRinging, BellSlash } from "@phosphor-icons/react";
+import { Bell, BellRinging, BellSlash } from "@/components/icons/pika/adapter";
 import { useCopilotUIStore } from "../../../../store";
 
 export function NotificationToggle() {

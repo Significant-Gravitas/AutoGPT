@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
+import { DotsThreeVerticalIcon } from "@/components/icons/pika/adapter";
 import Link from "next/link";
 import { useRemoveTriggerAgent } from "../../../../hooks/useRemoveTriggerAgent";
 

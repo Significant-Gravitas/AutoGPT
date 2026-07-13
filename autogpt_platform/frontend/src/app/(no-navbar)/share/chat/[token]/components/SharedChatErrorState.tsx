@@ -1,4 +1,4 @@
-import { InfoIcon } from "@phosphor-icons/react";
+import { InfoIcon } from "@/components/icons/pika/adapter";
 
 type Props = {
   reason?: string;

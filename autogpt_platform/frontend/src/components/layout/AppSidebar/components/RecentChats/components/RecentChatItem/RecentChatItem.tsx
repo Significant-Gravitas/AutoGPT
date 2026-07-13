@@ -21,7 +21,7 @@ import {
   PencilSimpleIcon,
   ShareNetworkIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import Link from "next/link";
 import { useRef } from "react";
 

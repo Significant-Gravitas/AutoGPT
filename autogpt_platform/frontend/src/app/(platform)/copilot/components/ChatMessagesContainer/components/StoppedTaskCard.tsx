@@ -1,4 +1,4 @@
-import { LightbulbIcon, SquareIcon } from "@phosphor-icons/react";
+import { LightbulbIcon, SquareIcon } from "@/components/icons/pika/adapter";
 
 import { Text } from "@/components/atoms/Text/Text";
 

@@ -7,7 +7,7 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { beautifyString, cn } from "@/lib/utils";
-import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
+import { CopyIcon, CheckIcon } from "@/components/icons/pika/adapter";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";

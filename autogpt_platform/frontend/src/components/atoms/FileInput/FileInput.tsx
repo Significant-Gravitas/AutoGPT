@@ -4,7 +4,7 @@ import {
   TrashIcon,
   UploadIcon,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";

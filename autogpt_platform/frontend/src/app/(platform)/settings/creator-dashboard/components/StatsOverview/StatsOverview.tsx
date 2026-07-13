@@ -7,7 +7,7 @@ import {
   StarIcon,
   StackIcon,
   type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";

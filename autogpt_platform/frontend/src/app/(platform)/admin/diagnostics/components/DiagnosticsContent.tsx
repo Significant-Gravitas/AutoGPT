@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
-import { ArrowClockwise } from "@phosphor-icons/react";
+import { ArrowClockwise } from "@/components/icons/pika/adapter";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";

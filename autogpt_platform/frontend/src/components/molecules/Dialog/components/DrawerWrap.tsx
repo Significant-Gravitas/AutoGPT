@@ -1,7 +1,7 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { X } from "@phosphor-icons/react";
+import { X } from "@/components/icons/pika/adapter";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";

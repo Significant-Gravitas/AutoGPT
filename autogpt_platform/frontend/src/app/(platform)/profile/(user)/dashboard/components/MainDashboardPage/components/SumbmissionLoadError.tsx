@@ -1,4 +1,4 @@
-import { Tray } from "@phosphor-icons/react";
+import { Tray } from "@/components/icons/pika/adapter";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 

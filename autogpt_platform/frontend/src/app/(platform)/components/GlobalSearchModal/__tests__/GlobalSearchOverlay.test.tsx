@@ -103,7 +103,7 @@ describe("GlobalSearchOverlay", () => {
   it("opens with Cmd+K, focuses the input, and shows recent chats", async () => {
     render(<GlobalSearchOverlay />);
 
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true });
 
     const dialog = await screen.findByRole("dialog");
     const input = screen.getByRole("textbox", { name: /global search/i });
@@ -115,7 +115,7 @@ describe("GlobalSearchOverlay", () => {
     const user = userEvent.setup();
     render(<GlobalSearchOverlay />);
 
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true });
     await user.type(
       screen.getByRole("textbox", { name: /global search/i }),
       "forecast",
@@ -157,7 +157,7 @@ describe("GlobalSearchOverlay", () => {
   it("closes the palette after navigation lands on a new route", async () => {
     const { rerender } = render(<GlobalSearchOverlay />);
 
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true });
     expect(await screen.findByRole("dialog")).toBeDefined();
 
     mockPathname = "/library";
@@ -172,7 +172,7 @@ describe("GlobalSearchOverlay", () => {
     const user = userEvent.setup();
     render(<GlobalSearchOverlay />);
 
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true });
     const dialog = await screen.findByRole("dialog");
 
     await user.type(
@@ -189,9 +189,9 @@ describe("GlobalSearchOverlay", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true, shiftKey: true });
     expect(await screen.findByRole("dialog")).toBeDefined();
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true, shiftKey: true });
     await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });

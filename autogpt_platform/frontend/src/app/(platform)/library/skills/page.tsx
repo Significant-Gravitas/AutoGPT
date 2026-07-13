@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/icons/pika/adapter";
 import { SkillsPanel } from "@/components/contextual/SkillsPanel/SkillsPanel";
 
 export default function SkillsPage() {

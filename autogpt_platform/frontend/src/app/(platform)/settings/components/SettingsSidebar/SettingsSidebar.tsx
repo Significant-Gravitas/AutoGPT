@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
+import { ArrowLeftIcon } from "@/components/icons/pika/adapter";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSettingsSidebar } from "./useSettingsSidebar";
 import { SettingsNavItem } from "./SettingsNavItem";
@@ -24,15 +26,17 @@ export function SettingsSidebar() {
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
-      className="hidden h-full w-[237px] shrink-0 overflow-y-auto border-r border-[#DADADC] bg-[#F9F9FA] px-[10px] pt-[13px] md:block"
+      className="hidden h-full w-[237px] shrink-0 overflow-y-auto border-r border-zinc-200 bg-[#F9F9FA] px-[10px] pt-[13px] md:block"
     >
-      <Text
-        variant="label"
-        as="span"
-        className="mb-[16px] block px-4 font-medium text-[#27272a]"
+      <Link
+        href="/copilot"
+        className="mb-[16px] flex h-[38px] w-fit items-center gap-2 rounded-full px-3 text-[#505057] transition-colors hover:bg-[#F5F5F6]"
       >
-        SETTINGS
-      </Text>
+        <ArrowLeftIcon size={16} weight="regular" className="text-[#1F1F20]" />
+        <Text variant="body" as="span" className="font-medium text-[#1F1F20]">
+          Back
+        </Text>
+      </Link>
       <motion.nav
         variants={container}
         initial="hidden"

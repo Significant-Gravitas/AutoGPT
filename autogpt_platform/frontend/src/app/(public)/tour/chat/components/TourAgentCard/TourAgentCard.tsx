@@ -4,7 +4,7 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
   ClockIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { Fragment } from "react";
 import type { TourAgent } from "../../script/types";
 

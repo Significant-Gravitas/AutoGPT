@@ -8,7 +8,7 @@ import {
   FoldersIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import {
   File as TreeFile,
   Folder as TreeFolder,

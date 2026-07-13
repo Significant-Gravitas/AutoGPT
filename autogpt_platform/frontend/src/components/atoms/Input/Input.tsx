@@ -3,7 +3,7 @@ import {
   type InputProps,
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeSlash } from "@/components/icons/pika/adapter";
 import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";

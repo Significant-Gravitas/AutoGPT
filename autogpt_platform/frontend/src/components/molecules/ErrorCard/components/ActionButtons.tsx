@@ -1,5 +1,9 @@
 import React from "react";
-import { ArrowClockwise, Bug, DiscordLogo } from "@phosphor-icons/react";
+import {
+  ArrowClockwise,
+  Bug,
+  DiscordLogo,
+} from "@/components/icons/pika/adapter";
 import { handleReportError } from "../helpers";
 import { ErrorCardProps } from "../ErrorCard";
 import { Button } from "@/components/atoms/Button/Button";

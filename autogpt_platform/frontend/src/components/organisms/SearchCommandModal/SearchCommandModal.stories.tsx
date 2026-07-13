@@ -4,7 +4,7 @@ import {
   ChatCircleIcon,
   FileIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { useState } from "react";
 import { SearchCommandModal } from "./SearchCommandModal";
 import type { SearchCommandBucket } from "./helpers";

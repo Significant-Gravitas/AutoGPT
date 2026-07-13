@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/icons/pika/adapter";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { SelectedViewLayout } from "../SelectedViewLayout";
 

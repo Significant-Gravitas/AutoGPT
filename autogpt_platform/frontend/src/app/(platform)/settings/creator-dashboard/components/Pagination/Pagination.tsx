@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon } from "@/components/icons/pika/adapter";
 
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import { Button } from "@/components/atoms/Button/Button";

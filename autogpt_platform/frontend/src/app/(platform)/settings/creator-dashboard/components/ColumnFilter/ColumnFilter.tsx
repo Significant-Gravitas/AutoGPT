@@ -1,6 +1,6 @@
 "use client";
 
-import { FunnelIcon } from "@phosphor-icons/react";
+import { FunnelIcon } from "@/components/icons/pika/adapter";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";

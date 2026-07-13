@@ -3,7 +3,7 @@ import {
   LightbulbIcon,
   MagnifyingGlassIcon,
   PlusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 
 /* ------------------------------------------------------------------ */

@@ -3,7 +3,7 @@ import {
   MagnifyingGlassIcon,
   PhoneCallIcon,
   SunIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { callPrepScript } from "./callPrepScript";
 import {
   callPrepArtifact,

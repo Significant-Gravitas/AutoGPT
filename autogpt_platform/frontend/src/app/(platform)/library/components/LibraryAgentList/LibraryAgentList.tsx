@@ -7,7 +7,7 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, HeartIcon } from "@/components/icons/pika/adapter";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   AnimatePresence,

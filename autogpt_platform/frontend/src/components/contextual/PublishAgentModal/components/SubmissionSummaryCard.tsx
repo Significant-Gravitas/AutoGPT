@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { ClockIcon, ImageBrokenIcon } from "@phosphor-icons/react";
+import { ClockIcon, ImageBrokenIcon } from "@/components/icons/pika/adapter";
 
 import { Text } from "@/components/atoms/Text/Text";
 

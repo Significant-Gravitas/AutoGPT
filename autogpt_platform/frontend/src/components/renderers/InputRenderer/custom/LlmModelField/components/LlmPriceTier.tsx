@@ -1,6 +1,6 @@
 "use client";
 
-import { CurrencyDollarSimpleIcon } from "@phosphor-icons/react";
+import { CurrencyDollarSimpleIcon } from "@/components/icons/pika/adapter";
 
 type Props = {
   tier?: number;

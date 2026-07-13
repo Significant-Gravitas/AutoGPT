@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { DownloadSimpleIcon } from "@/components/icons/pika/adapter";
 import { Button } from "@/components/atoms/Button/Button";
 import { buildEstimatesJson, downloadJson } from "../helpers";
 import { useBlockCostEstimates } from "./useBlockCostEstimates";

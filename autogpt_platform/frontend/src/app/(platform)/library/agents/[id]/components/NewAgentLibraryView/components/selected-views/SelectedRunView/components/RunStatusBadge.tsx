@@ -7,7 +7,7 @@ import {
   WarningCircleIcon,
   WarningIcon,
   XCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 

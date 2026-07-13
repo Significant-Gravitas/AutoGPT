@@ -19,7 +19,7 @@ import {
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";

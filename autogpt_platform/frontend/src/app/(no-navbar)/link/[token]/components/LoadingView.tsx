@@ -1,6 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { Spinner } from "@phosphor-icons/react";
+import { Spinner } from "@/components/icons/pika/adapter";
 
 interface Props {
   title?: string;

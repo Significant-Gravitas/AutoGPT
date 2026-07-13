@@ -1,7 +1,7 @@
 "use client";
 
 import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
-import { ChatCircleDotsIcon } from "@phosphor-icons/react";
+import { ChatCircleDotsIcon } from "@/components/icons/pika/adapter";
 
 export function FeedbackButton() {
   const { state } = useTallyPopup();

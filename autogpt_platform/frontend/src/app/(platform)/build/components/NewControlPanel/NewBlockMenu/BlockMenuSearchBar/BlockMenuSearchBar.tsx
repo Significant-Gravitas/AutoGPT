@@ -3,7 +3,7 @@ import React from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
 import { Button } from "@/components/__legacy__/ui/button";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, XIcon } from "@/components/icons/pika/adapter";
 
 interface BlockMenuSearchBarProps {
   className?: string;

@@ -49,7 +49,7 @@ import {
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn, isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
+import { ClockIcon, CopyIcon, InfoIcon } from "@/components/icons/pika/adapter";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
 import { analytics } from "@/services/analytics";

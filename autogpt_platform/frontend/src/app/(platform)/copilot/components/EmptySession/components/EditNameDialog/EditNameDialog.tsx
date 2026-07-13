@@ -5,7 +5,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon } from "@/components/icons/pika/adapter";
 import { useState } from "react";
 
 interface Props {

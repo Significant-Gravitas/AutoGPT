@@ -7,7 +7,7 @@ import {
   StackIcon,
   StorefrontIcon,
   UserIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { ComponentType } from "react";
 
 export const NAV_BUCKET_KEY = "navigation";

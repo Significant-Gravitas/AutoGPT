@@ -21,10 +21,9 @@ import {
   FlowArrowIcon,
   FolderIcon,
   type Icon,
-  SparkleIcon,
   SquaresFourIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
@@ -33,6 +32,7 @@ import { usePathname } from "next/navigation";
 import { ComponentProps, ReactNode, Suspense } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
+import { NewTaskItem } from "./components/NewTaskItem/NewTaskItem";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { SidebarOrgSwitcher } from "./components/SidebarOrgSwitcher/SidebarOrgSwitcher";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
@@ -73,18 +73,6 @@ function NavLinkLoader() {
   );
 }
 
-// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
-// navigation to /copilot is pending, then back to the sparkle once it lands.
-function NewTaskIcon() {
-  const { pending } = useLinkStatus();
-
-  if (pending) {
-    return <LoadingSpinner size="small" className="shrink-0" />;
-  }
-
-  return <SparkleIcon className="size-4" />;
-}
-
 function NavMenu({
   links,
   leading,
@@ -103,11 +91,13 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4"
           >
             <Link href={link.href}>
-              <link.icon className="size-5" />
-              <span className="truncate">{link.name}</span>
+              <link.icon className="size-4" />
+              <span className="truncate group-data-[collapsible=icon]:hidden">
+                {link.name}
+              </span>
               <NavLinkLoader />
             </Link>
           </SidebarMenuButton>
@@ -189,30 +179,17 @@ export function AppSidebar(props: Props) {
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+            <SidebarGroup className="pb-1 pt-0 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip="New Task"
-                      className="justify-center rounded-lg bg-zinc-800 font-medium text-white group-data-[collapsible=icon]:justify-start hover:!bg-zinc-900 hover:!text-white"
-                    >
-                      <Link href="/copilot">
-                        <NewTaskIcon />
-                        <span className="truncate">New Task</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
-              <SidebarGroupContent>
-                <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
+                <NavMenu
+                  links={MAIN_LINKS}
+                  leading={
+                    <>
+                      <NewTaskItem />
+                      <SidebarSearch />
+                    </>
+                  }
+                />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>

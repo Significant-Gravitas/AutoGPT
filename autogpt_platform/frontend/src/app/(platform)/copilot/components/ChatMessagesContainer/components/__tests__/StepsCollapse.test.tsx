@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StepsCollapse } from "../StepsCollapse";
 
-vi.mock("@phosphor-icons/react", () => ({
+vi.mock("@/components/icons/pika/adapter", () => ({
   ListBulletsIcon: () => <span data-testid="list-icon" />,
 }));
 

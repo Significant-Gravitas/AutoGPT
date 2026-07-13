@@ -7,7 +7,7 @@ import {
   NotePencilIcon,
   XIcon,
   type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { getSubmissionMeta } from "../helpers";

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { CaretDown, CaretRight } from "@/components/icons/pika/adapter";
 import {
   OutputRenderer,
   OutputMetadata,

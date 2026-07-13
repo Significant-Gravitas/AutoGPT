@@ -7,7 +7,7 @@ import {
   CarouselItem,
 } from "@/components/__legacy__/ui/carousel";
 import { Text } from "@/components/atoms/Text/Text";
-import { DotsNineIcon } from "@phosphor-icons/react";
+import { DotsNineIcon } from "@/components/icons/pika/adapter";
 import { StoreCard } from "../StoreCard/StoreCard";
 import { useAgentsSection } from "./useAgentsSection";
 

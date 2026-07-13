@@ -11,7 +11,7 @@ import {
   PencilSimpleIcon,
   StarIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Button } from "@/components/atoms/Button/Button";

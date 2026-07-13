@@ -23,7 +23,7 @@ import {
   OutputActions,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import { BookOpenIcon } from "@phosphor-icons/react";
+import { BookOpenIcon } from "@/components/icons/pika/adapter";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 

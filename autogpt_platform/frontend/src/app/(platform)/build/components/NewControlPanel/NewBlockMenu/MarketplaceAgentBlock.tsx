@@ -9,7 +9,7 @@ import {
   ArrowSquareOutIcon,
   CircleNotchIcon,
   PlusIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;

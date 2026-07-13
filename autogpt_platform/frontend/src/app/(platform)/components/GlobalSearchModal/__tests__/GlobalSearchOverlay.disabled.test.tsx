@@ -19,7 +19,7 @@ describe("GlobalSearchOverlay — flag disabled", () => {
     useGlobalSearchStore.setState({ isOpen: false });
     render(<GlobalSearchOverlay />);
 
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    fireEvent.keyDown(document, { key: "k", metaKey: true, shiftKey: true });
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(useGlobalSearchStore.getState().isOpen).toBe(false);

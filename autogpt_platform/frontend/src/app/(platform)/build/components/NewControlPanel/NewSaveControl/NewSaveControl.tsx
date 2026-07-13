@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { FloppyDiskIcon } from "@phosphor-icons/react";
+import { FloppyDiskIcon } from "@/components/icons/pika/adapter";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useNewSaveControl } from "./useNewSaveControl";

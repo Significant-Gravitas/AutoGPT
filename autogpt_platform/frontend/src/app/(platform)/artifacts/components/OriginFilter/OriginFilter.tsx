@@ -6,7 +6,7 @@ import {
   SparkleIcon,
   UploadSimpleIcon,
   type Icon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
 

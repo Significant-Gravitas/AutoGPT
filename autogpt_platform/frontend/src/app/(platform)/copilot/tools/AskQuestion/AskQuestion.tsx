@@ -1,6 +1,9 @@
 "use client";
 
-import { ChatTeardropDotsIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import {
+  ChatTeardropDotsIcon,
+  WarningCircleIcon,
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 import { ClarificationQuestionsCard } from "../../components/ClarificationQuestionsCard/ClarificationQuestionsCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";

@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "@supabase/supabase-js";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon } from "@/components/icons/pika/adapter";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 

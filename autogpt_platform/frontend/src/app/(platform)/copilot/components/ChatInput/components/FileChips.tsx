@@ -4,7 +4,7 @@ import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/Artifacts
 import {
   CircleNotch as CircleNotchIcon,
   X as XIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   type Attachment,

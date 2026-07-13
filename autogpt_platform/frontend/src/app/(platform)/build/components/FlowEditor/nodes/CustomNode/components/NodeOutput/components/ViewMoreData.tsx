@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { useState } from "react";
 import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopyIcon } from "@/components/icons/pika/adapter";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import {

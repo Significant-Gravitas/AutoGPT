@@ -1,4 +1,4 @@
-import { CircleNotch as CircleNotchIcon } from "@phosphor-icons/react";
+import { CircleNotch as CircleNotchIcon } from "@/components/icons/pika/adapter";
 
 import { cn } from "@/lib/utils";
 

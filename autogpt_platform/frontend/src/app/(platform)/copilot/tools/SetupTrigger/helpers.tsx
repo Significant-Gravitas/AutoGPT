@@ -2,7 +2,10 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { WarningDiamondIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import {
+  WarningDiamondIcon,
+  WebhooksLogoIcon,
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 

@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes, useCallback, useState } from "react";
 import { highlightText } from "./helpers";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/icons/pika/adapter";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { blockDragPreviewStyle } from "./style";

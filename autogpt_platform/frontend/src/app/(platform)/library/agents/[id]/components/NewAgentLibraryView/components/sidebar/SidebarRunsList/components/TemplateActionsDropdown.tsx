@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThreeVertical } from "@phosphor-icons/react";
+import { DotsThreeVertical } from "@/components/icons/pika/adapter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 

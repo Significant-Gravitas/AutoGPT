@@ -4,7 +4,7 @@ import {
   CheckCircleIcon,
   CircleDashedIcon,
   CircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { motion } from "framer-motion";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import {

@@ -2,7 +2,7 @@
 
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
+import { CaretRight, DownloadSimple } from "@/components/icons/pika/adapter";
 import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";

@@ -8,7 +8,7 @@ import {
   MagnifyingGlassIcon,
   SquaresFourIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { ToolUIPart } from "ai";
 
 export interface FindAgentInput {

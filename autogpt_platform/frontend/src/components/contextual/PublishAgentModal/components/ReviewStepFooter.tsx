@@ -4,7 +4,7 @@ import {
   ArrowRightIcon,
   NotePencilIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { StepFooter } from "./StepFooter";

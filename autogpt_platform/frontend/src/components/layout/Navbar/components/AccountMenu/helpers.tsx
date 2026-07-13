@@ -8,7 +8,7 @@ import {
   SlidersHorizontalIcon,
   UploadSimpleIcon,
   UserIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 export function getAccountMenuPhosphorIcon(icon: IconType) {
   const className = "h-[18px] w-[18px] shrink-0";

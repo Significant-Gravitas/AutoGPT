@@ -1,5 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { ArrowCounterClockwise, ChatCircle, X } from "@phosphor-icons/react";
+import {
+  ArrowCounterClockwise,
+  ChatCircle,
+  X,
+} from "@/components/icons/pika/adapter";
 
 interface Props {
   onClose: () => void;

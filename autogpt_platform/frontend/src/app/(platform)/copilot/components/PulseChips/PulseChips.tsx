@@ -5,7 +5,7 @@ import {
   ArrowRightIcon,
   EyeIcon,
   ChatCircleDotsIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import NextLink from "next/link";
 import { StatusBadge } from "@/app/(platform)/library/components/StatusBadge/StatusBadge";
 import styles from "./PulseChips.module.css";

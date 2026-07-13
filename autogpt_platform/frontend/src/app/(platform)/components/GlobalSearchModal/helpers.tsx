@@ -11,7 +11,7 @@ import {
   FileIcon,
   StorefrontIcon,
   TreeStructureIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import Image from "next/image";
 import type { ComponentType } from "react";
 import {

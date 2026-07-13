@@ -8,7 +8,7 @@ import {
   SparkleIcon,
   StorefrontIcon,
   WarningCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";

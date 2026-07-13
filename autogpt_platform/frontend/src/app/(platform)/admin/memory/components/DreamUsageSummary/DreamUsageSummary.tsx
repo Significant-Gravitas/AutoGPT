@@ -3,7 +3,7 @@
 import type { DreamPassUsage } from "@/app/api/__generated__/models/dreamPassUsage";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { CoinsIcon } from "@phosphor-icons/react";
+import { CoinsIcon } from "@/components/icons/pika/adapter";
 import { formatCost, formatTokens } from "./helpers";
 
 interface Props {

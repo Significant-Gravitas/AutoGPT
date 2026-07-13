@@ -1,6 +1,6 @@
 import React from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowClockwise } from "@phosphor-icons/react";
+import { ArrowClockwise } from "@/components/icons/pika/adapter";
 
 interface LoadingStateProps {
   loadingSlot?: React.ReactNode;

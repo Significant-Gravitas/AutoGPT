@@ -1,6 +1,6 @@
 "use client";
 
-import { LightningIcon } from "@phosphor-icons/react";
+import { LightningIcon } from "@/components/icons/pika/adapter";
 import type { useTourCopilot } from "../../useTourCopilot";
 import { TourMessageList } from "../TourMessageList/TourMessageList";
 import { TourPromptBar } from "../TourPromptBar/TourPromptBar";

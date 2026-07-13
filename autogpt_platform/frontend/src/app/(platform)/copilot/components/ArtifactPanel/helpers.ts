@@ -6,8 +6,8 @@ import {
   Image,
   Table,
   VideoCamera,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
+import type { Icon } from "@/components/icons/pika/adapter";
 
 export interface ArtifactClassification {
   type:

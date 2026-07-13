@@ -5,7 +5,7 @@ import {
   SpinnerIcon,
   SquareIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 import {
   Tooltip,

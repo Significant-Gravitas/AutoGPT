@@ -120,7 +120,7 @@ vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner" />,
 }));
 
-vi.mock("@phosphor-icons/react", () => ({
+vi.mock("@/components/icons/pika/adapter", () => ({
   Clock: () => <span data-testid="clock-icon" />,
   ArrowDown: () => null,
   ArrowUp: () => null,

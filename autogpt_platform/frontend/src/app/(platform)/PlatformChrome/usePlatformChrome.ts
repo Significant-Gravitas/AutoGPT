@@ -9,6 +9,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 // (platform) routes should not show the app sidebar — reset-password and the
 // auth/error/unauthorized pages are all reachable while unauthenticated.
 const NEW_LAYOUT_EXCLUDED_PREFIXES = [
+  "/admin",
   "/settings",
   "/reset-password",
   "/auth/auth-code-error",
@@ -40,6 +41,11 @@ export function usePlatformChrome() {
     pathname === "/marketplace" ||
     Boolean(pathname?.startsWith("/marketplace/"));
 
+  // Settings has its own sidebar shell and a back-to-copilot control, so the
+  // classic top Navbar is redundant there.
+  const isSettingsRoute =
+    pathname === "/settings" || Boolean(pathname?.startsWith("/settings/"));
+
   // Logged-out marketplace visitors get the tour demo sidebar as an upsell.
   // Waits for the session check so it never flashes at logged-in users.
   const showTourSidebar =
@@ -49,5 +55,6 @@ export function usePlatformChrome() {
     showNewLayout:
       isMounted && isNewLayoutEnabled && !isExcludedRoute && !showTourSidebar,
     showTourSidebar,
+    showNavbar: !isSettingsRoute,
   };
 }

@@ -5,7 +5,7 @@ import {
   CheckCircleIcon,
   CircleNotchIcon,
   HourglassIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { MutableRefObject } from "react";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";

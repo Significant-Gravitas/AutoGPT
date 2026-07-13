@@ -8,7 +8,7 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { useOrgTeamSwitcher } from "./useOrgTeamSwitcher";
-import { CaretDown, Check, GearSix } from "@phosphor-icons/react";
+import { CaretDown, Check, GearSix } from "@/components/icons/pika/adapter";
 import Link from "next/link";
 
 export function OrgTeamSwitcher() {

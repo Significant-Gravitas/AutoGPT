@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { CheckCircle as CheckCircleIcon } from "@phosphor-icons/react";
+import { CheckCircle as CheckCircleIcon } from "@/components/icons/pika/adapter";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {

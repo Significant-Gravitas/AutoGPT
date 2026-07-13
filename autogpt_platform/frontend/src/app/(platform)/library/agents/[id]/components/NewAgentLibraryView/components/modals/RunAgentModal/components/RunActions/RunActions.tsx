@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { FlaskIcon } from "@phosphor-icons/react";
+import { FlaskIcon } from "@/components/icons/pika/adapter";
 import { RunVariant } from "../../useAgentRunModal";
 
 interface Props {

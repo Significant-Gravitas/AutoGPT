@@ -1,6 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { LinkBreak } from "@phosphor-icons/react";
+import { LinkBreak } from "@/components/icons/pika/adapter";
 
 interface Props {
   message: string;

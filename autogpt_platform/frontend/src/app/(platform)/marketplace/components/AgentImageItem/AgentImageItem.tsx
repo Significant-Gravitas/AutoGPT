@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Play } from "@phosphor-icons/react";
+import { Play } from "@/components/icons/pika/adapter";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {

@@ -3,7 +3,7 @@ import {
   WarningIcon,
   XCircleIcon,
   PlusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Brain, Lightning } from "@phosphor-icons/react";
+import { Brain, Lightning } from "@/components/icons/pika/adapter";
 import {
   Tooltip,
   TooltipContent,

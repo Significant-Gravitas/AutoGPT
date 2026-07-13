@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRightIcon, LightbulbIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, LightbulbIcon } from "@/components/icons/pika/adapter";
 
 interface Props {
   message: string;

@@ -36,7 +36,7 @@ import {
   X,
   XLogo,
   YoutubeLogo,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { Meta } from "@storybook/nextjs";
 import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
@@ -397,7 +397,7 @@ export function AllVariants() {
 
         <StoryCode
           code={`// Import icons from Phosphor
-import { User, Heart, Star, Bell } from "@phosphor-icons/react";
+import { User, Heart, Star, Bell } from "@/components/icons/pika/adapter";
 
 // Basic usage with default size (24px)
 <User />

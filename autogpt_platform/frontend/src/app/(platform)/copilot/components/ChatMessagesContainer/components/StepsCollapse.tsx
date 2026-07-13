@@ -1,6 +1,6 @@
 "use client";
 
-import { ListBulletsIcon } from "@phosphor-icons/react";
+import { ListBulletsIcon } from "@/components/icons/pika/adapter";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 interface Props {

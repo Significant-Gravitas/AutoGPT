@@ -1,4 +1,4 @@
-import { SmileySadIcon } from "@phosphor-icons/react";
+import { SmileySadIcon } from "@/components/icons/pika/adapter";
 
 export const NoSearchResult = () => {
   return (

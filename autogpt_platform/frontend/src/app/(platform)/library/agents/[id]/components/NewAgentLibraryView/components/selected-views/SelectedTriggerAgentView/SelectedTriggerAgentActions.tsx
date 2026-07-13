@@ -7,7 +7,7 @@ import {
   ArrowSquareOutIcon,
   PencilSimpleIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import Link from "next/link";
 import { useRemoveTriggerAgent } from "../../../hooks/useRemoveTriggerAgent";
 

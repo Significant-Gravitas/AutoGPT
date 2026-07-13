@@ -5,7 +5,11 @@ import {
   SecondaryMenuItem,
   SecondaryMenuSeparator,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
-import { ArrowSquareOutIcon, CopyIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  CopyIcon,
+  TrashIcon,
+} from "@/components/icons/pika/adapter";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useReactFlow } from "@xyflow/react";
 import { useEffect, useRef } from "react";

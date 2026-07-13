@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/icons/pika/adapter";
 
 import type { ConnectableProvider } from "../helpers";
 

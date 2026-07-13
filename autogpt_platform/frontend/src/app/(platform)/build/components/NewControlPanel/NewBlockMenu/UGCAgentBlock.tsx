@@ -5,7 +5,7 @@ import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { CircleNotchIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon } from "@/components/icons/pika/adapter";
 import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {

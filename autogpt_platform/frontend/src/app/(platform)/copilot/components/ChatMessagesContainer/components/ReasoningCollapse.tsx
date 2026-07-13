@@ -7,7 +7,7 @@ import {
   AccordionItem,
 } from "@/components/molecules/Accordion/Accordion";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, LightbulbIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, LightbulbIcon } from "@/components/icons/pika/adapter";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { useState } from "react";
 

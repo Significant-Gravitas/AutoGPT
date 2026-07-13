@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { CalendarDotsIcon } from "@phosphor-icons/react";
+import { CalendarDotsIcon } from "@/components/icons/pika/adapter";
 
 export function EmptyFollowups() {
   return (

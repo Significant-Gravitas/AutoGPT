@@ -2,7 +2,7 @@
 
 import type { SelectOption } from "@/components/atoms/Select/Select";
 import { Select } from "@/components/atoms/Select/Select";
-import { FunnelIcon } from "@phosphor-icons/react";
+import { FunnelIcon } from "@/components/icons/pika/adapter";
 import type { AgentStatusFilter, FleetSummary } from "../../types";
 
 interface Props {

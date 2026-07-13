@@ -10,7 +10,7 @@ import {
   CopyIcon,
   ShareFatIcon,
   WarningIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { useShareRunButton } from "./useShareRunButton";
 
 interface Props {

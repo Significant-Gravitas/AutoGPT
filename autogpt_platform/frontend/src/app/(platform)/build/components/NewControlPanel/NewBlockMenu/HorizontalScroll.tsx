@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowRightIcon } from "@/components/icons/pika/adapter";
 import { cn } from "@/lib/utils";
 
 interface HorizontalScrollAreaProps {

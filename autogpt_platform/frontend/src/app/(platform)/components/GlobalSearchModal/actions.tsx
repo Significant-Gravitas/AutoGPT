@@ -1,5 +1,5 @@
 import type { SearchCommandBucket } from "@/components/organisms/SearchCommandModal/helpers";
-import { CopyIcon } from "@phosphor-icons/react";
+import { CopyIcon } from "@/components/icons/pika/adapter";
 import type { ComponentType } from "react";
 
 export const ACTIONS_BUCKET_KEY = "actions";

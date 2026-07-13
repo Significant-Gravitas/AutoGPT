@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckSquareIcon, SquareIcon } from "@phosphor-icons/react";
+import { CheckSquareIcon, SquareIcon } from "@/components/icons/pika/adapter";
 
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { Text } from "@/components/atoms/Text/Text";

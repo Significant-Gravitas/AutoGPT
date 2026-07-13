@@ -1,7 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
-import { CheckCircle } from "@phosphor-icons/react";
+import { CheckCircle } from "@/components/icons/pika/adapter";
 import { isUserLink } from "../helpers";
 
 interface Props {

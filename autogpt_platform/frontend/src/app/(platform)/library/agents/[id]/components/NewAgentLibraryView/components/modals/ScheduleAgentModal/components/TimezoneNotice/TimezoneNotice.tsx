@@ -1,6 +1,6 @@
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { InfoIcon } from "@phosphor-icons/react";
+import { InfoIcon } from "@/components/icons/pika/adapter";
 
 export function TimezoneNotice() {
   const userTimezone = useUserTimezone();

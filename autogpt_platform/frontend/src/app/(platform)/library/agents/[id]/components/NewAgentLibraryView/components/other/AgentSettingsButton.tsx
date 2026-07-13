@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { GearIcon } from "@phosphor-icons/react";
+import { GearIcon } from "@/components/icons/pika/adapter";
 
 export function AgentSettingsButton() {
   return (

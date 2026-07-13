@@ -9,7 +9,7 @@ import {
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@/components/icons/pika/adapter";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import { JSBeads } from "./components/JSBeads";

@@ -15,7 +15,7 @@ import {
   CreditCardIcon,
   QuestionIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 
 type Link = {
   name: string;

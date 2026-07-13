@@ -4,8 +4,8 @@ import {
   CoinsIcon,
   RobotIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
+import type { Icon } from "@/components/icons/pika/adapter";
 
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 

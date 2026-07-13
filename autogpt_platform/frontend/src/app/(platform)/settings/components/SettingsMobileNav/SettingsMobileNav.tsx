@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CaretDownIcon } from "@/components/icons/pika/adapter";
 import {
   Popover,
   PopoverContent,
@@ -18,7 +18,14 @@ export function SettingsMobileNav() {
   const current = items.find((i) => i.isActive) ?? items[0];
 
   return (
-    <div className="bg-[#F9F9FA] px-4 py-3 md:hidden">
+    <div className="flex items-center gap-2 bg-[#F9F9FA] px-4 py-3 md:hidden">
+      <Link
+        href="/copilot"
+        aria-label="Back to copilot"
+        className="flex size-[38px] shrink-0 items-center justify-center rounded-full border border-[#DADADC] bg-white outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
+      >
+        <ArrowLeftIcon size={16} weight="regular" className="text-[#1F1F20]" />
+      </Link>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button

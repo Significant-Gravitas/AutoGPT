@@ -2,7 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
+import {
+  CircleNotchIcon,
+  MicrophoneIcon,
+} from "@/components/icons/pika/adapter";
 
 interface Props {
   isRecording: boolean;

@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowSquareOut } from "@phosphor-icons/react";
+import { ArrowSquareOut } from "@/components/icons/pika/adapter";
 import {
   OutputRenderer,
   OutputMetadata,

@@ -16,7 +16,7 @@ import {
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import type { ToolUIPart } from "ai";
 import {
   type ToolCategory,

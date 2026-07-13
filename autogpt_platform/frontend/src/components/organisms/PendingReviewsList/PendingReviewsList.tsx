@@ -10,7 +10,7 @@ import {
   WarningIcon,
   CaretDownIcon,
   CaretRightIcon,
-} from "@phosphor-icons/react";
+} from "@/components/icons/pika/adapter";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
 
 interface PendingReviewsListProps {

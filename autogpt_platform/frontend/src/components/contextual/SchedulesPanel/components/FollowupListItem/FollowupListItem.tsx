@@ -4,7 +4,11 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ChatCircleTextIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  ChatCircleTextIcon,
+  EyeIcon,
+  TrashIcon,
+} from "@/components/icons/pika/adapter";
 import Link from "next/link";
 import { useFollowupListItem } from "./useFollowupListItem";
 

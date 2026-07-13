@@ -1,6 +1,6 @@
 import React from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Warning } from "@phosphor-icons/react";
+import { Warning } from "@/components/icons/pika/adapter";
 
 export function ErrorHeader() {
   return (

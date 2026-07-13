@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { GithubLogoIcon, SparkleIcon } from "@phosphor-icons/react";
+import { GithubLogoIcon, SparkleIcon } from "@/components/icons/pika/adapter";
 import { useTourStore } from "../../../tourStore";
 
 const PRICING_URL = "https://agpt.co/pricing";
