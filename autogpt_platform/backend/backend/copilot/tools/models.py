@@ -122,6 +122,14 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Menlo robot platform (copilot robot control)
+    MENLO_ROBOT_CONNECTED = "menlo_robot_connected"
+    MENLO_ROBOT_DISCONNECTED = "menlo_robot_disconnected"
+    MENLO_SKILLS_DISCOVERED = "menlo_skills_discovered"
+    MENLO_SKILL_RESULT = "menlo_skill_result"
+    MENLO_ROBOT_STATE = "menlo_robot_state"
+    MENLO_VISION = "menlo_vision"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):

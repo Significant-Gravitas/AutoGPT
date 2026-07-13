@@ -20706,7 +20706,13 @@
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
-          "skill_list"
+          "skill_list",
+          "menlo_robot_connected",
+          "menlo_robot_disconnected",
+          "menlo_skills_discovered",
+          "menlo_skill_result",
+          "menlo_robot_state",
+          "menlo_vision"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

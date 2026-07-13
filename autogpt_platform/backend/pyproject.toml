@@ -43,6 +43,10 @@ jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
 mem0ai = "^0.1.115"
+# Optional (extra "menlo"): control the Menlo robot platform from the copilot.
+# Requires Python >=3.12; the [livekit] extra enables the runtime plane
+# (invoke/state/vision). Installed only via `poetry install --extras menlo`.
+menlo-robot-sdk = { extras = ["livekit"], version = "^0.2.2", optional = true, python = ">=3.12" }
 moviepy = "^2.1.2"
 ollama = "^0.6.1"
 openai = "^1.97.1"
@@ -120,6 +124,9 @@ pytest-watcher = "^0.6.3"
 requests = "^2.32.5"
 ruff = "^0.15.0"
 # NOTE: please insert new dependencies in their alphabetical location
+
+[tool.poetry.extras]
+menlo = ["menlo-robot-sdk"]
 
 [build-system]
 requires = ["poetry-core"]
