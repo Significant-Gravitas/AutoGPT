@@ -420,4 +420,130 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
     const stats = result.stats.get(result.messages[0].id);
     expect(stats?.isLatestUserMessage).toBe(true);
   });
+
+  describe("orphan TodoWrite recovery", () => {
+    const todos = [
+      { content: "Step 1", activeForm: "Doing step 1", status: "completed" },
+      { content: "Step 2", activeForm: "Doing step 2", status: "completed" },
+    ];
+
+    function findTodoPart(result: {
+      messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    }) {
+      return result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-TodoWrite");
+    }
+
+    it("recovers an orphan result from the backend `todos` field", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoPart = findTodoPart(result);
+      expect(todoPart).toBeDefined();
+      expect(
+        (todoPart as { input: { todos: unknown[] } }).input.todos,
+      ).toHaveLength(2);
+    });
+
+    it("ignores an orphan result missing a `todos` array", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", newTodos: todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      expect(findTodoPart(result)).toBeUndefined();
+    });
+
+    it("does not duplicate when a whitespace-padded tool_call_id matches a consumed id", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "on it",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: {
+                  name: "TodoWrite",
+                  arguments: JSON.stringify({ todos }),
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoParts = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.filter((p) => p.type === "tool-TodoWrite");
+      expect(todoParts).toHaveLength(1);
+    });
+  });
+
+  describe("tool output matching", () => {
+    it("attaches an output whose tool_call_id is whitespace-padded", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "running a tool",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: { name: "SomeTool", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ ok: true }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: false },
+      );
+
+      const toolPart = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-SomeTool") as
+        | { state: string; output: unknown }
+        | undefined;
+
+      expect(toolPart?.state).toBe("output-available");
+      expect(toolPart?.output).toEqual({ ok: true });
+    });
+  });
 });

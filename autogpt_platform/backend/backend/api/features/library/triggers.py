@@ -70,10 +70,14 @@ async def setup_triggered_preset(
         ),
     }
 
+    # Resource-follows-parent: the webhook lives in the graph's org/team,
+    # not the caller's active org.
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
         trigger_block=trigger_node.block,
         trigger_config=trigger_config_with_credentials,
+        organization_id=graph.organization_id,
+        team_id=graph.team_id,
     )
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
@@ -143,6 +147,9 @@ async def update_triggered_preset(
                 trigger_block=trigger_node.block,
                 trigger_config=trigger_config_with_credentials,
                 for_preset_id=preset_id,
+                # Resource-follows-parent: webhook lives in the graph's org/team.
+                organization_id=graph.organization_id,
+                team_id=graph.team_id,
             )
             trigger_inputs_updated = True
             if not new_webhook:

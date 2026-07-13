@@ -10,33 +10,22 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 
 import {
+  buildEditPayload,
   INITIAL_FILTER_STATE,
   toDashboardStats,
+  type EditPayload,
   type FilterState,
 } from "./helpers";
 
 const PAGE_SIZE = 20;
 const SEARCH_QUERY_MAX_LENGTH = 100;
-
-type PublishStep = "select" | "info" | "review";
-
-interface PublishState {
-  isOpen: boolean;
-  step: PublishStep;
-  submissionData: StoreSubmission | null;
-}
-
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
-  graph_id: string;
-}
 
 interface EditState {
   isOpen: boolean;
@@ -185,6 +174,17 @@ export function useCreatorDashboardPage() {
     setEditState({ isOpen: true, submission });
   }
 
+  function onEditFromReview(submission: StoreSubmission) {
+    if (!submission.listing_version_id) {
+      Sentry.captureException(
+        new Error("No store listing version ID found for submission"),
+      );
+      return;
+    }
+    setPublishState({ isOpen: false, step: "select", submissionData: null });
+    onEditSubmission(buildEditPayload(submission));
+  }
+
   function onEditClose() {
     setEditState({ isOpen: false, submission: null });
   }
@@ -233,6 +233,7 @@ export function useCreatorDashboardPage() {
     editState,
     onViewSubmission,
     onEditSubmission,
+    onEditFromReview,
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,

@@ -41,7 +41,7 @@ import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
-import { getLatestTaskList } from "../ContextPanel/components/ProgressTab/helpers";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -323,14 +323,18 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  // The in-chat "progress in the sidebar" notice only applies to the old
+  // sidebar surface — hide it entirely when the task bar is on.
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
-  const latestTaskList = getLatestTaskList(messages);
   const isChatStreaming = status === "streaming" || status === "submitted";
-  const hasActiveTaskList = shouldShowTaskListNotice({
-    isContextPanelEnabled,
-    isChatStreaming,
-    latestTaskList,
-  });
+  const hasActiveTaskList =
+    !isTaskBarEnabled &&
+    shouldShowTaskListNotice({
+      isContextPanelEnabled,
+      isChatStreaming,
+      latestTaskList: getLatestTaskList(messages),
+    });
 
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.

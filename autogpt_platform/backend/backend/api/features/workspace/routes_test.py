@@ -70,6 +70,7 @@ def _make_file_mock(**overrides) -> MagicMock:
         "path": "/test.txt",
         "mime_type": "text/plain",
         "size_bytes": 100,
+        "folder_id": None,
         "metadata": {},
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
@@ -114,6 +115,8 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -136,6 +139,8 @@ def test_list_files_uploaded_origin_filters_on_metadata(
         name_contains=None,
         metadata_equals={"origin": "user-upload"},
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -158,6 +163,8 @@ def test_list_files_generated_origin_excludes_uploads(
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals={"origin": "user-upload"},
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -185,6 +192,8 @@ def test_list_files_scopes_to_session_when_provided(
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -606,6 +615,8 @@ def test_list_files_has_more_true_when_limit_exceeded(
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -646,6 +657,8 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -669,6 +682,8 @@ def test_list_files_origin_ignored_when_session_id_set(
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -690,6 +705,8 @@ def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace
         name_contains="report",
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -711,6 +728,8 @@ def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -732,6 +751,8 @@ def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
         name_contains="report",
         metadata_equals=None,
         metadata_not_equals={"origin": "user-upload"},
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -757,6 +778,8 @@ def test_list_files_empty_session_id_treated_as_omitted(
         name_contains=None,
         metadata_equals=None,
         metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
     )
 
 
@@ -764,6 +787,113 @@ def test_list_files_rejects_invalid_origin():
     """FastAPI Literal validation rejects unknown origin values."""
     response = client.get("/files?origin=nonsense")
     assert response.status_code == 422
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_folder_id_passed_through(mock_manager_cls, mock_get_workspace):
+    """folder_id forwards to the manager and scopes the listing to that folder."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?folder_id=fld-1")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+        folder_id="fld-1",
+        root_only=False,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_root_only_passed_through(mock_manager_cls, mock_get_workspace):
+    """root_only forwards to the manager to surface only root-level files."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?root_only=true")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        metadata_equals=None,
+        metadata_not_equals=None,
+        folder_id=None,
+        root_only=True,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_session_id_with_folder_id(
+    mock_manager_cls, mock_get_workspace
+):
+    """session_id and folder_id are mutually exclusive axes — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=sess-1&folder_id=fld-1")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_session_id_with_root_only(
+    mock_manager_cls, mock_get_workspace
+):
+    """session_id and root_only are mutually exclusive axes — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=sess-1&root_only=true")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_rejects_folder_id_with_root_only(
+    mock_manager_cls, mock_get_workspace
+):
+    """folder_id and root_only contradict each other — reject with 400."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?folder_id=fld-1&root_only=true")
+    assert response.status_code == 400
+    mock_instance.list_files.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_includes_folder_id_in_response(
+    mock_manager_cls, mock_get_workspace
+):
+    """The listed item exposes its folder_id so the UI knows membership."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [_make_file(id="f1", folder_id="fld-1")]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files")
+    assert response.status_code == 200
+    assert response.json()["files"][0]["folder_id"] == "fld-1"
 
 
 def test_upload_virus_scan_infrastructure_error_returns_500(mocker):

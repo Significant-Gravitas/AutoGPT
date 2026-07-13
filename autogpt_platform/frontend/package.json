@@ -3,7 +3,7 @@
   "version": "0.3.4",
   "private": true,
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "pnpm run generate:api:force && next dev --turbo",

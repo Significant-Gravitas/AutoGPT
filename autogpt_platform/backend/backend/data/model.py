@@ -28,6 +28,7 @@ from pydantic import (
     Field,
     GetCoreSchemaHandler,
     SecretStr,
+    TypeAdapter,
     field_serializer,
     model_validator,
 )
@@ -444,6 +445,10 @@ Credentials = Annotated[
     | HostScopedCredentials,
     Field(discriminator="type"),
 ]
+
+# For validating a bare Credentials union outside a parent model (e.g.
+# decrypted IntegrationCredential row payloads).
+CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
 
 
 CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]

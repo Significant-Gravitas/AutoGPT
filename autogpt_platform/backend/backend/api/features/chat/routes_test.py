@@ -33,9 +33,11 @@ TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -128,6 +130,73 @@ def test_update_title_not_found(
     assert response.status_code == 404
 
 
+# ─── Update pinned ────────────────────────────────────────────────────
+
+
+def _mock_update_session_pinned(
+    mocker: pytest_mock.MockerFixture, *, success: bool = True
+):
+    """Mock update_session_pinned."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.update_session_pinned",
+        new_callable=AsyncMock,
+        return_value=success,
+    )
+
+
+def test_update_pinned_success(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_pinned(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    mock_update.assert_called_once_with("sess-1", test_user_id, True)
+
+
+def test_update_pinned_unpin(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_pinned(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": False},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("sess-1", test_user_id, False)
+
+
+def test_update_pinned_missing_field_rejected(
+    test_user_id: str,
+) -> None:
+    response = client.patch("/sessions/sess-1/pinned", json={})
+
+    assert response.status_code == 422
+
+
+def test_update_pinned_not_found(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _mock_update_session_pinned(mocker, success=False)
+
+    response = client.patch(
+        "/sessions/sess-1/pinned",
+        json={"is_pinned": True},
+    )
+
+    assert response.status_code == 404
+
+
 # ─── file_ids Pydantic validation ─────────────────────────────────────
 
 
@@ -153,9 +222,12 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     """
     import types
 
+    # The route anchors turn tenancy on the session row
+    # (session.organization_id / session.team_id), so the stub must carry
+    # both — None exercises the legacy ctx-fallback path.
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
+        return_value=mocker.MagicMock(organization_id=None, team_id=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
@@ -611,7 +683,15 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
     """Mock create_chat_session to return a fake session."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_create(user_id: str, *, dry_run: bool):
+    async def _fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        source_platform: str | None = None,
+    ):
         return ChatSession.new(user_id, dry_run=dry_run)
 
     return mocker.patch(
@@ -1148,6 +1228,7 @@ def _make_session_info(
     session_id: str = "sess-1",
     title: str | None = "Test",
     source_platform: str | None = None,
+    is_pinned: bool = False,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -1160,6 +1241,7 @@ def _make_session_info(
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(source_platform=source_platform),
+        is_pinned=is_pinned,
     )
 
 
@@ -1217,6 +1299,32 @@ def test_list_sessions_returns_source_platform(
 
     assert response.status_code == 200
     assert response.json()["sessions"][0]["source_platform"] == "discord"
+
+
+def test_list_sessions_returns_is_pinned(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _make_session_info("sess-pinned", is_pinned=True)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["is_pinned"] is True
 
 
 def test_list_sessions_marks_running_as_processing(
@@ -1528,6 +1636,106 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
     mock_enqueue.assert_called_once_with("sess-1")
+
+
+def test_cancel_session_clears_pending_buffer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Cancelling a turn must drop any queued follow-ups so they don't
+    leak into the next unrelated turn (the pending buffer only exists to
+    feed the running turn).  Regression test for the orphan-pending bug:
+    before the fix, cancel published the executor event but left the
+    Redis buffer intact until its 1h TTL."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    mock_clear = mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    mock_clear.assert_awaited_once_with("sess-1")
+
+
+def test_cancel_session_survives_pending_clear_failure(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Redis hiccup while clearing the pending buffer must not block the
+    cancel itself — the clear is best-effort cleanup, the cancel is not."""
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new=AsyncMock(side_effect=RuntimeError("redis down")),
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+
+
+def test_cancel_session_reclears_pending_buffer_after_running_settles(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The running path must clear the buffer a second time after the turn
+    is confirmed stopped.  The first clear only drops what existed when
+    cancel started; a follow-up CAS-pushed during the 0-5s cancel window
+    (stream meta still ``status='running'``) would otherwise survive and
+    leak into the next turn.  Re-clearing once status flips out of running —
+    when the CAS gate rejects new writes — closes that race."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _mock_validate_session(mocker)
+    mocker.patch(
+        "backend.copilot.turn_queue.cancel_queued_turn",
+        new=AsyncMock(return_value=False),
+    )
+    active_session = ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-1",
+        status="running",
+    )
+    stopped_session = ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id="turn-1",
+        status="completed",
+    )
+    mock_registry = MagicMock()
+    mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
+    mock_registry.get_session = AsyncMock(return_value=stopped_session)
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    mocker.patch(
+        "backend.api.features.chat.routes.enqueue_cancel_task",
+        new_callable=AsyncMock,
+    )
+    mock_clear = mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions/sess-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    # Once up front, once after the turn settles.
+    assert mock_clear.await_count == 2
+    assert all(call.args == ("sess-1",) for call in mock_clear.await_args_list)
 
 
 # ─── session_assign_user ──────────────────────────────────────────────
@@ -2061,7 +2269,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
     ``get_or_create_builder_session`` and returns a session bound to the graph."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
+    async def _fake_get_or_create(
+        user_id: str,
+        graph_id: str,
+        *,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
@@ -2089,7 +2303,7 @@ def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
     """``get_or_create_builder_session`` raises ``NotFoundError`` when the
     user doesn't own the graph; the route must map that to HTTP 404."""
 
-    async def _fake_get_or_create(user_id: str, graph_id: str):
+    async def _fake_get_or_create(user_id: str, graph_id: str, **_kwargs):
         raise NotFoundError(f"Graph {graph_id} not found")
 
     mocker.patch(
@@ -2117,7 +2331,7 @@ def test_create_session_without_builder_graph_id_creates_fresh(
         new_callable=AsyncMock,
     )
 
-    async def _fake_create(user_id: str, *, dry_run: bool) -> ChatSession:
+    async def _fake_create(user_id: str, *, dry_run: bool, **_kwargs) -> ChatSession:
         return ChatSession.new(user_id, dry_run=dry_run)
 
     mocker.patch(
