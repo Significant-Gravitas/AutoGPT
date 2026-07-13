@@ -6,30 +6,18 @@ import {
   CHANGELOG_INDEX_MD_URL,
   STORAGE_KEY,
 } from "./changelog-constants";
-import {
-  ChangelogEntry,
-  cleanEntryMarkdown,
-  parseChangelogIndex,
-} from "./helpers";
+import { ChangelogEntry, parseChangelogIndex } from "./helpers";
 
 export function useChangelog() {
   const [isVisible, setIsVisible] = useState(false);
   const [isFading, setIsFading] = useState(false);
-  const [showFullChangelog, setShowFullChangelog] = useState(false);
   const [latestEntry, setLatestEntry] = useState<ChangelogEntry | null>(null);
-  const [allEntries, setAllEntries] = useState<ChangelogEntry[]>([]);
-  const [selectedEntry, setSelectedEntry] = useState<ChangelogEntry | null>(
-    null,
-  );
-  const [entryMarkdown, setEntryMarkdown] = useState<string | null>(null);
-  const [isLoadingMarkdown, setIsLoadingMarkdown] = useState(false);
 
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPaused = useRef(false);
   const isDismissing = useRef(false);
-  const mdAbort = useRef<AbortController | null>(null);
   // Track how much of the auto-dismiss countdown is left so hover/focus can
   // pause and resume the *remaining* time instead of restarting from scratch.
   const dismissStartedAt = useRef(0);
@@ -64,12 +52,12 @@ export function useChangelog() {
   }
 
   function startAutoDismiss(duration = AUTO_DISMISS_MS) {
-    if (isPaused.current || showFullChangelog) return;
+    if (isPaused.current) return;
     clearTimers();
     dismissStartedAt.current = Date.now();
     remainingMs.current = duration;
     autoDismissTimer.current = setTimeout(() => {
-      if (!isPaused.current && !showFullChangelog) dismiss();
+      if (!isPaused.current) dismiss();
     }, duration);
   }
 
@@ -90,57 +78,6 @@ export function useChangelog() {
     startAutoDismiss(remainingMs.current);
   }
 
-  function fetchEntryMarkdown(entry: ChangelogEntry) {
-    mdAbort.current?.abort();
-    const controller = new AbortController();
-    mdAbort.current = controller;
-
-    setIsLoadingMarkdown(true);
-    setEntryMarkdown(null);
-
-    fetch(entry.mdUrl, { signal: controller.signal })
-      .then((res) => (res.ok ? res.text() : ""))
-      .then((md) => {
-        if (controller.signal.aborted) return;
-        setEntryMarkdown(cleanEntryMarkdown(md));
-      })
-      .catch(() => {
-        /* abort or network error — non-critical */
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoadingMarkdown(false);
-      });
-  }
-
-  function openFullChangelog(entry?: ChangelogEntry) {
-    clearTimers();
-    isPaused.current = true;
-    setIsVisible(false);
-    setIsFading(false);
-    isDismissing.current = false;
-    const target = entry || latestEntry;
-    if (target) {
-      setSelectedEntry(target);
-      fetchEntryMarkdown(target);
-      markAsSeen(target.slug);
-    }
-    setShowFullChangelog(true);
-  }
-
-  function closeFullChangelog() {
-    mdAbort.current?.abort();
-    setShowFullChangelog(false);
-    setEntryMarkdown(null);
-    setSelectedEntry(null);
-    // The aborted fetch's `.finally` won't clear this, so reset it here.
-    setIsLoadingMarkdown(false);
-  }
-
-  function selectEntry(entry: ChangelogEntry) {
-    setSelectedEntry(entry);
-    fetchEntryMarkdown(entry);
-  }
-
   useEffect(() => {
     let cancelled = false;
 
@@ -152,7 +89,6 @@ export function useChangelog() {
         const entries = parseChangelogIndex(md);
         if (entries.length === 0) return;
 
-        setAllEntries(entries);
         setLatestEntry(entries[0]);
 
         try {
@@ -174,28 +110,19 @@ export function useChangelog() {
       cancelled = true;
       clearTimers();
       if (revealTimer.current) clearTimeout(revealTimer.current);
-      mdAbort.current?.abort();
     };
   }, []);
 
   useEffect(() => {
-    if (isVisible && !isFading && !showFullChangelog) startAutoDismiss();
-  }, [isVisible, isFading, showFullChangelog]);
+    if (isVisible && !isFading) startAutoDismiss();
+  }, [isVisible, isFading]);
 
   return {
     isVisible,
     isFading,
     latestEntry,
-    allEntries,
-    entryMarkdown,
-    isLoadingMarkdown,
     dismiss,
     pauseAutoDismiss,
     resumeAutoDismiss,
-    showFullChangelog,
-    openFullChangelog,
-    closeFullChangelog,
-    selectedEntry,
-    selectEntry,
   };
 }

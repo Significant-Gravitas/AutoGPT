@@ -145,7 +145,6 @@
     "@storybook/addon-links": "9.1.5",
     "@storybook/addon-onboarding": "9.1.5",
     "@storybook/nextjs": "9.1.5",
-    "@tailwindcss/typography": "0.5.20",
     "@tanstack/eslint-plugin-query": "5.91.2",
     "@tanstack/react-query-devtools": "5.90.2",
     "@testing-library/dom": "10.4.1",

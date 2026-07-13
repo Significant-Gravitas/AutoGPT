@@ -1,4 +1,3 @@
-import typography from "@tailwindcss/typography";
 import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
@@ -249,7 +248,7 @@ const config = {
       },
     },
   },
-  plugins: [tailwindcssAnimate, scrollbar({ nocompatible: true }), typography],
+  plugins: [tailwindcssAnimate, scrollbar({ nocompatible: true })],
 } satisfies Config;
 
 export default config;

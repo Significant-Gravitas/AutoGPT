@@ -1,9 +1,7 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { CHANGELOG_INDEX_MD_URL } from "@/components/molecules/ChangelogPopup/changelog-constants";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,8 +47,6 @@ function renderSidebar() {
 
 beforeEach(() => {
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
-  // SidebarChangelog (in the footer) fetches the changelog index on mount.
-  server.use(http.get(CHANGELOG_INDEX_MD_URL, () => HttpResponse.text("")));
 });
 
 afterEach(() => {
@@ -88,10 +84,5 @@ describe("AppSidebar", () => {
   it("shows the recent-chats empty state once sessions resolve", async () => {
     renderSidebar();
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
-  });
-
-  it("renders the What's New changelog entry at the bottom", () => {
-    renderSidebar();
-    expect(screen.getByRole("button", { name: /what's new/i })).toBeDefined();
   });
 });

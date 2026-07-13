@@ -3,6 +3,7 @@ import {
   ChartLineUpIcon,
   CreditCardIcon,
   GearIcon,
+  MegaphoneIcon,
   QuestionIcon,
   SignOutIcon,
   SlidersHorizontalIcon,
@@ -28,6 +29,8 @@ export function getAccountMenuPhosphorIcon(icon: IconType) {
       return <CreditCardIcon className={className} weight={weight} />;
     case IconType.Help:
       return <QuestionIcon className={className} weight={weight} />;
+    case IconType.Changelog:
+      return <MegaphoneIcon className={className} weight={weight} />;
     case IconType.LogOut:
       return <SignOutIcon className={className} weight={weight} />;
     default:

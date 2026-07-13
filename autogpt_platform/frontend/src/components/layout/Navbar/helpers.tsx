@@ -123,6 +123,12 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
           href: "https://agpt.co/docs",
           external: true,
         },
+        {
+          icon: IconType.Changelog,
+          text: "What's New",
+          href: "https://agpt.co/docs/platform/changelog/changelog",
+          external: true,
+        },
       ],
     },
   ];

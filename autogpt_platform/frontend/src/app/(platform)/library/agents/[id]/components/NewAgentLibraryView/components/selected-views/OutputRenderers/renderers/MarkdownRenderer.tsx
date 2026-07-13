@@ -163,7 +163,7 @@ function renderMarkdown(
   return (
     <div className="markdown-output">
       <ReactMarkdown
-        className="prose prose-sm max-w-none dark:prose-invert"
+        className="prose prose-sm dark:prose-invert max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
           [remarkMath, { singleDollarTextMath: false }], // Math support for LaTeX
