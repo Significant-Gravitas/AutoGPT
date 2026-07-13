@@ -318,6 +318,12 @@ async def create_orgs_for_existing_users(
     for processed, row in enumerate(users_without_org, start=1):
         user_id: str = row["id"]
 
+        # Renew BEFORE the re-check so skip-heavy re-runs (most users already
+        # bootstrapped — exactly the second-wave scenario) still keep the lock
+        # alive; counting only creates would let a long skip streak expire it.
+        if renew_lock is not None and processed % _LOCK_RENEW_EVERY == 0:
+            await renew_lock()
+
         # Re-check against the live table — the snapshot above can be stale by
         # the time we reach this user, so skip anyone bootstrapped since.
         if await _find_owned_personal_org(user_id) is not None:
@@ -325,9 +331,6 @@ async def create_orgs_for_existing_users(
 
         if await _get_or_create_backfill_org(row):
             created += 1
-
-        if renew_lock is not None and processed % _LOCK_RENEW_EVERY == 0:
-            await renew_lock()
 
     logger.info(f"Org migration: created {created} personal orgs")
     return created
@@ -890,10 +893,14 @@ async def migrate_credentials_to_table(
         org_row = await prisma.organization.find_first(
             where={
                 "isPersonal": True,
+                "deletedAt": None,
                 "Members": {"some": {"userId": user.id, "isOwner": True}},
             },
-            # Oldest-first so credentials attach to the same canonical personal
-            # org every other path resolves (see _find_owned_personal_org).
+            # Oldest-first LIVE org so credentials attach to the same canonical
+            # personal org every other path resolves (see
+            # _find_owned_personal_org). deletedAt matters: after the dedupe
+            # migration soft-deletes duplicate losers, the oldest org for a
+            # user may be a dead one no request path ever resolves.
             order={"createdAt": "asc"},
         )
         if org_row is None:

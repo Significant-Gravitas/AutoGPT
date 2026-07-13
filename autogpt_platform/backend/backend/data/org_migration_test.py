@@ -479,10 +479,27 @@ class TestBackfillHardening:
         with pytest.raises(RuntimeError, match="lost the distributed bootstrap lock"):
             await create_orgs_for_existing_users(renew_lock=renew_lock)
 
-        # Exactly the first 50 were created before the abort — the loop did NOT
-        # keep writing after losing the lock (which is what let a second pod
-        # duplicate personal orgs).
-        assert mock_prisma.organization.create.await_count == 50
+        # Renewal now fires BEFORE processing user 50, so exactly 49 were
+        # created before the abort — the loop did NOT keep writing after
+        # losing the lock (which is what let a second pod duplicate orgs).
+        assert mock_prisma.organization.create.await_count == 49
+
+    @pytest.mark.asyncio
+    async def test_skip_heavy_rerun_still_renews_lock(self, mock_prisma):
+        """A re-run where every user is already bootstrapped must still renew:
+        a long skip streak that never renews is the same TTL-expiry hole the
+        incident exploited, just on the second pass."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(120)]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        renew_lock = AsyncMock()
+
+        created = await create_orgs_for_existing_users(renew_lock=renew_lock)
+
+        assert created == 0
+        assert mock_prisma.organization.create.await_count == 0
+        assert renew_lock.await_count == 2
 
     @pytest.mark.asyncio
     async def test_user_already_bootstrapped_is_skipped(self, mock_prisma):
