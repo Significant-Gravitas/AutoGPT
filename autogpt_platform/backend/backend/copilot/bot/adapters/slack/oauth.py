@@ -14,6 +14,7 @@ import hmac
 import logging
 import secrets
 import time
+from typing import Callable, Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response
@@ -58,11 +59,19 @@ def is_enabled() -> bool:
     return bool(config.get_client_id() and config.get_client_secret())
 
 
-def register_routes(app: FastAPI) -> None:
+def register_routes(
+    app: FastAPI, on_installed: Optional[Callable[[str], None]] = None
+) -> None:
+    # on_installed(team_id) fires after a successful (re)install so the adapter
+    # can drop any cached client built from the workspace's previous token.
     if not is_enabled():
         return
+
+    async def _callback(request: Request) -> Response:
+        return await _handle_callback(request, on_installed)
+
     app.add_api_route(INSTALL_PATH, _handle_install, methods=["GET"])
-    app.add_api_route(CALLBACK_PATH, _handle_callback, methods=["GET"])
+    app.add_api_route(CALLBACK_PATH, _callback, methods=["GET"])
 
 
 def _redirect_uri() -> str:
@@ -84,7 +93,9 @@ async def _handle_install() -> Response:
     )
 
 
-async def _handle_callback(request: Request) -> Response:
+async def _handle_callback(
+    request: Request, on_installed: Optional[Callable[[str], None]] = None
+) -> Response:
     if error := request.query_params.get("error"):
         # User declined, or Slack rejected the request.
         return _done(ok=False, detail=error)
@@ -119,6 +130,8 @@ async def _handle_callback(request: Request) -> Response:
         app_id=resp.get("app_id"),
         name=team.get("name"),
     )
+    if on_installed is not None:
+        on_installed(team_id)
     try:
         await record_guild_joined(
             BotGuildInput(

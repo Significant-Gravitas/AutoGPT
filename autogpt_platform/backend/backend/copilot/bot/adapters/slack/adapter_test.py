@@ -337,6 +337,30 @@ class TestPerWorkspaceClient:
             assert await a._client_for("T1") is None
 
     @pytest.mark.asyncio
+    async def test_client_for_rebuilds_after_ttl_so_reinstalled_tokens_apply(self):
+        # A re-install replaces the workspace token in the DB; the TTL bounds
+        # how long any replica keeps using a client built from the old token.
+        from .adapter import _CLIENT_CACHE_TTL_SECONDS
+
+        a = SlackAdapter(MagicMock())
+        stale = MagicMock()
+        a._clients["T1"] = stale
+        a._client_cached_at["T1"] = -_CLIENT_CACHE_TTL_SECONDS  # long expired
+        install = BotInstallCredentials(team_id="T1", bot_token="xoxb-new")
+        with (
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
+                new=AsyncMock(return_value=install),
+            ),
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
+            ) as web_client,
+        ):
+            fresh = await a._client_for("T1")
+        assert fresh is not stale
+        web_client.assert_called_once_with(token="xoxb-new")
+
+    @pytest.mark.asyncio
     async def test_client_for_revoked_workspace_never_falls_back_to_static(self):
         # An uninstalled workspace must get None — the static token belongs to
         # the app's own workspace, not a workspace that revoked us.

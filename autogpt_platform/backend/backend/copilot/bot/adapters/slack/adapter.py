@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any, Optional
 
 import httpx
@@ -63,6 +64,11 @@ _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
 # resolver to tell an ID from a name.
 _CHANNEL_ID_RE = re.compile(r"^[CGD][A-Z0-9]{7,}$")
 
+# Cached per-workspace clients expire so a token replaced by a re-install (scope
+# change / rotation) stops being used within this window on EVERY replica — the
+# OAuth callback only evicts the replica that handled it.
+_CLIENT_CACHE_TTL_SECONDS = 15 * 60
+
 
 class SlackAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
@@ -71,6 +77,7 @@ class SlackAdapter(WebhookAdapter):
         # Per-workspace caches, keyed by team_id. A workspace's client + bot user
         # id are resolved once from its stored install token and reused.
         self._clients: dict[str, AsyncWebClient] = {}
+        self._client_cached_at: dict[str, float] = {}
         self._bot_user_ids: dict[str, str] = {}
         # User display names are workspace-scoped: keyed by (team_id, user_id).
         self._user_name_cache: dict[tuple[str, str], str] = {}
@@ -114,8 +121,9 @@ class SlackAdapter(WebhookAdapter):
         app.add_api_route(EVENTS_PATH, self._handle_event_request, methods=["POST"])
         app.add_api_route(COMMANDS_PATH, self._handle_command_request, methods=["POST"])
         # Multi-workspace "Add to Slack" install + OAuth callback (no-op unless
-        # the app's client id/secret are configured).
-        oauth.register_routes(app)
+        # the app's client id/secret are configured). A (re)install replaces the
+        # workspace's token, so it must drop this replica's cached client.
+        oauth.register_routes(app, on_installed=self._evict)
 
     # -- Per-workspace client resolution --
 
@@ -130,7 +138,13 @@ class SlackAdapter(WebhookAdapter):
         outcome for an uninstalled workspace."""
         client = self._clients.get(team_id)
         if client is not None:
-            return client
+            cached_at = self._client_cached_at.get(team_id)
+            if (
+                cached_at is None
+                or time.monotonic() - cached_at < _CLIENT_CACHE_TTL_SECONDS
+            ):
+                return client
+            self._evict(team_id)
         install = await get_bot_install(Platform.SLACK, team_id) if team_id else None
         if install is None:
             # A workspace that explicitly uninstalled / revoked us gets NOTHING —
@@ -148,10 +162,12 @@ class SlackAdapter(WebhookAdapter):
             self._bot_user_ids[team_id] = install.bot_user_id
         client = AsyncWebClient(token=token)
         self._clients[team_id] = client
+        self._client_cached_at[team_id] = time.monotonic()
         return client
 
     def _evict(self, team_id: str) -> None:
         self._clients.pop(team_id, None)
+        self._client_cached_at.pop(team_id, None)
         self._bot_user_ids.pop(team_id, None)
 
     # -- Inbound --

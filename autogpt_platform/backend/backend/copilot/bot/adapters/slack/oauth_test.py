@@ -86,6 +86,36 @@ async def test_callback_exchanges_code_and_stores_install():
 
 
 @pytest.mark.asyncio
+async def test_callback_fires_on_installed_so_stale_clients_evict():
+    cid, secret = _creds()
+    evicted: list[str] = []
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
+        patch(f"{_O}.record_guild_joined", new=AsyncMock()),
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = ""
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            return_value={
+                "ok": True,
+                "access_token": "xoxb-new",
+                "team": {"id": "T1", "name": "Acme"},
+                "bot_user_id": "UBOT",
+                "app_id": "A1",
+            }
+        )
+        await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "c"}),
+            on_installed=evicted.append,
+        )
+    assert evicted == ["T1"]
+
+
+@pytest.mark.asyncio
 async def test_callback_rejects_invalid_state():
     with patch(f"{_O}.config.get_client_secret", return_value="csecret"):
         resp = await oauth._handle_callback(_req({"state": "forged", "code": "c"}))
