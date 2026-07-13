@@ -31,6 +31,9 @@ def mock_prisma(mocker):
     mock.organization.find_unique = AsyncMock(return_value=None)
     mock.organizationalias.find_unique = AsyncMock(return_value=None)
     mock.organization.create = AsyncMock(return_value=MagicMock(id="org-1"))
+    # Default: the orphan-org lookup in the violation handler finds nothing.
+    mock.organization.find_first = AsyncMock(return_value=None)
+    mock.organization.update = AsyncMock()
     # Default: the per-user re-check in the backfill finds no existing org.
     mock.orgmember.find_first = AsyncMock(return_value=None)
     mock.orgmember.create = AsyncMock()
@@ -511,6 +514,31 @@ class TestBackfillHardening:
         assert created == 0
         assert mock_prisma.organization.create.await_count == 0
         assert renew_lock.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_orphan_org_blocking_index_is_soft_deleted_and_retried(
+        self, mock_prisma
+    ):
+        """A legacy orphan (bootstrapUserId set, no owner membership) blocks
+        the unique index but is invisible to the membership re-check — the
+        handler must soft-delete it and let the retry recreate cleanly."""
+        from prisma.errors import UniqueViolationError
+
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-x")])
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=[UniqueViolationError(MagicMock()), MagicMock(id="org-2")]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        orphan = MagicMock(id="orphan-org")
+        mock_prisma.organization.find_first = AsyncMock(return_value=orphan)
+
+        created = await create_orgs_for_existing_users()
+
+        assert created == 1
+        update_kwargs = mock_prisma.organization.update.call_args.kwargs
+        assert update_kwargs["where"] == {"id": "orphan-org"}
+        assert update_kwargs["data"]["deletedAt"] is not None
+        assert mock_prisma.organization.create.await_count == 2
 
     @pytest.mark.asyncio
     async def test_user_already_bootstrapped_is_skipped(self, mock_prisma):

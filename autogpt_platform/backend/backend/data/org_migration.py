@@ -17,6 +17,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
@@ -357,7 +358,29 @@ async def _get_or_create_backfill_org(row: dict) -> bool:
                     user_id,
                 )
                 return False
-            # Slug collided with a *different* user — retry with a fresh suffix.
+            # The one-personal-per-user index can also be blocked by a legacy
+            # ORPHAN: an org row carrying this bootstrapUserId with no owner
+            # membership (pre-transaction partial create). It is invisible to
+            # the membership re-check above and unusable by the user, so
+            # soft-delete it out of the index and let the retry recreate
+            # cleanly. Otherwise the violation was a slug clash with a
+            # different user — retry with a fresh suffix either way.
+            orphan = await prisma.organization.find_first(
+                where={
+                    "isPersonal": True,
+                    "deletedAt": None,
+                    "bootstrapUserId": user_id,
+                }
+            )
+            if orphan is not None:
+                logger.warning(
+                    f"Org migration: soft-deleting orphan personal org "
+                    f"{orphan.id} (no owner membership) blocking user {user_id}"
+                )
+                await prisma.organization.update(
+                    where={"id": orphan.id},
+                    data={"deletedAt": datetime.now(timezone.utc)},
+                )
     raise RuntimeError(
         f"Org migration: failed to bootstrap a personal organization for user "
         f"{user_id} after retries"

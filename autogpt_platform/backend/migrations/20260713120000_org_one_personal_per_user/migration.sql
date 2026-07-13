@@ -16,6 +16,21 @@
 -- CREATE INDEX (not CONCURRENTLY); the Organization table is small at migrate
 -- time in every environment because the backfill runs post-migrate.
 
+-- Step 0: sweep legacy ORPHAN personal orgs — rows carrying a bootstrapUserId
+-- with no owner membership (left by pre-transaction partial creates). They are
+-- unusable (no member can ever resolve them) but would occupy the unique index
+-- slot while staying invisible to the backfill's membership re-check, wedging
+-- the user. Idempotent: matches nothing on healthy DBs.
+UPDATE "Organization" o
+SET "deletedAt" = NOW()
+WHERE o."isPersonal" = true
+  AND o."deletedAt" IS NULL
+  AND o."bootstrapUserId" IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM "OrgMember" m
+      WHERE m."orgId" = o."id" AND m."isOwner" = true
+  );
+
 -- Step 1: de-duplicate existing personal orgs.
 --
 -- Winner per bootstrapUserId group = the org that actually accumulated the
