@@ -84,6 +84,18 @@ describe("PlatformChrome", () => {
     expect(screen.getByTestId("child")).toBeDefined();
   });
 
+  it("hides the Navbar in the classic shell when showNavbar is off", () => {
+    showNavbarMock.mockReturnValue(false);
+    render(
+      <PlatformChrome>
+        <div data-testid="child">content</div>
+      </PlatformChrome>,
+    );
+
+    expect(screen.queryByTestId("navbar")).toBeNull();
+    expect(screen.getByTestId("child")).toBeDefined();
+  });
+
   it("renders the new sidebar shell with inset actions when enabled", async () => {
     showNewLayoutMock.mockReturnValue(true);
     render(
