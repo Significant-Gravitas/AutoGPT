@@ -47,6 +47,12 @@ return 0
 
 _RenewLock = Callable[[], Awaitable[None]]
 
+# Renew the distributed bootstrap lock every N users inside the long per-user
+# loops (org creation, credential copy). Matches the batched-tenancy cadence:
+# frequent enough that the 300s lock never lapses mid-loop, rare enough not to
+# spam Redis. If the lock has been lost the renewal raises and the loop aborts.
+_LOCK_RENEW_EVERY = 50
+
 
 def _sanitize_slug(raw: str) -> str:
     """Convert a string to a URL-safe slug: lowercase, alphanumeric + hyphens."""
@@ -205,13 +211,19 @@ async def _derive_personal_org_identity(user_id: str) -> tuple[str, str]:
 
 
 async def _find_owned_personal_org(user_id: str):
-    """Return *user_id*'s owned, non-deleted personal-org membership, or None."""
+    """Return *user_id*'s owned, non-deleted personal-org membership, or None.
+
+    Ordered oldest-first so every path that resolves "the" personal org agrees
+    on the same canonical one when a user briefly has more than one — matching
+    ``get_request_context`` (auth) and ``_find_personal_org_member`` (orgs.db).
+    """
     return await prisma.orgmember.find_first(
         where={
             "userId": user_id,
             "isOwner": True,
             "Org": {"isPersonal": True, "deletedAt": None},
         },
+        order={"createdAt": "asc"},
     )
 
 
@@ -254,8 +266,25 @@ async def ensure_personal_org(user_id: str) -> None:
     )
 
 
-async def create_orgs_for_existing_users() -> int:
+async def create_orgs_for_existing_users(
+    renew_lock: _RenewLock | None = None,
+) -> int:
     """Create a personal Organization for every user that lacks one.
+
+    Idempotent and safe under concurrent multi-pod startup. The ``NOT EXISTS``
+    query is only a snapshot taken before the loop begins; by the time a given
+    user is reached another pod (or an interrupted earlier run) may already
+    have bootstrapped them. So each user is re-checked immediately before
+    creation, and a ``UniqueViolationError`` — including one raised by the
+    ``Organization_one_personal_per_user`` partial index when another writer
+    wins the race — is treated as a clean skip rather than crashing startup.
+    This is what turns the double-run that produced duplicate personal orgs
+    into a no-op on the second pod.
+
+    When *renew_lock* is provided it is called every ``_LOCK_RENEW_EVERY``
+    users so the distributed bootstrap lock never lapses across a long loop.
+    If the lock has been lost ``renew_lock`` raises, aborting the loop
+    immediately so the next pod's fresh run is the sole writer.
 
     Returns the number of orgs created.
     """
@@ -286,118 +315,166 @@ async def create_orgs_for_existing_users() -> int:
     )
 
     created = 0
-    for row in users_without_org:
+    for processed, row in enumerate(users_without_org, start=1):
         user_id: str = row["id"]
-        email: str = row["email"]
-        profile_username: str | None = row.get("profile_username")
-        profile_name: str | None = row.get("profile_name")
-        user_name: str | None = row.get("name")
 
-        # Determine slug: Profile.username → sanitized User.name → email local part → user-{id[:8]}
-        if profile_username:
-            desired_slug = _sanitize_slug(profile_username)
-        elif user_name:
-            desired_slug = _sanitize_slug(user_name)
-        else:
-            local_part = email.split("@")[0] if email else ""
-            desired_slug = (
-                _sanitize_slug(local_part) if local_part else f"user-{user_id[:8]}"
-            )
+        # Re-check against the live table — the snapshot above can be stale by
+        # the time we reach this user, so skip anyone bootstrapped since.
+        if await _find_owned_personal_org(user_id) is not None:
+            continue
 
-        slug = await _resolve_unique_slug(desired_slug)
+        if await _get_or_create_backfill_org(row):
+            created += 1
 
-        display_name = profile_name or user_name or email.split("@")[0]
-
-        # Create Organization — only include optional JSON fields when non-None
-        org_data: dict = {
-            "name": display_name,
-            "slug": slug,
-            "isPersonal": True,
-            "bootstrapUserId": user_id,
-            "settings": "{}",
-        }
-        if row.get("stripeCustomerId"):
-            org_data["stripeCustomerId"] = row["stripeCustomerId"]
-        if row.get("topUpConfig"):
-            # query_raw returns Json columns as parsed Python objects; prisma
-            # create() requires them re-wrapped as Json, not raw dict/list.
-            org_data["topUpConfig"] = SafeJson(row["topUpConfig"])
-
-        org = await prisma.organization.create(data=org_data)
-
-        # Create OrgMember (owner)
-        await prisma.orgmember.create(
-            data={
-                "Org": {"connect": {"id": org.id}},
-                "User": {"connect": {"id": user_id}},
-                "isOwner": True,
-                "isAdmin": True,
-                "status": "ACTIVE",
-            }
-        )
-
-        # Create default Team
-        workspace = await prisma.team.create(
-            data={
-                "name": "Default",
-                "Org": {"connect": {"id": org.id}},
-                "isDefault": True,
-                "joinPolicy": "OPEN",
-                "createdByUserId": user_id,
-            }
-        )
-
-        # Create TeamMember
-        await prisma.teammember.create(
-            data={
-                "Team": {"connect": {"id": workspace.id}},
-                "User": {"connect": {"id": user_id}},
-                "isAdmin": True,
-                "status": "ACTIVE",
-            }
-        )
-
-        # Create OrganizationProfile (from user's Profile if exists)
-        profile_data: dict = {
-            "Organization": {"connect": {"id": org.id}},
-            "username": slug,
-            "displayName": display_name,
-        }
-        if row.get("profile_avatar_url"):
-            profile_data["avatarUrl"] = row["profile_avatar_url"]
-        if row.get("profile_description"):
-            profile_data["bio"] = row["profile_description"]
-        if row.get("profile_links"):
-            # Profile.links is a Json column; query_raw hands it back as a
-            # parsed Python object, so re-wrap for prisma create(). Without
-            # this, any user with a populated store profile crashes the
-            # whole startup migration.
-            profile_data["socialLinks"] = SafeJson(row["profile_links"])
-
-        await prisma.organizationprofile.create(data=profile_data)
-
-        # Create seat assignment (FREE seat for personal org)
-        await prisma.organizationseatassignment.create(
-            data={
-                "organizationId": org.id,
-                "userId": user_id,
-                "seatType": "FREE",
-                "status": "ACTIVE",
-                "assignedByUserId": user_id,
-            }
-        )
-
-        # Log if slug diverged from desired (collision resolution)
-        if slug != desired_slug:
-            logger.info(
-                f"Org migration: slug collision for user {user_id} — "
-                f"desired '{desired_slug}', assigned '{slug}'"
-            )
-
-        created += 1
+        if renew_lock is not None and processed % _LOCK_RENEW_EVERY == 0:
+            await renew_lock()
 
     logger.info(f"Org migration: created {created} personal orgs")
     return created
+
+
+async def _get_or_create_backfill_org(row: dict) -> bool:
+    """Bootstrap one backfill row's personal org; True if this call created it.
+
+    Mirrors ``ensure_personal_org``'s race handling: on ``UniqueViolationError``
+    re-check whether the user now owns a personal org — a concurrent writer won
+    (skip, return False) — versus a slug clash with a *different* user (retry
+    with a fresh suffix). Raises if creation keeps failing, so a genuinely
+    stuck user fails loud rather than silently missing an org.
+    """
+    user_id: str = row["id"]
+    for _ in range(3):
+        try:
+            await _create_backfill_org(row)
+            return True
+        except UniqueViolationError:
+            if await _find_owned_personal_org(user_id) is not None:
+                logger.debug(
+                    "Org migration: user %s bootstrapped concurrently, skipping",
+                    user_id,
+                )
+                return False
+            # Slug collided with a *different* user — retry with a fresh suffix.
+    raise RuntimeError(
+        f"Org migration: failed to bootstrap a personal organization for user "
+        f"{user_id} after retries"
+    )
+
+
+async def _create_backfill_org(row: dict) -> None:
+    """Create the Organization + baseline records for one backfill row.
+
+    Unlike ``create_personal_org`` this also carries the billing
+    (``stripeCustomerId``/``topUpConfig``) and store-profile enrichment the
+    backfill sources from its ``query_raw`` JOIN. Raises ``UniqueViolationError``
+    if the resolved slug or the one-personal-per-user index is already taken.
+    """
+    user_id: str = row["id"]
+    email: str = row["email"]
+    profile_username: str | None = row.get("profile_username")
+    profile_name: str | None = row.get("profile_name")
+    user_name: str | None = row.get("name")
+
+    # Determine slug: Profile.username → sanitized User.name → email local part → user-{id[:8]}
+    if profile_username:
+        desired_slug = _sanitize_slug(profile_username)
+    elif user_name:
+        desired_slug = _sanitize_slug(user_name)
+    else:
+        local_part = email.split("@")[0] if email else ""
+        desired_slug = (
+            _sanitize_slug(local_part) if local_part else f"user-{user_id[:8]}"
+        )
+
+    slug = await _resolve_unique_slug(desired_slug)
+
+    display_name = profile_name or user_name or email.split("@")[0]
+
+    # Create Organization — only include optional JSON fields when non-None
+    org_data: dict = {
+        "name": display_name,
+        "slug": slug,
+        "isPersonal": True,
+        "bootstrapUserId": user_id,
+        "settings": "{}",
+    }
+    if row.get("stripeCustomerId"):
+        org_data["stripeCustomerId"] = row["stripeCustomerId"]
+    if row.get("topUpConfig"):
+        # query_raw returns Json columns as parsed Python objects; prisma
+        # create() requires them re-wrapped as Json, not raw dict/list.
+        org_data["topUpConfig"] = SafeJson(row["topUpConfig"])
+
+    org = await prisma.organization.create(data=org_data)
+
+    # Create OrgMember (owner)
+    await prisma.orgmember.create(
+        data={
+            "Org": {"connect": {"id": org.id}},
+            "User": {"connect": {"id": user_id}},
+            "isOwner": True,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+
+    # Create default Team
+    workspace = await prisma.team.create(
+        data={
+            "name": "Default",
+            "Org": {"connect": {"id": org.id}},
+            "isDefault": True,
+            "joinPolicy": "OPEN",
+            "createdByUserId": user_id,
+        }
+    )
+
+    # Create TeamMember
+    await prisma.teammember.create(
+        data={
+            "Team": {"connect": {"id": workspace.id}},
+            "User": {"connect": {"id": user_id}},
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+
+    # Create OrganizationProfile (from user's Profile if exists)
+    profile_data: dict = {
+        "Organization": {"connect": {"id": org.id}},
+        "username": slug,
+        "displayName": display_name,
+    }
+    if row.get("profile_avatar_url"):
+        profile_data["avatarUrl"] = row["profile_avatar_url"]
+    if row.get("profile_description"):
+        profile_data["bio"] = row["profile_description"]
+    if row.get("profile_links"):
+        # Profile.links is a Json column; query_raw hands it back as a
+        # parsed Python object, so re-wrap for prisma create(). Without
+        # this, any user with a populated store profile crashes the
+        # whole startup migration.
+        profile_data["socialLinks"] = SafeJson(row["profile_links"])
+
+    await prisma.organizationprofile.create(data=profile_data)
+
+    # Create seat assignment (FREE seat for personal org)
+    await prisma.organizationseatassignment.create(
+        data={
+            "organizationId": org.id,
+            "userId": user_id,
+            "seatType": "FREE",
+            "status": "ACTIVE",
+            "assignedByUserId": user_id,
+        }
+    )
+
+    # Log if slug diverged from desired (collision resolution)
+    if slug != desired_slug:
+        logger.info(
+            f"Org migration: slug collision for user {user_id} — "
+            f"desired '{desired_slug}', assigned '{slug}'"
+        )
 
 
 async def migrate_org_balances() -> int:
@@ -764,7 +841,9 @@ async def create_store_listing_aliases() -> int:
     return result
 
 
-async def migrate_credentials_to_table() -> int:
+async def migrate_credentials_to_table(
+    renew_lock: _RenewLock | None = None,
+) -> int:
     """Copy each user's UserIntegrations blob credentials into
     IntegrationCredential rows (ownerType=USER, personal org).
 
@@ -775,6 +854,10 @@ async def migrate_credentials_to_table() -> int:
     ids already present in the table are skipped, so re-runs (every
     startup) only pick up blob credentials not yet copied.
 
+    When *renew_lock* is provided it is called every ``_LOCK_RENEW_EVERY``
+    users so the distributed bootstrap lock never lapses across this loop.
+    If the lock has been lost ``renew_lock`` raises and the loop aborts.
+
     Returns the number of credential rows created.
     """
     from backend.data.model import UserIntegrations
@@ -784,7 +867,11 @@ async def migrate_credentials_to_table() -> int:
     created = 0
 
     users = await prisma.user.find_many(where={"integrations": {"not": ""}})
-    for user in users:
+    for processed, user in enumerate(users, start=1):
+        # Renew up front so an early `continue` (undecryptable blob, no
+        # credentials, deferred user) can't skip the renewal.
+        if renew_lock is not None and processed % _LOCK_RENEW_EVERY == 0:
+            await renew_lock()
         try:
             integrations = UserIntegrations.model_validate(
                 cryptor.decrypt(user.integrations)
@@ -804,7 +891,10 @@ async def migrate_credentials_to_table() -> int:
             where={
                 "isPersonal": True,
                 "Members": {"some": {"userId": user.id, "isOwner": True}},
-            }
+            },
+            # Oldest-first so credentials attach to the same canonical personal
+            # org every other path resolves (see _find_owned_personal_org).
+            order={"createdAt": "asc"},
         )
         if org_row is None:
             # Personal org not bootstrapped yet — the next startup sweep
@@ -901,7 +991,7 @@ async def run_migration() -> None:
         start = time.monotonic()
         logger.info("Org migration: starting personal org bootstrap")
 
-        orgs_created = await create_orgs_for_existing_users()
+        orgs_created = await create_orgs_for_existing_users(renew_lock=renew_lock)
         await renew_lock()
         await migrate_org_balances()
         await renew_lock()
@@ -913,7 +1003,7 @@ async def run_migration() -> None:
         await renew_lock()
         await create_store_listing_aliases()
         await renew_lock()
-        await migrate_credentials_to_table()
+        await migrate_credentials_to_table(renew_lock=renew_lock)
         await renew_lock()
 
         total_resources = sum(resource_counts.values())

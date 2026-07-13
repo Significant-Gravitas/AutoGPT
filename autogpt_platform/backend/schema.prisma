@@ -1762,6 +1762,10 @@ model Organization {
   TransfersTo        TransferRequest[]            @relation("TransferTarget")
   AuditLogs          AuditLog[]
   // slug already has @unique which creates an index — no separate @@index needed
+  // Partial unique index "Organization_one_personal_per_user" on (bootstrapUserId)
+  // WHERE isPersonal AND deletedAt IS NULL AND bootstrapUserId IS NOT NULL enforces
+  // at most one live personal org per user — created via SQL migration
+  // 20260713120000_org_one_personal_per_user (Prisma can't model partial indexes).
 }
 
 model OrganizationAlias {

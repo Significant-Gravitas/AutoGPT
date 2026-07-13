@@ -21,12 +21,16 @@ logger = logging.getLogger(__name__)
 
 
 async def _find_personal_org_member(user_id: str):
+    # Ordered oldest-first so this agrees with get_request_context (auth) and
+    # _find_owned_personal_org (org_migration) on the canonical personal org
+    # when a user briefly has more than one.
     return await prisma.orgmember.find_first(
         where={
             "userId": user_id,
             "isOwner": True,
             "Org": {"isPersonal": True, "deletedAt": None},
         },
+        order={"createdAt": "asc"},
     )
 
 
