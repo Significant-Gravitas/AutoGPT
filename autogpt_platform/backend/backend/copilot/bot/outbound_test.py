@@ -1,6 +1,7 @@
 """Tests for proactive-output authorization + channel resolution."""
 
-from unittest.mock import AsyncMock
+import re
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -22,6 +23,11 @@ def _adapter(
     thread: PostedRef | None = None,
 ) -> AsyncMock:
     adapter = AsyncMock()
+    # Sync classifier — mirrors Discord's numeric-snowflake grammar so
+    # _resolve_target routes IDs vs names the way the real adapter would.
+    adapter.looks_like_channel_id = MagicMock(
+        side_effect=lambda ref: bool(re.fullmatch(r"\d{15,21}", ref))
+    )
     adapter.list_text_channels.return_value = channels or []
     adapter.get_channel_server_id.return_value = channel_server
     adapter.post_channel_message.return_value = posted

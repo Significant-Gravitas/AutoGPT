@@ -152,8 +152,11 @@ interface CopilotUIState {
 
   // Artifact panel
   artifactPanel: ArtifactPanelState;
-  openArtifact: (ref: ArtifactRef) => void;
-  closeArtifactPanel: () => void;
+  // `persist: false` skips the localStorage write — used by the public
+  // /tour demo so a scripted open/close never leaks into the panel state
+  // the real copilot restores on load.
+  openArtifact: (ref: ArtifactRef, opts?: { persist?: boolean }) => void;
+  closeArtifactPanel: (opts?: { persist?: boolean }) => void;
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
@@ -269,7 +272,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     history: [],
     activeTab: getPersistedTab(),
   },
-  openArtifact: (ref) =>
+  openArtifact: (ref, opts) =>
     set((state) => {
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
@@ -282,7 +285,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         : shouldPushHistory
           ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      if (isClient && opts?.persist !== false)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       return {
         artifactPanel: {
           ...state.artifactPanel,
@@ -292,9 +296,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  closeArtifactPanel: () =>
+  closeArtifactPanel: (opts) =>
     set((state) => {
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      if (isClient && opts?.persist !== false)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
       // NOTE: deliberately does NOT set _autoOpenUserClosed. Unlike
       // toggleContextPanel (a user action), closeArtifactPanel is also the
       // programmatic collapse path — useCollapseContextPanelOnSession calls it

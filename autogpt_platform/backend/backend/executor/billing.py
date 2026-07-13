@@ -136,21 +136,32 @@ def charge_usage(
     if not block:
         return total_cost, 0, block_pre_flight
 
+    org_id = node_exec.execution_context.organization_id
     if cost > 0:
-        remaining_balance = db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                node_exec_id=node_exec.node_exec_id,
-                node_id=node_exec.node_id,
-                block_id=node_exec.block_id,
-                block=block.name,
-                input=matching_filter,
-                reason=f"Ran block {node_exec.block_id} {block.name}",
-            ),
+        block_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            input=matching_filter,
+            reason=f"Ran block {node_exec.block_id} {block.name}",
         )
+        if org_id:
+            remaining_balance = db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=block_metadata,
+                team_id=node_exec.execution_context.team_id,
+            )
+        else:
+            remaining_balance = db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=block_metadata,
+            )
         total_cost += cost
         block_pre_flight = cost
     elif _block_has_paid_cost_entry(block, node_exec.inputs):
@@ -159,7 +170,10 @@ def charge_usage(
         # execution here: a user with non-positive balance cannot start a
         # paid block even if the pre-flight estimate is zero, otherwise
         # reconciliation leaks real provider spend as an uncollectable debit.
-        remaining_balance = db_client.get_credits(user_id=node_exec.user_id)
+        if org_id:
+            remaining_balance = db_client.get_org_credits(org_id=org_id)
+        else:
+            remaining_balance = db_client.get_credits(user_id=node_exec.user_id)
         if remaining_balance <= 0:
             raise InsufficientBalanceError(
                 user_id=node_exec.user_id,
@@ -179,19 +193,29 @@ def charge_usage(
         execution_usage_cost(execution_count) if execution_count > 0 else (0, 0)
     )
     if cost > 0:
-        remaining_balance = db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                input={
-                    "execution_count": usage_count,
-                    "charge": "Execution Cost",
-                },
-                reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
-            ),
+        exec_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            input={
+                "execution_count": usage_count,
+                "charge": "Execution Cost",
+            },
+            reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
         )
+        if org_id:
+            remaining_balance = db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=exec_metadata,
+                team_id=node_exec.execution_context.team_id,
+            )
+        else:
+            remaining_balance = db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=exec_metadata,
+            )
         total_cost += cost
 
     return total_cost, remaining_balance, block_pre_flight
@@ -256,26 +280,45 @@ async def charge_reconciled_usage(
         # we'd rather record real debt than leak the cost. For negative deltas
         # (refunds) the flag is moot: `amount = -cost > 0`, so the SQL guard's
         # `$2 >= 0` short-circuit holds regardless.
-        remaining_balance = await db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=delta,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                node_exec_id=node_exec.node_exec_id,
-                node_id=node_exec.node_id,
-                block_id=node_exec.block_id,
-                block=block.name,
-                input={**matching_filter, "reconciled_delta": delta},
-                reason=(
-                    f"Post-flight reconciliation for {block.name}: "
-                    f"actual={post_flight} credits, pre-flight={pre_flight}"
-                ),
+        reconcile_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            input={**matching_filter, "reconciled_delta": delta},
+            reason=(
+                f"Post-flight reconciliation for {block.name}: "
+                f"actual={post_flight} credits, pre-flight={pre_flight}"
             ),
-            fail_insufficient_credits=False,
         )
+        org_id = node_exec.execution_context.organization_id
+        if org_id:
+            remaining_balance = await db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=delta,
+                metadata=reconcile_metadata,
+                team_id=node_exec.execution_context.team_id,
+                fail_insufficient_credits=False,
+            )
+        else:
+            remaining_balance = await db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=delta,
+                metadata=reconcile_metadata,
+                fail_insufficient_credits=False,
+            )
         # Refunds can't push the balance below the threshold — skip.
-        if delta > 0:
+        # Only fire user-level low-balance handling when the spend landed on
+        # the USER ledger: no org context, or a personal org (which bills
+        # the owner's wallet). Real-org deductions come from OrgBalance, so
+        # the user's personal auto-top-up must not trigger for those.
+        user_ledger = not org_id or (
+            await db_client.get_personal_org_owner(org_id) is not None
+        )
+        if delta > 0 and user_ledger:
             # handle_low_balance is sync + does a blocking RPC; dispatch to
             # thread so we don't block the event loop. Rare path (threshold
             # crossings only).

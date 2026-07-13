@@ -7,7 +7,11 @@ import {
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
-import { countCompleted, getLatestTaskList, type TodoItem } from "./helpers";
+import {
+  countCompleted,
+  getLatestTaskList,
+  type TodoItem,
+} from "../../../TaskProgressBar/helpers";
 
 interface Props {
   sessionId: string | null;
