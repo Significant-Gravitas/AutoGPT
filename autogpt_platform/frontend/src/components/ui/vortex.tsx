@@ -256,13 +256,26 @@ export function Vortex(props: VortexProps) {
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       drawStaticFrame(canvas, ctx);
-      return;
+      const staticResizeObserver = new ResizeObserver(() => {
+        resize(canvas, container);
+        initParticles();
+        drawStaticFrame(canvas, ctx);
+      });
+      staticResizeObserver.observe(container);
+      return () => staticResizeObserver.disconnect();
     }
 
-    const resizeObserver = new ResizeObserver(() => resize(canvas, container));
+    const resizeObserver = new ResizeObserver(() => {
+      const wasEmpty = canvas.width === 0 || canvas.height === 0;
+      resize(canvas, container);
+      if (wasEmpty && canvas.width > 0 && canvas.height > 0) {
+        initParticles();
+      }
+    });
     resizeObserver.observe(container);
 
-    const intersectionObserver = new IntersectionObserver(([entry]) => {
+    const intersectionObserver = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
       if (entry.isIntersecting) {
         startLoop();
       } else {
