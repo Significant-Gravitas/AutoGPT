@@ -510,7 +510,7 @@ function makeIcon(
       const {
         weight: _weight,
         mirrored: _mirrored,
-        alt: _alt,
+        alt,
         size,
         color,
         className,
@@ -523,6 +523,14 @@ function makeIcon(
           : size != null
             ? Number.parseFloat(String(size))
             : undefined;
+      // Pika vendor icons hardcode role="img" + a default aria-label, which
+      // makes otherwise-decorative icons announced content and pollutes the
+      // accessible name of any labeled control they sit inside. Phosphor icons
+      // are unlabeled by default, so mirror that: strip role/aria-label unless
+      // the caller passes `alt` (Phosphor's opt-in labeling prop).
+      const a11yProps = alt
+        ? { role: "img", "aria-label": alt }
+        : { role: undefined, "aria-label": undefined };
       return (
         <PikaIcon
           size={
@@ -533,6 +541,7 @@ function makeIcon(
           color={color}
           className={className}
           style={style}
+          {...a11yProps}
           {...(rest as PikaIconProps)}
         />
       );

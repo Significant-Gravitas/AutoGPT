@@ -16,6 +16,7 @@ vi.mock("@sentry/nextjs", () => ({
 vi.mock("@/services/environment", () => ({
   environment: {
     isServerSide: vi.fn(() => false),
+    areFeatureFlagsEnabled: vi.fn(() => false),
     isClientSide: vi.fn(() => true),
     getAGPTServerApiUrl: vi.fn(() => "http://localhost:8006/api"),
   },

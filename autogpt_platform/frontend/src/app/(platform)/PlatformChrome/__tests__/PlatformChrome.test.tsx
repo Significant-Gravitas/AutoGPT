@@ -12,10 +12,12 @@ import { PlatformChrome } from "../PlatformChrome";
 
 const showNewLayoutMock = vi.fn<() => boolean>(() => false);
 const showTourSidebarMock = vi.fn<() => boolean>(() => false);
+const showNavbarMock = vi.fn<() => boolean>(() => true);
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
     showNewLayout: showNewLayoutMock(),
     showTourSidebar: showTourSidebarMock(),
+    showNavbar: showNavbarMock(),
   }),
 }));
 
