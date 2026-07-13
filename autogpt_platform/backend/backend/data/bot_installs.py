@@ -98,6 +98,14 @@ async def get_bot_install(
     )
 
 
+async def is_install_revoked(platform: Platform, team_id: str) -> bool:
+    """Whether this workspace explicitly uninstalled the app / revoked its
+    token. Distinguishes "revoked" from "never installed" — a revoked
+    workspace must NOT fall back to any other credential."""
+    row = await BotInstall.prisma().find_unique(where=_key(platform, team_id))
+    return row is not None and row.revokedAt is not None
+
+
 async def revoke_bot_install(platform: Platform, team_id: str) -> None:
     """Mark a workspace's install revoked (app_uninstalled / tokens_revoked)."""
     await BotInstall.prisma().update_many(

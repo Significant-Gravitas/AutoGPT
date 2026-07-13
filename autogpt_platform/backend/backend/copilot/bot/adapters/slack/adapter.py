@@ -37,7 +37,11 @@ from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
-from backend.data.bot_installs import get_bot_install, revoke_bot_install
+from backend.data.bot_installs import (
+    get_bot_install,
+    is_install_revoked,
+    revoke_bot_install,
+)
 from backend.platform_linking.models import Platform
 
 from . import commands, config, oauth, signing
@@ -128,7 +132,16 @@ class SlackAdapter(WebhookAdapter):
         if client is not None:
             return client
         install = await get_bot_install(Platform.SLACK, team_id) if team_id else None
-        token = install.bot_token if install else config.get_bot_token()
+        if install is None:
+            # A workspace that explicitly uninstalled / revoked us gets NOTHING —
+            # the static token belongs to the app's own workspace and must never
+            # be used on a revoked one's behalf. Fallback is only for
+            # never-installed refs (single-workspace mode, raw proactive refs).
+            if team_id and await is_install_revoked(Platform.SLACK, team_id):
+                return None
+            token = config.get_bot_token()
+        else:
+            token = install.bot_token
         if not token:
             return None
         if install and install.bot_user_id:

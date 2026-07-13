@@ -316,11 +316,36 @@ class TestPerWorkspaceClient:
                 new=AsyncMock(return_value=None),
             ),
             patch(
+                "backend.copilot.bot.adapters.slack.adapter.is_install_revoked",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
                 "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
                 return_value="",
             ),
         ):
             assert await a._client_for("T1") is None
+
+    @pytest.mark.asyncio
+    async def test_client_for_revoked_workspace_never_falls_back_to_static(self):
+        # An uninstalled workspace must get None — the static token belongs to
+        # the app's own workspace, not a workspace that revoked us.
+        a = SlackAdapter(MagicMock())
+        with (
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.is_install_revoked",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
+                return_value="xoxb-static",
+            ),
+        ):
+            assert await a._client_for("TREVOKED") is None
 
     @pytest.mark.asyncio
     async def test_client_for_empty_team_falls_back_to_static_token(self):
