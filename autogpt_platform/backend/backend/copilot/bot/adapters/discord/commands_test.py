@@ -93,7 +93,7 @@ class TestHandleSetup:
 
         interaction.followup.send.assert_awaited_once()
         sent = interaction.followup.send.await_args
-        assert "Set up AutoPilot for Test Guild" in sent.args[0]
+        assert "Set up AutoGPT for Test Guild" in sent.args[0]
         assert sent.kwargs["view"] is not None
 
     @pytest.mark.asyncio

@@ -58,7 +58,7 @@ async def _setup(api: BotBackend, form: dict[str, str]) -> Response:
 
     return _link_response(
         text=(
-            "*Set up AutoPilot for this workspace*\n\n"
+            "*Set up AutoGPT for this workspace*\n\n"
             "Click the button below to link this workspace to your AutoGPT "
             "account. The link expires in 30 minutes."
         ),
@@ -69,10 +69,10 @@ async def _setup(api: BotBackend, form: dict[str, str]) -> Response:
 
 def _help() -> Response:
     return _ephemeral(
-        "*AutoPilot for Slack*\n"
+        "*AutoGPT for Slack*\n"
         "• Run `/setup` in this workspace to link it to an AutoGPT account.\n"
-        "• Mention `@AutoPilot` in a channel to start a conversation in a thread.\n"
-        "• DM `@AutoPilot` to chat with your personal AutoPilot account.\n"
+        "• Mention `@AutoGPT` in a channel to start a conversation in a thread.\n"
+        "• DM `@AutoGPT` to chat with your personal AutoGPT account.\n"
         "• Run `/unlink` to manage your linked workspace and DM."
     )
 

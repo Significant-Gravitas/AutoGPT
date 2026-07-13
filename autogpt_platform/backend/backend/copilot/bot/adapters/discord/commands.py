@@ -32,14 +32,14 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
 
     @tree.command(
         name="setup",
-        description="Link this server to an AutoGPT account for AutoPilot",
+        description="Link this server to an AutoGPT account for AutoGPT",
     )
     @app_commands.default_permissions(manage_guild=True)
     async def setup_command(interaction: discord.Interaction) -> None:
         _track(interaction, "setup")
         await _handle_setup(interaction, api)
 
-    @tree.command(name="help", description="Show AutoPilot bot usage info")
+    @tree.command(name="help", description="Show AutoGPT bot usage info")
     async def help_command(interaction: discord.Interaction) -> None:
         _track(interaction, "help")
         await _handle_help(interaction)
@@ -54,7 +54,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
 
     @tree.command(
         name="new",
-        description="Start a fresh AutoPilot conversation in this DM or thread",
+        description="Start a fresh AutoGPT conversation in this DM or thread",
     )
     async def new_command(interaction: discord.Interaction) -> None:
         _track(interaction, "new")
@@ -62,7 +62,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
 
     @tree.command(
         name="resume",
-        description="Resume one of your past AutoPilot conversations (DMs only)",
+        description="Resume one of your past AutoGPT conversations (DMs only)",
     )
     async def resume_command(interaction: discord.Interaction) -> None:
         _track(interaction, "resume")
@@ -70,7 +70,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
 
     @tree.command(
         name="leave",
-        description="Stop AutoPilot from auto-replying in this thread",
+        description="Stop AutoGPT from auto-replying in this thread",
     )
     async def leave_command(interaction: discord.Interaction) -> None:
         _track(interaction, "leave")
@@ -127,10 +127,10 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         )
     )
     await interaction.followup.send(
-        f"**Set up AutoPilot for {interaction.guild.name}**\n\n"
+        f"**Set up AutoGPT for {interaction.guild.name}**\n\n"
         "Click the button below to connect this server to your AutoGPT "
         "account. Once confirmed, everyone here can mention me to use "
-        "AutoPilot.\n\n"
+        "AutoGPT.\n\n"
         "All usage will be billed to your account.\n"
         "This link expires in 30 minutes.",
         ephemeral=True,
@@ -140,7 +140,7 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
 
 async def _handle_help(interaction: discord.Interaction) -> None:
     await interaction.response.send_message(
-        "**AutoPilot Bot**\n\n"
+        "**AutoGPT Bot**\n\n"
         "Mention me in a server or DM me directly to chat.\n\n"
         "**Commands:**\n"
         "- `/setup` — Link this server to your AutoGPT account\n"

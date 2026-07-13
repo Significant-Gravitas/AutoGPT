@@ -154,7 +154,7 @@ def _done(*, ok: bool, detail: str) -> Response:
         return RedirectResponse(f"{base}/settings/bots?{flag}=1", status_code=302)
     if ok:
         return PlainTextResponse(
-            f"AutoPilot was added to {detail}. You can close this tab and run "
+            f"AutoGPT was added to {detail}. You can close this tab and run "
             "/setup in Slack to link your account."
         )
     return PlainTextResponse(f"Slack install failed: {detail}", status_code=400)

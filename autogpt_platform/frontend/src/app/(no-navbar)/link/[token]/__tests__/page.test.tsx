@@ -146,7 +146,7 @@ describe("PlatformLinkPage", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: /set up autopilot for builders guild/i,
+        name: /set up autogpt for builders guild/i,
       }),
     ).toBeDefined();
     expect(screen.getByText(/signed in as owner@example.com/i)).toBeDefined();
@@ -156,7 +156,7 @@ describe("PlatformLinkPage", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: /autopilot is ready/i }),
+      await screen.findByRole("heading", { name: /autogpt is ready/i }),
     ).toBeDefined();
     expect(screen.getByText(/builders guild/i)).toBeDefined();
   });
@@ -206,7 +206,7 @@ describe("PlatformLinkPage", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: /autopilot is ready/i }),
+      await screen.findByRole("heading", { name: /autogpt is ready/i }),
     ).toBeDefined();
     expect(userConfirmCalls).toBe(1);
     expect(serverConfirmCalls).toBe(0);
