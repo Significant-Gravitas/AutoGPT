@@ -1,6 +1,6 @@
-"""                                                                                       
-Slack Bot credentials handling.                                                           
-                  
+"""
+Slack Bot credentials handling.
+
 Slack bots use a Bot Token (xoxb-...) obtained from the Slack API dashboard.
 """
 

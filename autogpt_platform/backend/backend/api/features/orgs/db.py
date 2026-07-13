@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma, transaction
-from backend.data.org_migration import _sanitize_slug, create_personal_org
+from backend.data.org_migration import (
+    _sanitize_slug,
+    _soft_delete_blocking_orphan,
+    create_personal_org,
+)
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -100,6 +104,26 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
                     "using existing org"
                 )
                 return member.orgId
+            # No membership: a legacy orphan may be squatting on the user's
+            # one-personal-per-user index slot — clear it and retry once so
+            # a first-touch request self-heals instead of degrading.
+            if await _soft_delete_blocking_orphan(user_id):
+                try:
+                    org = await _create_personal_org_for_user(
+                        user_id, slug_base, display_name
+                    )
+                    logger.info(
+                        f"Bootstrapped personal org {org.id} for user {user_id} "
+                        "after clearing a blocking orphan"
+                    )
+                    return org.id
+                except UniqueViolationError:
+                    logger.error(
+                        f"Personal-org bootstrap for {user_id} still failing "
+                        "after orphan cleanup",
+                        exc_info=True,
+                    )
+                    return None
             logger.error(
                 f"Personal-org bootstrap for {user_id} hit a unique violation "
                 "but no membership exists",

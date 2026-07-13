@@ -260,9 +260,12 @@ class TestAutoPilotBlockRunPermissions:
                 {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             )
 
-        with patch.object(
-            AutoPilotBlock, "create_session", new=AsyncMock(return_value="test-sid")
-        ), patch.object(AutoPilotBlock, "execute_copilot", new=fake_execute_copilot):
+        with (
+            patch.object(
+                AutoPilotBlock, "create_session", new=AsyncMock(return_value="test-sid")
+            ),
+            patch.object(AutoPilotBlock, "execute_copilot", new=fake_execute_copilot),
+        ):
             inp = _make_input(tools=["run_block"], tools_exclude=False)
             outputs = await self._collect_outputs(block, inp)
 

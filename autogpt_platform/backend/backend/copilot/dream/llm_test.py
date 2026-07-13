@@ -195,10 +195,13 @@ class TestStructuredCompletionDelegation:
         )
         call_provider_mock = AsyncMock(return_value=fake_response)
 
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_openrouter_routing(),
-        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_openrouter_routing(),
+            ),
+            patch("backend.copilot.dream.llm.call_provider", call_provider_mock),
+        ):
             result = await structured_completion(
                 model="anthropic/claude-sonnet-4-6",
                 messages=[
@@ -244,10 +247,13 @@ class TestStructuredCompletionDelegation:
         )
         call_provider_mock = AsyncMock(return_value=fake_response)
 
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_ollama_routing("http://localhost:11434/v1"),
-        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_ollama_routing("http://localhost:11434/v1"),
+            ),
+            patch("backend.copilot.dream.llm.call_provider", call_provider_mock),
+        ):
             result = await structured_completion(
                 model="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M",
                 messages=[{"role": "user", "content": "hi"}],
@@ -304,12 +310,15 @@ class TestStructuredCompletionDelegation:
     @pytest.mark.asyncio
     async def test_empty_content_raises_dream_llm_error(self):
         fake = ProviderResponse(content="", prompt_tokens=1, completion_tokens=0)
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_openrouter_routing(),
-        ), patch(
-            "backend.copilot.dream.llm.call_provider",
-            new=AsyncMock(return_value=fake),
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_openrouter_routing(),
+            ),
+            patch(
+                "backend.copilot.dream.llm.call_provider",
+                new=AsyncMock(return_value=fake),
+            ),
         ):
             with pytest.raises(DreamLLMError, match="empty"):
                 await structured_completion(
@@ -328,12 +337,15 @@ class TestStructuredCompletionDelegation:
             prompt_tokens=1,
             completion_tokens=1,
         )
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_openrouter_routing(),
-        ), patch(
-            "backend.copilot.dream.llm.call_provider",
-            new=AsyncMock(return_value=fake),
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_openrouter_routing(),
+            ),
+            patch(
+                "backend.copilot.dream.llm.call_provider",
+                new=AsyncMock(return_value=fake),
+            ),
         ):
             with pytest.raises(DreamLLMError, match="did not match"):
                 await structured_completion(
@@ -347,12 +359,15 @@ class TestStructuredCompletionDelegation:
         """``call_provider`` raising must surface as ``DreamLLMError`` so
         the orchestrator's per-phase failure handler triggers — not as a
         raw RuntimeError that crashes the pass."""
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_openrouter_routing(),
-        ), patch(
-            "backend.copilot.dream.llm.call_provider",
-            new=AsyncMock(side_effect=RuntimeError("upstream 502")),
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_openrouter_routing(),
+            ),
+            patch(
+                "backend.copilot.dream.llm.call_provider",
+                new=AsyncMock(side_effect=RuntimeError("upstream 502")),
+            ),
         ):
             with pytest.raises(DreamLLMError, match="upstream 502"):
                 await structured_completion(
@@ -375,12 +390,15 @@ class TestStructuredCompletionDelegation:
             prompt_tokens=10,
             completion_tokens=20,
         )
-        with patch(
-            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
-            return_value=_openrouter_routing(),
-        ), patch(
-            "backend.copilot.dream.llm.call_provider",
-            new=AsyncMock(return_value=fake),
+        with (
+            patch(
+                "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+                return_value=_openrouter_routing(),
+            ),
+            patch(
+                "backend.copilot.dream.llm.call_provider",
+                new=AsyncMock(return_value=fake),
+            ),
         ):
             result = await structured_completion(
                 model="x",

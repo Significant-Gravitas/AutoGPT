@@ -1044,18 +1044,19 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     # the orchestrator's catch-all.
     ep.charge_node_usage = AsyncMock(return_value=(0, 0))
 
-    with patch("backend.blocks.llm.llm_call", llm_mock), patch.object(
-        block, "_create_tool_node_signatures", return_value=tool_sigs
-    ), patch(
-        "backend.blocks.orchestrator.get_database_manager_async_client",
-        return_value=mock_db,
-    ), patch(
-        "backend.executor.manager.async_update_node_execution_status",
-        new_callable=AsyncMock,
-    ), patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager"
+    with (
+        patch("backend.blocks.llm.llm_call", llm_mock),
+        patch.object(block, "_create_tool_node_signatures", return_value=tool_sigs),
+        patch(
+            "backend.blocks.orchestrator.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        patch(
+            "backend.executor.manager.async_update_node_execution_status",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.integrations.creds_manager.IntegrationCredentialsManager"),
     ):
-
         inp = OrchestratorBlock.Input(
             prompt="Improve this",
             model=llm_module.DEFAULT_LLM_MODEL,
@@ -1143,10 +1144,10 @@ async def test_traditional_mode_conversation_valid_for_responses_api():
         }
     ]
 
-    with patch(
-        "backend.blocks.llm.llm_call", new_callable=AsyncMock, return_value=resp
-    ), patch.object(block, "_create_tool_node_signatures", return_value=tool_sigs):
-
+    with (
+        patch("backend.blocks.llm.llm_call", new_callable=AsyncMock, return_value=resp),
+        patch.object(block, "_create_tool_node_signatures", return_value=tool_sigs),
+    ):
         inp = OrchestratorBlock.Input(
             prompt="Do it",
             model=llm_module.DEFAULT_LLM_MODEL,

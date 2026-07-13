@@ -587,7 +587,7 @@ class GetTelegramFileBlock(Block):
             # Convert to data URI and wrap as MediaFileType
             mime_type = "application/octet-stream"
             data_uri = MediaFileType(
-                f"data:{mime_type};base64," f"{base64.b64encode(file_content).decode()}"
+                f"data:{mime_type};base64,{base64.b64encode(file_content).decode()}"
             )
 
             # Store and get appropriate output format

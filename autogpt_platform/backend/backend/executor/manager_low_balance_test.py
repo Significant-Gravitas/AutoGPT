@@ -17,14 +17,13 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
     transaction_cost = 600  # $6 transaction
 
     # Mock dependencies
-    with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
-        "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
-
+    with (
+        patch("backend.executor.billing.queue_notification") as mock_queue_notif,
+        patch(
+            "backend.executor.billing.get_notification_manager_client"
+        ) as mock_get_client,
+        patch("backend.executor.billing.settings") as mock_settings,
+    ):
         # Setup mocks
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -75,14 +74,13 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
     )
 
     # Mock dependencies
-    with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
-        "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
-
+    with (
+        patch("backend.executor.billing.queue_notification") as mock_queue_notif,
+        patch(
+            "backend.executor.billing.get_notification_manager_client"
+        ) as mock_get_client,
+        patch("backend.executor.billing.settings") as mock_settings,
+    ):
         # Setup mocks
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -117,14 +115,13 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
     )
 
     # Mock dependencies
-    with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
-        "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
-
+    with (
+        patch("backend.executor.billing.queue_notification") as mock_queue_notif,
+        patch(
+            "backend.executor.billing.get_notification_manager_client"
+        ) as mock_get_client,
+        patch("backend.executor.billing.settings") as mock_settings,
+    ):
         # Setup mocks
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client

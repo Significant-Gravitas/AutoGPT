@@ -180,12 +180,15 @@ class TestWalkOnceDispatch:
             input_tokens=10,
             output_tokens=20,
         )
-        with patch(
-            "backend.executor.batch_executor.poll_batch",
-            new=AsyncMock(return_value="ended"),
-        ), patch(
-            "backend.executor.batch_executor.download_batch_results",
-            new=AsyncMock(return_value=[fake_row]),
+        with (
+            patch(
+                "backend.executor.batch_executor.poll_batch",
+                new=AsyncMock(return_value="ended"),
+            ),
+            patch(
+                "backend.executor.batch_executor.download_batch_results",
+                new=AsyncMock(return_value=[fake_row]),
+            ),
         ):
             await walk_once(api_key_for=lambda p: "sk-ant-test")
 
@@ -221,12 +224,15 @@ class TestWalkOnceDispatch:
             input_tokens=1,
             output_tokens=1,
         )
-        with patch(
-            "backend.executor.batch_executor.poll_batch",
-            new=AsyncMock(return_value="ended"),
-        ), patch(
-            "backend.executor.batch_executor.download_batch_results",
-            new=AsyncMock(return_value=[fake_row]),
+        with (
+            patch(
+                "backend.executor.batch_executor.poll_batch",
+                new=AsyncMock(return_value="ended"),
+            ),
+            patch(
+                "backend.executor.batch_executor.download_batch_results",
+                new=AsyncMock(return_value=[fake_row]),
+            ),
         ):
             # First walk: claim wins, handler fires.
             await walk_once(api_key_for=lambda p: "sk-ant-test")
@@ -418,12 +424,15 @@ class TestUnknownNamespace:
         await enqueue_pending(_entry(namespace="orphan_namespace", delay=30))
         poll_mock = AsyncMock(return_value="ended")
         download_mock = AsyncMock(return_value=[])
-        with patch(
-            "backend.executor.batch_executor.poll_batch",
-            poll_mock,
-        ), patch(
-            "backend.executor.batch_executor.download_batch_results",
-            download_mock,
+        with (
+            patch(
+                "backend.executor.batch_executor.poll_batch",
+                poll_mock,
+            ),
+            patch(
+                "backend.executor.batch_executor.download_batch_results",
+                download_mock,
+            ),
         ):
             await walk_once(api_key_for=lambda p: "sk-ant-test")
 
@@ -482,12 +491,15 @@ class TestWalkCrashGuard:
             input_tokens=1,
             output_tokens=1,
         )
-        with patch(
-            "backend.executor.batch_executor.poll_batch",
-            new=AsyncMock(return_value="ended"),
-        ), patch(
-            "backend.executor.batch_executor.download_batch_results",
-            new=AsyncMock(return_value=[fake_row]),
+        with (
+            patch(
+                "backend.executor.batch_executor.poll_batch",
+                new=AsyncMock(return_value="ended"),
+            ),
+            patch(
+                "backend.executor.batch_executor.download_batch_results",
+                new=AsyncMock(return_value=[fake_row]),
+            ),
         ):
             await walk_once(api_key_for=flaky_api_key_for)
 

@@ -6,7 +6,7 @@ Usage: from backend.sdk import *
 
 This module provides:
 - All block base classes and types
-- All credential and authentication components  
+- All credential and authentication components
 - All cost tracking components
 - All webhook components
 - All utility functions

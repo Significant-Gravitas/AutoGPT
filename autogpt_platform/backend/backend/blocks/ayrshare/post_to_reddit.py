@@ -43,7 +43,7 @@ class PostToRedditBlock(Block):
         input_data: "PostToRedditBlock.Input",
         *,
         credentials: APIKeyCredentials,
-        **kwargs
+        **kwargs,
     ) -> BlockOutput:
         client = create_ayrshare_client()
         if not client:

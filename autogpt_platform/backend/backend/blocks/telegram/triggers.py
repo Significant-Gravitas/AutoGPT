@@ -199,8 +199,9 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
             document = message.get("document", {})
             video = message.get("video", {})
             yield "file_id", (document.get("file_id", "") or video.get("file_id", ""))
-            yield "file_name", (
-                document.get("file_name", "") or audio.get("file_name", "")
+            yield (
+                "file_name",
+                (document.get("file_name", "") or audio.get("file_name", "")),
             )
             yield "caption", message.get("caption", "")
         # Determine message type and extract content

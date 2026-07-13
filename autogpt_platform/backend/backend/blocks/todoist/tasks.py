@@ -580,7 +580,7 @@ class TodoistReopenTaskBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={"reopen_task": lambda *args, **kwargs: (True)},
+            test_mock={"reopen_task": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -632,7 +632,7 @@ class TodoistDeleteTaskBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={"delete_task": lambda *args, **kwargs: (True)},
+            test_mock={"delete_task": lambda *args, **kwargs: True},
         )
 
     @staticmethod

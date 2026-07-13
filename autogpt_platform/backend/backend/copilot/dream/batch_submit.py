@@ -92,7 +92,7 @@ PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
         "episodes + active facts."
     ),
     "recombine": (
-        "Emit novel recombination proposals drawn from the " "consolidated facts."
+        "Emit novel recombination proposals drawn from the consolidated facts."
     ),
     "sanitize": (
         "Emit the gated final dream operations (writes / proposals / "
@@ -274,7 +274,7 @@ def _build_phase_messages(
     if phase == "sanitize":
         if consolidated_json is None or recombined_json is None:
             raise ValueError(
-                "sanitize phase requires both consolidated_json and " "recombined_json."
+                "sanitize phase requires both consolidated_json and recombined_json."
             )
         return build_sanitize_prompt(input_bundle, consolidated_json, recombined_json)
     raise ValueError(f"Unknown dream phase: {phase}")

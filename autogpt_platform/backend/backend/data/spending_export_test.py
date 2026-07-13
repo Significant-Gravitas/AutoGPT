@@ -64,9 +64,12 @@ class TestAdminExportUserHistory:
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_no_rows(self):
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[])
             result = await admin_export_user_history(
@@ -78,9 +81,12 @@ class TestAdminExportUserHistory:
     @pytest.mark.asyncio
     async def test_maps_basic_row(self):
         tx = _make_tx(metadata={"reason": "Initial grant"})
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
@@ -103,9 +109,12 @@ class TestAdminExportUserHistory:
             tx_type=CreditTransactionType.TOP_UP,
             metadata={"reason": {"reason": "Auto top up"}},
         )
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
@@ -120,9 +129,12 @@ class TestAdminExportUserHistory:
         tx_a = _make_tx(user_id="u1", metadata={"admin_id": "admin-1"})
         tx_b = _make_tx(user_id="u2", metadata={"admin_id": "admin-1"})
         email_lookup = AsyncMock(return_value="admin1@example.com")
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            email_lookup,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                email_lookup,
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx_a, tx_b])
             result = await admin_export_user_history(
@@ -137,9 +149,12 @@ class TestAdminExportUserHistory:
         # When get_user_email_by_id returns None, admin_email is "" not "Unknown
         # Admin: <uuid>" so the column doesn't mix email + UUID formats.
         tx = _make_tx(metadata={"admin_id": "deleted-admin"})
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            AsyncMock(return_value=None),
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                AsyncMock(return_value=None),
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
@@ -151,9 +166,12 @@ class TestAdminExportUserHistory:
     @pytest.mark.asyncio
     async def test_passes_filters_to_prisma_where_clause(self):
         find_many = AsyncMock(return_value=[])
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
@@ -172,9 +190,12 @@ class TestAdminExportUserHistory:
     @pytest.mark.asyncio
     async def test_filters_inactive_rows_by_default(self):
         find_many = AsyncMock(return_value=[])
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
@@ -186,9 +207,12 @@ class TestAdminExportUserHistory:
     @pytest.mark.asyncio
     async def test_include_inactive_drops_isactive_filter(self):
         find_many = AsyncMock(return_value=[])
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
@@ -201,9 +225,12 @@ class TestAdminExportUserHistory:
     @pytest.mark.asyncio
     async def test_rejects_when_fetched_rowset_exceeds_cap(self):
         oversize = [_make_tx() for _ in range(CREDIT_EXPORT_MAX_ROWS + 1)]
-        with patch("backend.data.credit.CreditTransaction") as ct, patch(
-            "backend.data.credit.get_user_email_by_id",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.data.credit.CreditTransaction") as ct,
+            patch(
+                "backend.data.credit.get_user_email_by_id",
+                new_callable=AsyncMock,
+            ),
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=oversize)
             with pytest.raises(ValueError, match="more than"):
@@ -253,14 +280,17 @@ class TestGetCopilotWeeklyUsageForExport:
                 "cost_microdollars": 5_000_000,
             }
         ]
-        with patch(
-            "backend.data.platform_cost.query_raw_with_schema",
-            new_callable=AsyncMock,
-            return_value=rows,
-        ), patch(
-            "backend.copilot.rate_limit.get_tier_multipliers",
-            new_callable=AsyncMock,
-            return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+        with (
+            patch(
+                "backend.data.platform_cost.query_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=rows,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+            ),
         ):
             result = await get_copilot_weekly_usage_for_export(
                 start=datetime(2026, 3, 1, tzinfo=timezone.utc),
@@ -287,14 +317,17 @@ class TestGetCopilotWeeklyUsageForExport:
                 "cost_microdollars": 1_000_000,
             }
         ]
-        with patch(
-            "backend.data.platform_cost.query_raw_with_schema",
-            new_callable=AsyncMock,
-            return_value=rows,
-        ), patch(
-            "backend.copilot.rate_limit.get_tier_multipliers",
-            new_callable=AsyncMock,
-            return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+        with (
+            patch(
+                "backend.data.platform_cost.query_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=rows,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+            ),
         ):
             result = await get_copilot_weekly_usage_for_export(
                 start=datetime(2026, 3, 1, tzinfo=timezone.utc),
@@ -314,14 +347,17 @@ class TestGetCopilotWeeklyUsageForExport:
                 "cost_microdollars": 100_000,
             }
         ]
-        with patch(
-            "backend.data.platform_cost.query_raw_with_schema",
-            new_callable=AsyncMock,
-            return_value=rows,
-        ), patch(
-            "backend.copilot.rate_limit.get_tier_multipliers",
-            new_callable=AsyncMock,
-            return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+        with (
+            patch(
+                "backend.data.platform_cost.query_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=rows,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
+            ),
         ):
             result = await get_copilot_weekly_usage_for_export(
                 start=datetime(2026, 3, 1, tzinfo=timezone.utc),
@@ -341,14 +377,17 @@ class TestGetCopilotWeeklyUsageForExport:
                 "cost_microdollars": 1,
             }
         ]
-        with patch(
-            "backend.data.platform_cost.query_raw_with_schema",
-            new_callable=AsyncMock,
-            return_value=rows,
-        ), patch(
-            "backend.copilot.rate_limit.get_tier_multipliers",
-            new_callable=AsyncMock,
-            return_value={"PRO": 5.0},
+        with (
+            patch(
+                "backend.data.platform_cost.query_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=rows,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value={"PRO": 5.0},
+            ),
         ):
             result = await get_copilot_weekly_usage_for_export(
                 start=datetime(2026, 3, 1, tzinfo=timezone.utc),

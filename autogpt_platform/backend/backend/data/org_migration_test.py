@@ -516,6 +516,33 @@ class TestBackfillHardening:
         assert renew_lock.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_signup_path_heals_blocking_orphan(self, mock_prisma, mocker):
+        """ensure_personal_org (signup) must clear a blocking orphan and
+        succeed on retry, same as the backfill path — otherwise signup fails
+        its retries on a state only the backfill could heal."""
+        from prisma.errors import UniqueViolationError
+
+        from backend.data.org_migration import ensure_personal_org
+
+        mocker.patch(
+            "backend.data.org_migration._derive_personal_org_identity",
+            AsyncMock(return_value=("jane", "Jane")),
+        )
+        create = mocker.patch(
+            "backend.data.org_migration.create_personal_org",
+            AsyncMock(side_effect=[UniqueViolationError(MagicMock()), None]),
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        orphan = MagicMock(id="orphan-org")
+        mock_prisma.organization.find_first = AsyncMock(return_value=orphan)
+
+        await ensure_personal_org("user-x")
+
+        assert create.await_count == 2
+        update_kwargs = mock_prisma.organization.update.call_args.kwargs
+        assert update_kwargs["where"] == {"id": "orphan-org"}
+
+    @pytest.mark.asyncio
     async def test_orphan_org_blocking_index_is_soft_deleted_and_retried(
         self, mock_prisma
     ):

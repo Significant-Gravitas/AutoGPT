@@ -402,8 +402,13 @@ async def test_library_agent_id_resolves_and_proceeds(tool, session):
     mock_lib_db.get_library_agent = AsyncMock(
         return_value=MagicMock(graph_id="graph-1", graph_version=1)
     )
-    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4], patch(
-        f"{_PATH}.library_db", return_value=mock_lib_db
+    with (
+        ctxs[0],
+        ctxs[1],
+        ctxs[2],
+        ctxs[3],
+        ctxs[4],
+        patch(f"{_PATH}.library_db", return_value=mock_lib_db),
     ):
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", library_agent_id="lib-1"
@@ -420,8 +425,13 @@ async def test_library_agent_not_found_returns_error(tool, session):
     ctxs, _ = _patches(graph)
     mock_lib_db = MagicMock()
     mock_lib_db.get_library_agent = AsyncMock(side_effect=NotFoundError("gone"))
-    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4], patch(
-        f"{_PATH}.library_db", return_value=mock_lib_db
+    with (
+        ctxs[0],
+        ctxs[1],
+        ctxs[2],
+        ctxs[3],
+        ctxs[4],
+        patch(f"{_PATH}.library_db", return_value=mock_lib_db),
     ):
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", library_agent_id="lib-1"

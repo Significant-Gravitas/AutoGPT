@@ -251,11 +251,12 @@ class TestRebuildCommunitiesPolling:
         scheduler.schedule_immediate_community_rebuild = AsyncMock(
             return_value={"scheduled": True, "job_id": "x", "kind": "rebuild"}
         )
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 202
@@ -276,13 +277,13 @@ class TestRebuildCommunitiesPolling:
             side_effect=RuntimeError("scheduler unreachable")
         )
         mark_errored = AsyncMock()
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
-        ), patch(
-            f"{_MOCK_MODULE}.mark_errored", mark_errored
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
+            patch(f"{_MOCK_MODULE}.mark_errored", mark_errored),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500

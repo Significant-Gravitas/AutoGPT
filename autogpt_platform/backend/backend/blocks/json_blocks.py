@@ -16,7 +16,6 @@ from backend.util.json import dumps, loads
 
 
 class JSONEncoderBlock(Block):
-
     class Input(BlockSchemaInput):
         data: Any = SchemaField(
             description=(
@@ -53,7 +52,6 @@ class JSONEncoderBlock(Block):
 
 
 class JSONDecoderBlock(Block):
-
     class Input(BlockSchemaInput):
         json_str: str = SchemaField(
             description="The JSON string to decode.",

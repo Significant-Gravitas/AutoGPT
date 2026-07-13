@@ -211,6 +211,37 @@ async def _derive_personal_org_identity(user_id: str) -> tuple[str, str]:
     return slug_base, display_name
 
 
+async def _soft_delete_blocking_orphan(user_id: str) -> bool:
+    """Clear a legacy ORPHAN blocking *user_id*'s one-personal-per-user slot.
+
+    An orphan is a live personal org carrying this user's ``bootstrapUserId``
+    with no owner membership (pre-transaction partial create): it occupies the
+    partial unique index while staying invisible to every membership-based
+    re-check, so creation retries can never succeed until it is cleared. The
+    org is unusable by definition — no member can resolve it — so soft-deleting
+    it loses nothing. Returns True if one was cleared.
+    """
+    orphan = await prisma.organization.find_first(
+        where={
+            "isPersonal": True,
+            "deletedAt": None,
+            "bootstrapUserId": user_id,
+            "Members": {"none": {"isOwner": True}},
+        }
+    )
+    if orphan is None:
+        return False
+    logger.warning(
+        f"Soft-deleting orphan personal org {orphan.id} (no owner membership) "
+        f"blocking user {user_id}"
+    )
+    await prisma.organization.update(
+        where={"id": orphan.id},
+        data={"deletedAt": datetime.now(timezone.utc)},
+    )
+    return True
+
+
 async def _find_owned_personal_org(user_id: str):
     """Return *user_id*'s owned, non-deleted personal-org membership, or None.
 
@@ -259,7 +290,10 @@ async def ensure_personal_org(user_id: str) -> None:
                 # A concurrent request bootstrapped this user first.
                 logger.debug("Personal org for user %s created concurrently", user_id)
                 return
-            # Slug collided with a *different* user — retry with a fresh suffix.
+            # A legacy orphan holding this user's index slot blocks every
+            # retry — clear it so the next attempt can succeed. Otherwise
+            # the slug collided with a *different* user; retry either way.
+            await _soft_delete_blocking_orphan(user_id)
 
     raise RuntimeError(
         f"Failed to bootstrap a personal organization for user {user_id} after "
@@ -358,29 +392,10 @@ async def _get_or_create_backfill_org(row: dict) -> bool:
                     user_id,
                 )
                 return False
-            # The one-personal-per-user index can also be blocked by a legacy
-            # ORPHAN: an org row carrying this bootstrapUserId with no owner
-            # membership (pre-transaction partial create). It is invisible to
-            # the membership re-check above and unusable by the user, so
-            # soft-delete it out of the index and let the retry recreate
-            # cleanly. Otherwise the violation was a slug clash with a
-            # different user — retry with a fresh suffix either way.
-            orphan = await prisma.organization.find_first(
-                where={
-                    "isPersonal": True,
-                    "deletedAt": None,
-                    "bootstrapUserId": user_id,
-                }
-            )
-            if orphan is not None:
-                logger.warning(
-                    f"Org migration: soft-deleting orphan personal org "
-                    f"{orphan.id} (no owner membership) blocking user {user_id}"
-                )
-                await prisma.organization.update(
-                    where={"id": orphan.id},
-                    data={"deletedAt": datetime.now(timezone.utc)},
-                )
+            # A legacy orphan holding this user's index slot blocks every
+            # retry — clear it so the next attempt can succeed. Otherwise
+            # the slug collided with a *different* user; retry either way.
+            await _soft_delete_blocking_orphan(user_id)
     raise RuntimeError(
         f"Org migration: failed to bootstrap a personal organization for user "
         f"{user_id} after retries"

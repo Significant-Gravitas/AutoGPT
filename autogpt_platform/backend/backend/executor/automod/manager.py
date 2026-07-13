@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class AutoModManager:
-
     def __init__(self):
         self.config = self._load_config()
 

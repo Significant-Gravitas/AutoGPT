@@ -77,8 +77,7 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
             pod = await client.pods.get(pod_id=pod_id)
             if getattr(pod, "client_id", None) and pod.client_id != user_id:
                 logger.error(
-                    "Pod %s client_id=%s does not match user %s — "
-                    "refusing to delete",
+                    "Pod %s client_id=%s does not match user %s — refusing to delete",
                     pod_id,
                     pod.client_id,
                     user_id,
