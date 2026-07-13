@@ -41,6 +41,17 @@ def mock_prisma(mocker):
     mock.query_raw = AsyncMock(return_value=[])
     mock.execute_raw = AsyncMock(return_value=0)
     mocker.patch("backend.data.org_migration.prisma", mock)
+
+    # _create_backfill_org now writes inside `async with transaction() as tx`;
+    # yield the same mock so per-model create assertions keep working.
+    class _TxCM:
+        async def __aenter__(self):
+            return mock
+
+        async def __aexit__(self, *exc):
+            return False
+
+    mocker.patch("backend.data.org_migration.transaction", lambda *a, **k: _TxCM())
     return mock
 
 

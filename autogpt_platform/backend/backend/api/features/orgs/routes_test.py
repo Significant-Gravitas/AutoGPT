@@ -1632,6 +1632,17 @@ class TestMigrationSlugEdgeCases:
         self.prisma.execute_raw = AsyncMock(return_value=0)
         mocker.patch("backend.data.org_migration.prisma", self.prisma)
 
+        prisma_mock = self.prisma
+
+        class _TxCM:
+            async def __aenter__(self):
+                return prisma_mock
+
+            async def __aexit__(self, *exc):
+                return False
+
+        mocker.patch("backend.data.org_migration.transaction", lambda *a, **k: _TxCM())
+
     @pytest.mark.asyncio
     async def test_user_with_name_but_no_profile_uses_name_slug(self):
         from backend.data.org_migration import create_orgs_for_existing_users

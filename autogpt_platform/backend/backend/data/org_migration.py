@@ -408,69 +408,74 @@ async def _create_backfill_org(row: dict) -> None:
         # create() requires them re-wrapped as Json, not raw dict/list.
         org_data["topUpConfig"] = SafeJson(row["topUpConfig"])
 
-    org = await prisma.organization.create(data=org_data)
+    # All-or-nothing like create_personal_org: a partial create (org row
+    # without its owner membership) would be invisible to every re-check —
+    # they look for the OrgMember — while the one-personal-per-user index
+    # blocks re-creation, permanently wedging the user.
+    async with transaction() as tx:
+        org = await tx.organization.create(data=org_data)
 
-    # Create OrgMember (owner)
-    await prisma.orgmember.create(
-        data={
-            "Org": {"connect": {"id": org.id}},
-            "User": {"connect": {"id": user_id}},
-            "isOwner": True,
-            "isAdmin": True,
-            "status": "ACTIVE",
+        # Create OrgMember (owner)
+        await tx.orgmember.create(
+            data={
+                "Org": {"connect": {"id": org.id}},
+                "User": {"connect": {"id": user_id}},
+                "isOwner": True,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
+
+        # Create default Team
+        workspace = await tx.team.create(
+            data={
+                "name": "Default",
+                "Org": {"connect": {"id": org.id}},
+                "isDefault": True,
+                "joinPolicy": "OPEN",
+                "createdByUserId": user_id,
+            }
+        )
+
+        # Create TeamMember
+        await tx.teammember.create(
+            data={
+                "Team": {"connect": {"id": workspace.id}},
+                "User": {"connect": {"id": user_id}},
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
+
+        # Create OrganizationProfile (from user's Profile if exists)
+        profile_data: dict = {
+            "Organization": {"connect": {"id": org.id}},
+            "username": slug,
+            "displayName": display_name,
         }
-    )
+        if row.get("profile_avatar_url"):
+            profile_data["avatarUrl"] = row["profile_avatar_url"]
+        if row.get("profile_description"):
+            profile_data["bio"] = row["profile_description"]
+        if row.get("profile_links"):
+            # Profile.links is a Json column; query_raw hands it back as a
+            # parsed Python object, so re-wrap for prisma create(). Without
+            # this, any user with a populated store profile crashes the
+            # whole startup migration.
+            profile_data["socialLinks"] = SafeJson(row["profile_links"])
 
-    # Create default Team
-    workspace = await prisma.team.create(
-        data={
-            "name": "Default",
-            "Org": {"connect": {"id": org.id}},
-            "isDefault": True,
-            "joinPolicy": "OPEN",
-            "createdByUserId": user_id,
-        }
-    )
+        await tx.organizationprofile.create(data=profile_data)
 
-    # Create TeamMember
-    await prisma.teammember.create(
-        data={
-            "Team": {"connect": {"id": workspace.id}},
-            "User": {"connect": {"id": user_id}},
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
-
-    # Create OrganizationProfile (from user's Profile if exists)
-    profile_data: dict = {
-        "Organization": {"connect": {"id": org.id}},
-        "username": slug,
-        "displayName": display_name,
-    }
-    if row.get("profile_avatar_url"):
-        profile_data["avatarUrl"] = row["profile_avatar_url"]
-    if row.get("profile_description"):
-        profile_data["bio"] = row["profile_description"]
-    if row.get("profile_links"):
-        # Profile.links is a Json column; query_raw hands it back as a
-        # parsed Python object, so re-wrap for prisma create(). Without
-        # this, any user with a populated store profile crashes the
-        # whole startup migration.
-        profile_data["socialLinks"] = SafeJson(row["profile_links"])
-
-    await prisma.organizationprofile.create(data=profile_data)
-
-    # Create seat assignment (FREE seat for personal org)
-    await prisma.organizationseatassignment.create(
-        data={
-            "organizationId": org.id,
-            "userId": user_id,
-            "seatType": "FREE",
-            "status": "ACTIVE",
-            "assignedByUserId": user_id,
-        }
-    )
+        # Create seat assignment (FREE seat for personal org)
+        await tx.organizationseatassignment.create(
+            data={
+                "organizationId": org.id,
+                "userId": user_id,
+                "seatType": "FREE",
+                "status": "ACTIVE",
+                "assignedByUserId": user_id,
+            }
+        )
 
     # Log if slug diverged from desired (collision resolution)
     if slug != desired_slug:
