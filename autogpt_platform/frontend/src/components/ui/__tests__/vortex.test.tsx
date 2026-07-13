@@ -96,6 +96,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+  Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
 });
 
 describe("Vortex", () => {
