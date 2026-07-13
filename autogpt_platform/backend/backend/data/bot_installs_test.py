@@ -52,3 +52,28 @@ async def test_get_returns_none_when_not_installed():
     with patch(_BI) as model:
         model.prisma.return_value.find_unique = AsyncMock(return_value=None)
         assert await bot_installs.get_bot_install(Platform.SLACK, "T1") is None
+
+
+@pytest.mark.asyncio
+async def test_is_install_revoked_true_for_revoked_row():
+    row = MagicMock(revokedAt=object())
+    with patch(_BI) as model:
+        model.prisma.return_value.find_unique = AsyncMock(return_value=row)
+        assert await bot_installs.is_install_revoked(Platform.SLACK, "T1") is True
+
+
+@pytest.mark.asyncio
+async def test_is_install_revoked_false_when_never_installed():
+    with patch(_BI) as model:
+        model.prisma.return_value.find_unique = AsyncMock(return_value=None)
+        assert await bot_installs.is_install_revoked(Platform.SLACK, "T1") is False
+
+
+@pytest.mark.asyncio
+async def test_get_returns_none_for_corrupt_credentials():
+    # JSONCryptor.decrypt never raises — corrupt ciphertext decrypts to {} and
+    # the missing-token path returns None.
+    row = MagicMock(revokedAt=None, credentials="not-a-valid-ciphertext")
+    with patch(_BI) as model:
+        model.prisma.return_value.find_unique = AsyncMock(return_value=row)
+        assert await bot_installs.get_bot_install(Platform.SLACK, "T1") is None

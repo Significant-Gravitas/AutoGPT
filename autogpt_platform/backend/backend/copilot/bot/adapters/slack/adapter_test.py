@@ -180,8 +180,18 @@ class TestInboundRouting:
             called.append(ctx)
 
         adapter.on_message(cb)
+        # Carries a valid team so the only thing standing between this event
+        # and the callback is the bot filter itself (not the missing-team guard).
         await adapter._dispatch_event(
-            {"type": "app_mention", "bot_id": "B9", "channel": "C1", "ts": "1"}
+            {
+                "type": "app_mention",
+                "bot_id": "B9",
+                "channel": "C1",
+                "ts": "1",
+                "user": "U1",
+                "text": "hi",
+                "team": "T1",
+            }
         )
         assert called == []
 
