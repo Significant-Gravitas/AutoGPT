@@ -118,6 +118,11 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
                     )
                     return org.id
                 except UniqueViolationError:
+                    # A concurrent creator can win between the orphan clear
+                    # and this retry — reconcile before reporting failure.
+                    member = await _find_personal_org_member(user_id)
+                    if member is not None:
+                        return member.orgId
                     logger.error(
                         f"Personal-org bootstrap for {user_id} still failing "
                         "after orphan cleanup",
