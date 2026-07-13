@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://platform.agpt.co">
+  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=hero_banner">
     <img src="docs/home/.gitbook/assets/Banner_image.png" alt="AutoGPT" width="100%" />
   </a>
 </p>
@@ -12,9 +12,11 @@
 </p>
 
 <p align="center">
-  <a href="https://platform.agpt.co"><strong>Get started</strong></a>
+  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=header_get_started"><strong>Get started</strong></a>
   ·
-  <a href="https://agpt.co/pricing">Pricing</a>
+  <a href="https://platform.agpt.co/tour?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=tour_header">Tour</a>
+  ·
+  <a href="https://agpt.co/pricing?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=header_pricing">Pricing</a>
   ·
   <a href="https://docs.agpt.co">Docs</a>
   ·
@@ -24,9 +26,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Significant-Gravitas/AutoGPT/stargazers">
-    <img src="https://img.shields.io/github/stars/Significant-Gravitas/AutoGPT?style=social" alt="GitHub stars" />
-  </a>
   <a href="https://discord.gg/autogpt">
     <img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Join Discord" />
   </a>
@@ -53,23 +52,37 @@ AutoGPT lets you build, deploy, and run AI agents that carry out complete workfl
 
 ## Four surfaces, one platform
 
-| **AutoPilot** | **Agent Builder** | **Dashboard** | **Marketplace** |
-|---|---|---|---|
-| Brief AutoGPT like a teammate. It turns the conversation into a working agent. | Drag, connect, branch, and inspect blocks for exact control. | See every agent, run, cost, and action that needs your attention. | Start from proven agents and customize them for your work. |
-
 <table>
   <tr>
-    <td width="33%" align="center">
-      <img src="docs/home/.gitbook/assets/hosted.jpg" alt="Managed AutoGPT Platform" />
-      <br /><strong>Managed Platform</strong>
+    <td width="50%" align="center" valign="top">
+      <a href="https://agpt.co/product/autopilot/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=autopilot">
+        <img src="docs/content/imgs/readme/autogpt_autopilot_chat.jpg" alt="AutoPilot chat creating an AutoGPT agent" />
+      </a>
+      <br /><strong><a href="https://agpt.co/product/autopilot/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=autopilot">AutoPilot</a></strong>
+      <br />Describe the job in plain English and turn the conversation into a working agent.
     </td>
-    <td width="33%" align="center">
-      <img src="docs/home/.gitbook/assets/no-code.jpg" alt="No-code agent builder" />
-      <br /><strong>Visual Builder</strong>
+    <td width="50%" align="center" valign="top">
+      <a href="https://agpt.co/product/agents/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=agents">
+        <img src="docs/content/imgs/readme/autogpt_agent_dashboard.jpg" alt="Agents dashboard showing statuses, runs, and costs" />
+      </a>
+      <br /><strong><a href="https://agpt.co/product/agents/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=agents">Agents</a></strong>
+      <br />See every agent, run, cost, and action that needs your attention.
     </td>
-    <td width="33%" align="center">
-      <img src="docs/home/.gitbook/assets/Integrations.png" alt="AutoGPT integrations" />
-      <br /><strong>45+ Integrations</strong>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="https://agpt.co/product/marketplace/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=marketplace">
+        <img src="docs/content/imgs/readme/autogpt_marketplace.png" alt="AutoGPT Marketplace showing ready-made community agents" />
+      </a>
+      <br /><strong><a href="https://agpt.co/product/marketplace/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=marketplace">Marketplace</a></strong>
+      <br />Start from proven agents, add one to your library, and customize it for your work.
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="https://agpt.co/product/build/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=build">
+        <img src="docs/content/imgs/readme/build_canvas_demo.png" alt="Build visual canvas showing a completed agent workflow" />
+      </a>
+      <br /><strong><a href="https://agpt.co/product/build/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=build">Build</a></strong>
+      <br />Drag, connect, branch, and inspect blocks for exact control over every step.
     </td>
   </tr>
 </table>
@@ -82,19 +95,21 @@ AutoGPT lets you build, deploy, and run AI agents that carry out complete workfl
 
 The hosted Platform is publicly available. We manage the infrastructure, model access, credentials, reliability, and updates so you can focus on the work your agents perform.
 
-**[Get started on AutoGPT Platform →](https://platform.agpt.co)**
+**[Get started on AutoGPT Platform →](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=platform_get_started)**
 
-- AutoPilot, Agent Builder, Dashboard, and Marketplace
+[Take the interactive tour →](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
+
+- AutoPilot, Agents, Marketplace, and Build
 - 45+ connected platforms and hundreds of AI models
 - No model API keys or infrastructure setup
 - Agents that run on demand, on schedules, and from triggers
 
-The hosted Platform is a paid service with usage-based agent runs. [Compare plans and pricing →](https://agpt.co/pricing)
+The hosted Platform is a paid service with usage-based agent runs. [Compare plans and pricing →](https://agpt.co/pricing?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=platform_pricing)
 
 ### Self-host AutoGPT
 
 > [!NOTE]
-> Self-hosting is the free path. You provide the infrastructure and model API keys, and you maintain the deployment. If you want zero setup, use the [managed Platform](https://platform.agpt.co).
+> Self-hosting is the free path. You provide the infrastructure and model API keys, and you maintain the deployment. If you want zero setup, use the [managed Platform](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=self_host_note).
 
 **macOS and Linux:**
 
@@ -198,7 +213,7 @@ Looking for the original standalone AutoGPT agent? It remains available in [`cla
 </a>
 
 <p align="center">
-  <a href="https://platform.agpt.co"><strong>Get started with AutoGPT →</strong></a>
+  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=footer_get_started"><strong>Get started with AutoGPT →</strong></a>
 </p>
 
 ---
