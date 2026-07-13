@@ -107,6 +107,13 @@ export function Vortex(props: VortexProps) {
   }
 
   function draw(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    if (canvas.width === 0 || canvas.height === 0) {
+      animationFrameId.current = window.requestAnimationFrame(() =>
+        draw(canvas, ctx),
+      );
+      return;
+    }
+
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1000, 1 / 30);
     lastTime = now;
