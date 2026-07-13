@@ -1,0 +1,65 @@
+# Slack app manifest for AutoPilot
+#
+# Import at https://api.slack.com/apps → Create New App → From an app manifest.
+# Once the backend is deployed, fill in <BASE_URL> below with the public origin
+# of the main backend API (e.g. https://dev-server.agpt.co) and re-import.
+
+display_information:
+  name: AutoPilot
+  description: AutoPilot — your AutoGPT agent in Slack
+  background_color: "#1a1a1a"
+  long_description: |
+    AutoPilot brings your AutoGPT account into Slack. Mention @AutoPilot in a
+    channel or DM the app to chat with your AutoGPT agent. Run /setup in a
+    channel to link the workspace to your AutoGPT account; DM the app to link
+    your own DMs as a personal account.
+
+features:
+  bot_user:
+    display_name: AutoPilot
+    always_online: true
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false   # let users DM the bot
+  slash_commands:
+    - command: /setup
+      url: <BASE_URL>/api/copilot-webhooks/slack/commands
+      description: Link this Slack workspace to an AutoGPT account
+      should_escape: false
+    - command: /help
+      url: <BASE_URL>/api/copilot-webhooks/slack/commands
+      description: How to use AutoPilot in Slack
+      should_escape: false
+    - command: /unlink
+      url: <BASE_URL>/api/copilot-webhooks/slack/commands
+      description: Disconnect your AutoGPT link from this workspace
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read   # @AutoPilot in any channel the app is in
+      - channels:history    # read messages in public channels (for thread follow-ups)
+      - channels:read       # list public channels for proactive posting
+      - chat:write          # post messages as the bot
+      - chat:write.public   # post in channels the bot isn't a member of
+      - commands            # slash commands
+      - files:read          # download user-attached files into the workspace
+      - files:write         # upload generated artifacts back to the user
+      - im:history          # read DM history (for thread follow-up context)
+      - im:read             # access DM channel metadata
+      - im:write            # open DM channels with users
+      - users:read          # resolve user names / IDs
+      - team:read           # workspace metadata for SERVER linking
+
+settings:
+  event_subscriptions:
+    request_url: <BASE_URL>/api/copilot-webhooks/slack/events
+    bot_events:
+      - app_mention       # @bot in any channel the app is in
+      - message.im        # DMs to the bot
+      - message.channels  # replies in channel threads the bot is part of
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

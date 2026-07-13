@@ -767,6 +767,18 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="Discord permissions bitfield for the 'Add to server' "
         "invite URL. Overrides the built-in default when non-empty.",
     )
+    autopilot_bot_slack_token: str = Field(
+        default="",
+        description="Slack bot (xoxb-) token for the CoPilot chat bridge. When "
+        "set together with the signing secret, the bridge mounts its Slack "
+        "webhook adapter (Events API) on the main backend API.",
+    )
+    autopilot_bot_slack_signing_secret: str = Field(
+        default="",
+        description="Slack app signing secret — verifies inbound Slack request "
+        "signatures (HMAC-SHA256). Required alongside the token to enable the "
+        "Slack adapter.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")

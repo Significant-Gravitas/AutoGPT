@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
+from backend.copilot.bot.adapters.slack import config as slack_config
 
 
 class PlatformMeta(BaseModel):
@@ -30,7 +31,7 @@ def enabled_platforms() -> list[PlatformMeta]:
     Platforms whose adapter isn't configured (missing credentials) are
     omitted entirely so the Bots page hides them.
     """
-    all_platforms = [_discord_meta()]
+    all_platforms = [_discord_meta(), _slack_meta()]
     return [platform for platform in all_platforms if platform.enabled]
 
 
@@ -42,6 +43,21 @@ def _discord_meta() -> PlatformMeta:
         icon="discord.png",
         enabled=enabled,
         add_bot_url=_discord_invite_url() if enabled else None,
+    )
+
+
+def _slack_meta() -> PlatformMeta:
+    # Slack has no Discord-style one-click invite for a self-hosted app — it's
+    # installed per-workspace via the app manifest, then linked with /setup — so
+    # there's no add_bot_url. Enabled once both the token and signing secret are
+    # set (the same gate the webhook adapter mounts on).
+    enabled = bool(slack_config.get_bot_token() and slack_config.get_signing_secret())
+    return PlatformMeta(
+        platform="SLACK",
+        display_name="Slack",
+        icon="slack.png",
+        enabled=enabled,
+        add_bot_url=None,
     )
 
 
