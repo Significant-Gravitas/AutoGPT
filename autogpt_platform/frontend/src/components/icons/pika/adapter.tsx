@@ -503,7 +503,11 @@ function makeIcon(
   PhosphorIcon: Icon,
   PikaIcon: React.ComponentType<PikaIconProps>,
 ): Icon {
-  return React.forwardRef<SVGSVGElement, IconProps>(
+  // Memoized so a parent re-render with unchanged props doesn't re-run the
+  // flag read. `useGetFlag` proxies each read through the LaunchDarkly SDK
+  // (which emits a variation analytics event + Sentry inspector call), so on
+  // icon-heavy pages skipping redundant re-evaluations avoids needless work.
+  const AdaptiveIcon = React.forwardRef<SVGSVGElement, IconProps>(
     function AdaptiveIcon(props, ref) {
       const usePika = useGetFlag(Flag.PIKA_ICONS);
       if (!usePika) return <PhosphorIcon ref={ref} {...props} />;
@@ -546,7 +550,8 @@ function makeIcon(
         />
       );
     },
-  ) as Icon;
+  );
+  return React.memo(AdaptiveIcon) as unknown as Icon;
 }
 
 export type { Icon, IconProps };
