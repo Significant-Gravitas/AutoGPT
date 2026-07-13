@@ -45,7 +45,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
 
     @tree.command(
         name="setup",
-        description="Link this server to an AutoGPT account for AutoGPT",
+        description="Link this server to an AutoGPT account",
     )
     @app_commands.default_permissions(manage_guild=True)
     async def setup_command(interaction: discord.Interaction) -> None:
