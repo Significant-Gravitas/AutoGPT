@@ -195,12 +195,8 @@ class IdeogramModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: (
-                    "https://ideogram.ai/api/images/test-generated-image-url.png"
-                ),
-                "upscale_image": lambda api_key, image_url: (
-                    "https://ideogram.ai/api/images/test-upscaled-image-url.png"
-                ),
+                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: "https://ideogram.ai/api/images/test-generated-image-url.png",
+                "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
             test_credentials=TEST_CREDENTIALS,
         )

@@ -84,7 +84,8 @@ def run_staleness_suite(
         else:
             false_negative += 1
             failures.append(
-                f"FN score={score:.2f}: {fixture.fact_text!r} (stale fact not flagged)"
+                f"FN score={score:.2f}: {fixture.fact_text!r} "
+                f"(stale fact not flagged)"
             )
 
     total_flagged = true_positive + false_positive

@@ -781,7 +781,9 @@ def test_executions_cost_summary_rejects_inverted_window(
     )
 
     response = client.get(
-        "/executions/cost-summary?since=2026-05-15T00:00:00Z&until=2026-05-01T00:00:00Z"
+        "/executions/cost-summary"
+        "?since=2026-05-15T00:00:00Z"
+        "&until=2026-05-01T00:00:00Z"
     )
 
     assert response.status_code == 422

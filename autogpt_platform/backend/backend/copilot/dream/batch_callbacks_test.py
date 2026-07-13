@@ -147,15 +147,13 @@ class TestPhaseChaining:
         )
         update_status = AsyncMock()
 
-        with (
-            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
-            patch(
-                "backend.copilot.dream.job_status.update_status_phase", update_status
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks._anthropic_api_key",
-                return_value="sk-ant-test",
-            ),
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch(
+            "backend.copilot.dream.job_status.update_status_phase", update_status
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
         ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
@@ -198,13 +196,13 @@ class TestPhaseChaining:
         submit_phase = AsyncMock(
             return_value=MagicMock(provider_batch_id="msgbatch_sanitize")
         )
-        with (
-            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
-            patch(
-                "backend.copilot.dream.batch_callbacks._anthropic_api_key",
-                return_value="sk-ant-test",
-            ),
-            patch("backend.copilot.dream.job_status.update_status_phase", AsyncMock()),
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
+        ), patch(
+            "backend.copilot.dream.job_status.update_status_phase", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="recombine"),
@@ -257,15 +255,12 @@ class TestPhaseChaining:
         mark_complete = AsyncMock()
         record_cost = AsyncMock()
         release_lock = AsyncMock()
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -328,12 +323,10 @@ class TestPhaseChaining:
 
         apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
         record_cost = AsyncMock()
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch("backend.copilot.dream.job_status.mark_complete", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -392,19 +385,16 @@ class TestPhaseChaining:
         release_lock = AsyncMock()
         # Crash-before-cleanup simulation: state + input bundle survive the
         # first delivery, so the re-dispatch sees a fully populated pass.
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
-            ),
-            patch("backend.copilot.dream.batch_callbacks._delete_state", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_callbacks.delete_input_bundle", AsyncMock()
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._delete_state", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.delete_input_bundle", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -456,14 +446,12 @@ class TestPhaseChaining:
         mark_complete = AsyncMock()
         mark_errored = AsyncMock()
         gate = AsyncMock(return_value="error")
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch("backend.copilot.dream.batch_callbacks._claim_apply_gate", gate),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks._claim_apply_gate", gate
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -525,11 +513,10 @@ class TestErrorPaths:
     async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
-        with (
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
+        with patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
         ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
@@ -556,12 +543,10 @@ class TestErrorPaths:
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
-        with (
-            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
         ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
@@ -606,12 +591,10 @@ class TestErrorPaths:
         apply = AsyncMock(side_effect=RuntimeError("FalkorDB unreachable"))
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -647,15 +630,12 @@ class TestErrorPaths:
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
         release_lock = AsyncMock()
-        with (
-            patch("backend.copilot.dream.batch_callbacks._chain_next_phase", chain),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
-            ),
+        with patch(
+            "backend.copilot.dream.batch_callbacks._chain_next_phase", chain
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
         ):
             # Must not propagate — the crash guard finalizes and swallows.
             await handle_dream_batch_result(
@@ -743,15 +723,11 @@ class TestLockTokenWiring:
         )
 
     async def _dispatch_sanitize(self) -> None:
-        with (
-            patch(
-                "backend.copilot.dream.apply.apply_operations",
-                AsyncMock(return_value={"writes": 0}),
-            ),
-            patch("backend.copilot.dream.job_status.mark_complete", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch("backend.copilot.dream.job_status.mark_complete", AsyncMock()), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -785,20 +761,19 @@ class TestLockTokenWiring:
         mark_errored = AsyncMock()
         release_lock = AsyncMock()
         read_token = AsyncMock(side_effect=ConnectionError("redis blip"))
-        with (
-            patch(
-                "backend.copilot.dream.apply.apply_operations",
-                AsyncMock(return_value={"writes": 0}),
-            ),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
-            patch("backend.copilot.dream.batch_callbacks.read_lock_token", read_token),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
-            ),
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.read_lock_token", read_token
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -822,20 +797,19 @@ class TestLockTokenWiring:
         mark_complete = AsyncMock()
         mark_errored = AsyncMock()
         delete_state = AsyncMock(side_effect=ConnectionError("redis blip"))
-        with (
-            patch(
-                "backend.copilot.dream.apply.apply_operations",
-                AsyncMock(return_value={"writes": 0}),
-            ),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
-            patch("backend.copilot.dream.batch_callbacks._delete_state", delete_state),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
-            ),
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._delete_state", delete_state
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -868,14 +842,10 @@ class TestLockTokenWiring:
         await update_status_phase(kind="dream_pass", job_id="j1", state="submitted")
 
         apply = AsyncMock()
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", apply),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -902,16 +872,12 @@ class TestLockTokenWiring:
 
         mark_complete = AsyncMock()
         read_existing = AsyncMock(return_value=MagicMock(state="complete"))
-        with (
-            patch("backend.copilot.dream.apply.apply_operations", AsyncMock()),
-            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
-            patch("backend.copilot.dream.job_status.read_status", read_existing),
-            patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
-            ),
-            patch(
-                "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
-            ),
+        with patch("backend.copilot.dream.apply.apply_operations", AsyncMock()), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch("backend.copilot.dream.job_status.read_status", read_existing), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),

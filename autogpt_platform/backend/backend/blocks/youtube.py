@@ -94,9 +94,7 @@ class TranscribeYoutubeVideoBlock(Block):
                     {"text": "Never gonna give you up"},
                     {"text": "Never gonna let you down"},
                 ],
-                "format_transcript": lambda transcript: (
-                    "Never gonna give you up\nNever gonna let you down"
-                ),
+                "format_transcript": lambda transcript: "Never gonna give you up\nNever gonna let you down",
             },
         )
 

@@ -18,7 +18,11 @@ class TestSSEParsing:
     """Tests for SSE (text/event-stream) response parsing."""
 
     def test_parse_sse_simple(self):
-        sse = 'event: message\ndata: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n\n'
+        sse = (
+            "event: message\n"
+            'data: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n'
+            "\n"
+        )
         body = MCPClient._parse_sse_response(sse)
         assert body["result"] == {"tools": []}
         assert body["id"] == 1

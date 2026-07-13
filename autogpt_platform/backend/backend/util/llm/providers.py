@@ -1251,7 +1251,8 @@ async def poll_batch(
     """
     if provider != "anthropic":
         raise NotImplementedError(
-            f"poll_batch only supports provider='anthropic' today; got {provider!r}."
+            f"poll_batch only supports provider='anthropic' today; "
+            f"got {provider!r}."
         )
     client = anthropic.AsyncAnthropic(api_key=api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)

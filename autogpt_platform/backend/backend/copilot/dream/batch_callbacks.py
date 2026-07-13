@@ -966,7 +966,8 @@ def _register() -> None:
         register_handler(NAMESPACE, handle_dream_batch_result)
     except Exception:
         logger.exception(
-            "Failed to register dream batch handler — batch results will not dispatch"
+            "Failed to register dream batch handler — "
+            "batch results will not dispatch"
         )
 
 

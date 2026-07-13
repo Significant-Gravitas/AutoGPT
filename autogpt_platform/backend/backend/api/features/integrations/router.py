@@ -1245,7 +1245,8 @@ async def get_ayrshare_sso_url(
     ]
     if not ayrshare_creds:
         logger.error(
-            "Ayrshare credential provisioning did not produce a credential for user %s",
+            "Ayrshare credential provisioning did not produce a credential "
+            "for user %s",
             user_id,
         )
         raise HTTPException(

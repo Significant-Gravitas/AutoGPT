@@ -345,17 +345,14 @@ class GoogleSheetsReadBlock(Block):
             )
             yield "result", data
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=spreadsheet_id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=spreadsheet_id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "read")
@@ -469,12 +466,9 @@ class GoogleSheetsWriteBlock(Block):
         if validation_error:
             # Customize message for write operations on CSV files
             if "CSV file" in validation_error:
-                yield (
-                    "error",
-                    validation_error.replace(
-                        "Please use a CSV reader block instead, or",
-                        "CSV files are read-only through Google Drive. Please",
-                    ),
+                yield "error", validation_error.replace(
+                    "Please use a CSV reader block instead, or",
+                    "CSV files are read-only through Google Drive. Please",
                 )
             else:
                 yield "error", validation_error
@@ -491,17 +485,14 @@ class GoogleSheetsWriteBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "write")
@@ -623,17 +614,14 @@ class GoogleSheetsAppendRowBlock(Block):
                 input_data.value_input_option,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to append row: {str(e)}"
@@ -756,17 +744,14 @@ class GoogleSheetsClearBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to clear Google Sheet range: {str(e)}"
@@ -869,17 +854,14 @@ class GoogleSheetsMetadataBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get spreadsheet metadata: {str(e)}"
@@ -1002,17 +984,14 @@ class GoogleSheetsManageSheetBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to manage sheet: {str(e)}"
@@ -1162,17 +1141,14 @@ class GoogleSheetsBatchOperationsBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to perform batch operations: {str(e)}"
@@ -1330,17 +1306,14 @@ class GoogleSheetsFindReplaceBlock(Block):
             )
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to find/replace in Google Sheet: {str(e)}"
@@ -1515,17 +1488,14 @@ class GoogleSheetsFindBlock(Block):
             yield "locations", result["locations"]
             yield "result", {"success": True}
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to find text in Google Sheet: {str(e)}"
@@ -1784,17 +1754,14 @@ class GoogleSheetsFormatBlock(Block):
             else:
                 yield "result", result
                 # Output the GoogleDriveFile for chaining (preserves credentials_id)
-                yield (
-                    "spreadsheet",
-                    GoogleDriveFile(
-                        id=input_data.spreadsheet.id,
-                        name=input_data.spreadsheet.name,
-                        mimeType="application/vnd.google-apps.spreadsheet",
-                        url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                        isFolder=False,
-                        _credentials_id=input_data.spreadsheet.credentials_id,
-                    ),
+                yield "spreadsheet", GoogleDriveFile(
+                    id=input_data.spreadsheet.id,
+                    name=input_data.spreadsheet.name,
+                    mimeType="application/vnd.google-apps.spreadsheet",
+                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                    isFolder=False,
+                    _credentials_id=input_data.spreadsheet.credentials_id,
                 )
         except Exception as e:
             yield "error", f"Failed to format Google Sheet cells: {str(e)}"
@@ -1961,17 +1928,14 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             spreadsheet_id = result["spreadsheetId"]
             spreadsheet_url = result["spreadsheetUrl"]
             # Output the GoogleDriveFile for chaining (includes credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=spreadsheet_id,
-                    name=result.get("title", input_data.title),
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=spreadsheet_url,
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.credentials.id,  # Preserve credentials for chaining
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=spreadsheet_id,
+                name=result.get("title", input_data.title),
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=spreadsheet_url,
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.credentials.id,  # Preserve credentials for chaining
             )
             yield "spreadsheet_id", spreadsheet_id
             yield "spreadsheet_url", spreadsheet_url
@@ -2149,17 +2113,14 @@ class GoogleSheetsUpdateCellBlock(Block):
 
             yield "result", result
             # Output the GoogleDriveFile for chaining (preserves credentials_id)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "update")
@@ -2418,17 +2379,14 @@ class GoogleSheetsFilterRowsBlock(Block):
             yield "rows", result["rows"]
             yield "row_indices", result["row_indices"]
             yield "count", result["count"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to filter rows: {str(e)}"
@@ -2638,17 +2596,14 @@ class GoogleSheetsLookupRowBlock(Block):
             yield "row_dict", result["row_dict"]
             yield "row_index", result["row_index"]
             yield "found", result["found"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to lookup row: {str(e)}"
@@ -2862,17 +2817,14 @@ class GoogleSheetsDeleteRowsBlock(Block):
             )
             yield "result", {"success": True}
             yield "deleted_count", result["deleted_count"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to delete rows: {str(e)}"
@@ -3043,17 +2995,14 @@ class GoogleSheetsGetColumnBlock(Block):
             yield "values", result["values"]
             yield "count", result["count"]
             yield "column_index", result["column_index"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get column: {str(e)}"
@@ -3227,17 +3176,14 @@ class GoogleSheetsSortBlock(Block):
                 input_data.has_header,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to sort sheet: {str(e)}"
@@ -3493,17 +3439,14 @@ class GoogleSheetsGetUniqueValuesBlock(Block):
             yield "values", result["values"]
             yield "counts", result["counts"]
             yield "total_unique", result["total_unique"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get unique values: {str(e)}"
@@ -3677,17 +3620,14 @@ class GoogleSheetsInsertRowBlock(Block):
                 input_data.value_input_option,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to insert row: {str(e)}"
@@ -3853,17 +3793,14 @@ class GoogleSheetsAddColumnBlock(Block):
             yield "result", {"success": True}
             yield "column_letter", result["column_letter"]
             yield "column_index", result["column_index"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to add column: {str(e)}"
@@ -4061,17 +3998,14 @@ class GoogleSheetsGetRowCountBlock(Block):
             yield "data_rows", result["data_rows"]
             yield "last_row", result["last_row"]
             yield "column_count", result["column_count"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get row count: {str(e)}"
@@ -4242,17 +4176,14 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
             yield "result", {"success": True}
             yield "removed_count", result["removed_count"]
             yield "remaining_rows", result["remaining_rows"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to remove duplicates: {str(e)}"
@@ -4495,17 +4426,14 @@ class GoogleSheetsUpdateRowBlock(Block):
                 input_data.dict_values,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to update row: {str(e)}"
@@ -4687,17 +4615,14 @@ class GoogleSheetsGetRowBlock(Block):
             )
             yield "row", result["row"]
             yield "row_dict", result["row_dict"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get row: {str(e)}"
@@ -4828,17 +4753,14 @@ class GoogleSheetsDeleteColumnBlock(Block):
                 input_data.column,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to delete column: {str(e)}"
@@ -5009,17 +4931,14 @@ class GoogleSheetsCreateNamedRangeBlock(Block):
             )
             yield "result", {"success": True}
             yield "named_range_id", result["named_range_id"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to create named range: {str(e)}"
@@ -5185,17 +5104,14 @@ class GoogleSheetsListNamedRangesBlock(Block):
             )
             yield "named_ranges", result["named_ranges"]
             yield "count", result["count"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to list named ranges: {str(e)}"
@@ -5348,17 +5264,14 @@ class GoogleSheetsAddDropdownBlock(Block):
                 input_data.show_dropdown,
             )
             yield "result", result
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to add dropdown: {str(e)}"
@@ -5523,17 +5436,14 @@ class GoogleSheetsCopyToSpreadsheetBlock(Block):
             yield "result", {"success": True}
             yield "new_sheet_id", result["new_sheet_id"]
             yield "new_sheet_name", result["new_sheet_name"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.source_spreadsheet.id,
-                    name=input_data.source_spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.source_spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.source_spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.source_spreadsheet.id,
+                name=input_data.source_spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.source_spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.source_spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to copy sheet: {str(e)}"
@@ -5678,17 +5588,14 @@ class GoogleSheetsProtectRangeBlock(Block):
             )
             yield "result", {"success": True}
             yield "protection_id", result["protection_id"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to protect range: {str(e)}"
@@ -5845,17 +5752,14 @@ class GoogleSheetsExportCsvBlock(Block):
             )
             yield "csv_data", result["csv_data"]
             yield "row_count", result["row_count"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to export CSV: {str(e)}"
@@ -5991,17 +5895,14 @@ class GoogleSheetsImportCsvBlock(Block):
             )
             yield "result", {"success": True}
             yield "rows_imported", result["rows_imported"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to import CSV: {str(e)}"
@@ -6131,17 +6032,14 @@ class GoogleSheetsAddNoteBlock(Block):
                 input_data.note,
             )
             yield "result", {"success": True}
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to add note: {str(e)}"
@@ -6287,17 +6185,14 @@ class GoogleSheetsGetNotesBlock(Block):
             notes = result["notes"]
             yield "notes", notes
             yield "count", len(notes)
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get notes: {str(e)}"
@@ -6452,17 +6347,14 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
             )
             yield "result", {"success": True}
             yield "share_link", result["share_link"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to share spreadsheet: {str(e)}"
@@ -6599,17 +6491,14 @@ class GoogleSheetsSetPublicAccessBlock(Block):
             )
             yield "result", {"success": True, "is_public": result["is_public"]}
             yield "share_link", result["share_link"]
-            yield (
-                "spreadsheet",
-                GoogleDriveFile(
-                    id=input_data.spreadsheet.id,
-                    name=input_data.spreadsheet.name,
-                    mimeType="application/vnd.google-apps.spreadsheet",
-                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
-                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
-                    isFolder=False,
-                    _credentials_id=input_data.spreadsheet.credentials_id,
-                ),
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to set public access: {str(e)}"

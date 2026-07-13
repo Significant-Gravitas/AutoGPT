@@ -290,9 +290,8 @@ class FillTextTemplateBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         formatter = text.TextFormatter(autoescape=input_data.escape_html)
-        yield (
-            "output",
-            await formatter.format_string(input_data.format, input_data.values),
+        yield "output", await formatter.format_string(
+            input_data.format, input_data.values
         )
 
 

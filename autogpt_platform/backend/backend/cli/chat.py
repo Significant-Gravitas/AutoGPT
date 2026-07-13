@@ -169,7 +169,8 @@ def _render_session(session, messages, *, full: bool) -> str:
     lines.append(f"  created:  {s.createdAt:%Y-%m-%d %H:%M:%S}")
     lines.append(f"  updated:  {s.updatedAt:%Y-%m-%d %H:%M:%S}")
     lines.append(
-        f"  tokens:   prompt={s.totalPromptTokens} completion={s.totalCompletionTokens}"
+        f"  tokens:   prompt={s.totalPromptTokens} "
+        f"completion={s.totalCompletionTokens}"
     )
     lines.append(f"  messages: {len(messages)}")
     lines.append("=" * 80)

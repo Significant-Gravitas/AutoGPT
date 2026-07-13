@@ -534,7 +534,8 @@ async def fetch_workspace_artifact(
         # DB row exists but the storage blob is gone — genuinely unexpected,
         # so keep this one at warning level.
         logger.warning(
-            "fetch_workspace_artifact: file %s db row present but storage blob missing",
+            "fetch_workspace_artifact: file %s db row present but storage "
+            "blob missing",
             file_id,
         )
         return None

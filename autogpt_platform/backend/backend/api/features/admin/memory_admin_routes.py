@@ -995,7 +995,7 @@ async def rebuild_communities(
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Community rebuild scheduling failed: {type(exc).__name__}: {exc}"
+                f"Community rebuild scheduling failed: " f"{type(exc).__name__}: {exc}"
             ),
         )
 
