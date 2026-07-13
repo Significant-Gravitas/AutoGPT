@@ -255,14 +255,20 @@ export function Vortex(props: VortexProps) {
     initParticles();
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      drawStaticFrame(canvas, ctx);
+      let staticRedrawFrame: number | undefined;
       const staticResizeObserver = new ResizeObserver(() => {
-        resize(canvas, container);
-        initParticles();
-        drawStaticFrame(canvas, ctx);
+        if (staticRedrawFrame) window.cancelAnimationFrame(staticRedrawFrame);
+        staticRedrawFrame = window.requestAnimationFrame(() => {
+          resize(canvas, container);
+          initParticles();
+          drawStaticFrame(canvas, ctx);
+        });
       });
       staticResizeObserver.observe(container);
-      return () => staticResizeObserver.disconnect();
+      return () => {
+        if (staticRedrawFrame) window.cancelAnimationFrame(staticRedrawFrame);
+        staticResizeObserver.disconnect();
+      };
     }
 
     const resizeObserver = new ResizeObserver(() => {
