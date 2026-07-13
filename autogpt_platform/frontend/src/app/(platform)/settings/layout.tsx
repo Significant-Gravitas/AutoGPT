@@ -12,7 +12,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F9F9FA]">
+    <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <SettingsMobileNav />
