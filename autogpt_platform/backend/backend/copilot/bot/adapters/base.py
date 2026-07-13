@@ -12,7 +12,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
@@ -196,11 +197,12 @@ class PlatformAdapter(ABC):
         self, channel_id: str, user_id: str, text: str
     ) -> None: ...
 
-    @abstractmethod
-    async def start_typing(self, channel_id: str) -> None: ...
+    async def start_typing(self, channel_id: str) -> None:
+        """Show the platform's typing indicator. Default no-op — several
+        platforms (Slack bot apps, most webhook platforms) don't expose one."""
 
-    @abstractmethod
-    async def stop_typing(self, channel_id: str) -> None: ...
+    async def stop_typing(self, channel_id: str) -> None:
+        """Clear the typing indicator. Default no-op (see ``start_typing``)."""
 
     @abstractmethod
     async def create_thread(
@@ -211,10 +213,10 @@ class PlatformAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def rename_thread(self, thread_id: str, name: str) -> bool:
-        """Rename a platform thread/conversation when supported."""
-        ...
+        """Rename a platform thread/conversation. Default: unsupported —
+        platforms with unnamed/implicit threads (Slack) simply inherit this."""
+        return False
 
     @property
     @abstractmethod
@@ -373,3 +375,24 @@ class WebhookAdapter(PlatformAdapter):
         within the platform's timeout, scheduling the real work off-request.
         """
         ...
+
+
+async def read_verified_webhook_body(
+    request: Request, verify: Callable[[Request, bytes], bool]
+) -> bytes | None:
+    """Read an inbound webhook body and verify its platform signature.
+
+    Returns the raw body when the signature checks out, ``None`` otherwise —
+    the route should then return :func:`unauthorized_webhook_response`. Shared
+    so every webhook adapter verifies BEFORE parsing, against the same raw
+    bytes the platform signed.
+    """
+    raw = await request.body()
+    if not verify(request, raw):
+        return None
+    return raw
+
+
+def unauthorized_webhook_response() -> PlainTextResponse:
+    """The uniform 401 for a webhook that failed signature verification."""
+    return PlainTextResponse("invalid signature", status_code=401)

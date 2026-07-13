@@ -33,6 +33,8 @@ from backend.copilot.bot.adapters.base import (
     MessageContext,
     PostedRef,
     WebhookAdapter,
+    read_verified_webhook_body,
+    unauthorized_webhook_response,
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
@@ -173,9 +175,9 @@ class SlackAdapter(WebhookAdapter):
     # -- Inbound --
 
     async def _handle_event_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        raw = await read_verified_webhook_body(request, _verify_signature)
+        if raw is None:
+            return unauthorized_webhook_response()
         payload = json.loads(raw)
         if payload.get("type") == "url_verification":
             return JSONResponse({"challenge": payload.get("challenge", "")})
@@ -192,9 +194,8 @@ class SlackAdapter(WebhookAdapter):
         return PlainTextResponse("ok")
 
     async def _handle_command_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        if await read_verified_webhook_body(request, _verify_signature) is None:
+            return unauthorized_webhook_response()
         form_data = await request.form()
         # Slack slash-command form data is always string-valued; drop anything
         # else (UploadFile etc.) defensively before passing on.
@@ -400,12 +401,6 @@ class SlackAdapter(WebhookAdapter):
             return
         await client.chat_postEphemeral(channel=channel, user=user_id, text=text)
 
-    async def start_typing(self, channel_id: str) -> None:
-        pass  # Slack bot apps don't expose a typing indicator API.
-
-    async def stop_typing(self, channel_id: str) -> None:
-        pass
-
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
     ) -> Optional[str]:
@@ -413,9 +408,6 @@ class SlackAdapter(WebhookAdapter):
         # single target_id the handler passes back to the outbound send_* calls.
         team, channel, _ = _decode_target(channel_id)
         return _encode_target(team, channel, message_id)
-
-    async def rename_thread(self, thread_id: str, name: str) -> bool:
-        return False  # Slack threads have no name.
 
     # -- Proactive output --
 
