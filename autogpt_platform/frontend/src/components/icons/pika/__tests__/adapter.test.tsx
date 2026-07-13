@@ -43,4 +43,20 @@ describe("pika icon adapter", () => {
     expect(svg?.getAttribute("role")).toBe("img");
     expect(svg?.getAttribute("aria-label")).toBe("Download file");
   });
+
+  it("normalizes a numeric string size", () => {
+    useGetFlagMock.mockReturnValue(true);
+    const { container } = render(<DownloadSimpleIcon size="20" />);
+
+    expect(container.querySelector("svg")?.getAttribute("width")).toBe("20");
+  });
+
+  it("falls back to the Pika default size when size is missing or non-numeric", () => {
+    useGetFlagMock.mockReturnValue(true);
+    const { container: noSize } = render(<DownloadSimpleIcon />);
+    expect(noSize.querySelector("svg")?.getAttribute("width")).toBe("24");
+
+    const { container: badSize } = render(<DownloadSimpleIcon size="abc" />);
+    expect(badSize.querySelector("svg")?.getAttribute("width")).toBe("24");
+  });
 });
