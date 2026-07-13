@@ -143,7 +143,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = "http://localhost:3000"
         fake_settings.config.platform_base_url = ""
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)
@@ -165,7 +165,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = ""
         fake_settings.config.platform_base_url = "http://other"
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)
@@ -184,7 +184,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = ""
         fake_settings.config.platform_base_url = ""
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)

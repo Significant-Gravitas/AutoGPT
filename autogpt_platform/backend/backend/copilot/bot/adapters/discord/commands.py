@@ -13,10 +13,23 @@ from discord import app_commands
 
 from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
-from backend.util.exceptions import LinkAlreadyExistsError
-from backend.util.settings import Settings
+from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
 
 logger = logging.getLogger(__name__)
+
+
+def _reply_view(reply: CommandReply) -> discord.ui.View | None:
+    if not (reply.button_label and reply.button_url):
+        return None
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            style=discord.ButtonStyle.link,
+            label=reply.button_label,
+            url=reply.button_url,
+        )
+    )
+    return view
 
 
 def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
@@ -95,47 +108,21 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         return
 
     await interaction.response.defer(ephemeral=True)
-    try:
-        result = await api.create_link_token(
-            platform="discord",
-            platform_server_id=str(interaction.guild.id),
-            platform_user_id=str(interaction.user.id),
-            platform_username=interaction.user.display_name,
-            server_name=interaction.guild.name,
-            channel_id=str(interaction.channel_id or ""),
-        )
-    except LinkAlreadyExistsError:
-        await interaction.followup.send(
-            "This server is already linked — just mention me!",
-            ephemeral=True,
-        )
-        return
-    except Exception:
-        logger.exception("Failed to create link token")
-        await interaction.followup.send(
-            "Something went wrong. Try again later.",
-            ephemeral=True,
-        )
-        return
-
-    view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            style=discord.ButtonStyle.link,
-            label="Link Server",
-            url=result.link_url,
-        )
+    reply = await setup_reply(
+        api,
+        platform="discord",
+        server_noun="server",
+        platform_server_id=str(interaction.guild.id),
+        platform_user_id=str(interaction.user.id),
+        platform_username=interaction.user.display_name,
+        server_name=interaction.guild.name,
+        channel_id=str(interaction.channel_id or ""),
     )
-    await interaction.followup.send(
-        f"**Set up AutoGPT for {interaction.guild.name}**\n\n"
-        "Click the button below to connect this server to your AutoGPT "
-        "account. Once confirmed, everyone here can mention me to use "
-        "AutoGPT.\n\n"
-        "All usage will be billed to your account.\n"
-        "This link expires in 30 minutes.",
-        ephemeral=True,
-        view=view,
-    )
+    view = _reply_view(reply)
+    if view is None:
+        await interaction.followup.send(reply.text, ephemeral=True)
+        return
+    await interaction.followup.send(reply.text, ephemeral=True, view=view)
 
 
 async def _handle_help(interaction: discord.Interaction) -> None:
@@ -156,29 +143,12 @@ async def _handle_help(interaction: discord.Interaction) -> None:
 
 
 async def _handle_unlink(interaction: discord.Interaction) -> None:
-    config = Settings().config
-    base_url = config.frontend_base_url or config.platform_base_url
-    message = (
-        "Unlinking requires authentication, so it has to be done "
-        "from the web. Click below to manage your linked accounts."
-    )
-
-    if not base_url:
-        await interaction.response.send_message(
-            f"{message}\n\nOpen AutoGPT on the web and go to " "Settings → Bots.",
-            ephemeral=True,
-        )
+    reply = unlink_reply()
+    view = _reply_view(reply)
+    if view is None:
+        await interaction.response.send_message(reply.text, ephemeral=True)
         return
-
-    view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            style=discord.ButtonStyle.link,
-            label="Open Settings",
-            url=f"{base_url}/settings/bots",
-        )
-    )
-    await interaction.response.send_message(message, ephemeral=True, view=view)
+    await interaction.response.send_message(reply.text, ephemeral=True, view=view)
 
 
 async def _handle_new(interaction: discord.Interaction) -> None:
