@@ -48,7 +48,11 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 bot/
 ├── app.py              # CoPilotChatBridge(AppService), adapter factory, outbound @expose RPC
 ├── config.py           # Shared (platform-agnostic) config
-├── handler.py          # Core logic: routing, linking, batched streaming
+├── handler.py          # Orchestrator: routing, linking, attachment ingestion, batching
+├── turn_stream.py      # Streaming one batched turn: chunked sends, artifacts, renames
+├── prompt.py           # Prompt + thread-name assembly
+├── attachments.py      # Attachment upload + failure notes
+├── command_core.py     # Shared /setup + /unlink policy (adapters render it)
 ├── bot_backend.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
 ├── text.py             # Text splitting + batch formatting
 ├── threads.py          # Redis-backed thread subscription tracking
