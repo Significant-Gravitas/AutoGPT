@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import { CircleNotchIcon } from "@/components/icons/pika/adapter";
 import React from "react";
 
 const sizeClassNameMap = {

@@ -4,7 +4,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import { CircleNotchIcon } from "@/components/icons/pika/adapter";
 import NextLink, { type LinkProps } from "next/link";
 import React from "react";
 import { ButtonProps, extendedButtonVariants } from "./helpers";

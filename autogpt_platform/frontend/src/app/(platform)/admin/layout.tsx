@@ -10,7 +10,7 @@ import {
   CalculatorIcon,
   Brain,
   RobotIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/icons/pika/adapter";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
