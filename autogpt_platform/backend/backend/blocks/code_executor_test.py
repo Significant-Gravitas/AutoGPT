@@ -8,6 +8,7 @@ injection -- analogous to parameterized SQL queries.
 """
 
 import json
+import os
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -133,6 +134,40 @@ class TestBuildVariableInjection:
         big = {"data": "x" * (MAX_VARIABLES_PAYLOAD_BYTES + 1)}
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
+
+    def test_lone_surrogate_is_sanitized_not_crashed_on(self):
+        """A lone (unpaired) UTF-16 surrogate -- e.g. from malformed emoji data
+        returned by an upstream block -- must not raise. It's a valid Python
+        `str` character but not a valid standalone Unicode scalar value, so it
+        gets replaced rather than passed through to whatever consumes the env
+        var downstream.
+        """
+        variables = {"note": "Holidays \ud83c"}
+        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        assert "\ud83c" not in envs[VARIABLES_ENV_KEY]
+        # The payload must be safe to actually use as an env var value.
+        os.environ["TEST_AGPT_VARIABLES_SANITIZE_CHECK"] = envs[VARIABLES_ENV_KEY]
+        del os.environ["TEST_AGPT_VARIABLES_SANITIZE_CHECK"]
+
+    def test_real_emoji_survives_sanitization_untouched(self):
+        """Properly-paired surrogates (real emoji) are valid Unicode and must
+        not be altered by the lone-surrogate sanitization.
+        """
+        variables = {"note": "Holidays \U0001f385\U0001f3fb"}
+        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        assert json.loads(envs[VARIABLES_ENV_KEY]) == variables
+
+    def test_lone_surrogate_sanitized_inside_nested_structures(self):
+        variables = {
+            "items": [{"label": "Holidays \ud83c"}, "plain"],
+            "meta": {"tag": "x \udfff y"},
+        }
+        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        assert "\ud83c" not in envs[VARIABLES_ENV_KEY]
+        assert "\udfff" not in envs[VARIABLES_ENV_KEY]
 
 
 class TestExecuteCodeBlockRun:

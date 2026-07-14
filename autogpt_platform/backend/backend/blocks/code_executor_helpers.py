@@ -74,6 +74,8 @@ def build_variable_injection(
 
     _validate_keys(variables)
 
+    variables = _sanitize_surrogates(variables)
+
     try:
         serialized = json.dumps(variables)
     except (TypeError, ValueError) as e:
@@ -116,6 +118,30 @@ def _validate_keys(variables: dict[str, Any]) -> None:
             "Names must be valid identifiers, not language keywords, and not "
             "start with '__' or '_agpt_'."
         )
+
+
+def _sanitize_surrogates(value: Any) -> Any:
+    """Recursively replace lone (unpaired) UTF-16 surrogate codepoints in
+    string values with a plain '?'.
+
+    Upstream block output (e.g. a malformed emoji from a Notion property)
+    can contain a lone surrogate codepoint, which is valid at the Python
+    `str` level even though it isn't a valid standalone Unicode scalar
+    value. `json.dumps`'s default `ensure_ascii=True` safely escapes it for
+    transmission here, but a consumer that decodes the JSON back to a
+    string and then encodes it strictly elsewhere (e.g. inside the sandbox
+    that ultimately receives these variables) can still crash on it. Strip
+    it at the source instead of relying on every downstream consumer to
+    handle malformed Unicode correctly. Properly-paired surrogates (i.e.
+    real emoji) round-trip through `encode`/`decode` untouched.
+    """
+    if isinstance(value, str):
+        return value.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(value, dict):
+        return {k: _sanitize_surrogates(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_surrogates(v) for v in value]
+    return value
 
 
 def _is_json_serializable(value: Any) -> bool:
