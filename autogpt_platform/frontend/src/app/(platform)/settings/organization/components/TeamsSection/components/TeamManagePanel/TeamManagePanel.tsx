@@ -24,6 +24,7 @@ interface Props {
   orgMembers: OrgMemberResponse[];
   currentUserId: string | undefined;
   onChanged: () => void;
+  onDone: () => void;
   onLeft: () => void;
 }
 
@@ -33,6 +34,7 @@ export function TeamManagePanel({
   orgMembers,
   currentUserId,
   onChanged,
+  onDone,
   onLeft,
 }: Props) {
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -80,6 +82,17 @@ export function TeamManagePanel({
       className="flex flex-col gap-4 rounded-lg bg-zinc-50 p-4"
       data-testid="team-manage-panel"
     >
+      <div className="flex justify-end">
+        <Button
+          variant="ghost"
+          size="small"
+          onClick={onDone}
+          data-testid="team-done-button"
+        >
+          Done
+        </Button>
+      </div>
+
       {isTeamAdmin ? (
         <TeamProfileForm orgId={orgId} team={team} onSaved={onChanged} />
       ) : null}

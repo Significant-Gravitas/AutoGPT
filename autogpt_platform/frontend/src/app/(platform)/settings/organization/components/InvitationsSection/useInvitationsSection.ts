@@ -42,11 +42,14 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     },
   });
 
+  const orgTeams = teamsQuery.data ?? [];
+
   // Everyone lands in the org's default team automatically on accept
   // (add_org_member), so pre-assignment only makes sense for the other teams.
-  const assignableTeams = (teamsQuery.data ?? []).filter(
-    (team) => !team.is_default,
-  );
+  const assignableTeams = orgTeams.filter((team) => !team.is_default);
+
+  // Lets pending-invitation rows spell out assigned team names client-side.
+  const teamNameById = new Map(orgTeams.map((team) => [team.id, team.name]));
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteSchema),
@@ -109,6 +112,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     form,
     invitations: invitationsQuery.data ?? [],
     assignableTeams,
+    teamNameById,
     isLoading: invitationsQuery.isLoading,
     isInviting,
     isRevoking,

@@ -15,6 +15,7 @@ import {
 } from "@/components/molecules/Form/Form";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
+import { formatAssignedTeams } from "./helpers";
 import { useInvitationsSection } from "./useInvitationsSection";
 
 interface Props {
@@ -27,6 +28,7 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
     form,
     invitations,
     assignableTeams,
+    teamNameById,
     isInviting,
     isRevoking,
     handleInvite,
@@ -131,17 +133,13 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                 <span className="truncate text-sm font-medium">
                   {invitation.email}
                 </span>
-                <span className="text-xs text-zinc-500">
-                  Expires {new Date(invitation.expires_at).toLocaleDateString()}
+                <span className="truncate text-xs text-zinc-500">
+                  {invitation.team_ids.length > 0
+                    ? `${formatAssignedTeams(invitation.team_ids, teamNameById)} · Expires ${new Date(invitation.expires_at).toLocaleDateString()}`
+                    : `Expires ${new Date(invitation.expires_at).toLocaleDateString()}`}
                 </span>
               </div>
               {invitation.is_admin ? <Badge variant="info">Admin</Badge> : null}
-              {invitation.team_ids.length > 0 ? (
-                <Badge variant="info">
-                  +{invitation.team_ids.length}{" "}
-                  {invitation.team_ids.length === 1 ? "team" : "teams"}
-                </Badge>
-              ) : null}
               <Button
                 variant="ghost"
                 size="small"

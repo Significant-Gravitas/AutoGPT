@@ -13,7 +13,6 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 
-import { AliasesSection } from "./components/AliasesSection/AliasesSection";
 import { DangerZoneSection } from "./components/DangerZoneSection/DangerZoneSection";
 import { InvitationsSection } from "./components/InvitationsSection/InvitationsSection";
 import { MembersSection } from "./components/MembersSection/MembersSection";
@@ -22,10 +21,17 @@ import { OrgProfileSection } from "./components/OrgProfileSection/OrgProfileSect
 import { TeamsSection } from "./components/TeamsSection/TeamsSection";
 import { useOrganizationSettingsPage } from "./useOrganizationSettingsPage";
 
-type OrgSettingsTab = "profile" | "members" | "teams";
+// The "General" tab keeps the internal `profile` id so existing ?tab=profile
+// deep links stay valid; only the visible label changed.
+type OrgSettingsTab = "profile" | "members" | "invitations" | "teams";
 
 function isOrgSettingsTab(value: string): value is OrgSettingsTab {
-  return value === "profile" || value === "members" || value === "teams";
+  return (
+    value === "profile" ||
+    value === "members" ||
+    value === "invitations" ||
+    value === "teams"
+  );
 }
 
 function resolveInitialTab(searchParams: URLSearchParams): OrgSettingsTab {
@@ -104,22 +110,29 @@ export default function OrganizationSettingsPage() {
     );
   }
 
+  // Invitations is admin-only, so a plain member never sees the tab. Fall back
+  // to General if a non-admin lands on it via a ?tab=invitations deep link.
+  const effectiveTab =
+    activeTab === "invitations" && !isAdmin ? "profile" : activeTab;
+
   return (
     <div className="flex flex-col gap-8 py-6">
       {header}
 
       <MyInvitationsSection />
 
-      <TabsLine value={activeTab} onValueChange={handleTabChange}>
+      <TabsLine value={effectiveTab} onValueChange={handleTabChange}>
         <TabsLineList>
-          <TabsLineTrigger value="profile">Profile</TabsLineTrigger>
+          <TabsLineTrigger value="profile">General</TabsLineTrigger>
           <TabsLineTrigger value="members">Members</TabsLineTrigger>
+          {isAdmin ? (
+            <TabsLineTrigger value="invitations">Invitations</TabsLineTrigger>
+          ) : null}
           <TabsLineTrigger value="teams">Teams</TabsLineTrigger>
         </TabsLineList>
 
         <TabsLineContent value="profile" className="flex flex-col gap-8">
           <OrgProfileSection org={org} isAdmin={isAdmin} onSaved={refetchOrg} />
-          <AliasesSection orgId={org.id} isAdmin={isAdmin} />
           <DangerZoneSection
             org={org}
             members={members}
@@ -139,8 +152,13 @@ export default function OrganizationSettingsPage() {
             isAdmin={isAdmin}
             onChanged={refetchMembers}
           />
-          <InvitationsSection orgId={org.id} isAdmin={isAdmin} />
         </TabsLineContent>
+
+        {isAdmin ? (
+          <TabsLineContent value="invitations" className="flex flex-col gap-8">
+            <InvitationsSection orgId={org.id} isAdmin={isAdmin} />
+          </TabsLineContent>
+        ) : null}
 
         <TabsLineContent value="teams">
           <TeamsSection

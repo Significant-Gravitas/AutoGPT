@@ -15,7 +15,6 @@ import {
   getDeleteV2DeleteOrganizationMockHandler422,
   getDeleteV2RemoveMemberFromOrganizationMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
-  getGetV2ListOrganizationAliasesMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
   getPatchV2UpdateMemberRoleMockHandler,
@@ -178,16 +177,16 @@ function mockTeamOrg({
   server.use(
     getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
     getGetV2ListOrganizationMembersMockHandler(members),
-    getGetV2ListOrganizationAliasesMockHandler([]),
     getGetV2ListWorkspacesMockHandler([]),
     getGetV2ListPendingInvitationsMockHandler(orgInvitations),
     getGetV2ListPendingInvitationsForCurrentUserMockHandler(myInvitations),
   );
 }
 
-// Sections live under tabs now; the invite flow and members list sit on the
-// Members tab, teams on the Teams tab. Profile is the default tab.
-async function goToTab(name: "Profile" | "Members" | "Teams") {
+// Sections live under tabs now: the members list sits on the Members tab, the
+// invite flow on its own Invitations tab, and teams on the Teams tab. General
+// (the renamed Profile tab) is the default.
+async function goToTab(name: "General" | "Members" | "Invitations" | "Teams") {
   await userEvent.click(await screen.findByRole("tab", { name }));
 }
 
@@ -198,20 +197,35 @@ describe("OrganizationSettingsPage", () => {
     seedActiveOrg(TEAM_ORG.id);
   });
 
-  it("renders profile, members and invitations for an owner", async () => {
+  it("gives an owner all four tabs with profile and danger-zone on General", async () => {
     mockTeamOrg();
     render(<OrganizationSettingsPage />);
 
-    // Profile tab (default) owns the profile + danger-zone sections.
+    // General tab (default) owns the profile + danger-zone sections.
     expect(await screen.findByTestId("org-profile-section")).toBeDefined();
     expect(screen.getByTestId("org-danger-zone")).toBeDefined();
 
-    // Members + invitations live on the Members tab.
+    // Admins see the full four-tab strip: General / Members / Invitations / Teams.
+    expect(screen.getByRole("tab", { name: "General" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Members" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Invitations" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Teams" })).toBeDefined();
+  });
+
+  it("keeps the members roster on the Members tab, separate from invitations", async () => {
+    mockTeamOrg();
+    render(<OrganizationSettingsPage />);
+
     await goToTab("Members");
     expect(await screen.findByText("Members (2)")).toBeDefined();
-    expect(screen.getByTestId("org-invitations-section")).toBeDefined();
     expect(screen.getAllByTestId("org-member-row")).toHaveLength(2);
     expect(screen.getByText("Bob")).toBeDefined();
+    // Invitations moved to their own tab — the Members tab no longer hosts them.
+    expect(screen.queryByTestId("org-invitations-section")).toBeNull();
+
+    await goToTab("Invitations");
+    expect(await screen.findByTestId("org-invitations-section")).toBeDefined();
+    expect(screen.getByPlaceholderText("teammate@example.com")).toBeDefined();
   });
 
   it("hides admin-only sections from a plain member", async () => {
@@ -221,18 +235,20 @@ describe("OrganizationSettingsPage", () => {
         { ...OWNER_MEMBER, user_id: "someone-else" },
         { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
       ]),
-      getGetV2ListOrganizationAliasesMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);
 
-    // Profile tab: no danger zone or profile-edit controls for a plain member.
+    // General tab: no danger zone or profile-edit controls for a plain member.
     await screen.findByTestId("org-profile-section");
     expect(screen.queryByTestId("org-danger-zone")).toBeNull();
     expect(screen.queryByRole("combobox", { name: "New owner" })).toBeNull();
     expect(screen.queryByText("Save changes")).toBeNull();
 
-    // Members tab shows the roster but hides the admin-only invitations section.
+    // The Invitations tab is admin-only, so a plain member never sees it.
+    expect(screen.queryByRole("tab", { name: "Invitations" })).toBeNull();
+
+    // Members tab shows the roster with no invitations section anywhere.
     await goToTab("Members");
     await screen.findByTestId("org-members-section");
     expect(screen.queryByTestId("org-invitations-section")).toBeNull();
@@ -275,7 +291,7 @@ describe("OrganizationSettingsPage", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await goToTab("Members");
+    await goToTab("Invitations");
     const emailInput = await screen.findByPlaceholderText(
       "teammate@example.com",
     );
@@ -313,7 +329,7 @@ describe("OrganizationSettingsPage", () => {
     );
     render(<OrganizationSettingsPage />);
 
-    await goToTab("Members");
+    await goToTab("Invitations");
     await userEvent.click(
       await screen.findByRole("checkbox", { name: "Marketing" }),
     );
@@ -342,11 +358,15 @@ describe("OrganizationSettingsPage", () => {
     render(<OrganizationSettingsPage />);
 
     // Resolve + cache the workspaces query via the Teams tab so the invite
-    // form on the Members tab reads a settled (default-only) team list.
+    // form on the Invitations tab reads a settled (default-only) team list.
+    // Scope to the section: the renamed "General" tab shares the default
+    // team's name, so a page-wide lookup would be ambiguous.
     await goToTab("Teams");
-    await screen.findByText("General");
+    await within(await screen.findByTestId("org-teams-section")).findByText(
+      "General",
+    );
 
-    await goToTab("Members");
+    await goToTab("Invitations");
     await screen.findByRole("button", { name: "Invite" });
     // The default team is auto-joined, so with no other teams there is nothing
     // to pre-assign — the selector must not render.
@@ -629,7 +649,6 @@ describe("OrganizationSettingsPage", () => {
         { ...OWNER_MEMBER, user_id: "someone-else", is_billing_manager: true },
         { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
       ]),
-      getGetV2ListOrganizationAliasesMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);
@@ -643,19 +662,20 @@ describe("OrganizationSettingsPage", () => {
     expect(within(janeRow).queryByRole("switch")).toBeNull();
   });
 
-  it("defaults to the Profile tab", async () => {
+  it("defaults to the General tab", async () => {
     mockTeamOrg();
     render(<OrganizationSettingsPage />);
 
-    const profileTab = await screen.findByRole("tab", { name: "Profile" });
-    expect(profileTab.getAttribute("data-state")).toBe("active");
+    const generalTab = await screen.findByRole("tab", { name: "General" });
+    expect(generalTab.getAttribute("data-state")).toBe("active");
     expect(screen.getByTestId("org-profile-section")).toBeDefined();
     // Inactive tabs' sections stay unmounted until selected.
     expect(screen.queryByTestId("org-members-section")).toBeNull();
+    expect(screen.queryByTestId("org-invitations-section")).toBeNull();
     expect(screen.queryByTestId("org-teams-section")).toBeNull();
   });
 
-  it("reveals members and invitations when the Members tab is selected", async () => {
+  it("reveals the members roster when the Members tab is selected", async () => {
     mockTeamOrg();
     render(<OrganizationSettingsPage />);
 
@@ -663,8 +683,50 @@ describe("OrganizationSettingsPage", () => {
     await goToTab("Members");
 
     expect(await screen.findByTestId("org-members-section")).toBeDefined();
-    expect(screen.getByTestId("org-invitations-section")).toBeDefined();
+    // The invite form lives on the Invitations tab, not here.
+    expect(screen.queryByTestId("org-invitations-section")).toBeNull();
+  });
+
+  it("reveals the invite form when the Invitations tab is selected", async () => {
+    mockTeamOrg();
+    render(<OrganizationSettingsPage />);
+
+    await screen.findByTestId("org-profile-section");
+    await goToTab("Invitations");
+
+    expect(await screen.findByTestId("org-invitations-section")).toBeDefined();
     expect(screen.getByPlaceholderText("teammate@example.com")).toBeDefined();
+    expect(screen.queryByTestId("org-members-section")).toBeNull();
+  });
+
+  it("spells out assigned team names on a pending invitation", async () => {
+    mockTeamOrg({
+      orgInvitations: [
+        {
+          id: "inv-teams",
+          email: "new@acme.test",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [MARKETING_TEAM.id, ENGINEERING_TEAM.id],
+        },
+      ],
+    });
+    server.use(
+      getGetV2ListWorkspacesMockHandler([
+        DEFAULT_TEAM,
+        MARKETING_TEAM,
+        ENGINEERING_TEAM,
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await goToTab("Invitations");
+    const row = await screen.findByTestId("org-invitation-row");
+    // Team names are spelled out rather than shown as a "+N teams" count.
+    expect(within(row).getByText(/Marketing, Engineering/)).toBeDefined();
+    expect(within(row).queryByText(/\+\d+ teams?/)).toBeNull();
   });
 
   it("keeps the invitation banner visible from every tab", async () => {
@@ -687,6 +749,8 @@ describe("OrganizationSettingsPage", () => {
 
     expect(await screen.findByTestId("my-invitations-section")).toBeDefined();
     await goToTab("Members");
+    expect(screen.getByTestId("my-invitations-section")).toBeDefined();
+    await goToTab("Invitations");
     expect(screen.getByTestId("my-invitations-section")).toBeDefined();
     await goToTab("Teams");
     expect(screen.getByTestId("my-invitations-section")).toBeDefined();
@@ -716,12 +780,12 @@ describe("OrganizationSettingsPage", () => {
     expect(await screen.findByTestId("org-teams-section")).toBeDefined();
   });
 
-  it("ignores an unknown ?tab= value and falls back to the Profile default", async () => {
+  it("ignores an unknown ?tab= value and falls back to the General default", async () => {
     mockTeamOrg();
     mockSearchParams.current = new URLSearchParams({ tab: "bogus" });
     render(<OrganizationSettingsPage />);
 
-    const profileTab = await screen.findByRole("tab", { name: "Profile" });
-    expect(profileTab.getAttribute("data-state")).toBe("active");
+    const generalTab = await screen.findByRole("tab", { name: "General" });
+    expect(generalTab.getAttribute("data-state")).toBe("active");
   });
 });

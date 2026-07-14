@@ -181,9 +181,20 @@ async function teamRow(teamName: string) {
   return label.closest("li") as HTMLElement;
 }
 
-async function openManagePanel(teamName: string) {
+// A team row's actions now live behind a "..." kebab. Radix opens the menu on
+// pointerdown and portals its items to the document body, so open via the
+// trigger, then reach the item at the screen level (not scoped to the row).
+async function openTeamMenu(teamName: string) {
   const row = await teamRow(teamName);
-  await userEvent.click(within(row).getByTestId("manage-team-button"));
+  fireEvent.pointerDown(within(row).getByTestId("team-actions-button"), {
+    button: 0,
+  });
+  await screen.findByRole("menuitem", { name: "Manage" });
+}
+
+async function openManagePanel(teamName: string) {
+  await openTeamMenu(teamName);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Manage" }));
   return screen.findByTestId("team-manage-panel");
 }
 
@@ -193,7 +204,7 @@ describe("TeamsSection", () => {
     seedActiveOrg();
   });
 
-  it("lists teams with default, open and private badges", async () => {
+  it("labels each team with a single neutral Default or Private badge", async () => {
     mockOrg();
     render(<OrganizationSettingsPage />);
 
@@ -204,9 +215,11 @@ describe("TeamsSection", () => {
     expect(within(section).getByText("General")).toBeDefined();
     expect(within(section).getByText("Marketing")).toBeDefined();
     expect(within(section).getByText("Skunkworks")).toBeDefined();
+    // One neutral badge per team: "Default" on the default team, "Private" on
+    // private teams, and nothing on open non-default teams (Marketing).
     expect(within(section).getByText("Default")).toBeDefined();
-    expect(within(section).getAllByText("Open")).toHaveLength(2);
     expect(within(section).getByText("Private")).toBeDefined();
+    expect(within(section).queryByText("Open")).toBeNull();
     expect(within(section).getByText("4 members")).toBeDefined();
   });
 
@@ -238,7 +251,7 @@ describe("TeamsSection", () => {
     });
   });
 
-  it("joins an open team from its row", async () => {
+  it("joins an open non-default team from its kebab menu", async () => {
     const joinSpy = vi.fn();
     mockOrg();
     server.use(
@@ -250,12 +263,23 @@ describe("TeamsSection", () => {
     render(<OrganizationSettingsPage />);
 
     await showTeamsTab();
-    const row = await teamRow("Marketing");
-    await userEvent.click(within(row).getByRole("button", { name: "Join" }));
+    await openTeamMenu("Marketing");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Join" }));
 
     await waitFor(() => {
       expect(joinSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("never offers a Join action on the auto-joined default team", async () => {
+    mockOrg();
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    await openTeamMenu("General");
+    // The menu opened (Manage is present) but Join is withheld on the default
+    // team, which members already belong to.
+    expect(screen.queryByRole("menuitem", { name: "Join" })).toBeNull();
   });
 
   it("deletes a non-default team after confirmation", async () => {
@@ -269,8 +293,8 @@ describe("TeamsSection", () => {
     render(<OrganizationSettingsPage />);
 
     await showTeamsTab();
-    const row = await teamRow("Skunkworks");
-    await userEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    await openTeamMenu("Skunkworks");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(
@@ -291,11 +315,11 @@ describe("TeamsSection", () => {
     });
     render(<OrganizationSettingsPage />);
 
-    const section = await showTeamsTab();
+    await showTeamsTab();
     expect(screen.queryByTestId("create-team-button")).toBeNull();
-    expect(
-      within(section).queryByRole("button", { name: "Delete" }),
-    ).toBeNull();
+    // A plain member's team kebab exposes Manage but never Delete.
+    await openTeamMenu("Skunkworks");
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
   });
 
   it("shows admin management affordances in the manage panel for a team admin", async () => {
@@ -317,6 +341,24 @@ describe("TeamsSection", () => {
       within(panel).getByRole("combobox", { name: "Add a member" }),
     ).toBeDefined();
     expect(within(panel).queryByTestId("team-leave-button")).toBeNull();
+  });
+
+  it("collapses the manage panel from its Done button", async () => {
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "Jane", is_admin: true }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const panel = await openManagePanel("Marketing");
+    await userEvent.click(within(panel).getByTestId("team-done-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("team-manage-panel")).toBeNull();
+    });
   });
 
   it("shows a read-only view with a Leave action for a non-admin member", async () => {

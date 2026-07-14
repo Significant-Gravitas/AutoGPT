@@ -5,7 +5,13 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { PlusIcon } from "@phosphor-icons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { DotsThree, PlusIcon } from "@phosphor-icons/react";
 
 import { CreateTeamDialog } from "./components/CreateTeamDialog/CreateTeamDialog";
 import { TeamManagePanel } from "./components/TeamManagePanel/TeamManagePanel";
@@ -22,10 +28,9 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
     teams,
     isLoading,
     expandedTeamId,
-    toggleExpanded,
+    setExpandedTeamId,
     teamToDelete,
     setTeamToDelete,
-    isJoining,
     isDeleting,
     handleJoin,
     handleDeleteConfirmed,
@@ -90,39 +95,45 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                   </div>
                   {team.is_default ? (
                     <Badge variant="info">Default</Badge>
-                  ) : null}
-                  {team.join_policy === "OPEN" ? (
-                    <Badge variant="success">Open</Badge>
-                  ) : (
+                  ) : team.join_policy !== "OPEN" ? (
                     <Badge variant="info">Private</Badge>
-                  )}
-                  {team.join_policy === "OPEN" ? (
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      loading={isJoining}
-                      onClick={() => handleJoin(team)}
-                    >
-                      Join
-                    </Button>
                   ) : null}
-                  <Button
-                    variant="ghost"
-                    size="small"
-                    onClick={() => toggleExpanded(team.id)}
-                    data-testid="manage-team-button"
-                  >
-                    {isExpanded ? "Close" : "Manage"}
-                  </Button>
-                  {canDelete && !team.is_default ? (
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      onClick={() => setTeamToDelete(team)}
-                    >
-                      Delete
-                    </Button>
-                  ) : null}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="rounded p-1.5 text-neutral-600 transition-colors hover:bg-neutral-100"
+                        aria-label={`Team actions for ${team.name}`}
+                        data-testid="team-actions-button"
+                      >
+                        <DotsThree className="h-5 w-5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {!team.is_default && team.join_policy === "OPEN" ? (
+                        <DropdownMenuItem
+                          onClick={() => handleJoin(team)}
+                          data-testid="team-join-item"
+                        >
+                          Join
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem
+                        onClick={() => setExpandedTeamId(team.id)}
+                        data-testid="manage-team-button"
+                      >
+                        Manage
+                      </DropdownMenuItem>
+                      {canDelete && !team.is_default ? (
+                        <DropdownMenuItem
+                          onClick={() => setTeamToDelete(team)}
+                          className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                          data-testid="team-delete-item"
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 {isExpanded ? (
@@ -132,8 +143,9 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                     orgMembers={orgMembers}
                     currentUserId={currentMember?.user_id}
                     onChanged={refetch}
+                    onDone={() => setExpandedTeamId(null)}
                     onLeft={() => {
-                      toggleExpanded(team.id);
+                      setExpandedTeamId(null);
                       refetch();
                     }}
                   />
