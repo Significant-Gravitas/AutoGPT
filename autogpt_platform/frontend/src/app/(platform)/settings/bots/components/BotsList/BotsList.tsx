@@ -39,8 +39,7 @@ export function BotsList() {
           No bots enabled
         </Text>
         <Text variant="body" className="max-w-[360px] text-zinc-500">
-          No chat-bot platforms are configured on this deployment. Ask an
-          administrator to enable Discord, Slack, or another adapter.
+          No chat-bot platforms are available on this deployment right now.
         </Text>
       </div>
     );
