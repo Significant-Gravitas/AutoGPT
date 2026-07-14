@@ -3,7 +3,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { isEditableElement } from "@/lib/platform";
-import PiPencilEditBoxSolidStroke from "@/components/icons/pika/vendor/PiPencilEditBoxSolidStroke";
+import { NotePencilSolidIcon } from "@/components/icons/pika/adapter";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -20,7 +20,7 @@ function NewTaskIcon() {
     return <LoadingSpinner size="small" className="shrink-0" />;
   }
 
-  return <PiPencilEditBoxSolidStroke className="size-4" />;
+  return <NotePencilSolidIcon className="size-4" />;
 }
 
 export function NewTaskItem() {

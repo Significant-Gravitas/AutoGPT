@@ -128,6 +128,7 @@ import PiNotionStroke from "./vendor/PiNotionStroke";
 import PiPackage01Stroke from "./vendor/PiPackage01Stroke";
 import PiPaintBrushStroke from "./vendor/PiPaintBrushStroke";
 import PiPauseCircleStroke from "./vendor/PiPauseCircleStroke";
+import PiPencilEditBoxSolidStroke from "./vendor/PiPencilEditBoxSolidStroke";
 import PiPencilEditBoxStroke from "./vendor/PiPencilEditBoxStroke";
 import PiPencilEditLineStroke from "./vendor/PiPencilEditLineStroke";
 import PiPencilEditStroke from "./vendor/PiPencilEditStroke";
@@ -449,6 +450,9 @@ export const MonitorIcon = makeIcon(PiMonitor01Stroke);
 export const MonitorPlayIcon = makeIcon(PiMediaPlaySquareStroke);
 export const MoonIcon = makeIcon(PiMoonStroke);
 export const NotePencilIcon = makeIcon(PiPencilEditBoxStroke);
+// "New Task" sidebar action uses the filled pencil variant; Phosphor has no
+// solid-stroke equivalent, so this name exists only in the adapter.
+export const NotePencilSolidIcon = makeIcon(PiPencilEditBoxSolidStroke);
 // "New chat" compose icon: Phosphor has no chat-plus equivalent, so this name
 // exists only in the adapter.
 export const ChatPlusIcon = makeIcon(PiChatPlusStroke);
