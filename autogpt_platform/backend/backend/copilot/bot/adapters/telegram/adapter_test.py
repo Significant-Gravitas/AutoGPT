@@ -208,12 +208,36 @@ class TestOutbound:
         assert kwargs["text"] == "<b>bold</b> &amp; plain"
 
     @pytest.mark.asyncio
-    async def test_send_link_uses_inline_keyboard(self):
+    async def test_send_link_prefers_login_url_for_https(self):
+        # Telegram attaches a signed identity when the user taps a login_url
+        # button — the /link page verifies it for seamless linking.
         a = _adapter()
         await a.send_link("42", "Link it", "Open AutoGPT", "https://x/l")
-        kwargs = a._client.call.call_args.kwargs
-        button = kwargs["reply_markup"]["inline_keyboard"][0][0]
-        assert button == {"text": "Open AutoGPT", "url": "https://x/l"}
+        button = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][
+            0
+        ]
+        assert button == {"text": "Open AutoGPT", "login_url": {"url": "https://x/l"}}
+
+    @pytest.mark.asyncio
+    async def test_send_link_falls_back_to_plain_url_when_login_rejected(self):
+        # Unregistered domain (no BotFather /setdomain) → login_url send fails;
+        # the link must still arrive as a plain URL button.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[RuntimeError("BUTTON_TYPE_INVALID"), {}]
+        )
+        await a.send_link("42", "Link it", "Open AutoGPT", "https://x/l")
+        retry = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][0]
+        assert retry == {"text": "Open AutoGPT", "url": "https://x/l"}
+
+    @pytest.mark.asyncio
+    async def test_send_link_plain_url_for_non_https(self):
+        a = _adapter()
+        await a.send_link("42", "Link it", "Open", "http://localhost:3000/l")
+        button = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][
+            0
+        ]
+        assert button == {"text": "Open", "url": "http://localhost:3000/l"}
 
     @pytest.mark.asyncio
     async def test_create_thread_declines_so_replies_stay_in_chat(self):

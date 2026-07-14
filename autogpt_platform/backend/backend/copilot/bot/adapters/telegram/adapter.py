@@ -302,12 +302,37 @@ class TelegramAdapter(WebhookAdapter):
         self, channel_id: str, text: str, link_label: str, link_url: str
     ) -> None:
         chat_id, thread_id = _decode_target(channel_id)
+        params: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": self.localize_markup(text),
+            "parse_mode": "HTML",
+            "message_thread_id": thread_id,
+        }
+        # Prefer a login_url button: Telegram attaches a signed identity to
+        # the opened URL, so our /link page can verify WHO tapped it (seamless
+        # linking). Requires the domain to be registered with @BotFather
+        # (/setdomain) and HTTPS — fall back to a plain URL button otherwise
+        # so local/dev setups keep working.
+        if link_url.startswith("https://"):
+            try:
+                await self._client.call(
+                    "sendMessage",
+                    **params,
+                    reply_markup={
+                        "inline_keyboard": [
+                            [{"text": link_label, "login_url": {"url": link_url}}]
+                        ]
+                    },
+                )
+                return
+            except Exception:
+                logger.info(
+                    "login_url button rejected (domain not registered with "
+                    "BotFather?); falling back to a plain URL button"
+                )
         await self._client.call(
             "sendMessage",
-            chat_id=chat_id,
-            text=self.localize_markup(text),
-            parse_mode="HTML",
-            message_thread_id=thread_id,
+            **params,
             reply_markup={"inline_keyboard": [[{"text": link_label, "url": link_url}]]},
         )
 

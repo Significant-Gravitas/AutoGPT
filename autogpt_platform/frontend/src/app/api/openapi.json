@@ -10048,6 +10048,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10198,6 +10211,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -14780,6 +14806,23 @@
         "type": "object",
         "required": ["uuid"],
         "title": "CommunitySummary"
+      },
+      "ConfirmLinkRequest": {
+        "properties": {
+          "telegram_auth": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Telegram Auth"
+          }
+        },
+        "type": "object",
+        "title": "ConfirmLinkRequest",
+        "description": "Optional confirm payload. ``telegram_auth`` carries the signed identity\nTelegram appends when the user reached this page via a login_url button —\nwhen present it must verify, and the link token must belong to that same\nTelegram user."
       },
       "ConfirmLinkResponse": {
         "properties": {

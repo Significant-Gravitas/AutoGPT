@@ -179,6 +179,51 @@ describe("PlatformLinkPage", () => {
     ).toBeDefined();
   });
 
+  test("forwards telegram login params to the confirm endpoint", async () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      }),
+    );
+    let capturedBody: unknown = null;
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "TELEGRAM",
+        link_type: LinkType.USER,
+        server_name: null,
+      }),
+      getPostPlatformLinkingConfirmAUserLinkTokenUserMustBeAuthenticatedMockHandler200(
+        async (info) => {
+          capturedBody = await info.request.json();
+          return {
+            success: true,
+            link_type: LinkType.USER,
+            platform: "TELEGRAM",
+            platform_user_id: "424242",
+          };
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect my telegram dms/i }),
+    );
+    await screen.findByRole("heading", { name: /autogpt is ready/i });
+
+    expect(capturedBody).toEqual({
+      telegram_auth: {
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      },
+    });
+  });
+
   test("loads user link details and confirms the user link endpoint", async () => {
     let serverConfirmCalls = 0;
     let userConfirmCalls = 0;
