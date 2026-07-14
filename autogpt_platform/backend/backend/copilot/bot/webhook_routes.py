@@ -12,6 +12,8 @@ import logging
 from fastapi import FastAPI
 
 from .adapters.base import WebhookAdapter
+from .adapters.slack import config as slack_config
+from .adapters.slack.adapter import SlackAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 
@@ -40,4 +42,13 @@ def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     mounts nothing.
     """
     adapters: list[WebhookAdapter] = []
+    # Signing secret is always required (inbound verification, one per app). Then
+    # either OAuth app creds (multi-workspace "Add to Slack") or a single static
+    # token (single-workspace back-compat) is enough to mount the adapter.
+    has_credentials = (
+        slack_config.get_client_id() and slack_config.get_client_secret()
+    ) or slack_config.get_bot_token()
+    if slack_config.get_signing_secret() and has_credentials:
+        adapters.append(SlackAdapter(api))
+        logger.info("Slack adapter enabled")
     return adapters

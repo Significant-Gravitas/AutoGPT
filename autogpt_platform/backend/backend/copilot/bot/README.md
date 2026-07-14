@@ -36,7 +36,8 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 
 | Variable | Purpose |
 |----------|---------|
-| `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord adapter |
+| `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord (socket) adapter |
+| `AUTOPILOT_BOT_SLACK_TOKEN` + `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack bot token + signing secret — set **both** to mount the Slack (webhook / Events API) adapter on the main backend API |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
 | `PLATFORMLINKINGMANAGER_HOST` | DNS name of the `PlatformLinkingManager` service pod (cluster-internal RPC) |
@@ -47,17 +48,29 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 bot/
 ├── app.py              # CoPilotChatBridge(AppService), adapter factory, outbound @expose RPC
 ├── config.py           # Shared (platform-agnostic) config
-├── handler.py          # Core logic: routing, linking, batched streaming
+├── handler.py          # Orchestrator: routing, linking, attachment ingestion, batching
+├── turn_stream.py      # Streaming one batched turn: chunked sends, artifacts, renames
+├── prompt.py           # Prompt + thread-name assembly
+├── attachments.py      # Attachment upload + failure notes
+├── command_core.py     # Shared /setup + /unlink policy (adapters render it)
 ├── bot_backend.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
 ├── text.py             # Text splitting + batch formatting
 ├── threads.py          # Redis-backed thread subscription tracking
 ├── webhook_routes.py   # Mounts webhook adapters' inbound routes on the main API
 └── adapters/
     ├── base.py         # PlatformAdapter (outbound) + SocketAdapter / WebhookAdapter + MessageContext
-    └── discord/
-        ├── adapter.py  # Gateway connection, events, sends, thread creation
-        ├── commands.py # Slash commands (/setup, /help, /unlink)
-        └── config.py   # Discord token + platform limits
+    ├── shared.py       # Platform-agnostic adapter helpers (attachments, history budget, bot-loop guard)
+    ├── discord/        # SocketAdapter — Discord Gateway
+    │   ├── adapter.py  # Gateway connection, events, sends, thread creation
+    │   ├── commands.py # Slash commands (/setup, /help, /unlink)
+    │   └── config.py   # Discord token + platform limits
+    └── slack/          # WebhookAdapter — Slack Events API
+        ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
+        ├── commands.py      # Slash commands (/setup, /help, /unlink)
+        ├── config.py        # Slack token + signing secret + platform limits
+        ├── signing.py       # HMAC-SHA256 request signature verification
+        ├── text.py          # CommonMark → Slack mrkdwn
+        └── app-manifest.yaml # Importable Slack app definition (scopes, events, commands)
 ```
 
 **Connector taxonomy.** `PlatformAdapter` is the outbound contract the core

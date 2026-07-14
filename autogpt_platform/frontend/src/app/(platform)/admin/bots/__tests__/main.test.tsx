@@ -38,10 +38,23 @@ function mockAllEndpoints() {
       { date: new Date("2026-06-01T00:00:00Z"), server_count: 42 },
     ]),
     getGetV2TopServersByActivityMockHandler200([
-      { server_id: "1", name: "Cool Guild", messages: 500, commands: 10 },
+      {
+        platform: "DISCORD",
+        server_id: "1",
+        name: "Cool Guild",
+        messages: 500,
+        commands: 10,
+      },
+      {
+        platform: "SLACK",
+        server_id: "T1",
+        name: "Cool Workspace",
+        messages: 300,
+        commands: 4,
+      },
     ]),
     getGetV2CommandUsageBreakdownMockHandler200([
-      { command: "setup", uses: 12 },
+      { platform: "DISCORD", command: "setup", uses: 12 },
     ]),
     getGetV2BotServerRosterMockHandler200([
       {
@@ -73,5 +86,36 @@ describe("BotsContent", () => {
     expect(await screen.findAllByText("Cool Guild")).toHaveLength(2);
     expect(await screen.findByText("/setup")).toBeDefined();
     expect(await screen.findByText("Active")).toBeDefined();
+  });
+
+  it("labels each row with its platform on the All platforms view", async () => {
+    mockAllEndpoints();
+    render(<BotsContent />);
+
+    // Discord appears in all three tables (top servers, command usage, roster);
+    // Slack only in the top-servers table — proving mixed rows are disambiguated.
+    expect(
+      (await screen.findAllByText("Discord")).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(await screen.findByText("Slack")).toBeDefined();
+  });
+
+  it("falls back to the raw platform name for an unknown platform", async () => {
+    mockAllEndpoints();
+    server.use(
+      getGetV2TopServersByActivityMockHandler200([
+        {
+          platform: "TELEGRAM",
+          server_id: "tg1",
+          name: "Mystery",
+          messages: 1,
+          commands: 0,
+        },
+      ]),
+    );
+    render(<BotsContent />);
+
+    // No label entry exists for TELEGRAM, so the badge shows the raw key.
+    expect(await screen.findByText("TELEGRAM")).toBeDefined();
   });
 });
