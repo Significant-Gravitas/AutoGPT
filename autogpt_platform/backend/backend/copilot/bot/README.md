@@ -38,7 +38,7 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 |----------|---------|
 | `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord (socket) adapter |
 | `AUTOPILOT_BOT_SLACK_TOKEN` + `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack bot token + signing secret — set **both** to mount the Slack (webhook / Events API) adapter on the main backend API |
-| `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`) |
+| `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`). Also disable group privacy mode via BotFather `/setprivacy` or the bot can't see @mentions in groups |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
 | `PLATFORMLINKINGMANAGER_HOST` | DNS name of the `PlatformLinkingManager` service pod (cluster-internal RPC) |

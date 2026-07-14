@@ -3,6 +3,12 @@
 One bot (from @BotFather) serves every chat — Telegram has no per-workspace
 install, so a single token + webhook secret is the whole credential story.
 
+Bot setup checklist (once per bot, via @BotFather):
+- ``/setprivacy`` -> Disable — group privacy mode ON (the default) means the
+  bot never receives plain group messages, so @mentions and reply-to-bot go
+  unseen. After changing it, remove + re-add the bot to existing groups.
+- The command menu registers itself on startup (setMyCommands).
+
 The webhook itself is registered once, out of band, with the secret Telegram
 will echo back in the ``X-Telegram-Bot-Api-Secret-Token`` header:
 
