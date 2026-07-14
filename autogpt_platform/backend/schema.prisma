@@ -2167,3 +2167,26 @@ model BotGuild {
   @@unique([platform, serverId])
   @@index([platform, leftAt])
 }
+
+// Per-workspace OAuth install credentials for webhook bots that use a
+// multi-tenant "Add to <platform>" install flow (Slack Events API, and later
+// Teams etc.). One row per installed workspace/team, holding that workspace's
+// bot token ENCRYPTED at rest via JSONCryptor — exactly like User.integrations,
+// never a raw token. This is the credential the adapter uses to call the
+// platform API on that workspace's behalf; distinct from BotGuild (presence /
+// analytics) and PlatformLink (account ownership).
+model BotInstall {
+  id               String       @id @default(uuid())
+  platform         PlatformType
+  platformServerId String // Workspace/team ID (e.g. Slack team_id)
+  credentials      String // Encrypted JSON: { bot_token, ... }
+  botUserId        String? // The bot's own user ID within that workspace
+  appId            String? // Platform app ID (used to match uninstall events)
+  name             String? // Workspace display name (best-effort, may go stale)
+  installedAt      DateTime     @default(now())
+  updatedAt        DateTime?    @updatedAt
+  revokedAt        DateTime? // Set on app_uninstalled / tokens_revoked
+
+  @@unique([platform, platformServerId])
+  @@index([platform, revokedAt])
+}
