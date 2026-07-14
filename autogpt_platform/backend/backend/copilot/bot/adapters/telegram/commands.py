@@ -29,7 +29,7 @@ COMMAND_MENU = [
 ]
 
 _HELP_TEXT = (
-    "<b>AutoGPT for Telegram</b>\n"
+    "**AutoGPT for Telegram**\n"
     "• Add me to a group and run /setup to link it to an AutoGPT account.\n"
     "• Mention me (or reply to my messages) in a group to chat.\n"
     "• Message me directly to chat with your personal AutoGPT account.\n"

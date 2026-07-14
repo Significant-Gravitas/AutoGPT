@@ -74,7 +74,11 @@ async def test_help_sends_usage_text():
     client = MagicMock()
     client.call = AsyncMock()
     await commands.handle(MagicMock(), client, _message("/help"), "help")
-    assert "AutoGPT for Telegram" in client.call.call_args.kwargs["text"]
+    text = client.call.call_args.kwargs["text"]
+    # Rendered as real HTML — an escaped-entity regression would show the
+    # user literal &lt;b&gt; junk.
+    assert "<b>AutoGPT for Telegram</b>" in text
+    assert "&lt;" not in text
 
 
 @pytest.mark.asyncio
