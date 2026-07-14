@@ -9,6 +9,7 @@ import { InvitationsSection } from "./components/InvitationsSection/InvitationsS
 import { MembersSection } from "./components/MembersSection/MembersSection";
 import { MyInvitationsSection } from "./components/MyInvitationsSection/MyInvitationsSection";
 import { OrgProfileSection } from "./components/OrgProfileSection/OrgProfileSection";
+import { TeamsSection } from "./components/TeamsSection/TeamsSection";
 import { useOrganizationSettingsPage } from "./useOrganizationSettingsPage";
 
 export default function OrganizationSettingsPage() {
@@ -69,6 +70,11 @@ export default function OrganizationSettingsPage() {
             currentMember={currentMember}
             isAdmin={isAdmin}
             onChanged={refetchMembers}
+          />
+          <TeamsSection
+            orgId={org.id}
+            orgMembers={members}
+            currentMember={currentMember}
           />
           <InvitationsSection orgId={org.id} isAdmin={isAdmin} />
           <DangerZoneSection org={org} currentMember={currentMember} />

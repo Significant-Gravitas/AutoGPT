@@ -8,6 +8,7 @@ import {
   getDeleteV2RemoveMemberFromOrganizationMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
+  getGetV2ListWorkspacesMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
 } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import {
@@ -102,6 +103,7 @@ function mockTeamOrg({
   server.use(
     getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
     getGetV2ListOrganizationMembersMockHandler(members),
+    getGetV2ListWorkspacesMockHandler([]),
     getGetV2ListPendingInvitationsMockHandler(orgInvitations),
     getGetV2ListPendingInvitationsForCurrentUserMockHandler(myInvitations),
   );
@@ -132,6 +134,7 @@ describe("OrganizationSettingsPage", () => {
         { ...OWNER_MEMBER, user_id: "someone-else" },
         { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
       ]),
+      getGetV2ListWorkspacesMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);

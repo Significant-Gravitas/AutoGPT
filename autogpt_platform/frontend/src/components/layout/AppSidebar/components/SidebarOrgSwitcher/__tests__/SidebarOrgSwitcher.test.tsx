@@ -90,15 +90,15 @@ describe("SidebarOrgSwitcher", () => {
     expect(screen.queryByTestId("sidebar-org-switcher-trigger")).toBeNull();
   });
 
-  it("shows the active org and team on the trigger", () => {
+  it("shows the active org on the trigger without a team subtitle", () => {
     seedStore();
     renderSwitcher();
     const trigger = screen.getByTestId("sidebar-org-switcher-trigger");
     expect(trigger.textContent).toContain(COMPANY_ORG.name);
-    expect(trigger.textContent).toContain(DEFAULT_TEAM.name);
+    expect(trigger.textContent).not.toContain(DEFAULT_TEAM.name);
   });
 
-  it("lists every org and team with badges when opened", async () => {
+  it("lists every org with badges but no team-switching section", async () => {
     seedStore();
     renderSwitcher();
     await openSwitcher();
@@ -106,8 +106,8 @@ describe("SidebarOrgSwitcher", () => {
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getAllByText(COMPANY_ORG.name).length).toBeGreaterThan(0);
     expect(screen.getByText("Personal")).toBeDefined();
-    expect(screen.getByText(PRIVATE_TEAM.name)).toBeDefined();
-    expect(screen.getByText("Private")).toBeDefined();
+    expect(screen.queryByText("Teams")).toBeNull();
+    expect(screen.queryByText(PRIVATE_TEAM.name)).toBeNull();
   });
 
   it("surfaces Manage + Create organization actions", async () => {

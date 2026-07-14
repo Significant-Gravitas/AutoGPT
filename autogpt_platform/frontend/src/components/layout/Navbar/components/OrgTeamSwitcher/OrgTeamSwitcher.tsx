@@ -20,15 +20,7 @@ import { useState } from "react";
 
 export function OrgTeamSwitcher() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const {
-    orgs,
-    teams,
-    activeOrg,
-    activeTeam,
-    switchOrg,
-    switchTeam,
-    isLoaded,
-  } = useOrgTeamSwitcher();
+  const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
 
   if (!isLoaded || orgs.length === 0) {
     return null;
@@ -92,34 +84,6 @@ export function OrgTeamSwitcher() {
               </button>
             ))}
           </div>
-
-          {/* Team list (only if orgs exist) */}
-          {teams.length > 0 && (
-            <>
-              <div className="border-t border-neutral-100" />
-              <div className="flex flex-col gap-0.5">
-                <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
-                  Teams
-                </span>
-                {teams.map((ws) => (
-                  <button
-                    key={ws.id}
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-100"
-                    onClick={() => switchTeam(ws.id)}
-                  >
-                    <span className="flex-1 truncate text-left">{ws.name}</span>
-                    {ws.joinPolicy === "PRIVATE" && (
-                      <span className="text-xs text-neutral-400">Private</span>
-                    )}
-                    {ws.id === activeTeam?.id && (
-                      <CheckIcon size={14} className="text-green-600" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
 
           <div className="border-t border-neutral-100" />
           <div className="flex flex-col gap-0.5">
