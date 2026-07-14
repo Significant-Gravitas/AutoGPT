@@ -70,10 +70,14 @@ function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
   const router = useRouter();
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
   const setActiveScenario = useTourStore((s) => s.setActiveScenario);
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
+  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
 
   function selectScenario(id: string) {
-    clearArtifactPreview();
+    // Close (not just clear) the panel: a completed demo leaves
+    // artifactPanel.isOpen=true, which keeps the chat column dimmed at
+    // opacity-50 behind it. persist:false keeps the tour from leaking
+    // panel state into the real /copilot, same as TourCopilot's cleanup.
+    closeArtifactPanel({ persist: false });
     setActiveScenario(id);
     if (variant === "marketplace") router.push("/tour/chat");
   }

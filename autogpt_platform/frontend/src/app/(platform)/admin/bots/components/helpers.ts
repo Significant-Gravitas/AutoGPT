@@ -9,6 +9,7 @@ export const DAYS_OPTIONS = [
 export const PLATFORM_OPTIONS = [
   { value: "all", label: "All platforms" },
   { value: "DISCORD", label: "Discord" },
+  { value: "SLACK", label: "Slack" },
 ];
 
 export function formatNumber(value: number | null | undefined): string {

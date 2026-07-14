@@ -7,9 +7,26 @@ from fastapi import FastAPI
 from .adapters.base import WebhookAdapter
 from .webhook_routes import _build_webhook_adapters, register_webhook_adapters
 
+_SLACK_CFG = "backend.copilot.bot.webhook_routes.slack_config"
 
-def test_build_webhook_adapters_starts_empty():
-    assert _build_webhook_adapters(MagicMock()) == []
+
+def test_build_webhook_adapters_empty_without_slack_creds():
+    with (
+        patch(f"{_SLACK_CFG}.get_bot_token", return_value=""),
+        patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
+    ):
+        assert _build_webhook_adapters(MagicMock()) == []
+
+
+def test_build_webhook_adapters_includes_slack_when_configured():
+    with (
+        patch(f"{_SLACK_CFG}.get_bot_token", return_value="xoxb-x"),
+        patch(f"{_SLACK_CFG}.get_signing_secret", return_value="secret"),
+        patch("backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"),
+    ):
+        adapters = _build_webhook_adapters(MagicMock())
+    assert len(adapters) == 1
+    assert adapters[0].platform_name == "slack"
 
 
 def test_register_webhook_adapters_wires_each_adapter():
