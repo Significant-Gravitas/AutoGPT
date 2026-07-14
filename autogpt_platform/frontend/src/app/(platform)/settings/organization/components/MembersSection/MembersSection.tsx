@@ -5,6 +5,7 @@ import Avatar, { AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Select } from "@/components/atoms/Select/Select";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
@@ -36,6 +37,7 @@ export function MembersSection({
     isUpdatingRole,
     isRemoving,
     handleRoleChange,
+    handleBillingManagerChange,
     handleRemoveConfirmed,
   } = useMembersSection({ orgId, onChanged });
 
@@ -72,6 +74,9 @@ export function MembersSection({
               {!member.is_owner && member.is_admin && !canManage ? (
                 <Badge variant="info">Admin</Badge>
               ) : null}
+              {member.is_billing_manager && !canManage ? (
+                <Badge variant="info">Billing</Badge>
+              ) : null}
               {canManage ? (
                 <>
                   <Select
@@ -85,6 +90,17 @@ export function MembersSection({
                     options={ROLE_OPTIONS}
                     disabled={isUpdatingRole}
                   />
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500">
+                    Billing
+                    <Switch
+                      aria-label={`Billing manager for ${member.name || member.email}`}
+                      checked={member.is_billing_manager}
+                      onCheckedChange={(checked) =>
+                        handleBillingManagerChange(member, checked)
+                      }
+                      disabled={isUpdatingRole}
+                    />
+                  </label>
                   <Button
                     variant="ghost"
                     size="small"
