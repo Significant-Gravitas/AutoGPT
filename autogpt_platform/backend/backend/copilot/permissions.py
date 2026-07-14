@@ -157,7 +157,8 @@ the model as available tools.
 # baseline mode ships an MCP-wrapped platform version
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# ``Task`` remains an SDK-only built-in
 # (for queue-backed context-isolation on baseline, use ``run_sub_session``
 # instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
