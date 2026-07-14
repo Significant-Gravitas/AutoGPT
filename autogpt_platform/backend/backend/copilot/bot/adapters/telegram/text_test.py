@@ -23,3 +23,13 @@ def test_html_in_input_is_escaped_not_rendered():
 
 def test_plain_text_survives_unchanged():
     assert to_html("just words, no markup") == "just words, no markup"
+
+
+def test_markdown_inside_code_spans_stays_literal():
+    block = "```" + "\n**kwargs** and [x](y)\n" + "```"
+    assert to_html(block) == "<pre>**kwargs** and [x](y)</pre>"
+    assert to_html("`**bold**`") == "<code>**bold**</code>"
+
+
+def test_double_quotes_escape_so_hrefs_stay_valid():
+    assert to_html('a "quoted" word') == "a &quot;quoted&quot; word"

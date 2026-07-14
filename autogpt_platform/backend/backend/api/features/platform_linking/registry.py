@@ -79,7 +79,7 @@ def _telegram_meta() -> PlatformMeta:
     enabled = bool(
         telegram_config.get_bot_token() and telegram_config.get_webhook_secret()
     )
-    username = telegram_config.get_bot_username()
+    username = telegram_config.get_bot_username().lstrip("@")
     return PlatformMeta(
         platform="TELEGRAM",
         display_name="Telegram",

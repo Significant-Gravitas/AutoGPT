@@ -123,6 +123,7 @@ def test_slack_hidden_when_signing_secret_missing():
 def test_both_platforms_when_both_configured():
     oauth_id_off, oauth_secret_off = _slack_oauth_off()
     with (
+        _telegram_off(),
         patch(f"{_REG}.discord_config.get_bot_token", return_value="token"),
         patch(f"{_REG}.discord_config.get_client_id", return_value=""),
         patch(f"{_REG}.slack_config.get_bot_token", return_value="xoxb-x"),

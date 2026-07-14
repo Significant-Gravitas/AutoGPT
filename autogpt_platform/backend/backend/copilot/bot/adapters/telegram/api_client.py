@@ -22,12 +22,15 @@ class TelegramAPIError(Exception):
 class TelegramClient:
     def __init__(self, token: str):
         self._token = token
+        # One pooled client for the adapter's lifetime (mirrors how Slack's
+        # AsyncWebClient holds its session) — avoids a TCP+TLS handshake per
+        # Bot API call.
+        self._http = httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS)
 
     async def call(self, method: str, **params: Any) -> Any:
         """POST a Bot API method; return its ``result`` or raise."""
         url = f"{_API_BASE}/bot{self._token}/{method}"
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, json=_drop_none(params))
+        resp = await self._http.post(url, json=_drop_none(params))
         payload = resp.json()
         if not payload.get("ok"):
             raise TelegramAPIError(
@@ -89,8 +92,7 @@ class TelegramClient:
             data["parse_mode"] = "HTML"
         if message_thread_id is not None:
             data["message_thread_id"] = str(message_thread_id)
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, data=data, files={field: (filename, content)})
+        resp = await self._http.post(url, data=data, files={field: (filename, content)})
         payload = resp.json()
         if not payload.get("ok"):
             raise TelegramAPIError(
@@ -103,10 +105,9 @@ class TelegramClient:
         info = await self.call("getFile", file_id=file_id)
         file_path = info.get("file_path") or ""
         url = f"{_API_BASE}/file/bot{self._token}/{file_path}"
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.content
+        resp = await self._http.get(url)
+        resp.raise_for_status()
+        return resp.content
 
 
 def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
