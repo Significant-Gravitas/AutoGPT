@@ -26,7 +26,6 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
-import { BlockCaret } from "./components/BlockCaret";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -288,9 +287,7 @@ export function ChatInput({
             onBlur={mentions.close}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
-            className="caret-transparent placeholder:indent-3"
           />
-          <BlockCaret textareaId={inputId} />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <RecordingIndicator
