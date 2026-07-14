@@ -337,9 +337,14 @@ describe("OrganizationSettingsPage", () => {
     render(<OrganizationSettingsPage />);
 
     const row = await screen.findByTestId("org-invitation-row");
-    // Team names are spelled out rather than shown as a "+N teams" count.
-    expect(within(row).getByText(/Marketing, Engineering/)).toBeDefined();
+    // Each pre-assigned team renders as its own pill, visually distinct from
+    // the muted expiry line — not blended into it as text.
+    expect(within(row).getByText("Marketing")).toBeDefined();
+    expect(within(row).getByText("Engineering")).toBeDefined();
     expect(within(row).queryByText(/\+\d+ teams?/)).toBeNull();
+    expect(within(row).getByText(/Expires/).textContent).not.toContain(
+      "Marketing",
+    );
   });
 
   it("accepts a pending invitation and switches to the inviting org", async () => {
