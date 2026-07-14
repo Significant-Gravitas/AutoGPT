@@ -10,9 +10,12 @@ import {
   FormControl,
   FormField,
   FormItem,
+  FormLabel,
   FormMessage,
 } from "@/components/molecules/Form/Form";
+import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
+import { formatAssignedTeams } from "./helpers";
 import { useInvitationsSection } from "./useInvitationsSection";
 
 interface Props {
@@ -24,6 +27,8 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
   const {
     form,
     invitations,
+    assignableTeams,
+    teamNameById,
     isInviting,
     isRevoking,
     handleInvite,
@@ -46,47 +51,74 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
       <Form
         form={form}
         onSubmit={handleInvite}
-        className="flex max-w-xl items-start gap-3"
+        className="flex max-w-xl flex-col gap-3"
       >
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem className="flex-1">
-              <FormControl>
-                <Input
-                  {...field}
-                  id={field.name}
-                  label=""
-                  hideLabel
-                  placeholder="teammate@example.com"
-                  wrapperClassName="!mb-0"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="isAdmin"
-          render={({ field }) => (
-            <FormItem>
-              <FormControl>
-                <label className="flex h-[2.875rem] items-center gap-2 text-sm text-zinc-600">
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
+        <div className="flex items-start gap-3">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem className="flex-1">
+                <FormControl>
+                  <Input
+                    {...field}
+                    id={field.name}
+                    label=""
+                    hideLabel
+                    placeholder="teammate@example.com"
+                    wrapperClassName="!mb-0"
                   />
-                  Admin
-                </label>
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        <Button type="submit" loading={isInviting}>
-          Invite
-        </Button>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="isAdmin"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <label className="flex h-[2.875rem] items-center gap-2 text-sm text-zinc-600">
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    Admin
+                  </label>
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <Button type="submit" loading={isInviting}>
+            Invite
+          </Button>
+        </div>
+
+        {assignableTeams.length > 0 ? (
+          <FormField
+            control={form.control}
+            name="teamIds"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs text-zinc-500">
+                  Pre-assign to teams
+                </FormLabel>
+                <FormControl>
+                  <MultiToggle
+                    aria-label="Pre-assign to teams"
+                    items={assignableTeams.map((team) => ({
+                      value: team.id,
+                      label: team.name,
+                    }))}
+                    selectedValues={field.value}
+                    onChange={field.onChange}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        ) : null}
       </Form>
 
       {invitations.length > 0 ? (
@@ -101,8 +133,10 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                 <span className="truncate text-sm font-medium">
                   {invitation.email}
                 </span>
-                <span className="text-xs text-zinc-500">
-                  Expires {new Date(invitation.expires_at).toLocaleDateString()}
+                <span className="truncate text-xs text-zinc-500">
+                  {invitation.team_ids.length > 0
+                    ? `${formatAssignedTeams(invitation.team_ids, teamNameById)} · Expires ${new Date(invitation.expires_at).toLocaleDateString()}`
+                    : `Expires ${new Date(invitation.expires_at).toLocaleDateString()}`}
                 </span>
               </div>
               {invitation.is_admin ? <Badge variant="info">Admin</Badge> : null}

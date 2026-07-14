@@ -9,12 +9,15 @@ import {
   useGetV2ListPendingInvitations,
   usePostV2CreateInvitation,
 } from "@/app/api/__generated__/endpoints/invitations/invitations";
+import { useGetV2ListWorkspaces } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { InvitationResponse } from "@/app/api/__generated__/models/invitationResponse";
+import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 const inviteSchema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
   isAdmin: z.boolean(),
+  teamIds: z.array(z.string()),
 });
 
 export type InviteFormValues = z.infer<typeof inviteSchema>;
@@ -32,9 +35,25 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     },
   });
 
+  const teamsQuery = useGetV2ListWorkspaces(orgId, {
+    query: {
+      enabled: isAdmin && Boolean(orgId),
+      select: (res) => res.data as TeamResponse[],
+    },
+  });
+
+  const orgTeams = teamsQuery.data ?? [];
+
+  // Everyone lands in the org's default team automatically on accept
+  // (add_org_member), so pre-assignment only makes sense for the other teams.
+  const assignableTeams = orgTeams.filter((team) => !team.is_default);
+
+  // Lets pending-invitation rows spell out assigned team names client-side.
+  const teamNameById = new Map(orgTeams.map((team) => [team.id, team.name]));
+
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", isAdmin: false },
+    defaultValues: { email: "", isAdmin: false, teamIds: [] },
     mode: "onChange",
   });
 
@@ -69,7 +88,11 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
   async function handleInvite(values: InviteFormValues) {
     await createInvitation({
       orgId,
-      data: { email: values.email, is_admin: values.isAdmin },
+      data: {
+        email: values.email,
+        is_admin: values.isAdmin,
+        team_ids: values.teamIds,
+      },
     });
     toast({ title: `Invitation sent to ${values.email}`, variant: "success" });
     form.reset();
@@ -88,6 +111,8 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
   return {
     form,
     invitations: invitationsQuery.data ?? [],
+    assignableTeams,
+    teamNameById,
     isLoading: invitationsQuery.isLoading,
     isInviting,
     isRevoking,
