@@ -19,6 +19,7 @@ import {
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspaceMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
+  getPatchV2UpdateWorkspaceMemberRoleMockHandler,
   getPatchV2UpdateWorkspaceMockHandler,
   getPostV2AddMemberToWorkspaceMockHandler,
   getPostV2CreateWorkspaceMockHandler,
@@ -611,5 +612,163 @@ describe("TeamsSection", () => {
     ).toBeDefined();
     // A denied roster stays inline — no error toast or card.
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("lets the caller leave a non-default team from the expanded roster", async () => {
+    const leaveSpy = vi.fn();
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "Jane" }),
+        teamMember({ user_id: "user-carl", name: "Carl", is_admin: true }),
+      ]),
+      getPostV2LeaveWorkspaceMockHandler(() => {
+        leaveSpy();
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+    const preview = await within(row).findByTestId("team-members-preview");
+
+    // The caller's own row is the only one that exposes a Leave affordance.
+    await userEvent.click(
+      within(preview).getByTestId("team-preview-leave-button"),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Leave team" }),
+    );
+
+    await waitFor(() => {
+      expect(leaveSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("hides the roster Leave action on the auto-joined default team", async () => {
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "Jane" }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("General");
+    const preview = await within(row).findByTestId("team-members-preview");
+
+    await within(preview).findByText("Jane (you)");
+    // Members are auto-joined to the default team, so leaving it is not offered.
+    expect(
+      within(preview).queryByTestId("team-preview-leave-button"),
+    ).toBeNull();
+  });
+
+  it("promotes a team member to admin from the roster kebab and sends the team header", async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    let sentTeamHeader: string | null = null;
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "Jane", is_admin: true }),
+        teamMember({ user_id: "user-bob", name: "Bob", is_admin: false }),
+      ]),
+      getPatchV2UpdateWorkspaceMemberRoleMockHandler(async (info) => {
+        sentBody = (await info.request.json()) as Record<string, unknown>;
+        sentTeamHeader = info.request.headers.get("X-Team-Id");
+        return teamMember({ user_id: "user-bob", name: "Bob", is_admin: true });
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+    const preview = await within(row).findByTestId("team-members-preview");
+
+    const bobRow = (await within(preview).findByText("Bob")).closest(
+      "li",
+    ) as HTMLElement;
+    fireEvent.pointerDown(
+      within(bobRow).getByTestId("team-member-actions-button"),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Promote to team admin" }),
+    );
+
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+    });
+    expect(sentBody).toEqual({ is_admin: true });
+    expect(sentTeamHeader).toBe(OPEN_TEAM.id);
+  });
+
+  it("removes a team member from the roster kebab after confirmation", async () => {
+    const removeSpy = vi.fn();
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "Jane", is_admin: true }),
+        teamMember({ user_id: "user-bob", name: "Bob" }),
+      ]),
+      getDeleteV2RemoveMemberFromWorkspaceMockHandler(() => {
+        removeSpy();
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+    const preview = await within(row).findByTestId("team-members-preview");
+
+    const bobRow = (await within(preview).findByText("Bob")).closest(
+      "li",
+    ) as HTMLElement;
+    fireEvent.pointerDown(
+      within(bobRow).getByTestId("team-member-actions-button"),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Remove from team" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Remove member" }),
+    );
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("hides roster management kebabs from a non-manager", async () => {
+    // Caller is a plain org member (not admin/owner)...
+    mockOrg({
+      members: [
+        { ...OWNER_MEMBER, user_id: "someone-else" },
+        { ...BOB_MEMBER, user_id: OWNER_USER_ID },
+      ],
+    });
+    // ...and a plain member of the team (own roster row is_admin=false).
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: OWNER_USER_ID, name: "You", is_admin: false }),
+        teamMember({ user_id: "user-carl", name: "Carl", is_admin: false }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+    const preview = await within(row).findByTestId("team-members-preview");
+
+    await within(preview).findByText("Carl");
+    // No manage rights → other members' rows expose no kebab.
+    expect(
+      within(preview).queryByTestId("team-member-actions-button"),
+    ).toBeNull();
   });
 });
