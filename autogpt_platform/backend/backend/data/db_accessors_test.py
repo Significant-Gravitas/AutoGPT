@@ -2,12 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+from backend.api.features.orgs import db as orgs_module
 from backend.data import db_accessors
 
 
 def test_orgs_db_uses_direct_module_when_connected():
-    from backend.api.features.orgs import db as orgs_module
-
     with patch("backend.data.db_accessors.db.is_connected", return_value=True):
         assert db_accessors.orgs_db() is orgs_module
 
