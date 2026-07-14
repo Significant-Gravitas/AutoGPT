@@ -77,7 +77,15 @@ export default function OrganizationSettingsPage() {
             currentMember={currentMember}
           />
           <InvitationsSection orgId={org.id} isAdmin={isAdmin} />
-          <DangerZoneSection org={org} currentMember={currentMember} />
+          <DangerZoneSection
+            org={org}
+            members={members}
+            currentMember={currentMember}
+            onTransferred={() => {
+              refetchMembers();
+              refetchOrg();
+            }}
+          />
         </>
       ) : (
         <Text variant="body" className="text-zinc-500">
