@@ -1,0 +1,228 @@
+name: AutoGPT Platform - Preview Seed Fixture Bake
+
+# Bakes a fully SYNTHETIC preview-database seed fixture and publishes it as a
+# rolling GitHub release asset (tag: preview-seed-fixture). Preview environments
+# restore this fixture BEFORE a PR's own migrations run, so schema changes are
+# exercised against populated tables (catching NOT-NULL / unique / backfill
+# failures that an empty DB would silently pass).
+#
+# SECURITY INVARIANT: this workflow holds NO cloud credentials and has NO read
+# path to any real database. It runs entirely against a throwaway Postgres
+# service container. The fixture contains ONLY Faker-generated synthetic rows
+# plus the already-public marketplace agent exports checked into
+# autogpt_platform/backend/agents/. No production data is ever touched.
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "autogpt_platform/backend/migrations/**"
+      - "autogpt_platform/backend/test/**"
+      - ".github/workflows/platform-preview-seed-fixture.yml"
+  schedule:
+    # Weekly backstop (Mondays 06:00 UTC) so the fixture never goes stale even
+    # if no migration/test change lands for a while.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+# Coalesce overlapping bakes: a newer commit cancels an in-flight bake since
+# they would publish the same rolling asset anyway.
+concurrency:
+  group: preview-seed-fixture-bake
+  cancel-in-progress: true
+
+permissions:
+  contents: write # required to create/update the rolling release + its assets
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/backend
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      # Throwaway Postgres. pgvector/pgvector:pg15 matches the platform's real
+      # Postgres major version (supabase/postgres:15.8.x used in dev/prod) and
+      # ships the `vector` extension (required by the docs-embedding migrations)
+      # plus the `pg_trgm` contrib module (creator-search index migration). No
+      # credentials of any kind — a disposable localhost container.
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      CI: "true"
+      PLAIN_OUTPUT: "true"
+      # Prisma connection to the throwaway container, using the platform schema
+      # exactly like the backend tests / local dev (.env.default).
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres?schema=platform"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/postgres?schema=platform"
+      # Dummy, UNREACHABLE Supabase config. e2e_test_data.py constructs a
+      # Supabase client unconditionally (supabase-py raises on an empty URL), but
+      # its per-user try/except falls back to raw synthetic UUIDs when the GoTrue
+      # admin API call fails. Pointing at a dead localhost port lets that
+      # documented fallback run without any real auth backend or credentials.
+      SUPABASE_URL: "http://localhost:54321"
+      SUPABASE_SERVICE_ROLE_KEY: "synthetic-bake-no-real-key" # pragma: allowlist secret
+      # Non-production test key (identical to the one used in backend CI) so
+      # backend module imports that read settings.secrets don't error.
+      ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # pragma: allowlist secret # DO NOT USE IN PRODUCTION
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - name: Apply database migrations
+        run: poetry run prisma migrate deploy
+
+      # --- Seeders --------------------------------------------------------
+      # Order mirrors each script's documented invocation. test_data_creator is
+      # REQUIRED (a failure fails the bake). The other three are best-effort:
+      # a failure emits a LOUD ::warning:: but does not abort the bake.
+
+      - name: "Seed: test_data_creator (REQUIRED)"
+        run: poetry run python test/test_data_creator.py
+
+      - name: "Seed: load-store-agents (public marketplace exports)"
+        run: |
+          poetry run load-store-agents || {
+            echo "::warning title=seed-soft-failure::load-store-agents seeder failed; continuing without it."
+            exit 0
+          }
+
+      - name: "Seed: e2e_test_data (GoTrue-less raw-UUID fallback)"
+        run: |
+          poetry run python test/e2e_test_data.py || {
+            echo "::warning title=seed-soft-failure::e2e_test_data seeder failed; continuing without it."
+            exit 0
+          }
+
+      - name: "Seed: test_data_updater (mutates existing rows)"
+        run: |
+          poetry run python test/test_data_updater.py || {
+            echo "::warning title=seed-soft-failure::test_data_updater seeder failed; continuing without it."
+            exit 0
+          }
+
+      # --- Dump + manifest ------------------------------------------------
+      # pg_dump / psql run INSIDE the Postgres service container via docker exec
+      # so the client version always matches the server exactly (the runner's
+      # bundled client can lag the server major and refuse the dump). This is
+      # the same pattern platform-fullstack-ci.yml uses.
+
+      - name: Resolve Postgres service container
+        run: |
+          set -euo pipefail
+          PG_CID=$(docker ps --filter "ancestor=pgvector/pgvector:pg15" --format '{{.ID}}' | head -n1)
+          if [ -z "${PG_CID}" ]; then
+            echo "::error title=no-pg-container::Could not locate the Postgres service container."
+            docker ps
+            exit 1
+          fi
+          echo "PG_CID=${PG_CID}" >> "${GITHUB_ENV}"
+          docker exec "${PG_CID}" pg_dump --version
+
+      - name: Dump platform schema fixture (custom format, gzipped)
+        run: |
+          set -euo pipefail
+          # Loud sanity check: the required seeder must have populated users.
+          USER_COUNT=$(docker exec "${PG_CID}" psql -U postgres -d postgres -tAc "SELECT count(*) FROM platform.\"User\";" | tr -d '[:space:]')
+          echo "Seeded platform.\"User\" rows: ${USER_COUNT}"
+          if [ "${USER_COUNT:-0}" -lt 1 ]; then
+            echo "::error title=empty-fixture::Seeded fixture is empty (platform.User has 0 rows); refusing to publish."
+            exit 1
+          fi
+          # Custom-format dump of the platform schema ONLY (schema + data,
+          # including platform._prisma_migrations so the restore side can run
+          # only the PR's delta migrations). -Z0 disables pg_dump's internal
+          # compression so the outer gzip is the single compressor; restore is
+          # therefore `gunzip -c fixture.dump.gz | pg_restore ...`.
+          docker exec "${PG_CID}" pg_dump -U postgres -d postgres \
+            --format=custom -Z0 --schema=platform \
+            | gzip -9 > "${GITHUB_WORKSPACE}/fixture.dump.gz"
+          ls -lh "${GITHUB_WORKSPACE}/fixture.dump.gz"
+
+      - name: Write manifest.json
+        run: |
+          set -euo pipefail
+          # baked_at comes from the checked-out commit (NOT wall-clock), so the
+          # manifest is reproducible for a given dev SHA.
+          BAKED_AT="$(git log -1 --format=%cI)"
+          DEV_SHA="${GITHUB_SHA}"
+          MIGRATION_HEAD="$(docker exec "${PG_CID}" psql -U postgres -d postgres -tAc \
+            "SELECT migration_name FROM platform._prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1;" \
+            | tr -d '[:space:]')"
+          echo "baked_at=${BAKED_AT} dev_sha=${DEV_SHA} migration_head=${MIGRATION_HEAD}"
+          if [ -z "${MIGRATION_HEAD}" ]; then
+            echo "::error title=no-migration-head::Could not read a migration head from platform._prisma_migrations."
+            exit 1
+          fi
+          jq -n \
+            --arg baked_at "${BAKED_AT}" \
+            --arg dev_sha "${DEV_SHA}" \
+            --arg migration_head "${MIGRATION_HEAD}" \
+            '{baked_at: $baked_at, dev_sha: $dev_sha, migration_head: $migration_head}' \
+            > "${GITHUB_WORKSPACE}/manifest.json"
+          cat "${GITHUB_WORKSPACE}/manifest.json"
+
+      # --- Publish rolling release ---------------------------------------
+
+      - name: Publish rolling preview-seed-fixture release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="preview-seed-fixture"
+          FIXTURE="${GITHUB_WORKSPACE}/fixture.dump.gz"
+          MANIFEST="${GITHUB_WORKSPACE}/manifest.json"
+          MIGRATION_HEAD="$(jq -r .migration_head "${MANIFEST}")"
+          NOTES="Rolling, fully SYNTHETIC preview-database seed fixture baked from dev@${GITHUB_SHA:0:12} (migration head: ${MIGRATION_HEAD}). Preview environments restore fixture.dump.gz (custom-format, gzipped, platform schema only, including _prisma_migrations) BEFORE running a PR's own migrations, so schema changes run against populated tables. SECURITY INVARIANT: this bake holds no cloud credentials and has no read path to any real database — it runs entirely against a throwaway Postgres container and contains only Faker-generated synthetic rows plus the already-public marketplace agent exports checked into autogpt_platform/backend/agents/. This asset is regenerated on every eligible dev push and weekly; treat it as disposable."
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Updating existing rolling release ${TAG}"
+            gh release edit "${TAG}" --title "Preview seed fixture (rolling)" --notes "${NOTES}" --prerelease
+            gh release upload "${TAG}" "${FIXTURE}" "${MANIFEST}" --clobber
+          else
+            echo "Creating rolling release ${TAG}"
+            gh release create "${TAG}" "${FIXTURE}" "${MANIFEST}" \
+              --title "Preview seed fixture (rolling)" \
+              --notes "${NOTES}" \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          fi
