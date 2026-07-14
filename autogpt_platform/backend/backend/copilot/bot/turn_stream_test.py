@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .adapters.base import ChannelType, MessageContext
+from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
 from .turn_stream import DraftStreamer, TurnStreamer
 
 _MODULE = "backend.copilot.bot.turn_stream"
@@ -21,7 +21,8 @@ def _adapter(*, drafts: bool = False) -> MagicMock:
     adapter.stop_typing = AsyncMock()
     adapter.rename_thread = AsyncMock(return_value=True)
     adapter.supports_stream_drafts = drafts
-    adapter.send_stream_draft = AsyncMock(return_value=drafts)
+    outcome = StreamDraftOutcome.SHOWN if drafts else StreamDraftOutcome.STOPPED
+    adapter.send_stream_draft = AsyncMock(return_value=outcome)
     return adapter
 
 
@@ -102,14 +103,30 @@ class TestDraftStreamer:
         assert adapter.send_stream_draft.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_failure_disables_drafting_for_the_turn(self):
+    async def test_stopped_disables_drafting_for_the_turn(self):
         adapter = _adapter(drafts=True)
-        adapter.send_stream_draft = AsyncMock(return_value=False)
+        adapter.send_stream_draft = AsyncMock(return_value=StreamDraftOutcome.STOPPED)
         draft = DraftStreamer(adapter, "42")
         with patch(f"{_MODULE}.time.monotonic", side_effect=[100.0, 200.0]):
             await draft.update("hello")
             await draft.update("hello world")
         assert adapter.send_stream_draft.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_skipped_keeps_drafting_without_burning_the_throttle(self):
+        # A SKIPPED update (preview momentarily too long) must not advance the
+        # throttle or last_text — the very next chunk should retry immediately.
+        adapter = _adapter(drafts=True)
+        adapter.send_stream_draft = AsyncMock(
+            side_effect=[StreamDraftOutcome.SKIPPED, StreamDraftOutcome.SHOWN]
+        )
+        draft = DraftStreamer(adapter, "42")
+        # Second call is only 0.1s later — it would be throttled if the SKIP
+        # had advanced _last_sent_at, but it must go through.
+        with patch(f"{_MODULE}.time.monotonic", side_effect=[100.0, 100.1]):
+            await draft.update("too-long-preview")
+            await draft.update("shorter now")
+        assert adapter.send_stream_draft.await_count == 2
 
     @pytest.mark.asyncio
     async def test_exception_disables_drafting_for_the_turn(self):

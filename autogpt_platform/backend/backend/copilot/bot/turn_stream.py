@@ -24,7 +24,12 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
 from . import sessions
-from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
+from .adapters.base import (
+    FileAttachment,
+    MessageContext,
+    PlatformAdapter,
+    StreamDraftOutcome,
+)
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .prompt import clamp_thread_name
@@ -69,17 +74,23 @@ class DraftStreamer:
         preview = text.strip()
         if not preview or preview == self._last_text:
             return
-        self._last_sent_at = now
-        self._last_text = preview
         try:
-            ok = await self._adapter.send_stream_draft(
+            outcome = await self._adapter.send_stream_draft(
                 self._target_id, self._draft_id, preview
             )
         except Exception:
             logger.debug("Stream draft update failed", exc_info=True)
-            ok = False
-        if not ok:
             self._enabled = False
+            return
+        if outcome is StreamDraftOutcome.STOPPED:
+            self._enabled = False
+            return
+        # SKIPPED = transient no-op (preview momentarily too long): leave the
+        # throttle untouched so the next chunk retries instead of eating a
+        # full interval of silence on a draft the user never saw.
+        if outcome is StreamDraftOutcome.SHOWN:
+            self._last_sent_at = now
+            self._last_text = preview
 
 
 async def send_denial(

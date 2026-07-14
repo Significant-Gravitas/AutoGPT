@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
 
 from .adapter import (
     TelegramAdapter,
@@ -361,8 +361,8 @@ class TestStreamDrafts:
     @pytest.mark.asyncio
     async def test_draft_sends_rendered_html_to_private_chat(self):
         a = _adapter()
-        ok = await a.send_stream_draft("42", 7, "**bold** & partial")
-        assert ok is True
+        outcome = await a.send_stream_draft("42", 7, "**bold** & partial")
+        assert outcome is StreamDraftOutcome.SHOWN
         assert a._client.call.call_args.args == ("sendMessageDraft",)
         kwargs = a._client.call.call_args.kwargs
         assert kwargs["chat_id"] == 42
@@ -371,23 +371,28 @@ class TestStreamDrafts:
         assert kwargs["text"] == "<b>bold</b> &amp; partial"
 
     @pytest.mark.asyncio
-    async def test_draft_refused_for_group_chats(self):
+    async def test_draft_stopped_for_group_chats(self):
         # sendMessageDraft is private-chat only; groups (negative ids) must
         # opt out without an API call so the streamer stops drafting.
         a = _adapter()
-        assert await a.send_stream_draft("-100555|7", 7, "hi") is False
+        assert (
+            await a.send_stream_draft("-100555|7", 7, "hi")
+            is StreamDraftOutcome.STOPPED
+        )
         a._client.call.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_draft_api_error_returns_false(self):
+    async def test_draft_api_error_stops_drafting(self):
         a = _adapter()
         a._client.call = AsyncMock(side_effect=RuntimeError("boom"))
-        assert await a.send_stream_draft("42", 7, "hi") is False
+        assert await a.send_stream_draft("42", 7, "hi") is StreamDraftOutcome.STOPPED
 
     @pytest.mark.asyncio
-    async def test_oversized_draft_skipped_but_drafting_continues(self):
-        # Just before a chunk flush the buffer can exceed the 4096 cap —
-        # skip that update without disabling drafts for the turn.
+    async def test_oversized_draft_is_skipped_not_stopped(self):
+        # HTML escaping can push a near-flush buffer past the 4096 cap — skip
+        # that update (no API call) but keep drafting for the turn.
         a = _adapter()
-        assert await a.send_stream_draft("42", 7, "x" * 5000) is True
+        assert (
+            await a.send_stream_draft("42", 7, "x" * 5000) is StreamDraftOutcome.SKIPPED
+        )
         a._client.call.assert_not_awaited()
