@@ -48,6 +48,7 @@ interface Coords {
   left: number;
   top: number;
   height: number;
+  fontSize: number;
 }
 
 function getCaretCoordinates(
@@ -82,6 +83,7 @@ function getCaretCoordinates(
     left: marker.offsetLeft,
     top: marker.offsetTop,
     height: lineHeight,
+    fontSize,
   };
 
   document.body.removeChild(mirror);
@@ -119,6 +121,7 @@ export function BlockCaret({ textareaId }: Props) {
         left: c.left - textarea.scrollLeft,
         top: c.top - textarea.scrollTop,
         height: c.height,
+        fontSize: c.fontSize,
       });
     }
 
@@ -157,14 +160,18 @@ export function BlockCaret({ textareaId }: Props) {
 
   if (!pos) return null;
 
+  // Match the glyph box, not the line box: a fontSize-tall block centered
+  // in the line sits flush with the text instead of hanging below it.
+  const caretHeight = pos.fontSize + 2;
+
   return (
     <div
       aria-hidden="true"
       className="pointer-events-none absolute z-10 animate-pulse bg-zinc-800/80"
       style={{
         left: pos.left,
-        top: pos.top + 2,
-        height: pos.height - 4,
+        top: pos.top + (pos.height - caretHeight) / 2,
+        height: caretHeight,
         width: CARET_WIDTH,
       }}
     />
