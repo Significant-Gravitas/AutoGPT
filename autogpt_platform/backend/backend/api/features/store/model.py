@@ -90,6 +90,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     graph_versions: list[str]
     last_updated: datetime.datetime
     recommended_schedule_cron: str | None = None
+    owning_org_id: str | None = None
 
     active_version_id: str
     has_approved_version: bool
@@ -118,6 +119,11 @@ class StoreAgentDetails(pydantic.BaseModel):
             graph_versions=agent.graph_versions,
             last_updated=agent.updated_at,
             recommended_schedule_cron=agent.recommended_schedule_cron,
+            owning_org_id=(
+                org_id
+                if isinstance((org_id := getattr(agent, "owning_org_id", None)), str)
+                else None
+            ),
             active_version_id=agent.listing_version_id,
             has_approved_version=True,  # StoreAgent view only has approved agents
         )

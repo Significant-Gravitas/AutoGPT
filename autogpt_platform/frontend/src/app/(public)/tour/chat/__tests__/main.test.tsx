@@ -13,6 +13,7 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import TourChatPage from "../page";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
@@ -24,17 +25,15 @@ function getSendBar() {
 const ADVANCE_STEP_MS = 200;
 // Longest turn is ~7.7s of parts — including the 5s fake run — plus the 3s
 // hold before the final turn flips to the upsell.
-const ADVANCE_TOTAL_MS = 13000;
+const ADVANCE_TOTAL_MS = 16000;
 
-// The prompt bar is prefilled and locked — the visitor only presses Enter to send.
-async function pressEnterToSend() {
-  fireEvent.keyDown(getSendBar(), { key: "Enter" });
-  // TourStreamingText mounts mid-stream (from a setTimeout callback) and
-  // registers its own setInterval — a timer created by an effect that fires
-  // *during* an in-flight advanceTimersByTimeAsync call is never picked up
-  // by that same call. Advancing in small chunks, each in its own act(),
-  // gives React a chance to flush the mount effect and register the new
-  // interval before the next chunk advances past it.
+// TourStreamingText mounts mid-stream (from a setTimeout callback) and
+// registers its own setInterval — a timer created by an effect that fires
+// *during* an in-flight advanceTimersByTimeAsync call is never picked up
+// by that same call. Advancing in small chunks, each in its own act(),
+// gives React a chance to flush the mount effect and register the new
+// interval before the next chunk advances past it.
+async function advanceThroughTurn() {
   for (
     let elapsed = 0;
     elapsed < ADVANCE_TOTAL_MS;
@@ -46,11 +45,24 @@ async function pressEnterToSend() {
   }
 }
 
+// The prompt bar is prefilled and locked — pressing Enter sends it immediately
+// instead of waiting for the auto-start.
+async function pressEnterToSend() {
+  fireEvent.keyDown(getSendBar(), { key: "Enter" });
+  await advanceThroughTurn();
+}
+
 describe("Tour chat scripted demo", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // The scenario store is module-level state — reset between tests.
-    useTourStore.setState({ activeScenarioId: DEFAULT_SCENARIO_ID });
+    useTourStore.setState({
+      activeScenarioId: DEFAULT_SCENARIO_ID,
+      isDemoComplete: false,
+    });
+    // The artifact panel lives in the shared copilot UI store (also
+    // module-level) — a completed demo leaves it open across tests.
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
   });
 
   afterEach(() => {
@@ -58,17 +70,55 @@ describe("Tour chat scripted demo", () => {
     vi.useRealTimers();
   });
 
+  test("auto-types the first prompt into the bar and sends it on its own", async () => {
+    render(<TourChatPage />);
+
+    // The bar starts empty.
+    expect(screen.queryByText(/email me when the price changes/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
+
+    // After a beat the first prompt starts typing itself into the bar.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+    expect(getSendBar()).toBeDefined();
+
+    // Once typed it sends itself and the scripted turn streams in.
+    await advanceThroughTurn();
+
+    // The auto-sent user message is now in the transcript. getByText throws on
+    // multiple matches, so this also guards against the turn double-firing.
+    expect(screen.getByText(/email me when the price changes/i)).toBeDefined();
+    expect(screen.getByText(/break that down/i)).toBeDefined();
+
+    // Only now does the second turn's prompt prefill, ready to send.
+    expect(screen.getByText(/build and run it for me/i)).toBeDefined();
+    expect(getSendBar()).toBeDefined();
+  });
+
+  test("clicking the active sidebar session restarts the demo with an empty bar", async () => {
+    render(<TourChatPage />);
+
+    // Let the first turn auto-play so the second turn's prompt prefills.
+    await advanceThroughTurn();
+    expect(getSendBar()).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Competitor watch" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Fresh run: transcript cleared and the bar empty/disabled again while
+    // the first turn re-plays on its own.
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
+    expect(screen.queryByText(/break that down/i)).toBeNull();
+  });
+
   test("plays the competitor watch demo through to the payoff and upsell", async () => {
     render(<TourChatPage />);
 
-    // 1. The prompt bar is prefilled with the flagship scenario's prompt.
-    expect(getSendBar()).toBeDefined();
-    expect(
-      screen.getByText(/Watch a competitor's pricing page/i),
-    ).toBeDefined();
-
-    // 2. Pressing Enter streams in the scripted plan turn.
-    await pressEnterToSend();
+    // 1. The first turn auto-plays and streams in the scripted plan turn.
+    await advanceThroughTurn();
 
     expect(screen.getByText(/break that down/i)).toBeDefined();
     expect(
@@ -78,7 +128,7 @@ describe("Tour chat scripted demo", () => {
     // The prompt bar now prefills the second turn's prompt.
     expect(screen.getByText(/build and run it for me/i)).toBeDefined();
 
-    // 3. Pressing Enter again builds the agent and shows the payoff artifact.
+    // 2. Pressing Enter builds the agent and shows the payoff artifact.
     await pressEnterToSend();
 
     // Agent card: block chain chips + schedule row, no raw JSON.
@@ -95,10 +145,45 @@ describe("Tour chat scripted demo", () => {
     expect(screen.getByText("$59/mo")).toBeDefined();
     expect(screen.getByText("+20.4%")).toBeDefined();
 
-    // Upsell: Pro-first CTA with self-host secondary.
+    // The closing line points the visitor at the artifact panel, with the
+    // filename bolded (its own <strong> node, hence the split assertions).
+    expect(screen.getByText('"competitor-pricing-report.md"')).toBeDefined();
+    expect(
+      screen.getByText(/will appear in a moment on the right side/i),
+    ).toBeDefined();
+
+    // The sidebar upsell card stays visible; no bottom banner takes over.
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
-    expect(screen.getByText(/Start with Pro — \$42\.50\/mo/i)).toBeDefined();
+    expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();
     expect(screen.getByText(/Self-host free/i)).toBeDefined();
+    expect(screen.queryByText(/Replay demo/i)).toBeNull();
+
+    // Completion flips the store flag that turns on the card's animations.
+    expect(useTourStore.getState().isDemoComplete).toBe(true);
+  });
+
+  test("switching scenario after a completed demo un-dims the chat column", async () => {
+    render(<TourChatPage />);
+
+    // Play the default demo through both turns so it completes and opens
+    // the payoff artifact panel — which dims the chat column behind it.
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    expect(useTourStore.getState().isDemoComplete).toBe(true);
+    expect(document.querySelector(".transition-opacity.opacity-50")).not.toBe(
+      null,
+    );
+
+    // Picking another chat example from the sidebar must reset the dim —
+    // the artifact panel belongs to the finished demo, not the new one.
+    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(document.querySelector(".transition-opacity.opacity-50")).toBe(null);
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   test("scenario chips switch the demo path", async () => {
@@ -118,9 +203,19 @@ describe("Tour chat scripted demo", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    // The prompt bar now prefills the selected scenario's opening prompt.
+    // The bar stays empty while the selected scenario's first turn auto-plays.
+    expect(
+      screen.queryByText(/pull my unread emails and calendar/i),
+    ).toBeNull();
+
+    // The newly selected scenario auto-plays its first turn too.
+    await advanceThroughTurn();
+
     expect(
       screen.getByText(/pull my unread emails and calendar/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Love it\. Here's how I'll set that up/i),
     ).toBeDefined();
   });
 });
