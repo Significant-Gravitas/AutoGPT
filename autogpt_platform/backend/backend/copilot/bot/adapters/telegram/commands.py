@@ -6,6 +6,7 @@ Telegram's transport: commands arrive as ordinary messages with a
 URL button.
 """
 
+import html
 import logging
 from typing import Any, Optional
 
@@ -160,7 +161,9 @@ async def _send(
         # Telegram rejects some button URLs (e.g. localhost in local dev);
         # degrade to the URL as plain text so the command still answers.
         params.pop("reply_markup")
-        params["text"] += f"\n\n{reply.button_label}: {reply.button_url}"
+        # Escaped because parse_mode stays HTML — a bare & in the URL would
+        # read as a malformed entity and kill the fallback too.
+        params["text"] += html.escape(f"\n\n{reply.button_label}: {reply.button_url}")
         try:
             await client.call("sendMessage", **params)
         except Exception:

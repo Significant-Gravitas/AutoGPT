@@ -279,10 +279,11 @@ class TestOutbound:
         # still arrive, appended as plain text.
         a = _adapter()
         a._client.call = AsyncMock(side_effect=[RuntimeError("Wrong HTTP URL"), {}])
-        await a.send_link("42", "Link it", "Open", "http://localhost:3000/l")
+        await a.send_link("42", "Link it", "Open", "http://localhost:3000/l?a=1&b=2")
         final = a._client.call.call_args.kwargs
         assert "reply_markup" not in final
-        assert "Open: http://localhost:3000/l" in final["text"]
+        # parse_mode stays HTML, so the appended link must be entity-escaped.
+        assert "Open: http://localhost:3000/l?a=1&amp;b=2" in final["text"]
 
     @pytest.mark.asyncio
     async def test_send_link_plain_url_for_non_https(self):

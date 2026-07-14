@@ -14,6 +14,7 @@ encoded target (``chat_id|thread_id``) so replies land in the right topic.
 
 import asyncio
 import hmac
+import html
 import json
 import logging
 import re
@@ -370,7 +371,9 @@ class TelegramAdapter(WebhookAdapter):
             # dev). The URL is still fine as plain text — degrade so the flow
             # keeps working everywhere.
             logger.info("URL button rejected; sending the link as plain text")
-            params["text"] += f"\n\n{link_label}: {link_url}"
+            # Escaped because parse_mode stays HTML — a bare & in the URL
+            # would read as a malformed entity and kill the fallback too.
+            params["text"] += html.escape(f"\n\n{link_label}: {link_url}")
             await self._client.call("sendMessage", **params)
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
