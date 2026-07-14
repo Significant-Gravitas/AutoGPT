@@ -14419,11 +14419,12 @@
       },
       "BotCommandUsage": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "command": { "type": "string", "title": "Command" },
           "uses": { "type": "integer", "title": "Uses" }
         },
         "type": "object",
-        "required": ["command", "uses"],
+        "required": ["platform", "command", "uses"],
         "title": "BotCommandUsage"
       },
       "BotGuildInfo": {
@@ -14487,6 +14488,7 @@
       },
       "BotServerActivity": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "server_id": { "type": "string", "title": "Server Id" },
           "name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -14496,7 +14498,7 @@
           "commands": { "type": "integer", "title": "Commands" }
         },
         "type": "object",
-        "required": ["server_id", "name", "messages", "commands"],
+        "required": ["platform", "server_id", "name", "messages", "commands"],
         "title": "BotServerActivity"
       },
       "BotServerCountPoint": {

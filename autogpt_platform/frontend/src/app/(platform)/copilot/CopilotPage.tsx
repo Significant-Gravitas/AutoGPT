@@ -14,6 +14,7 @@ import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
 import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
+import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -97,6 +98,7 @@ export function CopilotPage() {
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && !showNewLayout && <MobileDrawer />}
       <NotificationDialog />
+      <CopilotModals />
     </SidebarProvider>
   );
 }

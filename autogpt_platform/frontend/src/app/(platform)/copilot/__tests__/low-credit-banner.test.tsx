@@ -86,6 +86,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 // sessionId is read via nuqs to key the chat-host subtree; stub it.
 vi.mock("nuqs", () => ({
   parseAsString: {},
+  parseAsStringLiteral: () => ({}),
   useQueryState: () => [null, vi.fn()],
 }));
 
