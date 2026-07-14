@@ -299,6 +299,24 @@ class TestOutbound:
         assert await a.create_thread("-100555", "11", "AutoGPT: hi") is None
 
 
+def test_short_chat_ids_count_as_channel_refs():
+    a = _adapter()
+    assert a.looks_like_channel_id("12345") is True
+    assert a.looks_like_channel_id("-100987654321") is True
+    assert a.looks_like_channel_id("general") is False
+
+
+@pytest.mark.asyncio
+async def test_attachments_without_declared_size_are_skipped():
+    # The size cap is checked against the declared size pre-fetch; an
+    # undeclared size can't be admitted.
+    a = _adapter()
+    attachments, _skipped = await a._extract_attachments(
+        {"document": {"file_id": "f1", "file_name": "x.pdf"}}
+    )
+    assert attachments == ()
+
+
 def test_target_codec_roundtrip():
     assert _decode_target(_encode_target("42")) == ("42", None)
     assert _decode_target(_encode_target("-100555", 7)) == ("-100555", 7)

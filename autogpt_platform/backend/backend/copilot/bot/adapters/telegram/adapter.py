@@ -48,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
-# Telegram chat IDs are integers; groups/supergroups are negative
-# (supergroups start with -100). Used to tell a raw proactive chat ref from a
-# name.
-_CHAT_ID_RE = re.compile(r"^-?\d{6,}$")
+# Telegram chat IDs are integers of any length; groups/supergroups are
+# negative (supergroups start with -100). Used to tell a raw proactive chat
+# ref from a name (names are never purely numeric).
+_CHAT_ID_RE = re.compile(r"^-?\d+$")
 
 # Message fields that carry a downloadable file, with a fallback filename for
 # the kinds Telegram doesn't name.
@@ -246,22 +246,30 @@ class TelegramAdapter(WebhookAdapter):
             f = message.get(field)
             if not f:
                 continue
+            size = int(f.get("file_size") or 0)
+            if size <= 0:
+                # The size cap is enforced against the declared size before
+                # fetching — a file without one can't be admitted safely.
+                logger.info("Skipping %s attachment without a declared size", field)
+                continue
             inbound.append(
                 InboundFile(
                     filename=f.get("file_name") or fallback_name or field,
-                    size=int(f.get("file_size") or 0),
+                    size=size,
                     mime_type=f.get("mime_type"),
                     fetch=lambda f=f: self._client.download_file(f["file_id"]),
                 )
             )
-        photos = message.get("photo") or []
+        photos = [
+            p for p in message.get("photo") or [] if int(p.get("file_size") or 0) > 0
+        ]
         if photos:
             # Telegram sends one photo in several resolutions — take the largest.
-            best = max(photos, key=lambda p: int(p.get("file_size") or 0))
+            best = max(photos, key=lambda p: int(p["file_size"]))
             inbound.append(
                 InboundFile(
                     filename="photo.jpg",
-                    size=int(best.get("file_size") or 0),
+                    size=int(best["file_size"]),
                     mime_type="image/jpeg",
                     fetch=lambda b=best: self._client.download_file(b["file_id"]),
                 )

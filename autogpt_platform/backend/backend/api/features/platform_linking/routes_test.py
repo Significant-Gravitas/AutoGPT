@@ -486,3 +486,19 @@ class TestTelegramLoginVerification:
         confirm.assert_awaited_once_with(
             "tok", "user-1", verified_platform_user_id=None
         )
+
+    @pytest.mark.asyncio
+    async def test_identity_mismatch_from_db_maps_to_403(self):
+        from backend.api.features.platform_linking.routes import (
+            confirm_user_link_token,
+        )
+
+        confirm = AsyncMock(side_effect=NotAuthorizedError("different user"))
+        db = _db_mock(confirm_user_link=confirm)
+        with patch(
+            "backend.api.features.platform_linking.routes.platform_linking_db",
+            return_value=db,
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await confirm_user_link_token("tok", "user-1", body=None)
+        assert exc.value.status_code == 403

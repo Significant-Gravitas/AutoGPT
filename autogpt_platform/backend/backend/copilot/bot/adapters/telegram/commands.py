@@ -140,10 +140,7 @@ async def _send(
     reply: CommandReply,
     message: dict[str, Any],
 ) -> None:
-    # _HELP_TEXT is already HTML; CommandReply copy from the shared core is
-    # CommonMark. Localizing HELP twice would double-escape, so only convert
-    # core-produced text.
-    text = reply.text if reply.text is _HELP_TEXT else to_html(reply.text)
+    text = to_html(reply.text)
     params: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,

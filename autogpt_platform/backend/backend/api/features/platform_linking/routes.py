@@ -103,6 +103,7 @@ async def confirm_link_token(
         )
     except (
         NotFoundError,
+        NotAuthorizedError,
         LinkFlowMismatchError,
         LinkTokenExpiredError,
         LinkAlreadyExistsError,
@@ -127,6 +128,7 @@ async def confirm_user_link_token(
         )
     except (
         NotFoundError,
+        NotAuthorizedError,
         LinkFlowMismatchError,
         LinkTokenExpiredError,
         LinkAlreadyExistsError,
