@@ -89,11 +89,10 @@ function getCaretCoordinates(
 }
 
 // Roughly one character cell wide, like a terminal block cursor.
-const CARET_WIDTH = 7;
+const CARET_WIDTH = 9;
 
 export function BlockCaret({ textareaId }: Props) {
   const [pos, setPos] = useState<Coords | null>(null);
-  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     const textarea = document.getElementById(
@@ -156,28 +155,17 @@ export function BlockCaret({ textareaId }: Props) {
     };
   }, [textareaId]);
 
-  useEffect(() => {
-    if (!pos) return;
-    // Reset to visible whenever the caret moves so typing keeps the bar
-    // solid — only blinks once the user pauses.
-    setVisible(true);
-    const interval = setInterval(() => setVisible((v) => !v), 530);
-    return () => clearInterval(interval);
-  }, [pos]);
-
   if (!pos) return null;
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute z-10 rounded-[2px] bg-zinc-800/80 transition-opacity duration-200"
+      className="pointer-events-none absolute z-10 animate-pulse bg-zinc-800/80"
       style={{
         left: pos.left,
-        top: pos.top - 3,
-        height: pos.height,
+        top: pos.top + 2,
+        height: pos.height - 4,
         width: CARET_WIDTH,
-        // Never fully off — a soft pulse reads calmer than a hard blink.
-        opacity: visible ? 1 : 0.15,
       }}
     />
   );
