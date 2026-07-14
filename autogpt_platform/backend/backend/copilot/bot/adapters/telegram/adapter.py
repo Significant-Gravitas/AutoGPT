@@ -330,11 +330,21 @@ class TelegramAdapter(WebhookAdapter):
                     "login_url button rejected (domain not registered with "
                     "BotFather?); falling back to a plain URL button"
                 )
-        await self._client.call(
-            "sendMessage",
-            **params,
-            reply_markup={"inline_keyboard": [[{"text": link_label, "url": link_url}]]},
-        )
+        try:
+            await self._client.call(
+                "sendMessage",
+                **params,
+                reply_markup={
+                    "inline_keyboard": [[{"text": link_label, "url": link_url}]]
+                },
+            )
+        except Exception:
+            # Telegram validates button URLs and rejects e.g. localhost (local
+            # dev). The URL is still fine as plain text — degrade so the flow
+            # keeps working everywhere.
+            logger.info("URL button rejected; sending the link as plain text")
+            params["text"] += f"\n\n{link_label}: {link_url}"
+            await self._client.call("sendMessage", **params)
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         chat_id, thread_id = _decode_target(channel_id)

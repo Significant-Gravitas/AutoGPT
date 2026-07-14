@@ -151,4 +151,14 @@ async def _send(
     try:
         await client.call("sendMessage", **params)
     except Exception:
-        logger.exception("Failed to send Telegram command reply")
+        if "reply_markup" not in params:
+            logger.exception("Failed to send Telegram command reply")
+            return
+        # Telegram rejects some button URLs (e.g. localhost in local dev);
+        # degrade to the URL as plain text so the command still answers.
+        params.pop("reply_markup")
+        params["text"] += f"\n\n{reply.button_label}: {reply.button_url}"
+        try:
+            await client.call("sendMessage", **params)
+        except Exception:
+            logger.exception("Failed to send Telegram command reply")
