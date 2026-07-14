@@ -790,6 +790,22 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="Slack app OAuth client secret — exchanged with the auth "
         "code on the install callback for a per-workspace bot token.",
     )
+    autopilot_bot_telegram_token: str = Field(
+        default="",
+        description="Telegram bot token (from @BotFather). Set together with "
+        "the webhook secret to mount the Telegram adapter on the main API.",
+    )
+    autopilot_bot_telegram_webhook_secret: str = Field(
+        default="",
+        description="Secret registered with Telegram's setWebhook; Telegram "
+        "echoes it in the X-Telegram-Bot-Api-Secret-Token header and inbound "
+        "updates are rejected unless it matches.",
+    )
+    autopilot_bot_telegram_username: str = Field(
+        default="",
+        description="The bot's public @username (without the @) — used to "
+        "build the t.me add-to-group link on the Bots settings page.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")
