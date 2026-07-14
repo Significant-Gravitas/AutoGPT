@@ -3289,6 +3289,243 @@ class TestTeamManagementByTeamId:
         assert resp.status_code == 404
         self.prisma.team.update.assert_not_awaited()
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECRT-2464 / SECRT-2447: Private-team list & details visibility
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _count_row(team_id: str, n: int) -> dict:
+    """A prisma group_by(count=True) row shape: {team_id, _count._all}."""
+    return {"teamId": team_id, "_count": {"_all": n}}
+
+
+class TestTeamListVisibility:
+    """List/details visibility for PRIVATE teams.
+
+    Org admins (MANAGE_WORKSPACES) see PRIVATE teams they're not in as name +
+    member count only (description redacted); regular members don't see them at
+    all. Every returned row carries a per-caller ``is_member`` flag. Exercises
+    the real routes + team_db against a mocked Prisma boundary.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+
+    @pytest.fixture
+    def _app_and_client(self):
+        from fastapi.responses import JSONResponse
+
+        from backend.api.features.orgs.team_routes import router
+
+        app = fastapi.FastAPI()
+        app.include_router(router, prefix="/api/orgs/{org_id}/workspaces")
+
+        # Mirror production's NotFoundError -> 404 mapping (rest_api.py) so a
+        # hidden private team surfaces as 404 rather than a 500.
+        async def _not_found(request, exc):
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+        app.add_exception_handler(NotFoundError, _not_found)
+        self.app = app
+        client = fastapi.testclient.TestClient(app)
+        yield app, client
+        app.dependency_overrides.clear()
+
+    def _use_ctx(self, ctx: RequestContext):
+        from autogpt_libs.auth import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: ctx
+
+    # --- list (GET "") ------------------------------------------------------
+
+    def test_org_admin_list_includes_redacted_private_non_member_team(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        open_ws = _make_workspace(
+            id="ws-open", name="Open", joinPolicy="OPEN", description="open desc"
+        )
+        mine_ws = _make_workspace(
+            id="ws-mine", name="Mine", joinPolicy="PRIVATE", description="mine desc"
+        )
+        secret_ws = _make_workspace(
+            id="ws-secret",
+            name="Secret",
+            joinPolicy="PRIVATE",
+            description="secret desc",
+        )
+        self.prisma.team.find_many = AsyncMock(
+            return_value=[open_ws, mine_ws, secret_ws]
+        )
+        # Admin is an active member of ws-mine only.
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId="ws-mine", userId=USER_ID)]
+        )
+        self.prisma.teammember.group_by = AsyncMock(
+            return_value=[
+                _count_row("ws-open", 5),
+                _count_row("ws-mine", 2),
+                _count_row("ws-secret", 3),
+            ]
+        )
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces")
+
+        assert resp.status_code == 200
+        teams = {t["id"]: t for t in resp.json()}
+        # Admin bypasses the OPEN/member visibility filter.
+        assert "OR" not in self.prisma.team.find_many.call_args[1]["where"]
+
+        secret = teams["ws-secret"]
+        assert secret["is_member"] is False
+        assert secret["description"] is None  # redacted
+        assert secret["name"] == "Secret"  # name still visible
+        assert secret["member_count"] == 3  # count still visible
+        assert secret["join_policy"] == "PRIVATE"
+
+        assert teams["ws-mine"]["is_member"] is True
+        assert teams["ws-mine"]["description"] == "mine desc"
+        assert teams["ws-mine"]["member_count"] == 2
+
+        # OPEN team the admin isn't in: visible and NOT redacted.
+        assert teams["ws-open"]["is_member"] is False
+        assert teams["ws-open"]["description"] == "open desc"
+
+    def test_regular_member_list_excludes_private_non_member_team(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        open_ws = _make_workspace(
+            id="ws-open", name="Open", joinPolicy="OPEN", description="open desc"
+        )
+        mine_ws = _make_workspace(
+            id="ws-mine", name="Mine", joinPolicy="PRIVATE", description="mine desc"
+        )
+        # A non-admin gets the OPEN-or-member filter applied by the query, so
+        # ws-secret is never returned by the DB.
+        self.prisma.team.find_many = AsyncMock(return_value=[open_ws, mine_ws])
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId="ws-mine", userId=OTHER_USER_ID)]
+        )
+        self.prisma.teammember.group_by = AsyncMock(
+            return_value=[_count_row("ws-open", 4), _count_row("ws-mine", 1)]
+        )
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))  # plain member
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces")
+
+        assert resp.status_code == 200
+        teams = {t["id"]: t for t in resp.json()}
+        assert set(teams) == {"ws-open", "ws-mine"}
+        # Non-admins get the visibility filter applied in the query.
+        assert "OR" in self.prisma.team.find_many.call_args[1]["where"]
+
+        # Own private team is full with is_member true.
+        assert teams["ws-mine"]["is_member"] is True
+        assert teams["ws-mine"]["description"] == "mine desc"
+        # OPEN team the caller isn't in: is_member false, not redacted.
+        assert teams["ws-open"]["is_member"] is False
+        assert teams["ws-open"]["description"] == "open desc"
+
+    def test_open_team_is_member_true_when_caller_belongs(self, _app_and_client):
+        _, client = _app_and_client
+        open_ws = _make_workspace(
+            id="ws-open", name="Open", joinPolicy="OPEN", description="d"
+        )
+        self.prisma.team.find_many = AsyncMock(return_value=[open_ws])
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId="ws-open", userId=OTHER_USER_ID)]
+        )
+        self.prisma.teammember.group_by = AsyncMock(
+            return_value=[_count_row("ws-open", 7)]
+        )
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces")
+
+        assert resp.status_code == 200
+        row = resp.json()[0]
+        assert row["is_member"] is True
+        assert row["member_count"] == 7
+
+    # --- details (GET "/{ws_id}") -------------------------------------------
+
+    def test_details_org_admin_non_member_gets_redacted_private_team(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        secret_ws = _make_workspace(
+            id=WS_ID,
+            name="Secret",
+            joinPolicy="PRIVATE",
+            description="secret desc",
+            isDefault=False,
+        )
+        self.prisma.team.find_unique = AsyncMock(return_value=secret_ws)
+        self.prisma.teammember.find_many = AsyncMock(return_value=[])  # not a member
+        self.prisma.teammember.group_by = AsyncMock(return_value=[_count_row(WS_ID, 3)])
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_member"] is False
+        assert body["description"] is None  # redacted
+        assert body["name"] == "Secret"
+        assert body["member_count"] == 3
+        assert body["join_policy"] == "PRIVATE"
+
+    def test_details_regular_member_cannot_see_private_non_member_team(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        secret_ws = _make_workspace(
+            id=WS_ID,
+            name="Secret",
+            joinPolicy="PRIVATE",
+            description="secret desc",
+            isDefault=False,
+        )
+        self.prisma.team.find_unique = AsyncMock(return_value=secret_ws)
+        self.prisma.teammember.find_many = AsyncMock(return_value=[])
+        self.prisma.teammember.group_by = AsyncMock(return_value=[])
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))  # plain member
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}")
+
+        # Invisible in the list -> invisible by id too (404, not a redacted body).
+        assert resp.status_code == 404
+
+    def test_details_member_sees_full_private_team(self, _app_and_client):
+        _, client = _app_and_client
+        mine_ws = _make_workspace(
+            id=WS_ID,
+            name="Mine",
+            joinPolicy="PRIVATE",
+            description="mine desc",
+            isDefault=False,
+        )
+        self.prisma.team.find_unique = AsyncMock(return_value=mine_ws)
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)]
+        )
+        self.prisma.teammember.group_by = AsyncMock(return_value=[_count_row(WS_ID, 2)])
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_member"] is True
+        assert body["description"] == "mine desc"  # own team -> full
+        assert body["member_count"] == 2
+
+
 class TestCanonicalPersonalOrgOrdering:
     """The personal-org lookup must agree with auth's oldest-first rule so
     every path resolves the same canonical org when a user briefly has more
@@ -3306,3 +3543,86 @@ class TestCanonicalPersonalOrgOrdering:
 
         order = prisma.orgmember.find_first.call_args.kwargs["order"]
         assert order == {"createdAt": "asc"}
+
+
+class TestTeamMembersVisibility:
+    """The members roster is part of a workspace's contents: members and OPEN
+    workspaces list normally; org admins get 403 on private non-member teams
+    (join to view); regular non-members get the same 404 as everywhere else."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+
+    @pytest.fixture
+    def _app_and_client(self):
+        from fastapi.responses import JSONResponse
+
+        from backend.api.features.orgs.team_routes import router
+
+        app = fastapi.FastAPI()
+        app.include_router(router, prefix="/api/orgs/{org_id}/workspaces")
+
+        async def _not_found(request, exc):
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+        app.add_exception_handler(NotFoundError, _not_found)
+        self.app = app
+        client = fastapi.testclient.TestClient(app)
+        yield app, client
+        app.dependency_overrides.clear()
+
+    def _use_ctx(self, ctx: RequestContext):
+        from autogpt_libs.auth import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: ctx
+
+    def _mock_team(self, join_policy: str, caller_is_member: bool):
+        ws = _make_workspace(
+            id=WS_ID, name="Team", joinPolicy=join_policy, description="d"
+        )
+        self.prisma.team.find_unique = AsyncMock(return_value=ws)
+        facts_rows = (
+            [_make_ws_member(workspaceId=WS_ID, userId=USER_ID)]
+            if caller_is_member
+            else []
+        )
+        # First find_many call = _member_facts; second = list_team_members.
+        self.prisma.teammember.find_many = AsyncMock(side_effect=[facts_rows, []])
+        self.prisma.teammember.group_by = AsyncMock(return_value=[_count_row(WS_ID, 1)])
+
+    def test_member_of_private_team_lists_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=True)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 200
+
+    def test_non_member_lists_open_team_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("OPEN", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 200
+
+    def test_org_admin_gets_403_for_private_non_member_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 403
+        assert "Join this workspace" in resp.json()["detail"]
+
+    def test_regular_member_gets_404_for_private_non_member_roster(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 404

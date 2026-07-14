@@ -111,7 +111,11 @@ async def list_teams(
 ) -> list[TeamResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    return await team_db.list_teams(org_id, ctx.user_id)
+    return await team_db.list_teams(
+        org_id,
+        ctx.user_id,
+        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
+    )
 
 
 @router.get(
@@ -126,7 +130,12 @@ async def get_team(
 ) -> TeamResponse:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    return await team_db.get_team(ws_id, expected_org_id=org_id)
+    return await team_db.get_team_for_viewer(
+        ws_id,
+        org_id,
+        ctx.user_id,
+        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
+    )
 
 
 @router.patch(
@@ -225,7 +234,19 @@ async def list_members(
 ) -> list[TeamMemberResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    await team_db.get_team(ws_id, expected_org_id=org_id)
+    # Mirror list/details visibility: a private workspace's roster is part of
+    # its contents. Members and OPEN workspaces list normally; org admins get
+    # a 403 (they see the workspace exists but must join to see who's in it —
+    # governance without surveillance); regular non-members get the same 404
+    # as everywhere else.
+    team = await team_db.get_team_for_viewer(
+        ws_id,
+        org_id,
+        ctx.user_id,
+        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
+    )
+    if team.join_policy != "OPEN" and not team.is_member:
+        raise HTTPException(403, detail="Join this workspace to view its members")
     return await team_db.list_team_members(ws_id)
 
 
