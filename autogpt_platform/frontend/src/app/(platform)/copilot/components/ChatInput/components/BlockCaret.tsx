@@ -89,8 +89,10 @@ function getCaretCoordinates(
   );
   const coords: Coords = {
     left: marker.offsetLeft,
-    top: paddingTop + lineIndex * lineHeight,
-    height: Math.min(marker.offsetHeight, lineHeight) || fontSize * 1.2,
+    top: paddingTop + lineIndex * lineHeight + CARET_TOP_OFFSET,
+    height:
+      (Math.min(marker.offsetHeight, lineHeight) || fontSize * 1.2) +
+      CARET_EXTRA_HEIGHT,
   };
 
   document.body.removeChild(mirror);
@@ -99,6 +101,11 @@ function getCaretCoordinates(
 
 // Roughly one character cell wide, like a terminal block cursor.
 const CARET_WIDTH = 9;
+// Optical nudge above the line-box top — eyeballed against the composer
+// text (12px line top reads 2px too low next to the glyphs).
+const CARET_TOP_OFFSET = -2;
+// Stretch past the glyph box a touch so the block reads as a full cell.
+const CARET_EXTRA_HEIGHT = 3;
 
 export function BlockCaret({ textareaId }: Props) {
   const [pos, setPos] = useState<Coords | null>(null);
