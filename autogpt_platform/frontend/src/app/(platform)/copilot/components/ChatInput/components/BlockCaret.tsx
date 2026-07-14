@@ -78,14 +78,18 @@ function getCaretCoordinates(
 
   const fontSize = parseFloat(computed.fontSize);
   const lineHeight = parseFloat(computed.lineHeight) || fontSize * 1.2;
-  // The marker span's own box IS the glyph box on the caret's line —
-  // offsetTop already sits at the text's ascender top (half-leading
-  // included), and offsetHeight matches the rendered glyph height. Using
-  // it directly keeps the caret flush with the text. Cap at lineHeight in
-  // case the trailing text wraps and inflates the span's box.
+  const paddingTop = parseFloat(computed.paddingTop) || 0;
+  // marker.offsetTop lands on the glyph box (half-leading included), which
+  // reads visually low. Snap to the top of the line box instead: padding
+  // edge + a whole number of lines — 12px on the first line for this
+  // textarea's py-3, and multiline-safe when the text wraps.
+  const lineIndex = Math.max(
+    0,
+    Math.round((marker.offsetTop - paddingTop) / lineHeight),
+  );
   const coords: Coords = {
     left: marker.offsetLeft,
-    top: marker.offsetTop,
+    top: paddingTop + lineIndex * lineHeight,
     height: Math.min(marker.offsetHeight, lineHeight) || fontSize * 1.2,
   };
 
