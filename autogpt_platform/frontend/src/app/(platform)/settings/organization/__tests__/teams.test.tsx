@@ -8,6 +8,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -196,6 +197,14 @@ async function openManagePanel(teamName: string) {
   await openTeamMenu(teamName);
   fireEvent.click(screen.getByRole("menuitem", { name: "Manage" }));
   return screen.findByTestId("team-manage-panel");
+}
+
+// Expanding a row lazily reveals its member list via the chevron toggle on the
+// row body. Returns the row so assertions can stay scoped to that team.
+async function expandTeamMembers(teamName: string) {
+  const row = await teamRow(teamName);
+  await userEvent.click(within(row).getByTestId("team-expand-button"));
+  return row;
 }
 
 describe("TeamsSection", () => {
@@ -506,5 +515,101 @@ describe("TeamsSection", () => {
       expect(leaveSpy).toHaveBeenCalledTimes(1);
     });
     expect(useOrgTeamStore.getState().activeTeamID).toBeNull();
+  });
+
+  it("keeps member lists collapsed until a row is expanded", async () => {
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({
+          user_id: "user-bob",
+          name: "Bob",
+          email: "bob@acme.test",
+        }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const section = await showTeamsTab();
+    await within(section).findByText("Marketing");
+
+    // Nothing is fetched or shown until the caller expands a row.
+    expect(within(section).queryByTestId("team-members-preview")).toBeNull();
+    expect(within(section).queryByText("bob@acme.test")).toBeNull();
+
+    const row = await expandTeamMembers("Marketing");
+    expect(await within(row).findByText("bob@acme.test")).toBeDefined();
+  });
+
+  it("reveals the team's members when a row is expanded", async () => {
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({
+          user_id: "user-bob",
+          name: "Bob",
+          email: "bob@acme.test",
+        }),
+        teamMember({
+          user_id: "user-carl",
+          name: "Carl",
+          email: "carl@acme.test",
+        }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+
+    const preview = await within(row).findByTestId("team-members-preview");
+    expect(await within(preview).findByText("Bob")).toBeDefined();
+    expect(within(preview).getByText("Carl")).toBeDefined();
+    expect(within(preview).getByText("bob@acme.test")).toBeDefined();
+  });
+
+  it("badges admins in the expanded member list and leaves plain members unbadged", async () => {
+    mockOrg();
+    server.use(
+      getGetV2ListWorkspaceMembersMockHandler([
+        teamMember({ user_id: "user-bob", name: "Bob", is_admin: true }),
+        teamMember({ user_id: "user-carl", name: "Carl", is_admin: false }),
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+
+    const bobRow = (await within(row).findByText("Bob")).closest(
+      "li",
+    ) as HTMLElement;
+    expect(within(bobRow).getByText("Admin")).toBeDefined();
+
+    const carlRow = within(row).getByText("Carl").closest("li") as HTMLElement;
+    expect(within(carlRow).queryByText("Admin")).toBeNull();
+  });
+
+  it("shows a muted private hint when the member list is forbidden", async () => {
+    mockOrg();
+    // The private-team gate returns 403 for a team the caller can't inspect;
+    // scope the override to the private team so open teams still resolve.
+    server.use(
+      http.get("*/api/orgs/:orgId/workspaces/team-private/members", () =>
+        HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+      ),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await showTeamsTab();
+    const row = await expandTeamMembers("Skunkworks");
+
+    expect(
+      await within(row).findByText(
+        "Private — join this team to see its members.",
+      ),
+    ).toBeDefined();
+    // A denied roster stays inline — no error toast or card.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

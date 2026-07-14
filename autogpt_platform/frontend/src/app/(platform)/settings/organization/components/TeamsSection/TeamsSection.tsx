@@ -11,10 +11,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThree, PlusIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, DotsThree, PlusIcon } from "@phosphor-icons/react";
+
+import { cn } from "@/lib/utils";
 
 import { CreateTeamDialog } from "./components/CreateTeamDialog/CreateTeamDialog";
 import { TeamManagePanel } from "./components/TeamManagePanel/TeamManagePanel";
+import { TeamMembersPreview } from "./components/TeamMembersPreview/TeamMembersPreview";
 import { useTeamsSection } from "./useTeamsSection";
 
 interface Props {
@@ -29,6 +32,8 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
     isLoading,
     expandedTeamId,
     setExpandedTeamId,
+    openMemberTeamIds,
+    toggleMembers,
     teamToDelete,
     setTeamToDelete,
     isDeleting,
@@ -77,6 +82,7 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
         <ul className="flex flex-col divide-y divide-zinc-100">
           {teams.map((team) => {
             const isExpanded = expandedTeamId === team.id;
+            const isMembersOpen = openMemberTeamIds.has(team.id);
             return (
               <li
                 key={team.id}
@@ -84,15 +90,30 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                 data-testid="org-team-row"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">
-                      {team.name}
+                  <button
+                    type="button"
+                    onClick={() => toggleMembers(team.id)}
+                    aria-expanded={isMembersOpen}
+                    aria-controls={`team-members-${team.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded text-left transition-colors hover:opacity-80"
+                    data-testid="team-expand-button"
+                  >
+                    <CaretDownIcon
+                      className={cn(
+                        "h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200",
+                        isMembersOpen && "rotate-180",
+                      )}
+                    />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm font-medium">
+                        {team.name}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        {team.member_count}{" "}
+                        {team.member_count === 1 ? "member" : "members"}
+                      </span>
                     </span>
-                    <span className="text-xs text-zinc-500">
-                      {team.member_count}{" "}
-                      {team.member_count === 1 ? "member" : "members"}
-                    </span>
-                  </div>
+                  </button>
                   {team.is_default ? (
                     <Badge variant="info">Default</Badge>
                   ) : team.join_policy !== "OPEN" ? (
@@ -135,6 +156,10 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+
+                {isMembersOpen ? (
+                  <TeamMembersPreview orgId={orgId} team={team} />
+                ) : null}
 
                 {isExpanded ? (
                   <TeamManagePanel

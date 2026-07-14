@@ -16,6 +16,11 @@ interface Args {
 
 export function useTeamsSection({ orgId }: Args) {
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  // Rows whose member list is expanded. Independent of the manage panel:
+  // per-row, multiple can be open at once, all collapsed by default.
+  const [openMemberTeamIds, setOpenMemberTeamIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [teamToDelete, setTeamToDelete] = useState<TeamResponse | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -69,12 +74,30 @@ export function useTeamsSection({ orgId }: Args) {
     if (expandedTeamId === teamToDelete.id) {
       setExpandedTeamId(null);
     }
+    setOpenMemberTeamIds((current) => {
+      if (!current.has(teamToDelete.id)) return current;
+      const next = new Set(current);
+      next.delete(teamToDelete.id);
+      return next;
+    });
     setTeamToDelete(null);
     teamsQuery.refetch();
   }
 
   function toggleExpanded(teamId: string) {
     setExpandedTeamId((current) => (current === teamId ? null : teamId));
+  }
+
+  function toggleMembers(teamId: string) {
+    setOpenMemberTeamIds((current) => {
+      const next = new Set(current);
+      if (next.has(teamId)) {
+        next.delete(teamId);
+      } else {
+        next.add(teamId);
+      }
+      return next;
+    });
   }
 
   return {
@@ -85,6 +108,8 @@ export function useTeamsSection({ orgId }: Args) {
     expandedTeamId,
     toggleExpanded,
     setExpandedTeamId,
+    openMemberTeamIds,
+    toggleMembers,
     teamToDelete,
     setTeamToDelete,
     isJoining,
