@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import time
+from unittest.mock import patch
 
 from .login import verify_login
 
@@ -57,3 +58,11 @@ def test_missing_hash_or_token_rejected():
     payload.pop("hash")
     assert verify_login(payload, _TOKEN) is None
     assert verify_login(_fresh_payload(), "") is None
+
+
+def test_verification_survives_signed_keys_reordering():
+    # Telegram signs key=value lines alphabetically; verification must sort
+    # rather than depend on _SIGNED_KEYS happening to be declared in order.
+    scrambled = ("username", "id", "photo_url", "last_name", "first_name", "auth_date")
+    with patch("backend.copilot.bot.adapters.telegram.login._SIGNED_KEYS", scrambled):
+        assert verify_login(_fresh_payload(), _TOKEN) == "424242"

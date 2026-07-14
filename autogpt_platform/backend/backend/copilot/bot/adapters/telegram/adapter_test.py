@@ -151,6 +151,22 @@ class TestDispatch:
         handle.assert_awaited_once()
         assert seen == []
 
+    @pytest.mark.asyncio
+    async def test_command_handler_error_is_contained(self):
+        # _dispatch_update runs as a fire-and-forget task — a raising command
+        # handler must be caught and logged, not left to asyncio's deferred
+        # "exception never retrieved".
+        a = _adapter()
+        update = _group("/setup")
+        update["message"]["entities"] = [
+            {"type": "bot_command", "offset": 0, "length": 6}
+        ]
+        with patch(
+            f"{_ADAPTER}.commands.handle",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            await a._dispatch_update(update)
+
 
 class TestFeatures:
     @pytest.mark.asyncio

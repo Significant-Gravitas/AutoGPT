@@ -30,8 +30,10 @@ def verify_login(params: Mapping[str, str], bot_token: str) -> Optional[str]:
         return None
     if time.time() - int(auth_date) > MAX_AUTH_AGE_SECONDS:
         return None
+    # Telegram signs the key=value lines in alphabetical order — sort here so
+    # verification can't silently break if _SIGNED_KEYS is ever reordered.
     data_check_string = "\n".join(
-        f"{key}={params[key]}" for key in _SIGNED_KEYS if key in params
+        f"{key}={params[key]}" for key in sorted(_SIGNED_KEYS) if key in params
     )
     secret_key = hashlib.sha256(bot_token.encode()).digest()
     expected = hmac.new(

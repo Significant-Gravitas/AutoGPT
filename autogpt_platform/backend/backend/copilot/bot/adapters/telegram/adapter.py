@@ -148,7 +148,12 @@ class TelegramAdapter(WebhookAdapter):
         _bot_id, bot_username = await self._bot_identity()
         command = commands.parse_command(message, bot_username)
         if command is not None:
-            await commands.handle(self._api, self._client, message, command)
+            # This runs as a fire-and-forget task — an unhandled error would
+            # only surface as asyncio's deferred "exception never retrieved".
+            try:
+                await commands.handle(self._api, self._client, message, command)
+            except Exception:
+                logger.exception("Telegram command handler failed")
             return
         if self._on_message_callback is None:
             return
@@ -290,7 +295,7 @@ class TelegramAdapter(WebhookAdapter):
         rendered, _pinged = resolve_mentions(
             self.localize_markup(text),
             mentionable_users,
-            lambda name, uid: f'<a href="tg://user?id={uid}">@{name}</a>',
+            lambda name, uid: f'<a href="tg://user?id={uid}">@{html.escape(name)}</a>',
         )
         return rendered
 
