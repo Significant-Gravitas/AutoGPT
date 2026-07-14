@@ -70,6 +70,8 @@ def _adapter() -> MagicMock:
     adapter.send_file = AsyncMock()
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
+    adapter.supports_stream_drafts = False
+    adapter.send_stream_draft = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter

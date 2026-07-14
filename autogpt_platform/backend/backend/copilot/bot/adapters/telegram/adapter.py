@@ -401,6 +401,41 @@ class TelegramAdapter(WebhookAdapter):
         # Telegram has no ephemeral messages — send normally.
         await self.send_message(channel_id, text)
 
+    @property
+    def supports_stream_drafts(self) -> bool:
+        return True
+
+    async def send_stream_draft(
+        self, channel_id: str, draft_id: int, text: str
+    ) -> bool:
+        chat_id, thread_id = _decode_target(channel_id)
+        if chat_id.startswith("-"):
+            # sendMessageDraft only works in private chats — groups and
+            # supergroups (negative chat ids) keep typing + buffered sends.
+            return False
+        # localize_markup only rewrites complete constructs (closed code
+        # fences, **pairs**, [label](url)), so rendering a partial stream
+        # never produces unbalanced HTML — incomplete markdown just shows
+        # literally until the closing token streams in.
+        rendered = self.localize_markup(text)
+        if len(rendered) > config.MAX_MESSAGE_LENGTH:
+            # Over the draft cap right before a chunk flush — skip this
+            # update (the flush shrinks the buffer) but keep drafting.
+            return True
+        try:
+            await self._client.call(
+                "sendMessageDraft",
+                chat_id=int(chat_id),
+                draft_id=draft_id,
+                text=rendered,
+                parse_mode="HTML",
+                message_thread_id=thread_id,
+            )
+        except Exception:
+            logger.debug("Telegram sendMessageDraft failed", exc_info=True)
+            return False
+        return True
+
     async def start_typing(self, channel_id: str) -> None:
         chat_id, thread_id = _decode_target(channel_id)
         try:

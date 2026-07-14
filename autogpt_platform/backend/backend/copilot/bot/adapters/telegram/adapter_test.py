@@ -352,3 +352,42 @@ def test_collect_mentionable_users_only_text_mentions_with_ids():
 
 async def _noop() -> None:
     return None
+
+
+class TestStreamDrafts:
+    def test_supports_stream_drafts(self):
+        assert _adapter().supports_stream_drafts is True
+
+    @pytest.mark.asyncio
+    async def test_draft_sends_rendered_html_to_private_chat(self):
+        a = _adapter()
+        ok = await a.send_stream_draft("42", 7, "**bold** & partial")
+        assert ok is True
+        assert a._client.call.call_args.args == ("sendMessageDraft",)
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == 42
+        assert kwargs["draft_id"] == 7
+        assert kwargs["parse_mode"] == "HTML"
+        assert kwargs["text"] == "<b>bold</b> &amp; partial"
+
+    @pytest.mark.asyncio
+    async def test_draft_refused_for_group_chats(self):
+        # sendMessageDraft is private-chat only; groups (negative ids) must
+        # opt out without an API call so the streamer stops drafting.
+        a = _adapter()
+        assert await a.send_stream_draft("-100555|7", 7, "hi") is False
+        a._client.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_draft_api_error_returns_false(self):
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=RuntimeError("boom"))
+        assert await a.send_stream_draft("42", 7, "hi") is False
+
+    @pytest.mark.asyncio
+    async def test_oversized_draft_skipped_but_drafting_continues(self):
+        # Just before a chunk flush the buffer can exceed the 4096 cap —
+        # skip that update without disabling drafts for the turn.
+        a = _adapter()
+        assert await a.send_stream_draft("42", 7, "x" * 5000) is True
+        a._client.call.assert_not_awaited()

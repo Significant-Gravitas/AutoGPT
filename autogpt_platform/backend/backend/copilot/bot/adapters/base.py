@@ -204,6 +204,30 @@ class PlatformAdapter(ABC):
     async def stop_typing(self, channel_id: str) -> None:
         """Clear the typing indicator. Default no-op (see ``start_typing``)."""
 
+    @property
+    def supports_stream_drafts(self) -> bool:
+        """Whether ``send_stream_draft`` can show a live in-progress preview.
+
+        Default False — only platforms with a native draft-streaming API
+        (Telegram ``sendMessageDraft``) override this. When False the shared
+        streamer never calls ``send_stream_draft``.
+        """
+        return False
+
+    async def send_stream_draft(
+        self, channel_id: str, draft_id: int, text: str
+    ) -> bool:
+        """Show/update an ephemeral preview of the reply being generated.
+
+        Repeated calls with the same nonzero ``draft_id`` update the preview
+        in place. The finished reply is still delivered through the normal
+        send path, which supersedes the preview — a failed or skipped draft
+        never loses content. Returns False when the preview can't be shown
+        (unsupported chat, API error) so the caller stops drafting for the
+        turn. Default: unsupported.
+        """
+        return False
+
     @abstractmethod
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
