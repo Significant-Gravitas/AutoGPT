@@ -47,7 +47,7 @@ export function BotsList() {
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 px-4 pb-4">
+    <div className="grid w-full grid-cols-1 items-start gap-4 px-4 pb-4 lg:grid-cols-2">
       {platforms.map((platform) => (
         <BotCard key={platform.platform} platform={platform} />
       ))}
