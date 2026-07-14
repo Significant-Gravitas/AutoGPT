@@ -472,9 +472,7 @@ class TestTelegramLoginVerification:
 
     @pytest.mark.asyncio
     async def test_no_body_confirms_without_verification(self):
-        from backend.api.features.platform_linking.routes import (
-            confirm_user_link_token,
-        )
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
 
         confirm = AsyncMock(return_value=MagicMock())
         db = _db_mock(confirm_user_link=confirm)
@@ -489,9 +487,7 @@ class TestTelegramLoginVerification:
 
     @pytest.mark.asyncio
     async def test_identity_mismatch_from_db_maps_to_403(self):
-        from backend.api.features.platform_linking.routes import (
-            confirm_user_link_token,
-        )
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
 
         confirm = AsyncMock(side_effect=NotAuthorizedError("different user"))
         db = _db_mock(confirm_user_link=confirm)
