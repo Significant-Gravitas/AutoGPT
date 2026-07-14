@@ -569,6 +569,20 @@ async def webhook_ingress_generic(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
 
+    # The manager is selected from the URL `provider`, so a request must not be
+    # allowed to process a webhook registered under a different provider: that
+    # would run the URL provider's verifier (a no-op for unsigned providers)
+    # instead of the stored provider's. 403, not 404 — don't leak existence.
+    if webhook.provider != provider:
+        logger.warning(
+            f"Webhook #{webhook_id} provider mismatch: "
+            f"registered as {webhook.provider.value}, ingress via {provider.value}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
     # webhook existence.

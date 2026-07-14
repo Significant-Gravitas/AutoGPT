@@ -11,6 +11,8 @@ signature checks to each manager's `verify_signature`. This file pins:
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
 * Providers without a signing scheme (Compass, Slant3D) pass through.
+* A webhook registered under one provider can't be processed via a different
+  provider's ingress path (the manager is selected from the URL provider).
 * `verify_signature` runs before `validate_payload` (call ordering).
 """
 
@@ -440,6 +442,64 @@ class TestGenericWebhookOptionalToken:
         resp = _run(
             self._webhook(secret_token="t0ken"),
             "generic_webhook",
+            headers={"X-Webhook-Secret": "t0ken"},
+        )
+        assert resp.status_code != 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Provider path confusion: URL provider must match the stored webhook.
+# ---------------------------------------------------------------------------
+
+
+class TestProviderPathConfusion:
+    """The ingress manager is selected from the URL `{provider}`, so a webhook
+    registered under one provider must not be processable via another
+    provider's path. Otherwise a secret-protected generic webhook's UUID,
+    routed through an unsigned provider path (Compass/Slant3D), would run that
+    provider's no-op verifier and bypass the configured `secret_token`."""
+
+    def _run_cross_provider(
+        self, webhook, path_provider: str, url_manager_provider: ProviderName, **kwargs
+    ):
+        # Unlike `_run`, the manager comes from the URL path provider (what the
+        # real router does) rather than the stored webhook's provider — that
+        # divergence is the whole point of the attack being reproduced.
+        patches = _patch_ingress(webhook) + [
+            patch(
+                "backend.api.features.integrations.router.get_webhook_manager",
+                return_value=_manager(url_manager_provider),
+            )
+        ]
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            return _post(path_provider, **kwargs)
+
+    def _secret_protected_generic(self):
+        node = MagicMock()
+        node.input_default = {"secret_token": "t0ken"}
+        return _make_webhook(ProviderName("generic_webhook"), triggered_nodes=[node])
+
+    def test_generic_secret_not_bypassable_via_compass_path(self):
+        resp = self._run_cross_provider(
+            self._secret_protected_generic(), "compass", ProviderName.COMPASS
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_generic_secret_not_bypassable_via_slant3d_path(self):
+        resp = self._run_cross_provider(
+            self._secret_protected_generic(), "slant3d", ProviderName.SLANT3D
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_matching_provider_path_still_processes(self):
+        # Control: the same webhook on its own path with the correct secret is
+        # accepted — the guard rejects only provider mismatches.
+        resp = self._run_cross_provider(
+            self._secret_protected_generic(),
+            "generic_webhook",
+            ProviderName("generic_webhook"),
             headers={"X-Webhook-Secret": "t0ken"},
         )
         assert resp.status_code != 403, resp.text
