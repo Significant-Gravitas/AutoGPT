@@ -30,6 +30,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -432,6 +433,9 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
 
     # ============ Platform Linking ============ #
+    # ============ Orgs ============ #
+    get_user_default_team = _(get_user_default_team)
+
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
     resolve_server_link = _(platform_linking_db.resolve_server_link)
@@ -705,6 +709,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
+    get_user_default_team = d.get_user_default_team
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
