@@ -49,7 +49,10 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
       currentMember?.is_admin ||
       currentMember?.is_billing_manager,
   );
-  const canDelete = Boolean(currentMember?.is_owner || currentMember?.is_admin);
+  const orgIsAdmin = Boolean(
+    currentMember?.is_owner || currentMember?.is_admin,
+  );
+  const canDelete = orgIsAdmin;
 
   return (
     <section className="flex flex-col gap-4" data-testid="org-teams-section">
@@ -158,7 +161,12 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                 </div>
 
                 {isMembersOpen ? (
-                  <TeamMembersPreview orgId={orgId} team={team} />
+                  <TeamMembersPreview
+                    orgId={orgId}
+                    team={team}
+                    orgIsAdmin={orgIsAdmin}
+                    onChanged={refetch}
+                  />
                 ) : null}
 
                 {isExpanded ? (
