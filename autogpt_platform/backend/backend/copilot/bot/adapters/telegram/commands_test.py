@@ -87,3 +87,26 @@ async def test_new_clears_the_target_session():
         await commands.handle(MagicMock(), client, msg, "new")
     clear.assert_awaited_once_with("telegram", "-100123456|7")
     assert "fresh conversation" in client.call.call_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_commands_track_command_used_with_group_scope():
+    client = MagicMock()
+    client.call = AsyncMock()
+    api = MagicMock()
+    await commands.handle(api, client, _message("/help"), "help")
+    api.track_event.assert_called_once_with(
+        platform="telegram",
+        event_type="command_used",
+        server_id="-100123456",
+        command_name="help",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dm_commands_track_without_server_id():
+    client = MagicMock()
+    client.call = AsyncMock()
+    api = MagicMock()
+    await commands.handle(api, client, _message("/help", chat_type="private"), "help")
+    assert api.track_event.call_args.kwargs["server_id"] is None

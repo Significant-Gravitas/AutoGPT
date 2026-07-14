@@ -195,6 +195,49 @@ class TestFeatures:
         a._client.send_document.assert_awaited_once()
 
 
+class TestAnalytics:
+    @pytest.mark.asyncio
+    async def test_group_join_records_guild(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": -100777, "type": "supergroup", "title": "Builders"},
+                    "new_chat_member": {"status": "member"},
+                }
+            }
+        )
+        a._api.track_guild_joined.assert_called_once_with(
+            "telegram", "-100777", "Builders"
+        )
+
+    @pytest.mark.asyncio
+    async def test_group_kick_records_guild_left(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": -100777, "type": "supergroup"},
+                    "new_chat_member": {"status": "kicked"},
+                }
+            }
+        )
+        a._api.track_guild_left.assert_called_once_with("telegram", "-100777")
+
+    @pytest.mark.asyncio
+    async def test_private_membership_changes_are_ignored(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": 42, "type": "private"},
+                    "new_chat_member": {"status": "member"},
+                }
+            }
+        )
+        a._api.track_guild_joined.assert_not_called()
+
+
 class TestOutbound:
     @pytest.mark.asyncio
     async def test_send_message_renders_html_and_threads(self):

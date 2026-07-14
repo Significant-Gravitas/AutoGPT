@@ -14,7 +14,7 @@ will echo back in the ``X-Telegram-Bot-Api-Secret-Token`` header:
 
     curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
       -d "url=<PLATFORM_BASE_URL>/api/copilot-webhooks/telegram/updates" \
-      -d "secret_token=<WEBHOOK_SECRET>"
+      -d "secret_token=<WEBHOOK_SECRET>"       -d "allowed_updates=[\"message\",\"my_chat_member\"]"
 """
 
 from backend.util.settings import Settings

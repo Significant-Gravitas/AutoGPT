@@ -134,9 +134,13 @@ class TelegramAdapter(WebhookAdapter):
         return PlainTextResponse("ok")
 
     async def _dispatch_update(self, update: dict[str, Any]) -> None:
+        membership = update.get("my_chat_member")
+        if membership:
+            self._track_membership_change(membership)
+            return
         message = update.get("message")
         if not message:
-            return  # Edits, reactions, member updates — not conversation input.
+            return  # Edits, reactions, other member updates — not conversation input.
         sender = message.get("from") or {}
         if sender.get("is_bot"):
             return  # Skip bot messages (including our own) to avoid loops.
@@ -168,6 +172,21 @@ class TelegramAdapter(WebhookAdapter):
             )
         except Exception:
             logger.debug("Telegram reaction ack failed", exc_info=True)
+
+    def _track_membership_change(self, membership: dict[str, Any]) -> None:
+        """Keep the admin server roster current: the bot being added to /
+        removed from a group arrives as a my_chat_member update."""
+        chat = membership.get("chat") or {}
+        if chat.get("type") not in ("group", "supergroup"):
+            return
+        status = (membership.get("new_chat_member") or {}).get("status")
+        chat_id = str(chat.get("id", ""))
+        if not chat_id or not status:
+            return
+        if status in ("member", "administrator"):
+            self._api.track_guild_joined("telegram", chat_id, chat.get("title"))
+        elif status in ("left", "kicked"):
+            self._api.track_guild_left("telegram", chat_id)
 
     async def _build_context(self, message: dict[str, Any]) -> Optional[MessageContext]:
         chat = message.get("chat") or {}

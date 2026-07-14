@@ -63,6 +63,12 @@ async def handle(
     sender = message.get("from") or {}
     chat_id = str(chat.get("id", ""))
     is_private = chat.get("type") == "private"
+    api.track_event(
+        platform="telegram",
+        event_type="command_used",
+        server_id=None if is_private else chat_id,
+        command_name=command,
+    )
 
     if command == "help":
         await _send(client, chat_id, CommandReply(text=_HELP_TEXT), message)
