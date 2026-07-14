@@ -48,7 +48,6 @@ interface Coords {
   left: number;
   top: number;
   height: number;
-  fontSize: number;
 }
 
 function getCaretCoordinates(
@@ -79,11 +78,15 @@ function getCaretCoordinates(
 
   const fontSize = parseFloat(computed.fontSize);
   const lineHeight = parseFloat(computed.lineHeight) || fontSize * 1.2;
+  // The marker span's own box IS the glyph box on the caret's line —
+  // offsetTop already sits at the text's ascender top (half-leading
+  // included), and offsetHeight matches the rendered glyph height. Using
+  // it directly keeps the caret flush with the text. Cap at lineHeight in
+  // case the trailing text wraps and inflates the span's box.
   const coords: Coords = {
     left: marker.offsetLeft,
     top: marker.offsetTop,
-    height: lineHeight,
-    fontSize,
+    height: Math.min(marker.offsetHeight, lineHeight) || fontSize * 1.2,
   };
 
   document.body.removeChild(mirror);
@@ -121,7 +124,6 @@ export function BlockCaret({ textareaId }: Props) {
         left: c.left - textarea.scrollLeft,
         top: c.top - textarea.scrollTop,
         height: c.height,
-        fontSize: c.fontSize,
       });
     }
 
@@ -160,18 +162,14 @@ export function BlockCaret({ textareaId }: Props) {
 
   if (!pos) return null;
 
-  // Match the glyph box, not the line box: a fontSize-tall block centered
-  // in the line sits flush with the text instead of hanging below it.
-  const caretHeight = pos.fontSize + 2;
-
   return (
     <div
       aria-hidden="true"
       className="pointer-events-none absolute z-10 animate-pulse bg-zinc-800/80"
       style={{
         left: pos.left,
-        top: pos.top + (pos.height - caretHeight) / 2,
-        height: caretHeight,
+        top: pos.top,
+        height: pos.height,
         width: CARET_WIDTH,
       }}
     />
