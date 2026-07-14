@@ -10,11 +10,14 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
@@ -40,7 +43,11 @@ export interface ChatContainerProps {
    * flips immediately regardless of AI SDK's status timing. */
   isUserStopping?: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -85,6 +92,7 @@ export const ChatContainer = ({
   turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -196,6 +204,14 @@ export const ChatContainer = ({
                   </div>
                 )}
                 <SharedChatNotice sessionId={sessionId} />
+                {isTaskBarEnabled && (
+                  <div className="relative z-10">
+                    <TaskProgressBar
+                      todos={getLatestTaskList(messages) ?? []}
+                      isStreaming={isStreaming}
+                    />
+                  </div>
+                )}
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>

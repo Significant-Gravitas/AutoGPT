@@ -29,8 +29,12 @@ from backend.platform_linking.models import (
     BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     Platform,
+    TurnDenial,
     WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 from backend.util.clients import get_platform_linking_manager_client
 from backend.util.exceptions import (
@@ -38,6 +42,8 @@ from backend.util.exceptions import (
     LinkAlreadyExistsError,
     NotFoundError,
 )
+
+from .adapters.base import InboundAttachment
 
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends
@@ -59,10 +65,23 @@ class BotStreamError(Exception):
         self.error_kind = error_kind
 
 
+class ChatTurnDeniedError(Exception):
+    """The turn was refused before running (subscription paywall / rate limit).
+
+    Carries the :class:`TurnDenial` so the handler can show the user-facing
+    message and, when present, a CTA button (e.g. Subscribe / Upgrade).
+    """
+
+    def __init__(self, denial: TurnDenial):
+        super().__init__(denial.message)
+        self.denial = denial
+
+
 __all__ = [
     "BotBackend",
     "BotStreamError",
     "ChatSummary",
+    "ChatTurnDeniedError",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -317,6 +336,74 @@ class BotBackend:
             for s in resp.sessions
         ]
 
+    async def ensure_session(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        """Resolve (or create) the copilot session for this conversation.
+
+        Called before uploading attachments so they land in the session folder
+        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        UI uploads into an already-open session. Carries a ``denial`` instead
+        of a session when the turn gate refuses the user, so the caller can
+        skip the upload entirely.
+        """
+        return await self._client.ensure_chat_session(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
+            session_id=session_id,
+        )
+
+    async def upload_workspace_files(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        attachments: tuple[InboundAttachment, ...],
+        session_id: str | None = None,
+    ) -> list[WorkspaceUploadResult]:
+        """Upload each attachment into the conversation owner's workspace.
+
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them, matching the web upload. Returns one result per file (with a
+        ``file_id`` on success or an ``error`` code) so the caller can attach
+        the successes to the turn and tell the user about any that were
+        rejected.
+        """
+        platform_enum = Platform(platform.upper())
+        results: list[WorkspaceUploadResult] = []
+        for attachment in attachments:
+            # Isolate each upload: a transport/RPC failure (or an unlinked-owner
+            # error) on one file must not abort the rest or crash the handler.
+            try:
+                results.append(
+                    await self._client.upload_workspace_file(
+                        request=WorkspaceUploadRequest(
+                            platform=platform_enum,
+                            platform_server_id=platform_server_id,
+                            platform_user_id=platform_user_id,
+                            filename=attachment.filename,
+                            mime_type=attachment.mime_type,
+                            content=attachment.content,
+                            session_id=session_id,
+                        )
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to upload inbound attachment %s", attachment.filename
+                )
+                results.append(
+                    WorkspaceUploadResult(
+                        filename=attachment.filename, error="upload_failed"
+                    )
+                )
+        return results
+
     async def fetch_workspace_artifact(
         self, session_id: str, file_id: str, max_bytes: int
     ) -> WorkspaceArtifact | None:
@@ -335,6 +422,7 @@ class BotBackend:
         message: str,
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
+        file_ids: Optional[list[str]] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
@@ -351,8 +439,13 @@ class BotBackend:
                 message=message,
                 session_id=session_id,
                 platform_server_id=platform_server_id,
+                file_ids=file_ids or [],
             )
         )
+        if handle.denial is not None:
+            # Refused before running (paywall / rate limit) — no stream exists
+            # to subscribe to. Surface the denial for the handler to render.
+            raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
 
@@ -369,6 +462,13 @@ class BotBackend:
 
         setup_notified = False
         setup_drop_notified = False
+        # Track which text block each delta belongs to. AutoPilot emits text in
+        # separate blocks around tool calls / reasoning (each with its own id);
+        # the frontend renders them as distinct parts, but here we concatenate
+        # into one message, so insert a paragraph break when the block changes —
+        # otherwise the end of one block and the start of the next run together
+        # ("…first thought.second thought…").
+        last_text_block_id: str | None = None
 
         try:
             while True:
@@ -388,6 +488,12 @@ class BotBackend:
                     )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
+                        if (
+                            last_text_block_id is not None
+                            and chunk.id != last_text_block_id
+                        ):
+                            yield "\n\n"
+                        last_text_block_id = chunk.id
                         yield chunk.delta
                 elif isinstance(chunk, StreamToolOutputAvailable):
                     setup_output = _extract_setup_requirements(chunk.output)

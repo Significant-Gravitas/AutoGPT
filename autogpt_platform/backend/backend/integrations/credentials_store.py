@@ -330,9 +330,13 @@ class IntegrationCredentialsStore:
     ) -> list[Credentials]:
         """Return only the persisted (user-stored) credentials — no side effects.
 
+        Reads the IntegrationCredential table (source of truth since the
+        blob→table migration; the UserIntegrations blob is retained only
+        as a rollback artifact).
+
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        return list((await self._get_user_integrations(user_id)).credentials)
+        return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
@@ -360,8 +364,7 @@ class IntegrationCredentialsStore:
 
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        user_integrations = await self._get_user_integrations(user_id)
-        all_credentials = list(user_integrations.credentials)
+        all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
         # These will always be added
         all_credentials.append(ollama_credentials)
@@ -501,11 +504,8 @@ class IntegrationCredentialsStore:
 
     async def has_managed_credential(self, user_id: str, provider: str) -> bool:
         """Check if a managed credential exists for *provider*."""
-        user_integrations = await self._get_user_integrations(user_id)
-        return any(
-            c.provider == provider and c.is_managed
-            for c in user_integrations.credentials
-        )
+        persisted = await self.db_manager.get_user_credentials(user_id=user_id)
+        return any(c.provider == provider and c.is_managed for c in persisted)
 
     async def add_managed_credential(
         self, user_id: str, credential: Credentials
@@ -517,13 +517,14 @@ class IntegrationCredentialsStore:
         """
         if not credential.is_managed:
             raise ValueError("credential.is_managed must be True")
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.credentials = [
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            kept = [
                 c
-                for c in user_integrations.credentials
+                for c in persisted
                 if not (c.provider == credential.provider and c.is_managed)
             ]
-            user_integrations.credentials.append(credential)
+            await self._set_user_integration_creds(user_id, [*kept, credential])
 
     # ===================== OAUTH STATES ===================== #
 
@@ -616,11 +617,9 @@ class IntegrationCredentialsStore:
     async def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
-        integrations = await self._get_user_integrations(user_id)
         # Remove default credentials from the list
         credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
-        integrations.credentials = credentials
-        await self.db_manager.update_user_integrations(user_id, integrations)
+        await self.db_manager.set_user_credentials(user_id, credentials)
 
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)

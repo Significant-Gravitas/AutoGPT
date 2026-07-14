@@ -18,6 +18,7 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
+    BASELINE_ONLY_MCP_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
@@ -1235,7 +1236,23 @@ class TestCreateCopilotMcpServerHidden:
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
         for short in TOOL_REGISTRY:
+            if short in BASELINE_ONLY_MCP_TOOLS:
+                continue
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_baseline_only_tools_never_registered(self):
+        """Baseline-only MCP wrappers (TodoWrite) must not register on the
+        SDK server. They are excluded from ``allowed_tools`` (SDK mode uses
+        the CLI-native built-ins), so advertising them makes the model call
+        a tool the CLI can never approve — it answers "Claude requested
+        permissions to use mcp__copilot__TodoWrite, but you haven't granted
+        it yet" and the model silently abandons the checklist."""
+        assert "TodoWrite" in BASELINE_ONLY_MCP_TOOLS
+        for use_e2b in (False, True):
+            server = create_copilot_mcp_server(use_e2b=use_e2b)
+            registered = await self._registered_tool_names(server)
+            assert not BASELINE_ONLY_MCP_TOOLS & registered
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
@@ -1257,6 +1274,8 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         # All real tools still register.
         for short in TOOL_REGISTRY:
+            if short in BASELINE_ONLY_MCP_TOOLS:
+                continue
             assert short in registered
 
     @staticmethod

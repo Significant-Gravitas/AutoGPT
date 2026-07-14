@@ -152,7 +152,7 @@ export const useSaveGraph = ({
               variant: "default",
             });
           }
-          return;
+          return graph;
         }
 
         const response = await updateGraph({ graphId: graph.id, data: data });
@@ -162,6 +162,7 @@ export const useSaveGraph = ({
           graphData.credentials_input_schema,
           graphData.output_schema,
         );
+        return graphData;
       } else {
         const data: Graph = {
           name: values?.name || `New Agent ${new Date().toISOString()}`,
@@ -179,6 +180,7 @@ export const useSaveGraph = ({
           graphData.credentials_input_schema,
           graphData.output_schema,
         );
+        return graphData;
       }
     },
     [graph, toast, createNewGraph, updateGraph],

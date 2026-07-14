@@ -6,7 +6,12 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import list_user_chats, start_chat_turn
+from .chat import (
+    ensure_chat_session,
+    list_user_chats,
+    start_chat_turn,
+    upload_workspace_file,
+)
 from .models import (
     BotChatRequest,
     BotEventInput,
@@ -14,12 +19,15 @@ from .models import (
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     LinkTokenResponse,
     LinkTokenStatusResponse,
     ListUserChatsResponse,
     Platform,
     ResolveResponse,
     WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,8 +84,26 @@ class PlatformLinkingManager(AppService):
         ]
 
     @expose
+    async def ensure_chat_session(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        return await ensure_chat_session(
+            platform, platform_user_id, platform_server_id, session_id
+        )
+
+    @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
+
+    @expose
+    async def upload_workspace_file(
+        self, request: WorkspaceUploadRequest
+    ) -> WorkspaceUploadResult:
+        return await upload_workspace_file(request)
 
     @expose
     async def refresh_server_link_name(
@@ -143,7 +169,11 @@ class PlatformLinkingManagerClient(AppServiceClient):
     list_user_server_ids = endpoint_to_async(
         PlatformLinkingManager.list_user_server_ids
     )
+    ensure_chat_session = endpoint_to_async(PlatformLinkingManager.ensure_chat_session)
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
+    upload_workspace_file = endpoint_to_async(
+        PlatformLinkingManager.upload_workspace_file
+    )
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name
     )
