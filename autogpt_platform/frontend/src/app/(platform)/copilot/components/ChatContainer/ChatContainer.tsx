@@ -182,7 +182,7 @@ export const ChatContainer = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative px-3 pb-2 pt-2"
+                className="relative px-3 pb-6 pt-2"
               >
                 {isLimitReached && (
                   <div
