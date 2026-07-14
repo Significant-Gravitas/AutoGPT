@@ -1,26 +1,32 @@
 #!/usr/bin/env node
 // Deterministic PR-batching bot for preview-deploy testing.
 //
-// Purpose: batch several approved PRs onto ONE unified branch so the preview
-// environment deploys and is tested ONCE for all of them, instead of N serial
-// preview deploys. The unified branch is both the deploy artifact AND the merge
-// artifact — `/batch-merge` lands it and its members go together.
+// Purpose: batch several PRs onto ONE unified branch so the preview environment
+// deploys and is tested ONCE for the whole group, instead of N serial previews.
+// The unified branch is both the deploy artifact AND the merge artifact —
+// `/batch-merge` lands it and its members go together.
+//
+// MULTIPLE BATCHES: batches are keyed by name. `/batch` uses the `default` batch;
+// `/batch <name>` uses a named batch. Up to BATCH_MAX (default 4) run at once, each
+// with its own label `batch:<key>`, rollup branch `batch/rollup-<key>`, rollup PR,
+// and isolated preview. A PR belongs to at most one batch (re-batching moves it).
 //
 // Commands (from repository_dispatch action, minus the `-command` suffix), plus
-// `reconcile` (fired by batch-reconcile.yml when the rollup PR merges):
-//   batch         — add the commenting PR to the batch, rebuild + redeploy the group
-//   batch-remove  — remove the commenting PR from the batch, rebuild + redeploy
-//   batch-merge   — enable auto-merge on the rollup; members land once it's approved+green
+// `reconcile` (fired by batch-reconcile.yml when a rollup PR merges):
+//   batch [name]  — add the commenting PR to batch <name> (default: `default`)
+//   batch-remove  — remove the commenting PR from its batch
+//   batch-merge   — enable auto-merge on the rollup of the PR's batch
 //   batch help    — post the command list (ARG1 === "help")
-//   reconcile     — after the rollup squash-merges, close members with credit + clean up
+//   reconcile     — after a rollup squash-merges, close its members + clean up
 //
-// State lives in GitHub, not a DB: the `batch` label is the source of truth; the
-// ROLLUP branch is rebuilt from scratch on every change; a "rollup PR"
-// (ROLLUP -> BASE) is the sticky status surface + deploy + merge target.
+// State lives in GitHub, not a DB: `batch:<key>` labels are the source of truth;
+// each rollup branch is rebuilt from scratch on every change; a per-key "rollup PR"
+// (batch/rollup-<key> -> BASE) is the sticky status + deploy + merge target.
 //
-// SECURITY: every `git`/`gh` call goes through execFileSync with ARRAY args — no
-// shell, so attacker-controlled PR titles / branch names can never break out
-// (they are passed as single argv entries). Do not reintroduce string commands.
+// SECURITY: every git/gh call goes through execFileSync with ARRAY args — no shell,
+// so attacker-controlled PR titles / branch names / batch names can never break out
+// (single argv entries). Batch names are additionally slug-validated. Do not
+// reintroduce string commands.
 //
 // Migrations batch on purpose: a combined preview deploy is the only way to test
 // that two migrations coexist and apply in order. `schema.prisma` is union-merged
@@ -32,9 +38,12 @@ import { writeFileSync, mkdirSync } from "node:fs";
 
 const REPO = req("REPO");
 const BASE = process.env.BASE || "dev";
-const ROLLUP = process.env.ROLLUP_BRANCH || "batch/rollup";
-const LABEL = process.env.BATCH_LABEL || "batch";
-const NEVER = process.env.NEVER_BATCH_LABEL || "batch:never"; // opt-out escape hatch
+const LABEL_PREFIX = process.env.BATCH_LABEL_PREFIX || "batch:";
+const NEVER_KEY = "never"; // batch:never = opt-out escape hatch
+const NEVER = LABEL_PREFIX + NEVER_KEY;
+const DEFAULT_KEY = "default";
+const MAX_BATCHES = Number(process.env.BATCH_MAX || "4");
+const RESERVED = new Set([NEVER_KEY, "help", "remove", "merge"]); // not usable as batch names
 const REQUIRE_APPROVAL_TO_ADD = process.env.BATCH_REQUIRE_APPROVAL === "1";
 const MARKER = "<!-- batch-bot:rollup -->";
 const command = req("COMMAND").replace(/-command$/, ""); // batch | batch-remove | batch-merge | reconcile
@@ -42,6 +51,7 @@ const prNumber = process.env.PR_NUMBER ? Number(process.env.PR_NUMBER) : null;
 const arg1 = (process.env.ARG1 || "").trim();
 const rollupUrl = process.env.ROLLUP_URL || "";
 const rollupPr = process.env.ROLLUP_PR ? Number(process.env.ROLLUP_PR) : null;
+const rollupBranchEnv = process.env.ROLLUP_BRANCH || ""; // reconcile: the merged rollup head ref
 const SAFE_REF = /^[\w./][\w./-]*$/; // allowed git ref chars, no leading dash (arg-injection guard)
 
 function req(name) {
@@ -67,14 +77,73 @@ const gh = (args) => run("gh", args);
 const tryGh = (args) => tryRun("gh", args);
 const ghJSON = (args) => JSON.parse(gh(args));
 
+// --- batch keys, labels, branches ---------------------------------------
+
+const labelFor = (key) => `${LABEL_PREFIX}${key}`; // batch:default
+const rollupBranch = (key) => `batch/rollup-${key}`; // batch/rollup-default
+
+// Validate + normalize a batch name from a command arg. Empty → the default batch.
+function batchKey(arg) {
+  const raw = (arg || "").trim().toLowerCase();
+  if (!raw) return DEFAULT_KEY;
+  if (!/^[a-z0-9][a-z0-9-]{0,29}$/.test(raw))
+    throw new Error(`invalid batch name "${arg}" — use lowercase letters, digits and hyphens (e.g. \`/batch hotfix\`)`);
+  if (RESERVED.has(raw)) throw new Error(`"${raw}" is reserved and can't be a batch name`);
+  return raw;
+}
+
+// Batch keys a PR currently belongs to (from its labels; excludes the opt-out label).
+function batchesOf(prJson) {
+  return prJson.labels
+    .map((l) => l.name)
+    .filter((n) => n.startsWith(LABEL_PREFIX) && n.slice(LABEL_PREFIX.length) !== NEVER_KEY)
+    .map((n) => n.slice(LABEL_PREFIX.length));
+}
+
+// Derive the batch key from a rollup branch name (reconcile).
+function keyFromBranch(branch) {
+  const m = /^batch\/rollup-(.+)$/.exec(branch || "");
+  return m ? m[1] : null;
+}
+
+// Distinct batch keys currently in use across open PRs (for the concurrency cap).
+function activeKeys() {
+  const rows = ghJSON(["pr", "list", "--repo", REPO, "--state", "open", "--limit", "300", "--json", "labels"]);
+  const keys = new Set();
+  for (const p of rows)
+    for (const l of p.labels)
+      if (l.name.startsWith(LABEL_PREFIX)) {
+        const k = l.name.slice(LABEL_PREFIX.length);
+        if (k && k !== NEVER_KEY) keys.add(k);
+      }
+  return keys;
+}
+
 // --- membership ----------------------------------------------------------
 
-function members() {
+const PR_FIELDS = "number,title,headRefName,headRefOid,url,labels,reviewDecision,mergeable,isDraft";
+
+function members(key) {
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--state", "open", "--label", LABEL, "--limit", "100",
-    "--json", "number,title,headRefName,headRefOid,url,labels,reviewDecision,mergeable,isDraft",
+    "pr", "list", "--repo", REPO, "--state", "open", "--label", labelFor(key), "--limit", "100",
+    "--json", PR_FIELDS,
   ]);
   return rows.filter((p) => !p.labels.some((l) => l.name === NEVER));
+}
+
+// `members()` lists via the label search index, which lags a just-added label by a
+// few seconds — so the FIRST /batch on a PR would otherwise miss it and build an
+// empty rollup. When we just labeled `ensurePr`, fetch it directly (a consistent
+// read) and union it in.
+function membersEnsuring(key, ensurePr) {
+  const list = members(key);
+  if (ensurePr && !list.some((p) => p.number === ensurePr)) {
+    const p = ghJSON(["pr", "view", String(ensurePr), "--repo", REPO, "--json", PR_FIELDS]);
+    const labeled = p.labels.some((l) => l.name === labelFor(key));
+    const optedOut = p.labels.some((l) => l.name === NEVER);
+    if (labeled && !optedOut) list.push(p);
+  }
+  return list;
 }
 
 function comment(pr, body) {
@@ -83,18 +152,27 @@ function comment(pr, body) {
   gh(["pr", "comment", String(Number(pr)), "--repo", REPO, "--body-file", f]);
 }
 
-function unlabel(pr) {
-  tryGh(["pr", "edit", String(Number(pr)), "--repo", REPO, "--remove-label", LABEL]);
+// Named-batch labels are created on demand; `--add-label` fails on a missing label.
+function ensureLabel(name) {
+  tryGh(["label", "create", name, "--repo", REPO, "--color", "5319e7", "--description", "batch-bot batch membership"]);
+}
+function addLabel(pr, key) {
+  ensureLabel(labelFor(key));
+  gh(["pr", "edit", String(Number(pr)), "--repo", REPO, "--add-label", labelFor(key)]);
+}
+function removeLabel(pr, key) {
+  tryGh(["pr", "edit", String(Number(pr)), "--repo", REPO, "--remove-label", labelFor(key)]);
 }
 
 // --- rollup branch assembly ---------------------------------------------
 
-// Rebuild ROLLUP from a fresh BASE by sequentially merging each member. A member
-// with an unsafe branch name, an unfetchable branch (e.g. a fork), or a non-schema
-// conflict is EJECTED (label removed) so one bad PR never stalls the batch.
-function buildRollup(list) {
+// Rebuild batch/rollup-<key> from a fresh BASE by sequentially merging each member.
+// A member with an unsafe branch name, an unfetchable branch (e.g. a fork), or a
+// non-schema conflict is EJECTED (label removed) so one bad PR never stalls a batch.
+function buildRollup(key, list) {
+  const branch = rollupBranch(key);
   git(["fetch", "origin", BASE, "--quiet"]);
-  git(["checkout", "-B", ROLLUP, `origin/${BASE}`]);
+  git(["checkout", "-B", branch, `origin/${BASE}`]);
 
   // Local-only union driver for schema.prisma (never committed, assembly-scoped).
   mkdirSync(".git/info", { recursive: true });
@@ -105,17 +183,17 @@ function buildRollup(list) {
   for (const p of list) {
     if (!SAFE_REF.test(p.headRefName)) {
       ejected.push({ ...p, files: "unsafe branch name" });
-      unlabel(p.number);
-      comment(p.number, `${MARKER}\n🤖 Removed from the batch — branch name is not a plain git ref.`);
+      removeLabel(p.number, key);
+      comment(p.number, `${MARKER}\n🤖 Removed from batch \`${key}\` — branch name is not a plain git ref.`);
       continue;
     }
     const fetched = tryGit(["fetch", "origin", p.headRefName, "--quiet"]);
     if (!fetched.ok) {
       ejected.push({ ...p, files: "branch not on origin (fork?)" });
-      unlabel(p.number);
+      removeLabel(p.number, key);
       comment(
         p.number,
-        `${MARKER}\n🤖 Removed from the batch — the head branch could not be fetched from \`origin\` ` +
+        `${MARKER}\n🤖 Removed from batch \`${key}\` — the head branch could not be fetched from \`origin\` ` +
           `(cross-fork PRs cannot be batched). Push the branch to the main repo to batch it.`,
       );
       continue;
@@ -128,23 +206,23 @@ function buildRollup(list) {
     tryGit(["merge", "--abort"]);
     const files = tryGit(["diff", "--name-only", "--diff-filter=U"]).out || "conflicting files";
     ejected.push({ ...p, files });
-    unlabel(p.number);
+    removeLabel(p.number, key);
     comment(
       p.number,
-      `${MARKER}\n🤖 Removed from the batch — this PR conflicts with the rest of the current ` +
-        `group and could not be merged onto \`${ROLLUP}\` (${files}). Rebase onto \`${BASE}\` ` +
-        `(or resolve against the other batched PRs) and re-add with \`/batch\`.`,
+      `${MARKER}\n🤖 Removed from batch \`${key}\` — this PR conflicts with the rest of the group and could ` +
+        `not be merged onto \`${branch}\` (${files}). Rebase onto \`${BASE}\` (or resolve against the other ` +
+        `batched PRs) and re-add with \`/batch ${key}\`.`,
     );
   }
 
-  // Force-update the ephemeral, bot-owned rollup branch via the refs API. This is
-  // a non-ff update of a throwaway branch nobody builds on — protect it in branch
-  // settings so only the bot can push to it (see README).
+  // Force-update the ephemeral, bot-owned rollup branch via the refs API. This is a
+  // non-ff update of a throwaway branch nobody builds on — the batch/rollup-* ruleset
+  // restricts these branches to the bot (see README).
   const sha = git(["rev-parse", "HEAD"]);
-  const ref = `refs/heads/${ROLLUP}`;
-  // Exact-match existence check via the singular `git/ref/…`; the plural
-  // `git/refs/…` prefix-matches and can false-positive on a sibling branch.
-  const exists = tryGh(["api", `repos/${REPO}/git/ref/heads/${ROLLUP}`]).ok;
+  const ref = `refs/heads/${branch}`;
+  // Exact-match existence check via the singular `git/ref/…`; the plural `git/refs/…`
+  // prefix-matches and can false-positive on a sibling branch.
+  const exists = tryGh(["api", `repos/${REPO}/git/ref/heads/${branch}`]).ok;
   if (exists) {
     gh(["api", "-X", "PATCH", `repos/${REPO}/git/${ref}`, "-f", `sha=${sha}`, "-F", "force=true"]);
   } else {
@@ -155,17 +233,17 @@ function buildRollup(list) {
 
 // --- rollup PR (sticky status + deploy + merge target) -------------------
 
-function findRollupPR() {
+function findRollupPR(key) {
   const owner = REPO.split("/")[0];
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--head", `${owner}:${ROLLUP}`, "--base", BASE, "--state", "open",
+    "pr", "list", "--repo", REPO, "--head", `${owner}:${rollupBranch(key)}`, "--base", BASE, "--state", "open",
     "--json", "number,url",
   ]);
   return rows[0] || null;
 }
 
-function rollupBody(merged, ejected) {
-  const lines = [MARKER, "", `### Batch rollup — ${merged.length} PR(s)`, ""];
+function rollupBody(key, merged, ejected) {
+  const lines = [MARKER, "", `### Batch rollup \`${key}\` — ${merged.length} PR(s)`, ""];
   lines.push("Deploying the union of these PRs to a single preview so they are tested together.", "");
   for (const p of merged) lines.push(`- [ ] #${p.number} — ${p.title}`);
   if (ejected.length) {
@@ -175,7 +253,7 @@ function rollupBody(merged, ejected) {
   lines.push(
     "",
     "---",
-    "Commands (comment on any PR): `/batch` add · `/batch-remove` drop · `/batch-merge` land all · `/batch help`",
+    `Commands (comment on any member PR): \`/batch ${key}\` add · \`/batch-remove\` drop · \`/batch-merge\` land all · \`/batch help\``,
     "Preview: an isolated per-PR full-stack env (namespace `pr-<n>`, its own DB schema running the",
     "batched migrations) is (re)deployed automatically via `!deploy` on each batch change, and torn",
     "down when this PR merges or closes.",
@@ -186,15 +264,15 @@ function rollupBody(merged, ejected) {
   return lines.join("\n");
 }
 
-function upsertRollupPR(merged, ejected) {
+function upsertRollupPR(key, merged, ejected) {
   const f = "/tmp/rollup-body.md";
-  writeFileSync(f, rollupBody(merged, ejected));
-  const title = `Batch rollup: ${merged.length} PR(s)`;
-  let pr = findRollupPR();
+  writeFileSync(f, rollupBody(key, merged, ejected));
+  const title = `Batch rollup \`${key}\`: ${merged.length} PR(s)`;
+  let pr = findRollupPR(key);
   if (!pr) {
     if (merged.length === 0) return null;
     const url = gh([
-      "pr", "create", "--repo", REPO, "--head", ROLLUP, "--base", BASE, "--draft",
+      "pr", "create", "--repo", REPO, "--head", rollupBranch(key), "--base", BASE, "--draft",
       "--title", title, "--body-file", f,
     ]);
     return { number: Number(url.split("/").pop()), url };
@@ -209,9 +287,9 @@ function upsertRollupPR(merged, ejected) {
 }
 
 // The infra preview system deploys a per-PR isolated env on an exact `!deploy`
-// comment (autogpt-platform-preview-env-cd.yml, keyed by PR number). Posting it on
-// the rollup PR (re)deploys ONE env whose DB runs all the batched migrations. The
-// bot must be a write collaborator for the deploy dispatcher to honor the comment.
+// comment (autogpt-platform-preview-env-cd.yml, keyed by PR number). Posting it on a
+// rollup PR (re)deploys ONE env whose DB runs all that batch's migrations. Each
+// rollup PR gets its own namespace, so multiple batches preview concurrently.
 function deployRollup(pr) {
   tryGh(["pr", "comment", String(pr.number), "--repo", REPO, "--body", "!deploy"]);
 }
@@ -231,42 +309,70 @@ function assertBatchable(pr) {
   return p;
 }
 
-function rebuildAndReport(actionNote) {
-  const { merged, ejected } = buildRollup(members());
-  const pr = upsertRollupPR(merged, ejected);
+// Rebuild one batch's rollup branch + PR + preview. Optionally ensure a just-added
+// PR is included (label-index lag) and report the outcome on a PR.
+function rebuildBatch(key, { ensurePr = null, note = null, reportTo = null } = {}) {
+  const list = membersEnsuring(key, ensurePr);
+  const { merged, ejected } = buildRollup(key, list);
+  const pr = upsertRollupPR(key, merged, ejected);
   if (pr) deployRollup(pr); // (re)deploy the combined preview to reflect the new batch
-  if (prNumber) {
+  if (note && reportTo) {
     const names = merged.map((p) => `#${p.number}`).join(", ") || "none";
     comment(
-      prNumber,
-      `${MARKER}\n🤖 ${actionNote} Current batch (${merged.length}): ${names}.` +
+      reportTo,
+      `${MARKER}\n🤖 ${note} Batch \`${key}\` (${merged.length}): ${names}.` +
         (ejected.length ? ` Ejected: ${ejected.map((p) => "#" + p.number).join(", ")}.` : "") +
         (pr ? `\n\nDeploying the combined preview (${pr.url}); \`/batch-merge\` lands them together.` : ""),
     );
   }
-  console.log(`batch: ${merged.length} member(s)${pr ? ` → ${pr.url}` : " (empty)"}`);
+  console.log(`batch[${key}]: ${merged.length} member(s)${pr ? ` → ${pr.url}` : " (empty)"}`);
+  return { merged, ejected, pr };
 }
 
 function cmdBatch() {
   if (arg1.toLowerCase() === "help") return cmdHelp();
   if (!prNumber) throw new Error("no PR number");
-  assertBatchable(prNumber);
-  gh(["pr", "edit", String(prNumber), "--repo", REPO, "--add-label", LABEL]);
-  rebuildAndReport(`Added #${prNumber} to the batch.`);
+  const key = batchKey(arg1);
+  const p = assertBatchable(prNumber);
+
+  // Concurrency cap: a brand-new batch key can't push us past BATCH_MAX active batches.
+  const active = activeKeys();
+  if (!active.has(key) && active.size >= MAX_BATCHES) {
+    comment(
+      prNumber,
+      `${MARKER}\n🤖 Can't start batch \`${key}\` — the limit of ${MAX_BATCHES} concurrent batches is reached ` +
+        `(active: ${[...active].sort().map((k) => "`" + k + "`").join(", ")}). Add this PR to one of those ` +
+        `(\`/batch <name>\`), or free a slot with \`/batch-merge\` / \`/batch-remove\`.`,
+    );
+    return;
+  }
+
+  // One batch per PR: move it out of any other batch it's in, and rebuild those.
+  const others = batchesOf(p).filter((k) => k !== key);
+  for (const other of others) removeLabel(prNumber, other);
+  addLabel(prNumber, key);
+  for (const other of others) rebuildBatch(other);
+  rebuildBatch(key, { ensurePr: prNumber, note: `Added #${prNumber} to batch \`${key}\`.`, reportTo: prNumber });
 }
 
 function cmdBatchRemove() {
   if (!prNumber) throw new Error("no PR number");
-  unlabel(prNumber);
-  rebuildAndReport(`Removed #${prNumber} from the batch.`);
+  const p = ghJSON(["pr", "view", String(prNumber), "--repo", REPO, "--json", "number,labels"]);
+  const keys = batchesOf(p);
+  if (keys.length === 0) {
+    comment(prNumber, `${MARKER}\n🤖 #${prNumber} isn't in any batch.`);
+    return;
+  }
+  for (const key of keys) removeLabel(prNumber, key);
+  for (const key of keys) rebuildBatch(key, { note: `Removed #${prNumber} from batch \`${key}\`.`, reportTo: prNumber });
 }
 
 // Returns merge-blocker strings for a member's CI. `gh pr checks --json` exits
 // non-zero when checks are failing (1) or still pending (8) but STILL prints the
 // JSON to stdout, so we must read the output regardless of exit code — gating on
 // the exit code alone silently skips CI for that member. Only `pass`/`skipping`
-// count as green; fail, cancel, pending, or an unreadable/empty response all
-// block. Fail closed: a member must be provably green to land.
+// count as green; fail, cancel, pending, or an unreadable/empty response all block.
+// Fail closed: a member must be provably green to land.
 function checkBlockers(p) {
   const raw = tryGh(["pr", "checks", String(p.number), "--repo", REPO, "--json", "bucket"]).out || "";
   // tryGh folds stderr into `out` on non-zero exit, so extract just the array.
@@ -281,8 +387,8 @@ function checkBlockers(p) {
     }
   }
   if (rows === null) return [`#${p.number} check status could not be determined`];
-  // Zero reported checks can't be confirmed green — block (fail closed) rather
-  // than let a PR with no CI slip through the gate on an empty array.
+  // Zero reported checks can't be confirmed green — block (fail closed) rather than
+  // let a PR with no CI slip through the gate on an empty array.
   if (rows.length === 0) return [`#${p.number} has no reported checks — cannot confirm green`];
   const bad = rows.filter((c) => c.bucket !== "pass" && c.bucket !== "skipping");
   if (!bad.length) return [];
@@ -291,29 +397,33 @@ function checkBlockers(p) {
 }
 
 function cmdBatchMerge() {
-  const list = members();
-  if (list.length === 0) {
-    if (prNumber) comment(prNumber, `${MARKER}\n🤖 The batch is empty — nothing to merge.`);
+  if (!prNumber) throw new Error("no PR number");
+  const meta = ghJSON(["pr", "view", String(prNumber), "--repo", REPO, "--json", "number,labels"]);
+  const keys = batchesOf(meta);
+  if (keys.length === 0) {
+    comment(prNumber, `${MARKER}\n🤖 #${prNumber} isn't in any batch — nothing to merge.`);
     return;
   }
-  const { merged, ejected } = buildRollup(list);
-  const pr = upsertRollupPR(merged, ejected);
+  const key = keys[0]; // one batch per PR
+  const list = members(key);
+  if (list.length === 0) {
+    comment(prNumber, `${MARKER}\n🤖 Batch \`${key}\` is empty — nothing to merge.`);
+    return;
+  }
+  const { merged, ejected } = buildRollup(key, list);
+  const pr = upsertRollupPR(key, merged, ejected);
   if (!pr) {
     // Every member was ejected during assembly (conflict / fork / unsafe ref), so
     // upsertRollupPR closed the rollup PR. Report cleanly instead of throwing.
-    if (prNumber)
-      comment(prNumber, `${MARKER}\n🤖 Every batched PR was ejected during assembly — nothing left to merge.`);
+    comment(prNumber, `${MARKER}\n🤖 Every PR in batch \`${key}\` was ejected during assembly — nothing left to merge.`);
     return;
   }
   // Refresh the combined preview so a maintainer approves what will actually land.
-  // buildRollup only updates the branch ref; the preview redeploys on an explicit
-  // `!deploy`, and enabling auto-merge below never triggers one on its own.
   deployRollup(pr);
-  // Gate on the PRs that actually made it into the rollup — assembly may have
-  // ejected members, and an ejected PR's CI must not block a rollup it's no longer
-  // part of. Each remaining member must be explicitly approved and green:
-  // `reviewDecision` must be exactly APPROVED (null / REVIEW_REQUIRED /
-  // CHANGES_REQUESTED all block).
+  // Gate on the PRs that actually made it into the rollup — assembly may have ejected
+  // members, and an ejected PR's CI must not block a rollup it's no longer part of.
+  // Each remaining member must be explicitly approved and green: `reviewDecision`
+  // must be exactly APPROVED (null / REVIEW_REQUIRED / CHANGES_REQUESTED all block).
   const blockers = [];
   for (const p of merged) {
     if (p.reviewDecision !== "APPROVED")
@@ -321,50 +431,57 @@ function cmdBatchMerge() {
     blockers.push(...checkBlockers(p));
   }
   if (blockers.length) {
-    comment(prNumber || pr.number, `${MARKER}\n🤖 Not merging — resolve first:\n- ${blockers.join("\n- ")}`);
+    comment(prNumber, `${MARKER}\n🤖 Not merging batch \`${key}\` — resolve first:\n- ${blockers.join("\n- ")}`);
     return;
   }
-  // No merge queue on dev + squash-only: use auto-merge (squash). It lands the
-  // rollup once its OWN required human approval + green checks are satisfied — the
-  // bot never approves or bypasses. batch-reconcile.yml closes members afterward.
+  // No merge queue on dev + squash-only: use auto-merge (squash). It lands the rollup
+  // once its OWN required human approval + green checks are satisfied — the bot never
+  // approves or bypasses. batch-reconcile.yml closes members afterward.
   gh(["pr", "ready", String(pr.number), "--repo", REPO]);
   const enq = tryGh(["pr", "merge", String(pr.number), "--repo", REPO, "--squash", "--auto"]);
   const note = enq.ok
-    ? `Auto-merge enabled on the rollup (${merged.length} PR(s)). It lands once a maintainer ` +
+    ? `Auto-merge enabled on the \`${key}\` rollup (${merged.length} PR(s)). It lands once a maintainer ` +
       `approves ${pr.url} and checks are green — then all members merge together.`
-    : `Could not enable auto-merge on the rollup: ${enq.out}. Check branch protection / that a ` +
+    : `Could not enable auto-merge on the \`${key}\` rollup: ${enq.out}. Check branch protection / that a ` +
       `reviewer can approve ${pr.url}.`;
-  comment(prNumber || pr.number, `${MARKER}\n🤖 ${note}`);
+  comment(prNumber, `${MARKER}\n🤖 ${note}`);
 }
 
-// Fired by batch-reconcile.yml after the rollup PR squash-merges. Squash rewrites
-// SHAs, so members won't auto-flip to "Merged" — close them explicitly with credit.
+// Fired by batch-reconcile.yml after a rollup PR squash-merges. Squash rewrites SHAs,
+// so members won't auto-flip to "Merged" — close them explicitly with credit. The
+// batch key is derived from the merged rollup branch (ROLLUP_BRANCH).
 function cmdReconcile() {
+  const key = keyFromBranch(rollupBranchEnv);
+  if (!key) throw new Error(`reconcile: could not derive batch key from ROLLUP_BRANCH="${rollupBranchEnv}"`);
   // Tear the combined preview down explicitly (the deploy dispatcher also
-  // auto-undeploys on the rollup PR's close; this is the guaranteed path and
-  // idempotent teardown makes the overlap harmless).
+  // auto-undeploys on the rollup PR's close; this guaranteed, idempotent path is safe).
   if (rollupPr) tryGh(["pr", "comment", String(rollupPr), "--repo", REPO, "--body", "!undeploy"]);
-  const list = members();
+  const list = members(key);
   for (const p of list) {
-    comment(p.number, `${MARKER}\n🤖 Landed on \`${BASE}\` via batch rollup${rollupUrl ? ` ${rollupUrl}` : ""}. Closing — your change is merged.`);
-    unlabel(p.number);
+    comment(
+      p.number,
+      `${MARKER}\n🤖 Landed on \`${BASE}\` via batch \`${key}\` rollup${rollupUrl ? ` ${rollupUrl}` : ""}. ` +
+        `Closing — your change is merged.`,
+    );
+    removeLabel(p.number, key);
     tryGh(["pr", "close", String(p.number), "--repo", REPO]);
   }
-  tryGit(["push", "origin", "--delete", ROLLUP]);
-  console.log(`reconciled ${list.length} member(s)`);
+  tryGit(["push", "origin", "--delete", rollupBranch(key)]);
+  console.log(`reconciled batch[${key}]: ${list.length} member(s)`);
 }
 
 function cmdHelp() {
-  const target = prNumber || (findRollupPR() || {}).number;
-  if (!target) return;
+  if (!prNumber) return;
   comment(
-    target,
+    prNumber,
     `${MARKER}\n🤖 **Batch commands** (comment on any PR):\n` +
-      "- `/batch` — add this PR to the current batch (rebuilds the shared preview branch)\n" +
-      "- `/batch-remove` — remove this PR from the batch\n" +
-      "- `/batch-merge` — land every PR in the batch together (enables auto-merge on the rollup)\n" +
+      "- `/batch` — add this PR to the `default` batch\n" +
+      "- `/batch <name>` — add this PR to a named batch (e.g. `/batch hotfix`)\n" +
+      "- `/batch-remove` — remove this PR from its batch\n" +
+      "- `/batch-merge` — land every PR in this PR's batch together (auto-merge on the rollup)\n" +
       "- `/batch help` — show this message\n\n" +
-      `Requires write access. Opt a PR out with the \`${NEVER}\` label.`,
+      `Up to ${MAX_BATCHES} batches run at once, each with its own preview. A PR belongs to one batch ` +
+      `(re-batching moves it). Requires write access. Opt a PR out with the \`${NEVER}\` label.`,
   );
 }
 
