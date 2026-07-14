@@ -17,6 +17,7 @@ import {
   getGetV2GetOrganizationDetailsMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
   getGetV2ListWorkspacesMockHandler,
+  getPatchV2UpdateMemberRoleMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
   getPostV2TransferOrganizationOwnershipMockHandler,
   getPostV2TransferOrganizationOwnershipMockHandler422,
@@ -574,5 +575,55 @@ describe("OrganizationSettingsPage", () => {
     await waitFor(() => {
       expect(patchSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("grants billing-manager to a member via an independent toggle (PATCHes is_billing_manager only)", async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    mockTeamOrg();
+    server.use(
+      getPatchV2UpdateMemberRoleMockHandler(async (info) => {
+        sentBody = (await info.request.json()) as Record<string, unknown>;
+        return { ...PLAIN_MEMBER, is_billing_manager: true };
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const bobRow = (await screen.findByText("Bob")).closest(
+      "li",
+    ) as HTMLElement;
+    await userEvent.click(
+      within(bobRow).getByRole("switch", { name: "Billing manager for Bob" }),
+    );
+
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+    });
+    // Independent of the role Select — only the billing flag is sent.
+    expect(sentBody).toEqual({ is_billing_manager: true });
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "success" }),
+    );
+  });
+
+  it("shows a read-only Billing badge (not a toggle) to a plain member", async () => {
+    // Viewer is a plain member, so no row is manageable: the billing status
+    // renders as a badge rather than an editable switch.
+    server.use(
+      getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
+      getGetV2ListOrganizationMembersMockHandler([
+        { ...OWNER_MEMBER, user_id: "someone-else", is_billing_manager: true },
+        { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
+      ]),
+      getGetV2ListWorkspacesMockHandler([]),
+      getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const section = await screen.findByTestId("org-members-section");
+    const janeRow = (await within(section).findByText("Jane")).closest(
+      "li",
+    ) as HTMLElement;
+    expect(within(janeRow).getByText("Billing")).toBeDefined();
+    expect(within(janeRow).queryByRole("switch")).toBeNull();
   });
 });
