@@ -1,26 +1,24 @@
-// Spell out the teams an invitee is pre-assigned to (e.g. "Marketing, Design")
-// rather than a bare count. Any id that can't be resolved to a name (a team the
-// viewer can't see, or one deleted since the invite) falls back to a count so
-// the row never silently drops an assignment.
-export function formatAssignedTeams(
+// Pill labels for the teams an invitee is pre-assigned to. Each resolved team
+// name becomes its own label; ids that can't be resolved (a team the viewer
+// can't see, or one deleted since the invite) collapse into a single "+N"
+// label so the row never silently drops an assignment.
+export function assignedTeamLabels(
   teamIds: string[],
   teamNameById: Map<string, string>,
-): string {
-  const names: string[] = [];
+): string[] {
+  const labels: string[] = [];
   let unresolved = 0;
   for (const id of teamIds) {
     const name = teamNameById.get(id);
-    if (name) names.push(name);
+    if (name) labels.push(name);
     else unresolved += 1;
   }
 
-  if (names.length === 0) {
-    return `${teamIds.length} ${teamIds.length === 1 ? "team" : "teams"}`;
+  if (labels.length === 0 && unresolved > 0) {
+    return [`${unresolved} ${unresolved === 1 ? "team" : "teams"}`];
   }
-  if (unresolved === 0) {
-    return names.join(", ");
+  if (unresolved > 0) {
+    labels.push(`+${unresolved} ${unresolved === 1 ? "team" : "teams"}`);
   }
-  return `${names.join(", ")}, +${unresolved} ${
-    unresolved === 1 ? "team" : "teams"
-  }`;
+  return labels;
 }
