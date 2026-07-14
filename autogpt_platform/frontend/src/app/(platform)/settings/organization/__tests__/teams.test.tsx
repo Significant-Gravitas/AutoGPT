@@ -164,10 +164,11 @@ function mockOrg({
   );
 }
 
-// In this pre-tabs layout TeamsSection is always mounted, so there is no tab to
-// activate — just resolve the section. Kept as an async helper so every
-// teams-section lookup stays uniform with the later tabbed layout.
+// TeamsSection now lives on the "Teams" tab; activate it before reading the
+// section. Clicking again once active is a no-op, so this is safe to call from
+// every teams-section lookup.
 async function showTeamsTab() {
+  await userEvent.click(await screen.findByRole("tab", { name: "Teams" }));
   return screen.findByTestId("org-teams-section");
 }
 
