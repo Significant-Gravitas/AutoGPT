@@ -15,7 +15,7 @@ import {
 } from "@/components/molecules/Form/Form";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
-import { formatAssignedTeams } from "./helpers";
+import { assignedTeamLabels } from "./helpers";
 import { useInvitationsSection } from "./useInvitationsSection";
 
 interface Props {
@@ -129,14 +129,23 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
               className="flex items-center gap-3 py-3"
               data-testid="org-invitation-row"
             >
-              <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate text-sm font-medium">
                   {invitation.email}
                 </span>
+                {invitation.team_ids.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {assignedTeamLabels(invitation.team_ids, teamNameById).map(
+                      (label) => (
+                        <Badge key={label} variant="info">
+                          {label}
+                        </Badge>
+                      ),
+                    )}
+                  </div>
+                ) : null}
                 <span className="truncate text-xs text-zinc-500">
-                  {invitation.team_ids.length > 0
-                    ? `${formatAssignedTeams(invitation.team_ids, teamNameById)} · Expires ${new Date(invitation.expires_at).toLocaleDateString()}`
-                    : `Expires ${new Date(invitation.expires_at).toLocaleDateString()}`}
+                  Expires {new Date(invitation.expires_at).toLocaleDateString()}
                 </span>
               </div>
               {invitation.is_admin ? <Badge variant="info">Admin</Badge> : null}
