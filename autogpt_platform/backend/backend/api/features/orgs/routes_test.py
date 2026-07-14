@@ -3543,3 +3543,86 @@ class TestCanonicalPersonalOrgOrdering:
 
         order = prisma.orgmember.find_first.call_args.kwargs["order"]
         assert order == {"createdAt": "asc"}
+
+
+class TestTeamMembersVisibility:
+    """The members roster is part of a workspace's contents: members and OPEN
+    workspaces list normally; org admins get 403 on private non-member teams
+    (join to view); regular non-members get the same 404 as everywhere else."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+
+    @pytest.fixture
+    def _app_and_client(self):
+        from fastapi.responses import JSONResponse
+
+        from backend.api.features.orgs.team_routes import router
+
+        app = fastapi.FastAPI()
+        app.include_router(router, prefix="/api/orgs/{org_id}/workspaces")
+
+        async def _not_found(request, exc):
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+        app.add_exception_handler(NotFoundError, _not_found)
+        self.app = app
+        client = fastapi.testclient.TestClient(app)
+        yield app, client
+        app.dependency_overrides.clear()
+
+    def _use_ctx(self, ctx: RequestContext):
+        from autogpt_libs.auth import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: ctx
+
+    def _mock_team(self, join_policy: str, caller_is_member: bool):
+        ws = _make_workspace(
+            id=WS_ID, name="Team", joinPolicy=join_policy, description="d"
+        )
+        self.prisma.team.find_unique = AsyncMock(return_value=ws)
+        facts_rows = (
+            [_make_ws_member(workspaceId=WS_ID, userId=USER_ID)]
+            if caller_is_member
+            else []
+        )
+        # First find_many call = _member_facts; second = list_team_members.
+        self.prisma.teammember.find_many = AsyncMock(side_effect=[facts_rows, []])
+        self.prisma.teammember.group_by = AsyncMock(return_value=[_count_row(WS_ID, 1)])
+
+    def test_member_of_private_team_lists_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=True)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 200
+
+    def test_non_member_lists_open_team_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("OPEN", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 200
+
+    def test_org_admin_gets_403_for_private_non_member_roster(self, _app_and_client):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 403
+        assert "Join this workspace" in resp.json()["detail"]
+
+    def test_regular_member_gets_404_for_private_non_member_roster(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self._mock_team("PRIVATE", caller_is_member=False)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members")
+        assert resp.status_code == 404
