@@ -75,3 +75,15 @@ async def test_help_sends_usage_text():
     client.call = AsyncMock()
     await commands.handle(MagicMock(), client, _message("/help"), "help")
     assert "AutoGPT for Telegram" in client.call.call_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_new_clears_the_target_session():
+    client = MagicMock()
+    client.call = AsyncMock()
+    msg = _message("/new")
+    msg["message_thread_id"] = 7
+    with patch(f"{_CMD}.sessions.clear_session", new=AsyncMock()) as clear:
+        await commands.handle(MagicMock(), client, msg, "new")
+    clear.assert_awaited_once_with("telegram", "-100123456|7")
+    assert "fresh conversation" in client.call.call_args.kwargs["text"]

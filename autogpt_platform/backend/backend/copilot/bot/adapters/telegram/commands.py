@@ -9,19 +9,30 @@ URL button.
 import logging
 from typing import Any, Optional
 
+from backend.copilot.bot import sessions
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
 
 from .api_client import TelegramClient
+from .targets import encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
+
+# Published to Telegram's command menu via setMyCommands on startup.
+COMMAND_MENU = [
+    {"command": "setup", "description": "Link this group to an AutoGPT account"},
+    {"command": "new", "description": "Start a fresh AutoGPT conversation"},
+    {"command": "help", "description": "Show AutoGPT bot usage info"},
+    {"command": "unlink", "description": "Manage linked chats from your settings"},
+]
 
 _HELP_TEXT = (
     "<b>AutoGPT for Telegram</b>\n"
     "• Add me to a group and run /setup to link it to an AutoGPT account.\n"
     "• Mention me (or reply to my messages) in a group to chat.\n"
     "• Message me directly to chat with your personal AutoGPT account.\n"
+    "• Run /new to start a fresh conversation.\n"
     "• Run /unlink to manage your linked groups and DM."
 )
 
@@ -58,6 +69,33 @@ async def handle(
         return
     if command == "unlink":
         await _send(client, chat_id, unlink_reply(), message)
+        return
+    if command == "new":
+        target = encode_target(chat_id, message.get("message_thread_id"))
+        try:
+            await sessions.clear_session("telegram", target)
+        except Exception:
+            logger.exception("Failed to clear telegram session for /new")
+            await _send(
+                client,
+                chat_id,
+                CommandReply(
+                    text=(
+                        "Couldn't reset the conversation right now. Please try "
+                        "again in a moment."
+                    )
+                ),
+                message,
+            )
+            return
+        await _send(
+            client,
+            chat_id,
+            CommandReply(
+                text="Started a fresh conversation — send a message to begin."
+            ),
+            message,
+        )
         return
     if command in ("setup", "start"):
         if is_private:

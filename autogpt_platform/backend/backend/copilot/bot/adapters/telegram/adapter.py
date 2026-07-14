@@ -40,6 +40,8 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from . import commands, config
 from .api_client import TelegramClient
+from .targets import decode_target as _decode_target
+from .targets import encode_target as _encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
@@ -107,6 +109,15 @@ class TelegramAdapter(WebhookAdapter):
 
     def register_routes(self, app: FastAPI) -> None:
         app.add_api_route(UPDATES_PATH, self._handle_update_request, methods=["POST"])
+        # Publish the command menu on startup so BotFather needs no manual
+        # /setcommands step and the menu can't drift from the code.
+        app.add_event_handler("startup", self._register_command_menu)
+
+    async def _register_command_menu(self) -> None:
+        try:
+            await self._client.call("setMyCommands", commands=commands.COMMAND_MENU)
+        except Exception:
+            logger.warning("Failed to register Telegram command menu", exc_info=True)
 
     # -- Inbound --
 
@@ -139,10 +150,24 @@ class TelegramAdapter(WebhookAdapter):
         ctx = await self._build_context(message)
         if ctx is None:
             return
+        await self._ack_reaction(message)
         try:
             await self._on_message_callback(ctx, self)
         except Exception:
             logger.exception("Telegram update handler failed")
+
+    async def _ack_reaction(self, message: dict[str, Any]) -> None:
+        """Best-effort 👀 on the triggering message — instant feedback that
+        the bot picked it up, ahead of the (slower) typing indicator."""
+        try:
+            await self._client.call(
+                "setMessageReaction",
+                chat_id=str((message.get("chat") or {}).get("id", "")),
+                message_id=message.get("message_id"),
+                reaction=[{"type": "emoji", "emoji": "👀"}],
+            )
+        except Exception:
+            logger.debug("Telegram reaction ack failed", exc_info=True)
 
     async def _build_context(self, message: dict[str, Any]) -> Optional[MessageContext]:
         chat = message.get("chat") or {}
@@ -288,7 +313,13 @@ class TelegramAdapter(WebhookAdapter):
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         chat_id, thread_id = _decode_target(channel_id)
-        await self._client.send_document(
+        # Images render inline as photos; everything else arrives as a document.
+        send = (
+            self._client.send_photo
+            if (file.mime_type or "").startswith("image/")
+            else self._client.send_document
+        )
+        await send(
             chat_id=chat_id,
             content=file.content,
             filename=file.filename or "file",
@@ -404,14 +435,3 @@ def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str]
             if pair not in pairs:
                 pairs.append(pair)
     return tuple(pairs)
-
-
-def _encode_target(chat_id: str, thread_id: Optional[int] = None) -> str:
-    return f"{chat_id}|{thread_id}" if thread_id is not None else chat_id
-
-
-def _decode_target(target_id: str) -> tuple[str, Optional[int]]:
-    chat_id, sep, thread = target_id.partition("|")
-    if sep and thread.isdigit():
-        return chat_id, int(thread)
-    return chat_id, None

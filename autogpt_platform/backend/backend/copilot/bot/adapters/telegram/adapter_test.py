@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.bot.adapters.base import FileAttachment
+
 from .adapter import (
     TelegramAdapter,
     _collect_mentionable_users,
@@ -148,6 +150,49 @@ class TestDispatch:
             await a._dispatch_update(update)
         handle.assert_awaited_once()
         assert seen == []
+
+
+class TestFeatures:
+    @pytest.mark.asyncio
+    async def test_engaging_message_gets_a_reaction_ack(self):
+        a = _adapter()
+        a.on_message(lambda ctx, adapter: _noop())
+        await a._dispatch_update(_dm("hello"))
+        methods = [c.args[0] for c in a._client.call.call_args_list]
+        assert "setMessageReaction" in methods
+
+    @pytest.mark.asyncio
+    async def test_ignored_group_message_gets_no_reaction(self):
+        a = _adapter()
+        a.on_message(lambda ctx, adapter: _noop())
+        await a._dispatch_update(_group("no mention here"))
+        assert a._client.call.call_args_list == []
+
+    @pytest.mark.asyncio
+    async def test_command_menu_registered_on_startup(self):
+        a = _adapter()
+        await a._register_command_menu()
+        assert a._client.call.call_args.args == ("setMyCommands",)
+        menu = a._client.call.call_args.kwargs["commands"]
+        assert {c["command"] for c in menu} >= {"setup", "new", "help", "unlink"}
+
+    @pytest.mark.asyncio
+    async def test_image_files_send_as_photos_documents_otherwise(self):
+        a = _adapter()
+        a._client.send_photo = AsyncMock()
+        a._client.send_document = AsyncMock()
+        await a.send_file(
+            "42",
+            "",
+            FileAttachment(filename="x.png", mime_type="image/png", content=b"i"),
+        )
+        a._client.send_photo.assert_awaited_once()
+        await a.send_file(
+            "42",
+            "",
+            FileAttachment(filename="x.pdf", mime_type="application/pdf", content=b"d"),
+        )
+        a._client.send_document.assert_awaited_once()
 
 
 class TestOutbound:

@@ -43,8 +43,46 @@ class TelegramClient:
         caption: Optional[str] = None,
         message_thread_id: Optional[int] = None,
     ) -> Any:
-        """sendDocument needs multipart, unlike the JSON methods."""
-        url = f"{_API_BASE}/bot{self._token}/sendDocument"
+        return await self._send_multipart(
+            "sendDocument",
+            "document",
+            chat_id,
+            content,
+            filename,
+            caption=caption,
+            message_thread_id=message_thread_id,
+        )
+
+    async def send_photo(
+        self,
+        chat_id: str,
+        content: bytes,
+        filename: str,
+        caption: Optional[str] = None,
+        message_thread_id: Optional[int] = None,
+    ) -> Any:
+        return await self._send_multipart(
+            "sendPhoto",
+            "photo",
+            chat_id,
+            content,
+            filename,
+            caption=caption,
+            message_thread_id=message_thread_id,
+        )
+
+    async def _send_multipart(
+        self,
+        method: str,
+        field: str,
+        chat_id: str,
+        content: bytes,
+        filename: str,
+        caption: Optional[str] = None,
+        message_thread_id: Optional[int] = None,
+    ) -> Any:
+        """File-carrying methods need multipart, unlike the JSON methods."""
+        url = f"{_API_BASE}/bot{self._token}/{method}"
         data: dict[str, Any] = {"chat_id": chat_id}
         if caption:
             data["caption"] = caption
@@ -52,13 +90,11 @@ class TelegramClient:
         if message_thread_id is not None:
             data["message_thread_id"] = str(message_thread_id)
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                url, data=data, files={"document": (filename, content)}
-            )
+            resp = await client.post(url, data=data, files={field: (filename, content)})
         payload = resp.json()
         if not payload.get("ok"):
             raise TelegramAPIError(
-                f"sendDocument failed: {payload.get('description', 'unknown error')}"
+                f"{method} failed: {payload.get('description', 'unknown error')}"
             )
         return payload.get("result")
 
