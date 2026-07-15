@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
@@ -460,6 +461,7 @@ class ExecutionOutputInfo(BaseModel):
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
     node_executions: list[dict[str, Any]] | None = None
+    nodes_failed: list[NodeFailureSummary] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):

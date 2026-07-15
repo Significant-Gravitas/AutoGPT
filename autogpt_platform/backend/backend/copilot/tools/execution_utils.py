@@ -2,14 +2,16 @@
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Sequence, TypedDict
 
+from backend.blocks import get_block
 from backend.data.db_accessors import execution_db
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEvent,
+    NodeExecutionResult,
     exec_channel,
 )
 
@@ -185,3 +187,60 @@ def get_execution_outputs(execution: GraphExecution | None) -> dict[str, Any] | 
     if execution is None:
         return None
     return execution.outputs
+
+
+class NodeFailureSummary(TypedDict):
+    node_id: str
+    block_name: str
+    error: str | None
+
+
+def summarize_node_failures(
+    node_executions: Sequence[NodeExecutionResult],
+) -> list[NodeFailureSummary]:
+    """Compact per-node failure summary for a graph execution.
+
+    A graph run can finish with status COMPLETED while individual nodes
+    FAILED — node errors don't fail the run. Surfacing them explicitly
+    prevents the assistant from reporting success based on the top-level
+    status alone.
+    """
+    failures: list[NodeFailureSummary] = []
+    for ne in node_executions:
+        if ne.status != ExecutionStatus.FAILED:
+            continue
+        block = get_block(ne.block_id)
+        error_values = ne.output_data.get("error") if ne.output_data else None
+        failures.append(
+            {
+                "node_id": ne.node_id,
+                "block_name": block.name if block else ne.block_id,
+                "error": str(error_values[0])[:500] if error_values else None,
+            }
+        )
+    return failures
+
+
+def build_run_health_warning(
+    outputs: dict[str, Any] | None,
+    node_failures: list[NodeFailureSummary],
+) -> str | None:
+    """Warning to include in a COMPLETED-run message, or None if healthy."""
+    if node_failures:
+        details = "; ".join(
+            f"{f['block_name']}: {f['error'] or 'no error detail'}"
+            for f in node_failures[:5]
+        )
+        return (
+            f"WARNING: {len(node_failures)} node(s) FAILED despite the COMPLETED "
+            f"status ({details}). Treat this run as unsuccessful — inspect "
+            "node_executions, fix the agent, and re-verify before reporting "
+            "success."
+        )
+    if not outputs:
+        return (
+            "WARNING: the run COMPLETED but produced no outputs. This usually "
+            "means a broken link or a node that silently produced nothing — "
+            "inspect node_executions before reporting success."
+        )
+    return None
