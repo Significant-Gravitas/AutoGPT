@@ -79,7 +79,7 @@ AutoGPT lets you build, deploy, and run AI agents that carry out complete workfl
     </td>
     <td width="50%" align="center" valign="top">
       <a href="https://agpt.co/product/build/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=build">
-        <img src="docs/content/imgs/readme/build_canvas_demo.png" alt="Build visual canvas showing a completed agent workflow" />
+        <img src="docs/content/imgs/readme/build_screen.jpg" alt="The AutoGPT Build canvas showing a real agent workflow" />
       </a>
       <br /><strong><a href="https://agpt.co/product/build/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=build">Build</a></strong>
       <br />Drag, connect, branch, and inspect blocks for exact control over every step.
