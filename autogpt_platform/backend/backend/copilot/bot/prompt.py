@@ -9,6 +9,27 @@ from .adapters.base import MessageContext, MessageHistoryEntry
 
 THREAD_NAME_PREFIX = "AutoGPT: "
 
+# Prepended when a prompt is clamped so the model knows context was elided.
+_TRUNCATION_NOTICE = "[Earlier context was truncated to fit the size limit.]\n\n"
+
+
+def clamp_prompt(message: str, max_chars: int) -> str:
+    """Clamp an assembled bot prompt to a hard character cap.
+
+    The current message sits at the *end* of the assembled prompt (after any
+    referenced-conversation content and thread history — see
+    ``build_message_text``), so we keep the tail and drop the older leading
+    context, marking the cut so the model doesn't treat the elided text as
+    missing. A no-op when the prompt already fits.
+    """
+    if len(message) <= max_chars:
+        return message
+    keep = max_chars - len(_TRUNCATION_NOTICE)
+    if keep <= 0:
+        # Pathologically tiny cap — can't even fit the notice; hard-cut.
+        return message[-max_chars:]
+    return _TRUNCATION_NOTICE + message[-keep:]
+
 
 def build_message_text(
     ctx: MessageContext,
