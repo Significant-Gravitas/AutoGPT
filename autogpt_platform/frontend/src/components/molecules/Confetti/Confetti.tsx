@@ -79,6 +79,18 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 
     useImperativeHandle(ref, () => api, [api]);
 
+    // Mirror the latest props into refs so the mount-only effect below can read
+    // current values without listing them as dependencies. `fire`'s identity
+    // changes whenever `options` changes (a new object literal every render at
+    // most call sites), so depending on it would tear down and re-fire the
+    // instance on every re-render.
+    const manualstartRef = useRef(manualstart);
+    manualstartRef.current = manualstart;
+    const globalOptionsRef = useRef(globalOptions);
+    globalOptionsRef.current = globalOptions;
+    const fireRef = useRef(fire);
+    fireRef.current = fire;
+
     // Create the confetti instance once after mount via useEffect,
     // so React never re-fires a callback ref on re-renders. Auto-fire is
     // tied to instance creation so StrictMode's remount (which resets the
@@ -89,25 +101,27 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 
       // Cap DPR: full-resolution canvases on 2-3x displays multiply the
       // pixels the main thread has to paint each frame for little visual gain.
+      // `resize: false` keeps this capped sizing — canvas-confetti's own resize
+      // handling ignores devicePixelRatio and would drop the cap on any resize.
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       node.width = node.offsetWidth * dpr;
       node.height = node.offsetHeight * dpr;
 
       instanceRef.current = confetti.create(node, {
-        resize: true,
+        resize: false,
         useWorker: false,
-        ...globalOptions,
+        ...globalOptionsRef.current,
       });
 
-      if (!manualstart) {
-        void fire();
+      if (!manualstartRef.current) {
+        void fireRef.current();
       }
 
       return () => {
         instanceRef.current?.reset();
         instanceRef.current = null;
       };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
       <ConfettiContext.Provider value={api}>
