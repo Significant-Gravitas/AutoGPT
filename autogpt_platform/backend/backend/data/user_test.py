@@ -361,7 +361,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             # No existing profile, and the generated username is free.
@@ -386,7 +390,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-has", "bob@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             mock_prisma.profile.find_unique = AsyncMock(return_value=MagicMock())
@@ -404,7 +412,7 @@ class TestGetOrCreateUserProfile:
         is still resolved so login/auth isn't broken."""
         user_module.get_or_create_user.cache_clear()
         db_user = MagicMock(id="user-err", email="carol@example.com", name=None)
-        sentinel_user = MagicMock()
+        sentinel_user = _application_user("user-err", "carol@example.com")
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
@@ -433,7 +441,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-clash", "dave@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             # userId never resolves to a Profile (so the clash is on username),
@@ -466,7 +478,11 @@ class TestGetOrCreateUserPersonalOrg:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-org", "erin@example.com"),
+            ),
             patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
             patch.object(
                 user_module, "ensure_personal_org", new_callable=AsyncMock
