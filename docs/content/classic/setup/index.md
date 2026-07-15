@@ -104,7 +104,7 @@ If you don't know which to choose, you can safely go with OpenAI*.
 !!! attention
     To use AutoGPT with GPT-4 (recommended), you need to set up a paid OpenAI account
     with some money in it. Please refer to OpenAI for further instructions ([link][openai/help-gpt-4-access]).
-    Free accounts are [limited][openai/api-limits] to GPT-3.5 with only 3 requests per minute.
+    Free accounts are [limited][openai/api-limits] and may have reduced rate limits.
 
 1. Make sure you have a paid account with some credits set up: [Settings > Organization > Billing][openai/billing]
 1. Get your OpenAI API key from: [API keys][openai/api-keys]

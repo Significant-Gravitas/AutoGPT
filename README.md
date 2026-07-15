@@ -130,7 +130,7 @@ These examples show just a glimpse of what you can achieve with AutoGPT! You can
 All code and content within the `autogpt_platform` folder is licensed under the Polyform Shield License. This new project is our in-developlemt platform for building, deploying and managing agents.</br>_[Read more about this effort](https://agpt.co/blog/introducing-the-autogpt-platform)_
 
 🦉 **MIT License:**
-All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes the original stand-alone AutoGPT Agent, along with projects such as [Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge), [agbenchmark](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) and the [AutoGPT Classic GUI](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend).</br>We also publish additional work under the MIT Licence in other repositories, such as [GravitasML](https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform. See also our MIT Licenced [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
+All other portions of the AutoGPT repository (i.e., everything outside the `autogpt_platform` folder) are licensed under the MIT License. This includes the original stand-alone AutoGPT Agent, along with projects such as [Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge) and the [Direct Benchmark](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/direct_benchmark).</br>We also publish additional work under the MIT Licence in other repositories, such as [GravitasML](https://github.com/Significant-Gravitas/gravitasml) which is developed for and used in the AutoGPT Platform. See also our MIT Licenced [Code Ability](https://github.com/Significant-Gravitas/AutoGPT-Code-Ability) project.
 
 ---
 ### Mission
@@ -150,7 +150,7 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 ## 🤖 AutoGPT Classic
 > Below is information about the classic version of AutoGPT.
 
-**🛠️ [Build your own Agent - Quickstart](classic/FORGE-QUICKSTART.md)**
+**🛠️ [Build your own Agent - Forge](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge)**
 
 ### 🏗️ Forge
 
@@ -161,46 +161,26 @@ This guide will walk you through the process of creating your own agent and usin
 
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/forge) about Forge
 
-### 🎯 Benchmark
+### 🎯 Direct Benchmark
 
-**Measure your agent's performance!** The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
+**Measure your agent's performance!** The `direct_benchmark` harness tests agents directly without the agent protocol overhead. It supports multiple prompt strategies (one_shot, reflexion, plan_execute, tree_of_thoughts, etc.) and model configurations, with parallel execution and detailed reporting.
 
-<!-- TODO: insert visual demonstrating the benchmark -->
-
-📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
-&ensp;|&ensp;
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) about the Benchmark
-
-### 💻 UI
-
-**Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
-
-<!-- TODO: insert screenshot of front end -->
-
-The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/frontend) about the Frontend
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/direct_benchmark) about the Benchmark
 
 ### ⌨️ CLI
 
 [CLI]: #-cli
 
-To make it as easy as possible to use all of the tools offered by the repository, a CLI is included at the root of the repo:
+AutoGPT Classic is run via Poetry from the `classic/` directory:
 
 ```shell
-$ ./run
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  agent      Commands to create, start and stop agents
-  benchmark  Commands to start the benchmark and list tests and categories
-  setup      Installs dependencies needed for your system.
+cd classic
+poetry install
+poetry run autogpt        # Interactive CLI mode
+poetry run serve --debug  # Agent Protocol server
 ```
 
-Just clone the repo, install dependencies with `./run setup`, and you should be good to go!
+See the [classic README](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic) for full setup instructions.
 
 ## 🤔 Questions? Problems? Suggestions?
 
