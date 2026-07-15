@@ -139,8 +139,7 @@ def _sanitize_surrogates(value: Any) -> Any:
         return value.encode("utf-8", "replace").decode("utf-8")
     if isinstance(value, dict):
         return {
-            _sanitize_surrogates(k): _sanitize_surrogates(v)
-            for k, v in value.items()
+            _sanitize_surrogates(k): _sanitize_surrogates(v) for k, v in value.items()
         }
     if isinstance(value, list):
         return [_sanitize_surrogates(v) for v in value]
