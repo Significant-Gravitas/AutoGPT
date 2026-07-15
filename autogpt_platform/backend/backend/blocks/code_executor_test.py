@@ -163,6 +163,8 @@ class TestBuildVariableInjection:
         variables = {
             "items": [{"label": "Holidays \ud83c"}, "plain"],
             "meta": {"tag": "x \udfff y"},
+            "nested_bad_key": {"\ud83c_key": "value"},
+            "tuple_val": ("tuple \udfff",),
         }
         envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
 
