@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
-from typing import Any, Sequence, TypedDict
+from typing import Any, Sequence
+
+from typing_extensions import TypedDict
 
 from backend.blocks import get_block
 from backend.data.db_accessors import execution_db
