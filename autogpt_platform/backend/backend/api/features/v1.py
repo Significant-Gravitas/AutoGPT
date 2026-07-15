@@ -115,7 +115,10 @@ from backend.data.onboarding import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
-from backend.data.tally import extract_business_understanding
+from backend.data.tally import (
+    extract_business_understanding,
+    populate_understanding_from_tally,
+)
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -123,6 +126,7 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_or_create_user,
+    get_or_create_user_with_status,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
@@ -184,6 +188,7 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
 @v1_router.post(
@@ -192,27 +197,23 @@ _tally_background_tasks: set[asyncio.Task] = set()
     tags=["auth"],
     dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+async def get_or_create_user_route(
+    response: Response, user_data: dict = Security(get_jwt_payload)
+):
+    result = await get_or_create_user_with_status(user_data)
+    response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
 
-    # Fire-and-forget: populate business understanding from Tally form.
-    # We use created_at proximity instead of an is_new flag because
-    # get_or_create_user is cached — a separate is_new return value would be
-    # unreliable on repeated calls within the cache TTL.
-    age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
-    if age_seconds < 30:
+    if result.was_created:
         try:
-            from backend.data.tally import populate_understanding_from_tally
-
             task = asyncio.create_task(
-                populate_understanding_from_tally(user.id, user.email)
+                populate_understanding_from_tally(result.user.id, result.user.email)
             )
             _tally_background_tasks.add(task)
             task.add_done_callback(_tally_background_tasks.discard)
         except Exception:
             logger.debug("Failed to start Tally population task", exc_info=True)
 
-    return user.model_dump()
+    return result.user.model_dump()
 
 
 @v1_router.post(

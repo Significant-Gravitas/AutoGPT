@@ -1,6 +1,7 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.errors
@@ -9,6 +10,16 @@ import pytest
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
 from backend.util.exceptions import DatabaseError
+
+
+def _application_user(user_id: str, email: str) -> user_module.User:
+    now = datetime.now(timezone.utc)
+    return user_module.User(
+        id=user_id,
+        email=email,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 class TestUpdateUserTimezone:
@@ -250,6 +261,81 @@ class TestTableBackedCredentials:
 
         with pytest.raises(DatabaseError):
             await set_user_credentials("u1", [new])
+
+
+class TestGetOrCreateUserStatus:
+    @pytest.fixture(autouse=True)
+    def stub_user_provisioning(self):
+        with (
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_personal_org", new_callable=AsyncMock),
+        ):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_reports_newly_created_user(self):
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-new", "email": "alice@example.com"}
+            )
+
+        assert result.was_created is True
+
+    @pytest.mark.asyncio
+    async def test_reports_existing_user(self):
+        db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-existing", "bob@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-existing", "email": "bob@example.com"}
+            )
+
+        assert result.was_created is False
+        mock_prisma.user.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_creation_is_not_reported_twice(self):
+        db_user = MagicMock(id="user-race", email="carol@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-race", "carol@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(side_effect=[None, db_user])
+            mock_prisma.user.create = AsyncMock(
+                side_effect=prisma.errors.UniqueViolationError({})
+            )
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-race", "email": "carol@example.com"}
+            )
+
+        assert result.was_created is False
 
 
 class TestGetOrCreateUserProfile:

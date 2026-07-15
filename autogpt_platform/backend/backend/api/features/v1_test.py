@@ -98,15 +98,16 @@ def test_get_or_create_user_route(
         "email": "test@example.com",
         "name": "Test User",
     }
+    mock_result = Mock(user=mock_user, was_created=False)
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user",
-        return_value=mock_user,
+        "backend.api.features.v1.get_or_create_user_with_status",
+        return_value=mock_result,
     )
-
     response = client.post("/auth/user")
 
     assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "false"
     response_data = response.json()
 
     configured_snapshot.assert_match(

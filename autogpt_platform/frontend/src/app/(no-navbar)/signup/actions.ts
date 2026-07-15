@@ -3,6 +3,10 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import {
+  scheduleAccountCreatedGoal,
+  wasAccountCreated,
+} from "@/services/analytics/datafast-server";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
@@ -59,7 +63,11 @@ export async function signup(
     }
 
     try {
-      await resolveResponse(postV1GetOrCreateUser());
+      const createUserResponse = await postV1GetOrCreateUser();
+      await resolveResponse(Promise.resolve(createUserResponse));
+      if (wasAccountCreated(createUserResponse.headers)) {
+        await scheduleAccountCreatedGoal("email");
+      }
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);
       Sentry.captureException(createUserError);
