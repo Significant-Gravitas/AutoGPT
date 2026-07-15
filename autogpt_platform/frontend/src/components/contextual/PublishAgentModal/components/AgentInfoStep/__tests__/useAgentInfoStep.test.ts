@@ -39,9 +39,7 @@ describe("useAgentInfoStep", () => {
     // Adding an image must clear the stale error, otherwise the submit button
     // stays disabled forever and the user is stuck.
     act(() => {
-      result.current.step.handleImagesChange([
-        "https://example.com/thumb.png",
-      ]);
+      result.current.step.handleImagesChange(["https://example.com/thumb.png"]);
     });
 
     expect(result.current.rootError).toBeUndefined();
