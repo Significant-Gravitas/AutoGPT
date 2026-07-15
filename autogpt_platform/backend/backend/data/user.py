@@ -5,7 +5,6 @@ import hmac
 import logging
 import random
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -21,6 +20,7 @@ from prisma.types import (
     UserCreateInput,
     UserUpdateInput,
 )
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma
 from backend.data.model import (
@@ -48,8 +48,9 @@ settings = Settings()
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
-@dataclass(frozen=True, slots=True)
-class UserCreationResult:
+class UserCreationResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     user: User
     was_created: bool
 
