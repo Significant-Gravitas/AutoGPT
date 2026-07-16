@@ -16,10 +16,9 @@ export function UsageIndicator() {
         <button
           type="button"
           aria-label={label}
-          title={label}
           className="relative flex size-8 items-center justify-center rounded-full p-0 transition-colors hover:bg-black/5"
         >
-          <GaugeIcon className="size-5 text-black" />
+          <GaugeIcon className="size-6 text-black" />
 
           {percent ? (
             <svg
