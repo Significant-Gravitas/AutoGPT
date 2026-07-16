@@ -59,7 +59,10 @@ export function TourCopilot() {
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <TourBackdrop />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-        <TourChatHeader scenarioLabel={scenario.label} />
+        <TourChatHeader
+          scenarioLabel={scenario.label}
+          scenarioIcon={scenario.icon}
+        />
         <div className="h-4 shrink-0" />
         <TourChatHost
           key={`${scenario.id}-${runId}`}

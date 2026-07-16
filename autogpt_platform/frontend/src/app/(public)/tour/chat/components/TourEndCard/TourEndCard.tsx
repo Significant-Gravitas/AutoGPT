@@ -25,14 +25,16 @@ export function TourEndCard() {
           </Text>
         </span>
         <Text variant="h4" as="h3" className="mt-1 text-zinc-900">
-          That took {TOUR_DEMO_CLAIM_SECONDS} seconds. Yours will too.
+          That took {TOUR_DEMO_CLAIM_SECONDS} seconds.
+          <br />
+          Yours will too.
         </Text>
         <Text variant="body" className="text-zinc-500">
           Same chat, your real tasks — hosted and running for you.
         </Text>
       </div>
 
-      <div className="mt-5 flex flex-col gap-2">
+      <div className="mt-5 flex flex-col gap-3">
         <Button
           as="NextLink"
           href={buildTourPricingUrl("end_card")}

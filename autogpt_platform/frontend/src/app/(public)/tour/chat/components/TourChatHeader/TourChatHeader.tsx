@@ -3,14 +3,19 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import type { Icon } from "@phosphor-icons/react";
 import { CheckIcon, LinkSimpleIcon } from "@phosphor-icons/react";
 import { useTourChatHeader } from "./useTourChatHeader";
 
 interface Props {
   scenarioLabel: string;
+  scenarioIcon: Icon;
 }
 
-export function TourChatHeader({ scenarioLabel }: Props) {
+export function TourChatHeader({
+  scenarioLabel,
+  scenarioIcon: ScenarioIcon,
+}: Props) {
   const { isCopied, handleShare } = useTourChatHeader();
 
   return (
@@ -21,7 +26,11 @@ export function TourChatHeader({ scenarioLabel }: Props) {
         <div className="md:hidden">
           <SidebarTrigger />
         </div>
-        <Text variant="body-medium" className="truncate text-zinc-900">
+        <ScenarioIcon className="size-4 shrink-0 text-violet-600" />
+        <Text
+          variant="body-medium"
+          className="truncate bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent"
+        >
           {scenarioLabel}
         </Text>
       </div>

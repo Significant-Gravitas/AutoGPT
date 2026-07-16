@@ -151,14 +151,13 @@ describe("Tour chat scripted demo", () => {
       screen.getByText(/will appear in a moment on the right side/i),
     ).toBeDefined();
 
-    // The sidebar upsell card stays visible; no bottom banner takes over.
-    expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
-    expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();
-    // Exact match — the end card's "or self-host free" link is a separate CTA.
-    expect(screen.getByText("Self-host free")).toBeDefined();
+    // The end card carries the upsell now — the sidebar card hides.
+    expect(screen.queryByText(/Ready to build your own/i)).toBeNull();
+    expect(screen.queryByText(/Start with Pro for \$42\.50\/mo/i)).toBeNull();
+    expect(screen.queryByText("Self-host free")).toBeNull();
     expect(screen.queryByText(/Replay demo/i)).toBeNull();
 
-    // Completion flips the store flag that turns on the card's animations.
+    // Completion flips the store flag that hides the sidebar card.
     expect(useTourStore.getState().isDemoComplete).toBe(true);
   });
 

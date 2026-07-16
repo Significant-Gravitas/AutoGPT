@@ -130,6 +130,9 @@ interface Props {
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  // Once the demo finishes, the end card in the chat carries the upsell —
+  // the sidebar card hides until a new scenario resets the demo.
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
 
   return (
     <Sidebar
@@ -227,9 +230,11 @@ export function TourSidebar({ variant = "tour" }: Props) {
         </motion.div>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
-        <TourUpsellCard />
-      </SidebarFooter>
+      {!isDemoComplete && (
+        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+          <TourUpsellCard />
+        </SidebarFooter>
+      )}
 
       <SidebarRail />
     </Sidebar>

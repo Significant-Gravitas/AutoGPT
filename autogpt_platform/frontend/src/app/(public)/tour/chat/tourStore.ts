@@ -6,8 +6,8 @@ interface TourState {
   /** Bumped on every sidebar selection — re-keys the demo so clicking a
    * scenario (even the already-active one) always restarts it fresh. */
   runId: number;
-  /** True once the active demo has played through — the sidebar upsell card
-   * saves its attention-grabbing animations for this moment. */
+  /** True once the active demo has played through — the end card takes over
+   * the upsell and the sidebar card hides until a new scenario starts. */
   isDemoComplete: boolean;
   /** Scenarios the visitor has watched to completion — the sidebar marks
    * them with a check and the "next scenario" nudge skips them. */
