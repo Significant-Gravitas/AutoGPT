@@ -174,6 +174,8 @@ async def execute_block(
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
     dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -251,6 +253,8 @@ async def execute_block(
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
             user_timezone=user_timezone,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -750,6 +754,8 @@ async def check_hitl_review(
     prep: BlockPreparation,
     user_id: str,
     session_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
@@ -804,6 +810,8 @@ async def check_hitl_review(
         node_id=synthetic_node_id,
         node_exec_id=synthetic_node_exec_id,
         sensitive_action_safe_mode=True,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     should_pause, input_data = await block.is_block_exec_need_review(
         input_data,

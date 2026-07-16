@@ -7,8 +7,25 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 
 from backend.api.features.library.db import migrate_webhook_presets_to_new_version
+
+
+def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
+    """Minimal RequestContext for v1 route tests that now require ctx."""
+    return RequestContext(
+        user_id=user_id,
+        org_id="test-org",
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=True,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
 
 # Patch prisma.models.AgentPreset.prisma per the project-wide convention used
 # in backend/api/features/library/db_test.py and the rest of the suite.
@@ -146,7 +163,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
         return_value=AsyncMock(),
     )
     mocker.patch.object(
-        library_db, "on_graph_activate", side_effect=lambda g, user_id: g
+        library_db, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(library_db, "on_graph_deactivate", return_value=None)
     mocker.patch.object(library_db.graph_db, "set_graph_active_version")
@@ -186,7 +203,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
         return_value=AsyncMock(),
     )
     mocker.patch.object(
-        library_db, "on_graph_activate", side_effect=lambda g, user_id: g
+        library_db, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(library_db, "on_graph_deactivate", return_value=None)
     mocker.patch.object(library_db.graph_db, "set_graph_active_version")
@@ -232,10 +249,15 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
         "migrate_webhook_presets_to_new_version",
         return_value=1,
     )
-    mocker.patch.object(v1, "on_graph_activate", side_effect=lambda g, user_id: g)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
-    await v1.update_graph(graph_id=new_graph.id, graph=incoming, user_id="user-1")
+    await v1.update_graph(
+        graph_id=new_graph.id,
+        graph=incoming,
+        user_id="user-1",
+        ctx=_make_test_ctx(),
+    )
 
     migrate_mock.assert_awaited_once_with(
         user_id="user-1",
@@ -275,10 +297,15 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
         "migrate_webhook_presets_to_new_version",
         return_value=0,
     )
-    mocker.patch.object(v1, "on_graph_activate", side_effect=lambda g, user_id: g)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
-    await v1.update_graph(graph_id=new_graph.id, graph=incoming, user_id="user-1")
+    await v1.update_graph(
+        graph_id=new_graph.id,
+        graph=incoming,
+        user_id="user-1",
+        ctx=_make_test_ctx(),
+    )
 
     migrate_mock.assert_not_awaited()
 
@@ -308,13 +335,16 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
         "migrate_webhook_presets_to_new_version",
         return_value=2,
     )
-    mocker.patch.object(v1, "on_graph_activate", return_value=None)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
     body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
     await v1.set_graph_active_version(
-        graph_id=target_graph.id, request_body=body, user_id="user-1"
+        graph_id=target_graph.id,
+        request_body=body,
+        user_id="user-1",
+        ctx=_make_test_ctx(),
     )
 
     migrate_mock.assert_awaited_once_with(
@@ -347,13 +377,16 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
         "migrate_webhook_presets_to_new_version",
         return_value=0,
     )
-    mocker.patch.object(v1, "on_graph_activate", return_value=None)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
     body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
     await v1.set_graph_active_version(
-        graph_id=target_graph.id, request_body=body, user_id="user-1"
+        graph_id=target_graph.id,
+        request_body=body,
+        user_id="user-1",
+        ctx=_make_test_ctx(),
     )
 
     migrate_mock.assert_not_awaited()

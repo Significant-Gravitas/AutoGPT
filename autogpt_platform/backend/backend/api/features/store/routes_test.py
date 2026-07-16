@@ -22,14 +22,40 @@ app.include_router(store_routes.router)
 
 client = fastapi.testclient.TestClient(app)
 
+TEST_ORG_ID = "test-org-id"
+
+
+def _test_request_context():
+    from autogpt_libs.auth.models import RequestContext
+
+    return RequestContext(
+        user_id="test-user-id",
+        org_id=TEST_ORG_ID,
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
-    """Setup auth overrides for all tests in this module"""
+    """Setup auth overrides for all tests in this module.
+
+    ``get_request_context`` is overridden with a deterministic context —
+    the real dependency resolves the personal org from the database, which
+    would make the ``organization_id`` forwarded to the db layer depend on
+    test-database state.
+    """
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     store_routes.store_cache.clear_all_caches()
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = _test_request_context
     yield
     app.dependency_overrides.clear()
     store_routes.store_cache.clear_all_caches()
@@ -588,6 +614,7 @@ def test_get_submissions_success(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        organization_id=TEST_ORG_ID,
         page=1,
         page_size=20,
         search_query=None,
@@ -631,6 +658,7 @@ def test_get_submissions_pagination(
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_pagination")
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        organization_id=TEST_ORG_ID,
         page=2,
         page_size=5,
         search_query=None,
@@ -663,6 +691,7 @@ def test_get_submissions_forwards_search_query(
     assert response.status_code == 200
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        organization_id=TEST_ORG_ID,
         page=1,
         page_size=20,
         search_query="invoice agent",
@@ -695,6 +724,7 @@ def test_get_submissions_forwards_statuses(
     assert response.status_code == 200
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        organization_id=TEST_ORG_ID,
         page=1,
         page_size=20,
         search_query=None,
@@ -730,6 +760,7 @@ def test_get_submissions_forwards_sort(
     assert response.status_code == 200
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        organization_id=TEST_ORG_ID,
         page=1,
         page_size=20,
         search_query=None,

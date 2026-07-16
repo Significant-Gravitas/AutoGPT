@@ -261,6 +261,14 @@ async def log_system_credential_cost(
             meta: dict[str, Any] = {
                 "tracking_type": tracking_type,
                 "tracking_amount": tracking_amount,
+                # All block-layer LLM calls go through the sync provider
+                # dispatch today; tagging consistently with the rest of
+                # the platform (copilot chat, dream sync_baseline) so
+                # the admin cost-logs Path column never renders "—".
+                # When the block layer opts into flex/batch in the
+                # future, write the actual mode here.
+                "execution_path": "sync",
+                "source": "block",
             }
             if credit_cost is not None:
                 meta["credit_cost"] = credit_cost

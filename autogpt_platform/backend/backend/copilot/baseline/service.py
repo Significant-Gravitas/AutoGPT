@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 import orjson
 from langfuse import propagate_attributes
 from openai import APIConnectionError
+from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
@@ -118,6 +119,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
     estimate_token_count,
@@ -821,26 +823,33 @@ async def _baseline_llm_caller(
             )
             if thinking_param:
                 extra_body.update(thinking_param)
-        create_kwargs: dict[str, Any] = {
-            "model": state.model,
-            "messages": typed_messages,
-            "stream": True,
-            "extra_body": extra_body,
-        }
-        # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
-        if is_openrouter_transport:
-            create_kwargs["stream_options"] = {"include_usage": True}
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
+        max_tokens_arg: int | Any = openai_omit
         if not is_openrouter_transport and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
-            create_kwargs["max_tokens"] = min(budget + 4096, model_max)
-        if extra_headers:
-            create_kwargs["extra_headers"] = extra_headers
-        if tools:
-            create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
-        response = await client.chat.completions.create(**create_kwargs)
+            max_tokens_arg = min(budget + 4096, model_max)
+        # Route through the shared providers helper so future provider
+        # work (streaming flex tier, new SDK upgrades) propagates here
+        # without a parallel migration. The pre-built ``client`` is
+        # passed through so the module-level Langfuse-wrapped client
+        # keeps its HTTP connection pool warm across turns.
+        response = await call_provider_stream(
+            client=client,
+            model=state.model,
+            messages=cast(list[dict[str, Any]], typed_messages),
+            extra_body=extra_body,
+            extra_headers=extra_headers,
+            # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
+            # Local transport (``is_openrouter_transport == False``) also gets
+            # ``None`` so stricter local backends don't 400 on the extension.
+            stream_options=(
+                {"include_usage": True} if is_openrouter_transport else None
+            ),
+            tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
+            max_tokens=max_tokens_arg,
+        )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
@@ -1549,6 +1558,8 @@ async def stream_chat_completion_baseline(
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -1566,6 +1577,12 @@ async def stream_chat_completion_baseline(
         raise NotFoundError(
             f"Session {session_id} not found. Please create a new session first."
         )
+
+    # The session row is the tenancy anchor; the turn entry's org/team only
+    # backfills sessions created before org tagging (pre-migration rows).
+    if session.organization_id is None and organization_id:
+        session.organization_id = organization_id
+        session.team_id = team_id
 
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the new turn starts from a well-formed message list.

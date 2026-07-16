@@ -16,6 +16,8 @@ export function PaywallModal() {
   const {
     isLoading,
     plans,
+    retryLoadPlans,
+    isRetryingPlans,
     country,
     isYearly,
     selectedCycle,
@@ -34,15 +36,22 @@ export function PaywallModal() {
     <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
       <Dialog.Content>
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={handleLogout}
-            leftIcon={<SignOutIcon size={16} />}
-            className="absolute right-0 top-0 text-zinc-500 hover:text-zinc-700"
-          >
-            Log out
-          </Button>
+          {/* Sticky (not absolute) so the button pins to the top of the
+              dialog's scroll viewport instead of getting clipped or scrolled
+              away when the plan cards overflow on short screens. The negative
+              margin collapses the row's layout space so the title keeps its
+              position. */}
+          <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={handleLogout}
+              leftIcon={<SignOutIcon size={16} />}
+              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
+            >
+              Log out
+            </Button>
+          </div>
           <div className="flex flex-col items-center gap-1 text-center">
             <Text
               variant="h3"
@@ -101,10 +110,20 @@ export function PaywallModal() {
                 <Skeleton className="h-[26rem] rounded-2xl" />
               </div>
             ) : plans.length === 0 ? (
-              <p className="text-center text-sm text-zinc-500">
-                Subscriptions are temporarily unavailable. Please try again
-                shortly.
-              </p>
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-center text-sm text-zinc-500">
+                  Subscriptions are temporarily unavailable. Please try again
+                  shortly.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={retryLoadPlans}
+                  loading={isRetryingPlans}
+                >
+                  Retry
+                </Button>
+              </div>
             ) : (
               <div
                 className={cn(
@@ -123,6 +142,7 @@ export function PaywallModal() {
                     onSelect={() => handleSelectPlan(plan.key)}
                     loading={isPending && selectedTier === plan.key}
                     disabled={isPending && selectedTier !== plan.key}
+                    priceCaption="billing-period"
                   />
                 ))}
               </div>

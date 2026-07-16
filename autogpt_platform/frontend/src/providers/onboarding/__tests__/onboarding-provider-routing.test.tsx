@@ -140,6 +140,24 @@ describe("OnboardingProvider routing — logged-in user", () => {
     );
   });
 
+  test("incomplete user on /reset-password stays put (recovery session must set password first)", async () => {
+    // A Supabase recovery link signs the user in and lands them on
+    // /reset-password. Bouncing them to /onboarding would skip the password
+    // change entirely, turning the reset link into a one-time sign-in link.
+    mockPathname = "/reset-password";
+    mockIsCompleted = false;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(completedCallCount.value).toBe(0);
+  });
+
   test("incomplete user already on /onboarding stays put", async () => {
     mockPathname = "/onboarding";
     mockIsCompleted = false;

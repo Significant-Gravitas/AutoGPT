@@ -25,6 +25,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
     isExecutingGraph,
     isTerminatingGraph,
     isSaving,
+    runTarget,
   } = useRunGraph();
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
@@ -109,6 +110,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
         isOpen={openRunInputDialog}
         setIsOpen={setOpenRunInputDialog}
         purpose="run"
+        graphID={runTarget?.graphID}
+        graphVersion={runTarget?.graphVersion}
       />
     </>
   );

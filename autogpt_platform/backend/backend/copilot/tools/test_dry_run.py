@@ -735,6 +735,7 @@ def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
     graph.input_schema = {"type": "object", "properties": {}, "required": []}
     graph.credentials_input_schema = {"type": "object", "properties": {}}
     graph.trigger_setup_info = None
+    graph.has_external_trigger = False
     return graph
 
 

@@ -13,9 +13,10 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.llm.providers import ProviderLiteral
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,25 @@ class TransportProfile(BaseModel):
     # ``provider="open_router"`` row from a local Ollama turn would
     # falsely show up as OR spend on the admin dashboard.
     cost_log_provider: str
+    # Provider literal that any out-of-chat caller (dream pass, graphiti
+    # memory ingest, future scheduled batch jobs) should pass to
+    # ``backend.util.llm.providers.call_provider``. Maps the transport's
+    # OpenAI-compat / direct-Anthropic / OpenRouter / Ollama endpoint
+    # back into the typed ``ProviderLiteral`` ``call_provider`` accepts.
+    # Read by ``backend.copilot.transport_routing`` to build the actual
+    # provider kwargs; kept on the profile so adding a new transport row
+    # automatically tells dream + graphiti where to dispatch.
+    dispatch_provider: ProviderLiteral
+    # Whether OpenAI's ``service_tier="flex"`` flows end-to-end on this
+    # transport. True only for ``openrouter`` today: OpenRouter forwards
+    # ``extra_body.service_tier`` to OpenAI-backed upstreams and gets the
+    # ~50% discount; OpenAI native would also support it but we don't have
+    # a "direct OpenAI" transport. False on subscription / direct_anthropic
+    # (Anthropic has no flex tier — their cost-saver is batch) and on
+    # ``local`` (Ollama silently ignores ``service_tier`` and there's no
+    # discount to chase). Read by graphiti's flex-client builder to fall
+    # back to the sync client when the active transport can't honour it.
+    supports_flex_tier: bool
 
 
 _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
@@ -112,6 +132,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=False,
         cost_log_provider="anthropic",
+        dispatch_provider="anthropic",
+        supports_flex_tier=False,
     ),
     "openrouter": TransportProfile(
         name="openrouter",
@@ -120,6 +142,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
         cost_log_provider="open_router",
+        dispatch_provider="open_router",
+        supports_flex_tier=True,
     ),
     "direct_anthropic": TransportProfile(
         name="direct_anthropic",
@@ -128,6 +152,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
         cost_log_provider="anthropic",
+        dispatch_provider="anthropic",
+        supports_flex_tier=False,
     ),
     "local": TransportProfile(
         name="local",
@@ -136,6 +162,8 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=True,
         cost_log_provider="ollama",
+        dispatch_provider="ollama",
+        supports_flex_tier=False,
     ),
 }
 
@@ -704,7 +732,8 @@ class ChatConfig(BaseSettings):
         while ``main_client_credentials`` still routes to OpenRouter (gated on
         ``openrouter_active``) would send direct-Anthropic shape to an
         OpenRouter endpoint.  ``local`` is checked first because its default
-        ``api_key="ollama"`` also satisfies the shape-only ``openrouter_active``.
+        ``api_key`` of ``ollama`` also satisfies the shape-only
+        ``openrouter_active``.
         """
         if self.transport.name == "local":
             return "local"
@@ -1323,17 +1352,16 @@ class ChatConfig(BaseSettings):
         "onboarding": "prompts/onboarding_system.md",
     }
 
-    class Config:
-        """Pydantic config."""
-
-        env_prefix = "CHAT_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = SettingsConfigDict(
+        env_prefix="CHAT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra environment variables
         # Accept both the Python attribute name and the validation_alias when
         # constructing a ``ChatConfig`` directly (e.g. in tests passing
         # ``thinking_standard_model=...``).  Without this, pydantic only
         # accepts the alias names (``CHAT_THINKING_STANDARD_MODEL`` env) and
         # rejects field-name kwargs — breaking ``ChatConfig(field=...)`` in
         # every test that constructs a config.
-        populate_by_name = True
+        populate_by_name=True,
+    )

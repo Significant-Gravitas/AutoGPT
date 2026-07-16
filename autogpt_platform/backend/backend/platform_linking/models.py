@@ -6,6 +6,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Hard cap on the assembled bot prompt. The chat bots build a prompt from the
+# user's message plus channel history / referenced conversations, which on a
+# very long conversation can blow past this — callers must clamp to it before
+# constructing a BotChatRequest (see bot.prompt.clamp_prompt).
+MAX_BOT_MESSAGE_CHARS = 32000
+
 
 class Platform(str, Enum):
     """Mirror of the Prisma PlatformType enum."""
@@ -106,15 +112,50 @@ class BotChatRequest(BaseModel):
         max_length=255,
     )
     message: str = Field(
-        description="The user's message", min_length=1, max_length=32000
+        description="The user's message",
+        min_length=1,
+        max_length=MAX_BOT_MESSAGE_CHARS,
     )
     session_id: str | None = Field(
         default=None,
         description="Existing CoPilot session ID. If omitted, a new session is created.",
     )
+    file_ids: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Workspace file IDs (already uploaded) to attach to the turn.",
+    )
+
+
+class WorkspaceUploadRequest(BaseModel):
+    """Upload a user-attached file into the conversation owner's workspace.
+
+    Resolved to the same owner a chat turn bills to (server owner, or the
+    DM-linked user). The file runs through the same AV scan + storage as the
+    web upload endpoint."""
+
+    platform: Platform
+    platform_server_id: str | None = Field(default=None, min_length=1, max_length=255)
+    platform_user_id: str = Field(min_length=1, max_length=255)
+    filename: str = Field(min_length=1, max_length=512)
+    mime_type: str = Field(min_length=1, max_length=255)
+    content: bytes
+    # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
+    # file during the turn, same as a web upload. Resolved by the caller before
+    # uploading (see ``ensure_chat_session``).
+    session_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 # ── Response Models ────────────────────────────────────────────────────
+
+
+class WorkspaceUploadResult(BaseModel):
+    """Outcome of one file upload. ``file_id`` is set on success; otherwise
+    ``error`` carries a stable code the bot maps to user-facing text."""
+
+    filename: str
+    file_id: str | None = None
+    error: str | None = None
 
 
 class LinkTokenResponse(BaseModel):
@@ -188,13 +229,46 @@ class DeleteLinkResponse(BaseModel):
     success: bool
 
 
+class TurnDenial(BaseModel):
+    """Why a copilot turn was refused before it ran, with the message (and
+    optional CTA button) the bot should show the user.
+
+    Lets ``start_chat_turn`` enforce the same subscription paywall + usage
+    rate limits the web UI applies, since the bot bypasses both by enqueuing
+    directly into the executor.
+    """
+
+    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    message: str
+    button_label: str | None = None
+    button_url: str | None = None
+
+
+class EnsureSessionResult(BaseModel):
+    """Result of resolving a session ahead of attachment uploads.
+
+    When ``denial`` is set the turn gate refused the user before anything was
+    uploaded — the bot renders the denial and skips both the upload and the
+    turn, so a capped/paywalled user's files are never scanned or stored.
+    """
+
+    session_id: str | None = None
+    denial: TurnDenial | None = None
+
+
 class ChatTurnHandle(BaseModel):
-    """Subscribe keys for a pending copilot turn."""
+    """Subscribe keys for a pending copilot turn.
+
+    When ``denial`` is set the turn was refused (paywall / rate limit) and
+    nothing was enqueued — the caller surfaces the denial instead of
+    subscribing to a stream.
+    """
 
     session_id: str
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+    denial: TurnDenial | None = None
 
 
 class ChatSessionSummary(BaseModel):

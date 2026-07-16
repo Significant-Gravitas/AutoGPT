@@ -6,7 +6,12 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import list_user_chats, start_chat_turn
+from .chat import (
+    ensure_chat_session,
+    list_user_chats,
+    start_chat_turn,
+    upload_workspace_file,
+)
 from .models import (
     BotChatRequest,
     BotEventInput,
@@ -14,12 +19,15 @@ from .models import (
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     LinkTokenResponse,
     LinkTokenStatusResponse,
     ListUserChatsResponse,
     Platform,
     ResolveResponse,
     WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,8 +71,39 @@ class PlatformLinkingManager(AppService):
         return await platform_linking_db().get_link_token_status(token)
 
     @expose
+    async def list_user_server_ids(self, platform: Platform, user_id: str) -> list[str]:
+        """Bot-scoped: the platform server IDs ``user_id`` has linked.
+
+        Deliberately returns only the IDs (not full ``PlatformLinkInfo``) so the
+        bot client stays a narrow surface — the user-facing ``list_server_links``
+        stays off the bot client. Backs proactive-output authorization.
+        """
+        links = await platform_linking_db().list_server_links(user_id)
+        return [
+            link.platform_server_id for link in links if link.platform == platform.value
+        ]
+
+    @expose
+    async def ensure_chat_session(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        return await ensure_chat_session(
+            platform, platform_user_id, platform_server_id, session_id
+        )
+
+    @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
+
+    @expose
+    async def upload_workspace_file(
+        self, request: WorkspaceUploadRequest
+    ) -> WorkspaceUploadResult:
+        return await upload_workspace_file(request)
 
     @expose
     async def refresh_server_link_name(
@@ -127,7 +166,14 @@ class PlatformLinkingManagerClient(AppServiceClient):
     get_link_token_status = endpoint_to_async(
         PlatformLinkingManager.get_link_token_status
     )
+    list_user_server_ids = endpoint_to_async(
+        PlatformLinkingManager.list_user_server_ids
+    )
+    ensure_chat_session = endpoint_to_async(PlatformLinkingManager.ensure_chat_session)
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
+    upload_workspace_file = endpoint_to_async(
+        PlatformLinkingManager.upload_workspace_file
+    )
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name
     )

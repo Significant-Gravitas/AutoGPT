@@ -109,6 +109,7 @@ vi.mock("../helpers", () => ({
     }
     return { markerType: null };
   },
+  shouldShowTaskListNotice: () => false,
   splitReasoningAndResponse: (parts: unknown[]) => ({
     reasoning: [],
     response: parts,

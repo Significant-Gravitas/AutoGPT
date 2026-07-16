@@ -20,7 +20,12 @@ export function useSharedChatArtifacts({
   filePattern,
   fileUrlBuilder,
 }: Props) {
-  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  // The preview drawer is driven by activeArtifact (not `isOpen`, which belongs
+  // to the context sidebar), so derive the open state — used to widen the chat
+  // column — from the active artifact.
+  const isArtifactPanelOpen = useCopilotUIStore(
+    (s) => s.artifactPanel.activeArtifact != null,
+  );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const resetArtifactPanel = useCopilotUIStore((s) => s.resetArtifactPanel);
   const autoOpenedArtifactIdRef = useRef<string | null>(null);

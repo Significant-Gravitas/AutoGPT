@@ -431,6 +431,8 @@ class TestTransportProfile:
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is True
         assert p.cost_log_provider == "ollama"
+        assert p.dispatch_provider == "ollama"
+        assert p.supports_flex_tier is False
 
     def test_openrouter_profile_shape(self):
         cfg = ChatConfig(
@@ -446,6 +448,8 @@ class TestTransportProfile:
         assert "OPENAI_API_KEY" in p.api_key_fallback_envs
         assert p.inherit_fast_model_for_aux is False
         assert p.cost_log_provider == "open_router"
+        assert p.dispatch_provider == "open_router"
+        assert p.supports_flex_tier is True
 
     def test_subscription_profile_shape(self):
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
@@ -456,6 +460,8 @@ class TestTransportProfile:
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is False
         assert p.cost_log_provider == "anthropic"
+        assert p.dispatch_provider == "anthropic"
+        assert p.supports_flex_tier is False
 
     def test_direct_anthropic_profile_shape(self):
         cfg = _make_direct_safe_config(
@@ -466,6 +472,8 @@ class TestTransportProfile:
         assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint == "anthropic"
         assert p.cost_log_provider == "anthropic"
+        assert p.dispatch_provider == "anthropic"
+        assert p.supports_flex_tier is False
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by
