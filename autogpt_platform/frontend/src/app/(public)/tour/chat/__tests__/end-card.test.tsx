@@ -72,6 +72,8 @@ describe("Tour demo end state", () => {
     expect(
       screen.getByText(/Start with Pro · \$42\.50\/mo · cancel anytime/i),
     ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
+    expect(screen.queryByText(/Simulated demo/i)).toBeNull();
 
     const pricingCta = screen
       .getByText("Make this agent yours")
@@ -94,7 +96,7 @@ describe("Tour demo end state", () => {
     expect(screen.getByText("watched")).toBeDefined();
   });
 
-  test("idling ~4s after the demo shows the next-scenario nudge chip", async () => {
+  test("idling after the demo keeps the finished chat controls hidden", async () => {
     render(<TourChatPage />);
     await playDemoThrough();
 
@@ -104,28 +106,9 @@ describe("Tour demo end state", () => {
       await vi.advanceTimersByTimeAsync(4100);
     });
 
-    // Competitor watch is the default scenario, so the nudge points at the
-    // next one in sidebar order: Support queue.
-    expect(
-      screen.getByText(/Next: Support queue — watch it in \d+s/),
-    ).toBeDefined();
-  });
-
-  test("the nudge chip switches into the next scenario", async () => {
-    render(<TourChatPage />);
-    await playDemoThrough();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4100);
-    });
-
-    fireEvent.click(screen.getByText(/Next: Support queue/));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    expect(useTourStore.getState().activeScenarioId).toBe("support-queue");
-    // Fresh run: the end card is gone while the new scenario plays.
-    expect(screen.queryByText(/Yours will too/i)).toBeNull();
+    expect(screen.queryByText(/^Next:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Send:/i })).toBeNull();
+    expect(screen.queryByText(/Simulated demo/i)).toBeNull();
   });
 
   test("watch another scenario starts the next unwatched demo", async () => {
