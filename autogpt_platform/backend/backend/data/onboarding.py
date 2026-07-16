@@ -42,10 +42,11 @@ MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     walletShown: Optional[bool] = None
-    # Plain str list to mirror the storage shape; the API merges this with the
-    # existing column rather than treating it as authoritative, so legacy
-    # values that round-trip from the DB pass through unchanged.
-    notified: Optional[list[str]] = None
+    # Typed enum so the PATCH endpoint validates step names at the boundary
+    # (invalid values get a 422 instead of being stored and then 500-ing reads,
+    # which type `notified` as list[OnboardingStep]). The API merges this with
+    # the existing column rather than treating it as authoritative.
+    notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
     otherIntegrations: Optional[str] = None
@@ -93,7 +94,12 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified + onboarding.notified))
+        # str(step): persist plain str so the merge with the stored str[] column
+        # stays list[str]. str() works whether the value is an OnboardingStep
+        # (StrEnum) or already a plain str, so it can't AttributeError.
+        update["notified"] = list(
+            {str(step) for step in data.notified} | set(onboarding.notified)
+        )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -127,7 +133,7 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
             reward = 300
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
-        case OnboardingStep.MARKETPLACE_RUN_AGENT:
+        case OnboardingStep.LIBRARY_RUN_AGENT:
             reward = 100
         case OnboardingStep.SCHEDULE_AGENT:
             reward = 100
@@ -152,7 +158,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
+            # str(step): persist a plain str (consistent with
+            # update_user_onboarding); robust whether step is a StrEnum or a str.
+            "rewardedFor": list(set(onboarding.rewardedFor + [str(step)])),
         },
     )
 
@@ -166,7 +174,9 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
-                "completedSteps": list(set(onboarding.completedSteps + [step])),
+                # str(step): persist a plain str (see update_user_onboarding);
+                # robust whether step is a StrEnum or a str.
+                "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
         await _reward_user(user_id, onboarding, step)

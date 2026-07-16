@@ -5,6 +5,7 @@ import pydantic
 
 from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
+from backend.data.onboarding_steps import OnboardingStep
 from backend.util.timezone_name import TimeZoneName
 
 
@@ -92,8 +93,10 @@ class NotificationPayload(pydantic.BaseModel):
 
 
 class OnboardingNotificationPayload(NotificationPayload):
-    # Plain string so legacy step names from existing rows pass through unchanged.
-    step: str | None
+    # Typed enum: notifications only fire on fresh completions, where ``step`` is
+    # always a current ``OnboardingStep`` (or ``None`` for ``increment_runs``).
+    # Legacy step names live only in stored rows, never in emitted notifications.
+    step: OnboardingStep | None
 
 
 class CopilotCompletionPayload(NotificationPayload):

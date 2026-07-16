@@ -16,6 +16,12 @@ class OnboardingStep(StrEnum):
     importing the onboarding logic layer, which would create an import cycle.
     """
 
+    # Retired steps are kept, never deleted: existing rows may still contain
+    # them and the strict ``list[OnboardingStep]`` response model would 500 on
+    # read otherwise, and the analytics funnel reports on them. Steps marked
+    # ``# deprecated`` below are no longer set by any code path (no writer, not
+    # accepted by the completion endpoint) - keep them; don't use in new code.
+
     # Introductory onboarding (Library)
     WELCOME = "WELCOME"
     USAGE_REASON = "USAGE_REASON"
@@ -30,14 +36,17 @@ class OnboardingStep(StrEnum):
     # SECRT-2355; existing rows are migrated in-place.
     ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE"
     GET_RESULTS = "GET_RESULTS"
-    MARKETPLACE_VISIT = "MARKETPLACE_VISIT"
+    MARKETPLACE_VISIT = "MARKETPLACE_VISIT"  # deprecated: never set
     MARKETPLACE_ADD_AGENT = "MARKETPLACE_ADD_AGENT"
-    MARKETPLACE_RUN_AGENT = "MARKETPLACE_RUN_AGENT"
-    BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"
+    # Fires on Library runs (source == "library") and is shown to users as a
+    # Library action. Renamed from MARKETPLACE_RUN_AGENT in SECRT-2355 (the
+    # MARKETPLACE_ prefix was a misnomer); existing rows are migrated in-place.
+    LIBRARY_RUN_AGENT = "LIBRARY_RUN_AGENT"
+    BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"  # deprecated: never set
     # Consistency Challenge
-    RE_RUN_AGENT = "RE_RUN_AGENT"
+    RE_RUN_AGENT = "RE_RUN_AGENT"  # deprecated: never set
     SCHEDULE_AGENT = "SCHEDULE_AGENT"
-    RUN_AGENTS = "RUN_AGENTS"
+    RUN_AGENTS = "RUN_AGENTS"  # deprecated: never set
     RUN_3_DAYS = "RUN_3_DAYS"
     # The Pro Playground
     TRIGGER_WEBHOOK = "TRIGGER_WEBHOOK"

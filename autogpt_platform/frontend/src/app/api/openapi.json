@@ -19236,7 +19236,7 @@
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
+          "LIBRARY_RUN_AGENT",
           "BUILDER_SAVE_AGENT",
           "RE_RUN_AGENT",
           "SCHEDULE_AGENT",
@@ -24675,7 +24675,10 @@
           },
           "notified": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
+              {
+                "items": { "$ref": "#/components/schemas/OnboardingStep" },
+                "type": "array"
+              },
               { "type": "null" }
             ],
             "title": "Notified"
