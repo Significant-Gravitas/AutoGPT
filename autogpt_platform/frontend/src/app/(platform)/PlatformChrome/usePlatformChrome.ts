@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
+import { getRouteTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
+
 // Routes that must stay outside the new top-level sidebar layout. Login,
 // signup and onboarding already live in the (no-navbar) group. These
 // (platform) routes should not show the app sidebar — reset-password and the
@@ -52,9 +54,11 @@ export function usePlatformChrome() {
     showNewLayout:
       isMounted && isNewLayoutEnabled && !isExcludedRoute && !showTourSidebar,
     // On copilot the inset header floats over the chat instead of stacking
-    // above it, so messages scroll to the viewport top and the actions pill's
-    // shadow isn't painted over by the content section below.
+    // above it, so messages scroll to the viewport top.
     overlayInsetHeader: isCopilotRoute,
+    // Titleless pages collapse the header on desktop so content doesn't sit
+    // below an empty strip; on mobile it stays for the sidebar trigger.
+    hasInsetHeaderTitle: Boolean(getRouteTitle(pathname)),
     showTourSidebar,
   };
 }
