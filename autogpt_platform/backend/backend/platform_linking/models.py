@@ -6,6 +6,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Hard cap on the assembled bot prompt. The chat bots build a prompt from the
+# user's message plus channel history / referenced conversations, which on a
+# very long conversation can blow past this — callers must clamp to it before
+# constructing a BotChatRequest (see bot.prompt.clamp_prompt).
+MAX_BOT_MESSAGE_CHARS = 32000
+
 
 class Platform(str, Enum):
     """Mirror of the Prisma PlatformType enum."""
@@ -106,7 +112,9 @@ class BotChatRequest(BaseModel):
         max_length=255,
     )
     message: str = Field(
-        description="The user's message", min_length=1, max_length=32000
+        description="The user's message",
+        min_length=1,
+        max_length=MAX_BOT_MESSAGE_CHARS,
     )
     session_id: str | None = Field(
         default=None,

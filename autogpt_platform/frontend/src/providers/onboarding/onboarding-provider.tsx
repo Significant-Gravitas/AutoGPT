@@ -119,6 +119,11 @@ export default function OnboardingProvider({
   // trigger onboarding init/redirects (which would bounce a logged-in user with
   // incomplete onboarding out of the tour).
   const isOnPublicTour = pathname.startsWith("/tour");
+  // A Supabase recovery link signs the user in and lands them on
+  // /reset-password. They must stay there until the new password is set;
+  // bouncing an un-onboarded account to /onboarding would skip the password
+  // change and turn the reset link into a one-time sign-in link.
+  const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
@@ -154,8 +159,14 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
-    // Prevent multiple initializations
-    if (hasInitialized.current || !isLoggedIn || isOnPublicTour) {
+    // Prevent multiple initializations. Skipped routes don't mark
+    // hasInitialized, so init re-runs on the next pathname change.
+    if (
+      hasInitialized.current ||
+      !isLoggedIn ||
+      isOnPublicTour ||
+      isOnPasswordResetRoute
+    ) {
       return;
     }
 
@@ -221,6 +232,7 @@ export default function OnboardingProvider({
     isLoggedIn,
     pathname,
     isOnPublicTour,
+    isOnPasswordResetRoute,
   ]);
 
   const handleOnboardingNotification = useCallback(

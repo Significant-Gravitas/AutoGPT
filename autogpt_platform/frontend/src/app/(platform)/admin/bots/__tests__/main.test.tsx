@@ -105,7 +105,7 @@ describe("BotsContent", () => {
     server.use(
       getGetV2TopServersByActivityMockHandler200([
         {
-          platform: "TELEGRAM",
+          platform: "MATRIX",
           server_id: "tg1",
           name: "Mystery",
           messages: 1,
@@ -116,6 +116,6 @@ describe("BotsContent", () => {
     render(<BotsContent />);
 
     // No label entry exists for TELEGRAM, so the badge shows the raw key.
-    expect(await screen.findByText("TELEGRAM")).toBeDefined();
+    expect(await screen.findByText("MATRIX")).toBeDefined();
   });
 });
