@@ -2,7 +2,6 @@ import * as Sentry from "@sentry/nextjs";
 import { Key, storage } from "../storage/local-storage";
 import {
   ANALYTICS_CONSENT_COOKIE,
-  ANALYTICS_CONSENT_DENIED,
   ANALYTICS_CONSENT_GRANTED,
 } from "./constants";
 
@@ -90,7 +89,7 @@ function save(preferences: ConsentPreferences): void {
 function clear(): void {
   try {
     storage.clean(Key.COOKIE_CONSENT);
-    clearAnalyticsConsentCookie();
+    syncAnalyticsConsentCookie(false);
   } catch (error) {
     Sentry.captureException(error);
     console.error("Failed to clear consent preferences:", error);
@@ -120,16 +119,9 @@ export const consent = {
 function syncAnalyticsConsentCookie(hasConsent: boolean): void {
   if (typeof document === "undefined") return;
 
-  const value = hasConsent
-    ? ANALYTICS_CONSENT_GRANTED
-    : ANALYTICS_CONSENT_DENIED;
-  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${value}; Path=/; Max-Age=${CONSENT_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureCookieAttribute()}`;
-}
-
-function clearAnalyticsConsentCookie(): void {
-  if (typeof document === "undefined") return;
-
-  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secureCookieAttribute()}`;
+  const maxAge = hasConsent ? CONSENT_COOKIE_MAX_AGE_SECONDS : 0;
+  const value = hasConsent ? ANALYTICS_CONSENT_GRANTED : "";
+  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secureCookieAttribute()}`;
 }
 
 function secureCookieAttribute(): string {

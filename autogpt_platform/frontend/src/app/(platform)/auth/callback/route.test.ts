@@ -14,8 +14,6 @@ vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
 }));
 vi.mock("@/app/api/helpers", () => ({
   getOnboardingStatus: mocks.getOnboardingStatus,
-  resolveResponse: async (promise: Promise<{ data: unknown }>) =>
-    (await promise).data,
 }));
 vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
   getServerSupabase: mocks.getServerSupabase,

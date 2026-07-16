@@ -74,45 +74,42 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         if not user_email:
             raise HTTPException(status_code=401, detail="Email not found in token")
 
-        user, was_created = await _get_or_create_user_record(
-            user_id, user_email, user_data.get("user_metadata", {}).get("name")
-        )
-        await _provision_user(user)
+        user = await prisma.user.find_unique(where={"id": user_id})
+        if not user:
+            user = await prisma.user.create(
+                data=UserCreateInput(
+                    id=user_id,
+                    email=user_email,
+                    name=user_data.get("user_metadata", {}).get("name"),
+                )
+            )
+            was_created = True
+        else:
+            was_created = False
+
+        # Ensure every user has a marketplace Profile (required to publish
+        # agents). Best-effort: a failure must not block user resolution — the
+        # user self-heals on their next request or via the profile settings page.
+        try:
+            await _ensure_user_profile(user.id, user.email)
+        except Exception:
+            logger.warning(
+                "Failed to ensure marketplace profile for user %s",
+                user.id,
+                exc_info=True,
+            )
+
+        # Ensure every user owns a personal org + default team. Unlike the
+        # Profile above this is NOT best-effort: without an org, every
+        # org-scoped endpoint (save graph, chat, ...) fails with "No
+        # organization context available", so a failure here must fail the
+        # request loudly instead of returning a bricked account. Idempotent and
+        # race-safe (see ensure_personal_org).
+        await ensure_personal_org(user.id)
+
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
-
-
-async def _get_or_create_user_record(
-    user_id: str, user_email: str, name: str | None
-) -> tuple[PrismaUser, bool]:
-    user = await prisma.user.find_unique(where={"id": user_id})
-    if user:
-        return user, False
-
-    try:
-        user = await prisma.user.create(
-            data=UserCreateInput(id=user_id, email=user_email, name=name)
-        )
-        return user, True
-    except UniqueViolationError:
-        user = await prisma.user.find_unique(where={"id": user_id})
-        if not user:
-            raise
-        return user, False
-
-
-async def _provision_user(user: PrismaUser) -> None:
-    try:
-        await _ensure_user_profile(user.id, user.email)
-    except Exception:
-        logger.warning(
-            "Failed to ensure marketplace profile for user %s",
-            user.id,
-            exc_info=True,
-        )
-
-    await ensure_personal_org(user.id)
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-

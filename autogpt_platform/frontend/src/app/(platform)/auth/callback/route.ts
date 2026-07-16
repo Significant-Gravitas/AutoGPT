@@ -1,5 +1,5 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
-import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { getOnboardingStatus } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import {
   scheduleAccountCreatedGoal,
@@ -27,7 +27,6 @@ export async function GET(request: Request) {
     if (!error) {
       try {
         const createUserResponse = await postV1GetOrCreateUser();
-        await resolveResponse(Promise.resolve(createUserResponse));
         if (wasAccountCreated(createUserResponse.headers)) {
           await scheduleAccountCreatedGoal("google");
         }
@@ -38,15 +37,30 @@ export async function GET(request: Request) {
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
 
-        const errorStatus = getErrorStatus(createUserError);
-        if (errorStatus === 401) {
-          return NextResponse.redirect(
-            `${origin}/error?message=auth-token-invalid`,
-          );
-        } else if (errorStatus !== null && errorStatus >= 500) {
-          return NextResponse.redirect(`${origin}/error?message=server-error`);
-        } else if (errorStatus === 429) {
-          return NextResponse.redirect(`${origin}/error?message=rate-limited`);
+        // Handle ApiError from the backend API client
+        if (
+          createUserError &&
+          typeof createUserError === "object" &&
+          "status" in createUserError
+        ) {
+          const apiError = createUserError as any;
+
+          if (apiError.status === 401) {
+            // Authentication issues - token missing/invalid
+            return NextResponse.redirect(
+              `${origin}/error?message=auth-token-invalid`,
+            );
+          } else if (apiError.status >= 500) {
+            // Server/database errors
+            return NextResponse.redirect(
+              `${origin}/error?message=server-error`,
+            );
+          } else if (apiError.status === 429) {
+            // Rate limiting
+            return NextResponse.redirect(
+              `${origin}/error?message=rate-limited`,
+            );
+          }
         }
 
         // Handle network/fetch errors
@@ -81,17 +95,4 @@ export async function GET(request: Request) {
 
   // return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/auth/auth-code-error`);
-}
-
-function getErrorStatus(error: unknown): number | null {
-  if (
-    !error ||
-    typeof error !== "object" ||
-    !("status" in error) ||
-    typeof error.status !== "number"
-  ) {
-    return null;
-  }
-
-  return error.status;
 }

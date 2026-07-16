@@ -1,7 +1,7 @@
 "use server";
 
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
-import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { getOnboardingStatus } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import {
   scheduleAccountCreatedGoal,
@@ -64,7 +64,6 @@ export async function signup(
 
     try {
       const createUserResponse = await postV1GetOrCreateUser();
-      await resolveResponse(Promise.resolve(createUserResponse));
       if (wasAccountCreated(createUserResponse.headers)) {
         await scheduleAccountCreatedGoal("email");
       }

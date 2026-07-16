@@ -314,29 +314,6 @@ class TestGetOrCreateUserStatus:
         assert result.was_created is False
         mock_prisma.user.create.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_concurrent_creation_is_not_reported_twice(self):
-        db_user = MagicMock(id="user-race", email="carol@example.com", name=None)
-
-        with (
-            patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(
-                user_module.User,
-                "from_db",
-                return_value=_application_user("user-race", "carol@example.com"),
-            ),
-        ):
-            mock_prisma.user.find_unique = AsyncMock(side_effect=[None, db_user])
-            mock_prisma.user.create = AsyncMock(
-                side_effect=prisma.errors.UniqueViolationError({})
-            )
-
-            result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-race", "email": "carol@example.com"}
-            )
-
-        assert result.was_created is False
-
 
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since

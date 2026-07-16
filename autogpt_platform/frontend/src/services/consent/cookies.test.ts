@@ -25,10 +25,12 @@ describe("analytics consent cookie", () => {
     expect(document.cookie).toContain(`${COOKIE_NAME}=granted`);
   });
 
-  it("mirrors denied analytics consent", () => {
+  it("removes server-readable consent when analytics is denied", () => {
+    document.cookie = `${COOKIE_NAME}=granted; Path=/`;
+
     consent.save(preferences(false));
 
-    expect(document.cookie).toContain(`${COOKIE_NAME}=denied`);
+    expect(document.cookie).not.toContain(`${COOKIE_NAME}=granted`);
   });
 
   it("migrates existing localStorage consent when it is loaded", () => {
@@ -44,7 +46,7 @@ describe("analytics consent cookie", () => {
 
     consent.load();
 
-    expect(document.cookie).toContain(`${COOKIE_NAME}=denied`);
+    expect(document.cookie).not.toContain(`${COOKIE_NAME}=granted`);
   });
 
   it("revokes a stale server cookie when stored consent is invalid", () => {
@@ -53,7 +55,7 @@ describe("analytics consent cookie", () => {
 
     consent.load();
 
-    expect(document.cookie).toContain(`${COOKIE_NAME}=denied`);
+    expect(document.cookie).not.toContain(`${COOKIE_NAME}=granted`);
   });
 
   it("removes the server-readable consent cookie when consent is cleared", () => {
