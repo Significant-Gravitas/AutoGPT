@@ -330,13 +330,13 @@ MODEL_METADATA = {
     ),  # gpt-4o-2024-08-06
     # https://docs.anthropic.com/en/docs/about-claude/models
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
-        "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
+        "anthropic", 1000000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
     LlmModel.CLAUDE_4_7_OPUS: ModelMetadata(
-        "anthropic", 200000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
+        "anthropic", 1000000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-7
     LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
+        "anthropic", 1000000, 128000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-sonnet-4-6
     LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
