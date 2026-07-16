@@ -185,13 +185,12 @@ class TestResponseModels:
 class TestBinaryContentOverJsonRpc:
     """Binary file bytes must survive the JSON service RPC.
 
-    Regression for the 2026-07-16 prod incident: plain ``bytes`` fields are
-    UTF-8-decoded by JSON serialization, so a binary artifact (JPEG starting
-    0xff) made ``fetch_workspace_artifact`` 500 permanently — which the
-    100-attempt client retry policy then turned into a retry storm.
+    Plain ``bytes`` fields are strict-UTF-8-decoded by JSON serialization,
+    so a binary artifact (e.g. a JPEG starting 0xff) fails to serialize on
+    the ``fetch_workspace_artifact`` / ``upload_workspace_files`` hops.
     """
 
-    # First bytes of a JPEG — not valid UTF-8, the exact prod payload shape.
+    # First bytes of a JPEG — not valid UTF-8.
     _BINARY = b"\xff\xd8\xff\xe0" + bytes(range(256))
 
     def _artifact(self) -> WorkspaceArtifact:

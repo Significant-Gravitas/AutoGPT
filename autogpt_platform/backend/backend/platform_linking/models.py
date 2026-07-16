@@ -9,8 +9,9 @@ from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer
 
 # File content that survives the JSON service RPC. Raw bytes stay bytes
 # in-process, but the wire format is base64 — plain ``bytes`` fields are
-# UTF-8-decoded by JSON serialization, which crashes on binary content
-# (0xff in a JPEG took down the fetch_workspace_artifact endpoint).
+# strict-UTF-8-decoded by JSON serialization, which fails on binary content.
+# Matches how the platform encodes file bytes in JSON elsewhere (the
+# ``data:<mime>;base64,`` URIs from ``store_media_file``).
 Base64EncodedBytes = Annotated[
     bytes,
     BeforeValidator(lambda v: base64.b64decode(v) if isinstance(v, str) else v),
