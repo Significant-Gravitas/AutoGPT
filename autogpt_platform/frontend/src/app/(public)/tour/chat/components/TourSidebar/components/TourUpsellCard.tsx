@@ -4,10 +4,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { GithubLogoIcon, SparkleIcon } from "@phosphor-icons/react";
+import { buildTourPricingUrl, TOUR_GITHUB_URL } from "../../../constants";
 import { useTourStore } from "../../../tourStore";
-
-const PRICING_URL = "https://agpt.co/pricing";
-const GITHUB_URL = "https://github.com/Significant-Gravitas/AutoGPT";
+import { trackTourCtaClick } from "../../../tracking";
 
 export function TourUpsellCard() {
   // The glow and moving effects (spinning border, shine sweep, pulsing
@@ -61,11 +60,14 @@ export function TourUpsellCard() {
         </Text>
         <Button
           as="NextLink"
-          href={PRICING_URL}
+          href={buildTourPricingUrl("sidebar_card")}
           target="_blank"
           rel="noopener noreferrer"
           variant="primary"
           size="small"
+          onClick={() =>
+            trackTourCtaClick("pricing", { placement: "sidebar-card" })
+          }
           className="relative mt-3 w-full overflow-hidden shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)] transition-shadow hover:shadow-[0_0_28px_-4px_rgba(124,58,237,0.75)]"
         >
           {isDemoComplete && (
@@ -78,11 +80,14 @@ export function TourUpsellCard() {
         </Button>
         <Button
           as="NextLink"
-          href={GITHUB_URL}
+          href={TOUR_GITHUB_URL}
           target="_blank"
           rel="noopener noreferrer"
           variant="ghost"
           size="small"
+          onClick={() =>
+            trackTourCtaClick("self-host", { placement: "sidebar-card" })
+          }
           className="mt-1.5 w-full text-zinc-600"
           leftIcon={<GithubLogoIcon className="h-4 w-4" />}
         >

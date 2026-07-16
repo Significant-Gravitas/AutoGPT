@@ -1,8 +1,11 @@
 "use client";
 
 import { LightningIcon } from "@phosphor-icons/react";
+import { useTourStore } from "../../tourStore";
 import type { useTourCopilot } from "../../useTourCopilot";
+import { TourEndCard } from "../TourEndCard/TourEndCard";
 import { TourMessageList } from "../TourMessageList/TourMessageList";
+import { TourNextScenarioChip } from "../TourNextScenarioChip/TourNextScenarioChip";
 import { TourPromptBar } from "../TourPromptBar/TourPromptBar";
 
 interface Props {
@@ -10,6 +13,9 @@ interface Props {
 }
 
 export function TourChatContainer({ chat }: Props) {
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const isNudgeVisible = useTourStore((s) => s.isNudgeVisible);
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
       {/* Tour-only card styling. These descendant selectors target the shared
@@ -20,8 +26,10 @@ export function TourChatContainer({ chat }: Props) {
         <TourMessageList
           messages={chat.messages}
           isStreaming={chat.isStreaming}
+          footer={isDemoComplete ? <TourEndCard /> : null}
         />
         <div className="relative px-3 pb-2 pt-2">
+          {isDemoComplete && isNudgeVisible && <TourNextScenarioChip />}
           <TourPromptBar
             key={`${chat.turnIndex}:${chat.currentUserPrompt ?? ""}`}
             prompt={chat.currentUserPrompt}

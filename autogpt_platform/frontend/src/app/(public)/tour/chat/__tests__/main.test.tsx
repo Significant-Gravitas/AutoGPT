@@ -57,7 +57,10 @@ describe("Tour chat scripted demo", () => {
     // The scenario store is module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
+      runId: 0,
       isDemoComplete: false,
+      watchedScenarioIds: [],
+      isNudgeVisible: false,
     });
   });
 
@@ -151,7 +154,8 @@ describe("Tour chat scripted demo", () => {
     // The sidebar upsell card stays visible; no bottom banner takes over.
     expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
     expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();
-    expect(screen.getByText(/Self-host free/i)).toBeDefined();
+    // Exact match — the end card's "or self-host free" link is a separate CTA.
+    expect(screen.getByText("Self-host free")).toBeDefined();
     expect(screen.queryByText(/Replay demo/i)).toBeNull();
 
     // Completion flips the store flag that turns on the card's animations.
