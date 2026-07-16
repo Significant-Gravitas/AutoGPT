@@ -11,7 +11,7 @@ _SLACK_CFG = "backend.copilot.bot.webhook_routes.slack_config"
 _TELEGRAM_CFG = "backend.copilot.bot.webhook_routes.telegram_config"
 
 
-def testbuild_webhook_adapters_empty_without_creds():
+def test_build_webhook_adapters_empty_without_creds():
     with (
         patch(f"{_SLACK_CFG}.get_bot_token", return_value=""),
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),
@@ -20,7 +20,7 @@ def testbuild_webhook_adapters_empty_without_creds():
         assert build_webhook_adapters(MagicMock()) == []
 
 
-def testbuild_webhook_adapters_includes_slack_when_configured():
+def test_build_webhook_adapters_includes_slack_when_configured():
     with (
         patch(f"{_TELEGRAM_CFG}.get_bot_token", return_value=""),
         patch(f"{_SLACK_CFG}.get_bot_token", return_value="xoxb-x"),
@@ -32,7 +32,7 @@ def testbuild_webhook_adapters_includes_slack_when_configured():
     assert adapters[0].platform_name == "slack"
 
 
-def testbuild_webhook_adapters_includes_telegram_when_configured():
+def test_build_webhook_adapters_includes_telegram_when_configured():
     with (
         patch(f"{_SLACK_CFG}.get_bot_token", return_value=""),
         patch(f"{_SLACK_CFG}.get_signing_secret", return_value=""),

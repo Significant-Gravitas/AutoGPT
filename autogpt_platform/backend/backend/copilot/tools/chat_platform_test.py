@@ -9,6 +9,7 @@ from backend.copilot.bot.outbound import DeliveryResult
 from backend.copilot.tools.chat_platform import (
     ListChatPlatformChannelsTool,
     PostToChatPlatformTool,
+    _any_chat_platform_configured,
 )
 from backend.copilot.tools.models import (
     ChatPlatformChannelListResponse,
@@ -271,6 +272,7 @@ async def test_post_telegram_channel_not_found_adds_targeting_hint(session):
         )
     assert isinstance(result, ErrorResponse)
     assert "numeric chat ID" in result.message
+    assert "list_chat_platform_channels" not in result.message
 
 
 @pytest.mark.asyncio
@@ -334,8 +336,6 @@ def _secrets(**overrides) -> MagicMock:
     ],
 )
 def test_configured_gate_mirrors_adapter_gates(overrides, expected):
-    from backend.copilot.tools.chat_platform import _any_chat_platform_configured
-
     _any_chat_platform_configured.cache_clear()
     settings = MagicMock()
     settings.secrets = _secrets(**overrides)

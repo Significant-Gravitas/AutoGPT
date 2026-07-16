@@ -121,7 +121,9 @@ def _error_message(code: str | None, platform_name: str = "") -> str:
         "channel_not_found",
         "ambiguous_channel",
     ):
-        return f"{message} {_TELEGRAM_TARGETING_HINT}"
+        # The generic messages steer toward list_chat_platform_channels,
+        # which can't help on Telegram — replace them entirely.
+        return f"That chat could not be resolved. {_TELEGRAM_TARGETING_HINT}"
     return message
 
 
@@ -159,8 +161,9 @@ class PostToChatPlatformTool(BaseTool):
             "the user. mode='message' sends a message; mode='thread' opens a "
             "new thread (needs thread_name). 'channel' is a name (#standup) or "
             "numeric ID — on Telegram it must be a linked group's numeric chat "
-            "ID. Pair with schedule_followup for recurring posts. If the "
-            "channel can't be resolved, call list_chat_platform_channels first."
+            "ID. Pair with schedule_followup for recurring posts. On Discord "
+            "or Slack, if the channel can't be resolved, call "
+            "list_chat_platform_channels first."
         )
 
     @property
