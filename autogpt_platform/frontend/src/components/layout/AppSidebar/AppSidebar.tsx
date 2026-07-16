@@ -34,7 +34,6 @@ import { ComponentProps, ReactNode, Suspense } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
-import { SidebarOrgSwitcher } from "./components/SidebarOrgSwitcher/SidebarOrgSwitcher";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 
 type NavLink = {
@@ -137,7 +136,10 @@ function CollapsibleNavGroup({
       <SidebarGroup
         className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
       >
-        <SidebarGroupLabel asChild className="text-[13px] font-medium">
+        <SidebarGroupLabel
+          asChild
+          className="text-[13px] font-medium text-zinc-500"
+        >
           <CollapsibleTrigger>
             {label}
             <CaretDownIcon
@@ -238,8 +240,6 @@ export function AppSidebar(props: Props) {
           </motion.div>
         </motion.div>
       </SidebarContent>
-
-      <SidebarOrgSwitcher />
 
       <SidebarRail />
     </Sidebar>

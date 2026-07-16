@@ -4,6 +4,7 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
+import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
@@ -24,7 +25,8 @@ interface Props {
 }
 
 export function PlatformChrome({ children }: Props) {
-  const { showNewLayout, showTourSidebar } = usePlatformChrome();
+  const { showNewLayout, showTourSidebar, overlayInsetHeader } =
+    usePlatformChrome();
 
   const content = (
     <TopUpPromptProvider>
@@ -53,14 +55,30 @@ export function PlatformChrome({ children }: Props) {
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
-          <header className="relative flex shrink-0 items-center pb-4 pt-6">
+          <header
+            className={cn(
+              "flex shrink-0 items-center pb-4 pt-6",
+              // Overlay mode (copilot): the header floats above the content
+              // instead of reserving vertical space, so the chat scrolls to
+              // the viewport top underneath the actions pill. z-10 in normal
+              // mode keeps the pill's shadow above the content section.
+              overlayInsetHeader
+                ? "pointer-events-none absolute inset-x-0 top-0 z-40"
+                : "relative z-10",
+            )}
+          >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="md:hidden">
+              <div className="pointer-events-auto md:hidden">
                 <SidebarTrigger />
               </div>
               <InsetHeaderTitle />
             </div>
-            <div className="absolute inset-y-0 right-4 flex items-center">
+            <div
+              className={cn(
+                "pointer-events-auto absolute right-4 flex",
+                overlayInsetHeader ? "top-8" : "inset-y-0 items-center",
+              )}
+            >
               <InsetHeaderActions />
             </div>
           </header>

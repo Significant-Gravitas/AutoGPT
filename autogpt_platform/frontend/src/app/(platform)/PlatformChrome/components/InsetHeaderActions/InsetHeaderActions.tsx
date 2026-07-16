@@ -30,8 +30,8 @@ export function InsetHeaderActions() {
   const isLoadingProfile = isProfileLoading || isUserLoading;
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="[&_button:hover]:bg-zinc-200 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_svg]:!size-5">
+    <div className="flex items-center gap-1 rounded-full border border-black/5 bg-white/60 p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-8px_rgba(0,0,0,0.12)] backdrop-blur-xl">
+      <div className="[&_button:hover]:bg-black/5 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-full [&_button]:bg-transparent [&_button]:p-0 [&_button]:transition-colors [&_svg]:!size-5">
         <AgentActivityDropdown />
       </div>
       <UsageIndicator />

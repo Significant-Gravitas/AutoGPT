@@ -273,7 +273,7 @@ export function Wallet({ compact = false }: Props) {
             className={cn(
               "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm",
               compact
-                ? "rounded-xl border border-zinc-200 bg-zinc-100 py-1 hover:bg-zinc-200"
+                ? "rounded-full py-1 transition-colors hover:bg-black/5"
                 : "bg-zinc-50",
             )}
             onClick={onWalletOpen}
@@ -308,7 +308,7 @@ export function Wallet({ compact = false }: Props) {
           <div
             className={cn(
               "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
-              compact ? "rounded-xl" : "rounded-md",
+              compact ? "rounded-full" : "rounded-md",
               flash ? "opacity-50 duration-0" : "opacity-0",
             )}
           />

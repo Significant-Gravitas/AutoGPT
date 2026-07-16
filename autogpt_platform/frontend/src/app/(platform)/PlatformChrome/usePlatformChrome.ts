@@ -40,6 +40,9 @@ export function usePlatformChrome() {
     pathname === "/marketplace" ||
     Boolean(pathname?.startsWith("/marketplace/"));
 
+  const isCopilotRoute =
+    pathname === "/copilot" || Boolean(pathname?.startsWith("/copilot/"));
+
   // Logged-out marketplace visitors get the tour demo sidebar as an upsell.
   // Waits for the session check so it never flashes at logged-in users.
   const showTourSidebar =
@@ -48,6 +51,10 @@ export function usePlatformChrome() {
   return {
     showNewLayout:
       isMounted && isNewLayoutEnabled && !isExcludedRoute && !showTourSidebar,
+    // On copilot the inset header floats over the chat instead of stacking
+    // above it, so messages scroll to the viewport top and the actions pill's
+    // shadow isn't painted over by the content section below.
+    overlayInsetHeader: isCopilotRoute,
     showTourSidebar,
   };
 }
