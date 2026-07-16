@@ -751,7 +751,17 @@ class MCPToolInfo(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any]
+    params: str | None = Field(
+        default=None,
+        description="Compact argument summary: top-level input field names, "
+        "required ones marked with *.",
+    )
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Full input schema. Omitted in discovery responses to "
+        "keep them small; the execution error path returns the failed "
+        "tool's full schema on demand.",
+    )
 
 
 class MCPToolsDiscoveredResponse(ToolResponseBase):
