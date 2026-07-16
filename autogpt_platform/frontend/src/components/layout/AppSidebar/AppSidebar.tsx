@@ -200,6 +200,7 @@ export function AppSidebar(props: Props) {
                   href="/copilot"
                   variant="primary"
                   size="small"
+                  aria-label="New Task"
                   leftIcon={<NewTaskIcon />}
                   className={cn(
                     "relative h-10 w-full overflow-hidden",

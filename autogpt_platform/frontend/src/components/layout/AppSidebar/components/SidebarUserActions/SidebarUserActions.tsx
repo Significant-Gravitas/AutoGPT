@@ -40,7 +40,7 @@ export function SidebarUserActions() {
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="[&_button:hover]:bg-zinc-100 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-lg [&_button]:bg-transparent [&_button]:p-0 [&_button]:transition-colors [&_svg]:!size-5">
+            <div className="[&_button:hover]:bg-zinc-100 [&_button[data-state=open]]:bg-zinc-100 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-lg [&_button]:bg-transparent [&_button]:p-0 [&_button]:transition-colors [&_svg]:!size-5">
               <AgentActivityDropdown />
             </div>
           </TooltipTrigger>
