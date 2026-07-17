@@ -170,6 +170,19 @@ def platform_cost_db():
     return platform_cost_db
 
 
+def orgs_db():
+    if db.is_connected():
+        from backend.api.features.orgs import db as _orgs_db
+
+        orgs_db = _orgs_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        orgs_db = get_database_manager_async_client()
+
+    return orgs_db
+
+
 def platform_linking_db():
     if db.is_connected():
         from backend.platform_linking import db as _platform_linking_db

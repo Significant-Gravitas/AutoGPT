@@ -92,7 +92,11 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 let mockSessionIdForQueryState: string | null = null;
 vi.mock("nuqs", () => ({
   parseAsString: {},
-  useQueryState: () => [mockSessionIdForQueryState, vi.fn()],
+  parseAsStringLiteral: () => ({}),
+  useQueryState: (key: string) =>
+    key === "sessionId"
+      ? [mockSessionIdForQueryState, vi.fn()]
+      : [null, vi.fn()],
 }));
 
 // Build the base mock return value for useCopilotPage
