@@ -6,7 +6,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Sequence
+from collections.abc import AsyncIterable, Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -255,9 +255,23 @@ def _convert_raw_response_to_dict(
         # OpenAI Responses API: extract individual output items.
         # Strip 'status' — it's a response-only field that OpenAI rejects
         # when the item is sent back as input on the next API call.
-        items = [
+        converted = [
             {k: v for k, v in json.to_dict(item).items() if k != "status"}
             for item in raw_response.output
+        ]
+        # A reasoning item (gpt-5*, o3*) is only replayable on the next turn
+        # when it carries encrypted_content (we request it via
+        # include=["reasoning.encrypted_content"] with store=false). If the
+        # blob is ever absent — API edge case or behaviour change — re-sending
+        # the rs_... id triggers a server-side lookup that 404s and kills the
+        # loop. Drop such items: losing prior reasoning context degrades
+        # gracefully, a 404 does not. See OPEN-3187.
+        items = [
+            item
+            for item in converted
+            if not (
+                item.get("type") == "reasoning" and not item.get("encrypted_content")
+            )
         ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
@@ -1136,6 +1150,20 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
+        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Mirrors the normal queue-based path in _on_graph_execution, which
+        # merges nodes_input_masks[node_id] into queued_node_exec.inputs
+        # before execution so credential fields are present for the block run.
+        # isinstance coercion is load-bearing: tests pass MagicMock processors
+        # whose attribute chain otherwise returns coroutines under AsyncMock.
+        nodes_input_masks = execution_processor.nodes_input_masks
+        if not isinstance(nodes_input_masks, Mapping):
+            nodes_input_masks = None
+        if nodes_input_masks and (
+            node_input_mask := nodes_input_masks.get(sink_node_id)
+        ):
+            node_exec_entry.inputs.update(node_input_mask)
+
         # Use the execution manager to execute the tool node
         try:
             # Get NodeExecutionProgress from the execution manager's running nodes
@@ -1169,7 +1197,7 @@ class OrchestratorBlock(Block):
                 tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
-                    nodes_input_masks=None,
+                    nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
                 if tool_node_stats is None:

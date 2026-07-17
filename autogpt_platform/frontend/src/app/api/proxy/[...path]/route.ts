@@ -25,6 +25,8 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   API_KEY_HEADER_NAME.toLowerCase(),
   "sentry-trace",
   "baggage",
+  "x-datafast-visitor-id",
+  "x-datafast-session-id",
 ];
 
 // Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)

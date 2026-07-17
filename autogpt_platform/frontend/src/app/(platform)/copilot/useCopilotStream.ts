@@ -42,6 +42,13 @@ import { useWakeResync } from "./useWakeResync";
  */
 const FINISH_REFETCH_SETTLE_MS = 500;
 
+/**
+ * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
+ * the transport emits word-sized deltas ~10 ms apart; without throttling each
+ * word would re-render the whole chat tree.
+ */
+const STREAM_RENDER_THROTTLE_MS = 30;
+
 interface UseCopilotStreamArgs {
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
@@ -119,7 +126,10 @@ export function useCopilotStream({
     resumeStream,
   } = useChat(
     chatRuntime
-      ? { chat: chatRuntime.chat }
+      ? {
+          chat: chatRuntime.chat,
+          experimental_throttle: STREAM_RENDER_THROTTLE_MS,
+        }
       : {
           id: "new",
         },
@@ -421,6 +431,16 @@ export function useCopilotStream({
       pending();
     }
   }, [sessionId, hydratedMessages, status, isReconnectScheduled]);
+
+  // Mirror the live stream status onto the shared store so out-of-tree views
+  // (workspace sidebar's Progress tab) can react to "agent is actively
+  // working" without prop-drilling status through the layout. `sessionId` is a
+  // dependency so the flag is re-synced on session change and the previous
+  // session's "live" state never bleeds into the newly opened one.
+  useEffect(() => {
+    const isLive = status === "streaming" || status === "submitted";
+    useCopilotStreamStore.getState().setStreaming(isLive);
+  }, [status, sessionId]);
 
   // Invalidate session + usage caches when the stream completes.
   // Reconnect counter/timer reset on the same transition is owned by

@@ -62,13 +62,25 @@ class TestFetchWarmContextGeneralError:
 # ---------------------------------------------------------------------------
 
 
+def _search_results(edges: list[object]) -> SimpleNamespace:
+    """Stand-in for graphiti_core.search.search_config.SearchResults — only
+    the ``.edges`` attribute is exercised by ``_fetch``."""
+    return SimpleNamespace(edges=edges)
+
+
 class TestFetchInternal:
-    """Test the internal _fetch function with mocked graphiti client."""
+    """Test the internal _fetch function with mocked graphiti client.
+
+    After P-1.4, ``_fetch`` calls ``client.search_()`` (note trailing
+    underscore) with the ``EDGE_HYBRID_SEARCH_CROSS_ENCODER`` recipe and
+    expects a ``SearchResults`` object whose ``.edges`` attribute carries
+    the candidate list. The mocks below reflect that shape.
+    """
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_edges_or_episodes(self) -> None:
         mock_client = AsyncMock()
-        mock_client.search.return_value = []
+        mock_client.search_.return_value = _search_results([])
         mock_client.retrieve_episodes.return_value = []
 
         with (
@@ -93,7 +105,7 @@ class TestFetchInternal:
             invalid_at=None,
         )
         mock_client = AsyncMock()
-        mock_client.search.return_value = [edge]
+        mock_client.search_.return_value = _search_results([edge])
         mock_client.retrieve_episodes.return_value = []
 
         with (
@@ -118,7 +130,7 @@ class TestFetchInternal:
             created_at="2025-06-01T00:00:00Z",
         )
         mock_client = AsyncMock()
-        mock_client.search.return_value = []
+        mock_client.search_.return_value = _search_results([])
         mock_client.retrieve_episodes.return_value = [ep]
 
         with (
@@ -134,6 +146,43 @@ class TestFetchInternal:
 
         assert result is not None
         assert "talked about coffee" in result
+
+    @pytest.mark.asyncio
+    async def test_search_call_uses_cross_encoder_recipe(self) -> None:
+        """P-1.4 contract: warm context must use the cross-encoder recipe.
+
+        Pins both the method (``search_`` not ``search``) and the recipe
+        passed as ``config=``. If a future refactor swaps in a different
+        recipe, this test fires.
+        """
+        mock_client = AsyncMock()
+        mock_client.search_.return_value = _search_results([])
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ),
+        ):
+            await context._fetch("test-user", "hello world")
+
+        mock_client.search_.assert_awaited_once()
+        kwargs = mock_client.search_.await_args.kwargs
+        assert kwargs["query"] == "hello world"
+        assert kwargs["group_ids"] == ["user_abc"]
+        # The config is a copy of EDGE_HYBRID_SEARCH_CROSS_ENCODER with the
+        # limit overridden to context_max_facts. Verify the edge-config
+        # reranker is still ``cross_encoder`` so the contract is locked.
+        from graphiti_core.search.search_config import EdgeReranker
+
+        cfg = kwargs["config"]
+        assert cfg.edge_config is not None
+        assert cfg.edge_config.reranker == EdgeReranker.cross_encoder
+        assert cfg.limit == context.graphiti_config.context_max_facts
 
 
 class TestFormatContextWithContent:
@@ -264,3 +313,63 @@ class TestFormatContextEmptyWrapper:
         )
         result = _format_context(edges=[], episodes=[ep])
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Ratification sync hit-hook spawned from warm-context retrieval
+# ---------------------------------------------------------------------------
+
+
+class TestRatificationHitHookFiresFireAndForget:
+    """The hit-hook records warm-context hits + promotes tentative
+    edges inline. It must NOT block the retrieval response — the
+    chat turn cares about latency, the promotion can race the next
+    retrieval to apply."""
+
+    def test_spawn_helper_skips_empty_edge_list_no_task_created(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        created_tasks: list[str] = []
+
+        def fake_create_task(coro, name=None):
+            created_tasks.append(name or "")
+            coro.close()  # don't actually run the coroutine in test
+            return AsyncMock()
+
+        monkeypatch.setattr(context.asyncio, "create_task", fake_create_task)
+        context._spawn_ratification_hits("user-abc", edges=[])
+        assert created_tasks == []
+
+    def test_spawn_helper_creates_task_with_retrieved_uuids(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Edges with uuid attrs → fire-and-forget task scheduled with
+        all of their uuids. Edges missing a uuid are filtered out so
+        the hook never passes ``None`` to the ratification module."""
+        captured_calls: list[tuple[str, list[str]]] = []
+
+        async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+            captured_calls.append((user_id, edge_uuids))
+
+        from backend.copilot.dream import ratification as ratification_mod
+
+        monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
+
+        # asyncio.create_task needs an event loop — exercise via
+        # run_until_complete instead of an actual task spawn.
+        async def driver():
+            edges = [
+                SimpleNamespace(uuid="edge-a"),
+                SimpleNamespace(uuid="edge-b"),
+                SimpleNamespace(uuid=None),  # filtered
+                SimpleNamespace(),  # no uuid attr at all → filtered
+            ]
+            context._spawn_ratification_hits("user-xyz", edges=edges)
+            # Yield once so the spawned task runs.
+            await asyncio.sleep(0)
+
+        asyncio.run(driver())
+        assert len(captured_calls) == 1
+        user_id, uuids = captured_calls[0]
+        assert user_id == "user-xyz"
+        assert uuids == ["edge-a", "edge-b"]

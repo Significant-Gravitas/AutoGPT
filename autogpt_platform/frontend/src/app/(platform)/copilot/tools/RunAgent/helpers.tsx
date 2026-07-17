@@ -151,6 +151,9 @@ export function getAnimationText(part: {
         return `Started "${output.graph_name}"`;
       }
       if (isRunAgentAgentDetailsOutput(output)) {
+        if (output.agent.trigger_info) {
+          return `Webhook trigger setup for "${output.agent.name}"`;
+        }
         return `Agent inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
@@ -165,6 +168,16 @@ export function getAnimationText(part: {
     default:
       return actionPhrase;
   }
+}
+
+export function getStreamingLoadingText(part: { input?: unknown }): string {
+  const input = part.input as RunAgentInput | undefined;
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  return isSchedule
+    ? "Scheduling agent, this might take a minute"
+    : "Running agent, this might take a minute";
 }
 
 export function ToolIcon({
@@ -222,7 +235,9 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
     return {
       icon,
       title: output.agent.name,
-      description: "Inputs required",
+      description: output.agent.trigger_info
+        ? "Webhook trigger setup"
+        : "Inputs required",
     };
   }
 

@@ -14,7 +14,7 @@ import logging
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.embeddings import (
+from backend.api.features.search.embeddings import (
     ensure_content_embedding,
     get_content_embedding,
 )

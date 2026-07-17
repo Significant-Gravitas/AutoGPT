@@ -23,3 +23,10 @@ async def is_subscribed(platform: str, thread_id: str) -> bool:
 async def subscribe(platform: str, thread_id: str) -> None:
     redis = await get_redis_async()
     await redis.set(_key(platform, thread_id), "1", ex=THREAD_SUBSCRIPTION_TTL)
+
+
+async def unsubscribe(platform: str, thread_id: str) -> None:
+    """Drop the auto-reply subscription for a thread — used when the user
+    runs `/leave` or when the bot is kicked from the thread."""
+    redis = await get_redis_async()
+    await redis.delete(_key(platform, thread_id))

@@ -35,6 +35,8 @@ export function useRateLimitManager() {
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
+  const tierMultipliers = rateLimitData?.tier_multipliers;
+
   async function handleDirectLookup(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -206,6 +208,7 @@ export function useRateLimitManager() {
     searchResults,
     selectedUser,
     rateLimitData,
+    tierMultipliers,
     handleSearch,
     handleSelectUser,
     handleReset,

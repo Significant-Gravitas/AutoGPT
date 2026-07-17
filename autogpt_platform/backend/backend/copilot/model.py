@@ -72,6 +72,17 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
 
+    # Session kind — distinguishes regular chats from dream-pass and
+    # daydream artifacts so the frontend can render them differently
+    # (and so analytics / retention rules can filter them out).
+    # Open enum: future kinds (e.g. ``"daydream"``) can land without a
+    # migration; readers must tolerate unknown values.
+    kind: str = "normal"
+
+    # When ``kind == "dream"``, the originating pass id so the session
+    # links back to the orchestrator run that produced it.
+    dream_pass_id: str | None = None
+
 
 class ChatMessage(BaseModel):
     id: str | None = None
@@ -187,6 +198,13 @@ class ChatSessionInfo(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
     chat_status: str = "idle"
+    # Org/team tenancy anchor for the whole session: agent runs, block
+    # executions, and sub-sessions launched from this chat attribute to
+    # THIS org/team, not the user's default org at tool-call time.
+    organization_id: str | None = None
+    team_id: str | None = None
+    # Whether the user has pinned this session to the top of the sidebar.
+    is_pinned: bool = False
 
     @property
     def dry_run(self) -> bool:
@@ -236,6 +254,9 @@ class ChatSessionInfo(BaseModel):
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
             chat_status=prisma_session.chatStatus,
+            organization_id=prisma_session.organizationId,
+            team_id=prisma_session.teamId,
+            is_pinned=prisma_session.isPinned,
         )
 
 
@@ -268,6 +289,8 @@ class ChatSession(ChatSessionInfo):
         dry_run: bool,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -283,6 +306,8 @@ class ChatSession(ChatSessionInfo):
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
             ),
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     @classmethod
@@ -733,15 +758,19 @@ async def upsert_chat_session(
             db_error = e
 
         # Save to cache (best-effort, even if DB failed).
-        # Title updates (update_session_title) run *outside* this lock because
-        # they only touch the title field, not messages.  So a concurrent rename
-        # or auto-title may have written a newer title to Redis while this
-        # upsert was in progress.  Always prefer the cached title to avoid
-        # overwriting it with the stale in-memory copy.
+        # Title (update_session_title) and pin state (update_session_pinned)
+        # are mutated *outside* this lock — they only touch their single field,
+        # not messages — so a concurrent rename, auto-title, or pin/unpin may
+        # have written a newer value to Redis while this upsert was in progress.
+        # Always prefer the cached title/pin to avoid reverting it with the
+        # stale in-memory copy.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
-            if existing_cached and existing_cached.title:
-                session = session.model_copy(update={"title": existing_cached.title})
+            if existing_cached:
+                updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
+                if existing_cached.title:
+                    updates["title"] = existing_cached.title
+                session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -788,6 +817,8 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 metadata=session.metadata,
             )
             existing_message_count = 0
@@ -959,6 +990,8 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     source_platform: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
@@ -982,6 +1015,8 @@ async def create_chat_session(
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     # Create in database first - fail fast if this fails
@@ -989,6 +1024,8 @@ async def create_chat_session(
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             metadata=session.metadata,
         )
     except Exception as e:
@@ -1009,6 +1046,8 @@ async def create_chat_session(
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1049,6 +1088,8 @@ async def get_or_create_builder_session(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1062,34 +1103,56 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    organization_id: str | None = None,
+    title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
-    total_count = await db.get_user_session_count(user_id)
+    sessions = await db.get_user_chat_sessions(
+        user_id,
+        limit,
+        offset,
+        organization_id=organization_id,
+        title_contains=title_contains,
+    )
+    total_count = await db.get_user_session_count(
+        user_id, organization_id=organization_id
+    )
 
     return sessions, total_count
 
 
-async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+async def delete_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+) -> bool:
     """Delete a chat session from both cache and database.
 
     Args:
         session_id: The session ID to delete.
         user_id: If provided, validates that the session belongs to this user
             before deletion. This prevents unauthorized deletion.
+        organization_id: If provided, scopes the deletion to sessions
+            belonging to this organization.
 
     Returns:
         True if deleted successfully, False otherwise.
     """
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
-    deleted = await chat_db().delete_chat_session(session_id, user_id)
+    deleted = await chat_db().delete_chat_session(
+        session_id, user_id, organization_id=organization_id
+    )
 
     if not deleted:
         return False
@@ -1101,6 +1164,20 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await async_redis.delete(redis_key)
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Best-effort embedding cleanup so deleted sessions stop appearing in
+    # /search/global hits. Only attempt when we have a user_id since the
+    # embedding row is user-scoped; without it the user-filter would miss
+    # and the orphan row (if any) gets cleaned up by the periodic embedder.
+    if user_id:
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                delete_chat_session_embedding,
+            )
+
+            await delete_chat_session_embedding(session_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
 
     # Shut down any local browser daemon for this session (best-effort).
     # Inline import required: all tool modules import ChatSession from this
@@ -1158,10 +1235,64 @@ async def update_session_title(
                 f"Cache title update failed for session {session_id} (non-critical): {e}"
             )
 
+        # Fire-and-forget: index the new title so /search/global can find
+        # this session. Local import keeps the heavy embedding deps
+        # (OpenAI client, prisma raw SQL) off the model import path.
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                schedule_chat_session_embedding,
+            )
+
+            schedule_chat_session_embedding(session_id, user_id, title)
+        except Exception as e:
+            logger.warning(
+                f"Failed to schedule session title embedding for {session_id}: {e}"
+            )
+
         return True
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Lightweight operation that doesn't touch messages, mirroring
+    ``update_session_title``. Keeps the Redis cache in sync so the
+    sidebar reflects the change without waiting on a cache invalidation.
+
+    Args:
+        session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
+        is_pinned: New pin state.
+
+    Returns:
+        True if updated successfully, False only for the real not-found / wrong-user
+        case. Unexpected DB/runtime failures propagate so the route surfaces a 5xx
+        rather than masking them as a 404.
+    """
+    updated = await chat_db().update_chat_session_pinned(session_id, user_id, is_pinned)
+    if not updated:
+        return False
+
+    # Cache refresh is best-effort — a cache failure must not fail the request,
+    # the DB write already succeeded.
+    try:
+        cached = await _get_session_from_cache(session_id)
+        if cached:
+            cached.is_pinned = is_pinned
+            await cache_chat_session(cached)
+    except Exception as e:
+        logger.warning(
+            f"Cache pin update failed for session {session_id} (non-critical): {e}"
+        )
+
+    return True
 
 
 # ==================== Chat session locks ==================== #

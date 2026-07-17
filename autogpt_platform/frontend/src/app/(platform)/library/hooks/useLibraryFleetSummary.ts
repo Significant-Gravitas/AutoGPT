@@ -13,7 +13,12 @@ import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import type { FleetSummary } from "../types";
-import { isActive, isFailed, SEVENTY_TWO_HOURS_MS } from "./executionHelpers";
+import {
+  isActive,
+  isAgentScheduled,
+  isFailed,
+  SEVENTY_TWO_HOURS_MS,
+} from "./executionHelpers";
 
 function isRecentFailure(
   status: string,
@@ -111,7 +116,7 @@ export function useLibraryFleetSummary(
         summary.error += 1;
       } else if (agent.has_external_trigger) {
         summary.listening += 1;
-      } else if (agent.is_scheduled || agent.recommended_schedule_cron) {
+      } else if (isAgentScheduled(agent)) {
         summary.scheduled += 1;
       } else {
         summary.idle += 1;

@@ -18,12 +18,14 @@ from backend.executor.scheduler import (
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
+    Scheduler,
     _build_trigger,
     _execute_copilot_turn,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _self_delete_copilot_turn_schedule,
+    reconcile_stripe_tiers,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -196,8 +198,11 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
 async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_none():
     """Sentinel: when ``session_id`` is ``None`` the executor creates a brand-
     new chat at fire-time and routes the turn into it.  This is the path that
-    powers ``schedule_followup`` calls with no explicit session_id."""
-    args = _args(session_id=None)
+    powers ``schedule_followup`` calls with no explicit session_id.
+
+    The fresh session must land in the org/team captured at schedule time —
+    not the user's default org — so an org chat's followups stay in-tenant."""
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
     new_session = MagicMock(session_id="new-session-uuid")
@@ -212,12 +217,19 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_create_session.assert_awaited_once_with("user-1", dry_run=False)
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id="org-sched",
+        team_id="team-sched",
+    )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
     call_kwargs = mock_schedule_turn.call_args.kwargs
     assert call_kwargs["session_id"] == "new-session-uuid"
     assert call_kwargs["message"] == "check CI"
+    assert call_kwargs["organization_id"] == "org-sched"
+    assert call_kwargs["team_id"] == "team-sched"
 
 
 @pytest.mark.asyncio
@@ -415,3 +427,162 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
         run_at=datetime.now(tz=timezone.utc),
     )
     assert args.cap_retry_count == 0
+
+
+# ---------------------------------------------------------------------------
+# System-job registration — the Stripe tier reconciliation sweep
+# ---------------------------------------------------------------------------
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+    """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
+    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
+        interval_hours,
+    )
+    mock_scheduler = MagicMock()
+    with (
+        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(f"{_SCHEDULER_PATH}.load_dotenv"),
+        patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}._extract_schema_from_url",
+            return_value=("public", "sqlite://"),
+        ),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        # super().run_service() blocks forever keeping the service alive; no-op it.
+        patch("backend.util.service.AppService.run_service", return_value=None),
+    ):
+        Scheduler(register_system_tasks=True).run_service()
+    return mock_scheduler.add_job.call_args_list
+
+
+def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
+    monkeypatch,
+):
+    """The sweep must be registered as an interval job keyed off the configured
+    interval setting and capped to a single concurrent instance."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6)
+
+    matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "reconcile_stripe_tiers"
+    assert call.kwargs["trigger"] == "interval"
+    assert call.kwargs["max_instances"] == 1
+    # 6 hours -> 6 * 3600 seconds, driven by the config setting.
+    assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
+    """Changing the configured interval changes the registered ``seconds``."""
+    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
+    assert match.kwargs["seconds"] == 12 * 3600
+
+
+class TestScheduleOrgVisibility:
+    """Org/team visibility filtering in get_execution_schedules."""
+
+    def _scheduler_with_jobs(self, infos):
+        from unittest.mock import MagicMock
+
+        from backend.executor.scheduler import Scheduler
+
+        sched = Scheduler.__new__(Scheduler)
+        jobs = []
+        for info in infos:
+            job = MagicMock()
+            job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+            jobs.append((job, info))
+
+        def fake_job_to_info(job):
+            for j, i in jobs:
+                if j is job:
+                    return i
+            return None
+
+        return sched, [j for j, _ in jobs], fake_job_to_info
+
+    def _graph_info(self, *, user_id, organization_id="", team_id=None, sid="s1"):
+        return GraphExecutionJobInfo(
+            id=sid,
+            name="n",
+            next_run_time="2026-05-22T10:00:00+00:00",
+            schedule_id=sid,
+            user_id=user_id,
+            graph_id="g1",
+            graph_version=1,
+            cron="* * * * *",
+            input_data={},
+            input_credentials={},
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
+    def _run(self, infos, **kwargs):
+        from unittest.mock import patch
+
+        sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
+        with (
+            patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            patch(
+                "backend.executor.scheduler._job_to_info",
+                side_effect=fake_job_to_info,
+            ),
+        ):
+            return sched.get_execution_schedules(**kwargs)
+
+    def test_own_schedules_always_visible_in_org_mode(self):
+        infos = [self._graph_info(user_id="me", organization_id="", sid="mine")]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["mine"]
+
+    def test_org_home_schedule_visible_to_member(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate", organization_id="org-1", sid="org-home"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["org-home"]
+
+    def test_team_schedule_only_visible_to_team_members(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate",
+                organization_id="org-1",
+                team_id="team-x",
+                sid="team-x-job",
+            )
+        ]
+        visible = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-x"]
+        )
+        hidden = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-y"]
+        )
+        assert [r.schedule_id for r in visible] == ["team-x-job"]
+        assert hidden == []
+
+    def test_other_org_schedule_hidden(self):
+        infos = [
+            self._graph_info(
+                user_id="stranger", organization_id="org-OTHER", sid="foreign"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert result == []
+
+    def test_no_org_mode_is_strict_ownership(self):
+        infos = [
+            self._graph_info(user_id="me", sid="mine"),
+            self._graph_info(user_id="other", organization_id="org-1", sid="theirs"),
+        ]
+        result = self._run(infos, user_id="me")
+        assert [r.schedule_id for r in result] == ["mine"]

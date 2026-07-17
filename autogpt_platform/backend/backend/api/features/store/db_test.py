@@ -1,5 +1,5 @@
 from datetime import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.errors
@@ -198,6 +198,7 @@ async def test_create_store_submission(mocker):
         userId="user-id",
         createdAt=now,
         isActive=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         StoreListingVersions=[],
         User=mock_user,
     )
@@ -318,6 +319,100 @@ async def test_update_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_creates_when_missing(mocker):
+    """When a user has no Profile yet, update_profile creates one from the
+    submitted data instead of raising — this is the user's self-service
+    recovery path."""
+    created_profile = prisma.models.Profile(
+        id="new-profile-id",
+        name="New Creator",
+        username="newcreator",
+        userId="user-id",
+        description="Fresh start",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=None)
+    mock_profile_db.return_value.create = AsyncMock(return_value=created_profile)
+    mock_profile_db.return_value.update = AsyncMock()
+
+    profile = Profile(
+        name="New Creator",
+        username="newcreator",
+        description="Fresh start",
+        links=[],
+        avatar_url=None,
+    )
+
+    result = await db.update_profile("user-id", profile)
+
+    assert result.username == "newcreator"
+    assert result.name == "New Creator"
+    mock_profile_db.return_value.create.assert_called_once()
+    mock_profile_db.return_value.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_tolerates_create_race(mocker):
+    """If a Profile is created concurrently between the existence check and our
+    create(), update_profile re-fetches and updates it rather than failing."""
+    raced_profile = prisma.models.Profile(
+        id="raced-id",
+        name="Old Name",
+        username="raced",
+        userId="user-id",
+        description="Old",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+    updated_profile = prisma.models.Profile(
+        id="raced-id",
+        name="New Name",
+        username="raced",
+        userId="user-id",
+        description="New desc",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    # First existence check: no profile → enter the create branch. The create
+    # then loses the race (UniqueViolationError), so we re-fetch and find it.
+    mock_profile_db.return_value.find_first = AsyncMock(
+        side_effect=[None, raced_profile]
+    )
+    mock_profile_db.return_value.create = AsyncMock(
+        side_effect=prisma.errors.UniqueViolationError({})
+    )
+    mock_profile_db.return_value.update = AsyncMock(return_value=updated_profile)
+
+    profile = Profile(
+        name="New Name",
+        username="raced",
+        description="New desc",
+        links=[],
+        avatar_url=None,
+    )
+
+    result = await db.update_profile("user-id", profile)
+
+    assert result.name == "New Name"
+    mock_profile_db.return_value.create.assert_called_once()
+    mock_profile_db.return_value.update.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
@@ -350,49 +445,76 @@ async def test_get_user_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_with_search_parameterized(mocker):
-    """Test that search query uses parameterized SQL - validates the fix works"""
+async def test_get_store_agents_with_search_parameterized():
+    """Malicious search input is passed as a parameter, not concatenated into SQL."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as hybrid_query_raw, patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_search = "test'; DROP TABLE StoreAgent; --"
+        result = await db.get_store_agents(search_query=malicious_search)
 
-    # Call function with search query containing potential SQL injection
-    malicious_search = "test'; DROP TABLE StoreAgent; --"
-    result = await db.get_store_agents(search_query=malicious_search)
-
-    # Verify query executed safely
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        hybrid_sql, *hybrid_params = hybrid_query_raw.call_args.args
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_search in hybrid_params
+        assert malicious_search not in hybrid_sql
+        assert malicious_search in fallback_params
+        assert malicious_search not in fallback_sql
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_and_filters_parameterized():
-    """Test parameterized SQL with multiple filters"""
+    """Malicious creator/category values are bound as parameters across all filters."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ), patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_creator = "creator1'; DROP TABLE Users; --"
+        malicious_category = "AI'; DELETE FROM StoreAgent; --"
+        result = await db.get_store_agents(
+            search_query="test",
+            creators=[malicious_creator, "creator2"],
+            category=malicious_category,
+            featured=True,
+            sorted_by=db.StoreAgentsSortOptions.RATING,
+            page=1,
+            page_size=20,
+        )
 
-    # Call with multiple filters including potential injection attempts
-    result = await db.get_store_agents(
-        search_query="test",
-        creators=["creator1'; DROP TABLE Users; --", "creator2"],
-        category="AI'; DELETE FROM StoreAgent; --",
-        featured=True,
-        sorted_by=db.StoreAgentsSortOptions.RATING,
-        page=1,
-        page_size=20,
-    )
-
-    # Verify the query executed without error
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_category in fallback_params
+        assert malicious_category not in fallback_sql
+        assert [malicious_creator, "creator2"] in fallback_params
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_search_category_array_injection():
-    """Test that category parameter is safely passed as a parameter"""
-    # Try SQL injection via category
-    malicious_category = "AI'; DROP TABLE StoreAgent; --"
-    result = await db.get_store_agents(
-        search_query="test",
-        category=malicious_category,
-    )
+    """Category injection attempt is bound as a parameter, not interpolated."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ), patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_category = "AI'; DROP TABLE StoreAgent; --"
+        result = await db.get_store_agents(
+            search_query="test",
+            category=malicious_category,
+        )
 
-    # Verify the query executed without error
-    # Category should be parameterized, preventing SQL injection
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_category in fallback_params
+        assert malicious_category not in fallback_sql
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -562,6 +684,166 @@ async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
     assert result.stats.total == 7
     assert result.stats.average_rating == 3.9
     mock_store_sub.return_value.count.assert_not_called()
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"submitted_at": "desc"}
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_search_filters_and_counts_matches(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=2)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        search_query=" invoice ",
+    )
+
+    expected_where = {
+        "user_id": "user-id",
+        "is_deleted": False,
+        "OR": [
+            {"name": {"contains": "invoice", "mode": "insensitive"}},
+            {"slug": {"contains": "invoice", "mode": "insensitive"}},
+            {"sub_heading": {"contains": "invoice", "mode": "insensitive"}},
+        ],
+    }
+    assert result.pagination.total_items == 2
+    assert result.stats.total == 7
+    mock_store_sub.return_value.find_many.assert_called_once()
+    mock_store_sub.return_value.count.assert_called_once_with(where=expected_where)
+    assert (
+        mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+        == expected_where
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_sorts_by_runs(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(
+        side_effect=AssertionError("count() must not be called"),
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        sort_key="runs",
+        sort_dir="asc",
+    )
+
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"run_count": "asc"},
+        {"submitted_at": "desc"},
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_reraises_fetch_errors(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.get_store_submissions(user_id="user-id", page=1, page_size=20)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_status_filters_and_counts_matches(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=3)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        statuses=[
+            prisma.enums.SubmissionStatus.PENDING,
+            prisma.enums.SubmissionStatus.APPROVED,
+        ],
+    )
+
+    expected_where = {
+        "user_id": "user-id",
+        "is_deleted": False,
+        "status": {
+            "in": [
+                prisma.enums.SubmissionStatus.PENDING,
+                prisma.enums.SubmissionStatus.APPROVED,
+            ]
+        },
+    }
+    assert result.pagination.total_items == 3
+    assert result.stats.total == 7
+    mock_store_sub.return_value.find_many.assert_called_once()
+    mock_store_sub.return_value.count.assert_called_once_with(where=expected_where)
+    assert (
+        mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+        == expected_where
+    )
 
 
 def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
@@ -574,6 +856,7 @@ def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
         isActive=True,
         name=f"Agent {idx}",
         description=f"Description {idx}",
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
     return prisma.models.LibraryAgent.model_construct(
         id=f"library-{idx}",
@@ -661,3 +944,199 @@ async def test_get_my_agents_pagination_window(mocker):
     kwargs = mock_library.return_value.find_many.call_args.kwargs
     assert kwargs["skip"] == 20
     assert kwargs["take"] == 10
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
+    mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library.return_value.find_many = AsyncMock(return_value=[])
+    mock_library.return_value.count = AsyncMock(return_value=0)
+
+    result = await db.get_my_agents(
+        user_id="user-id",
+        page=1,
+        page_size=10,
+        search_query=" scraper ",
+    )
+
+    expected_agent_graph_filter = {
+        "StoreListingVersions": {
+            "none": {
+                "isAvailable": True,
+                "StoreListing": {"is": {"isDeleted": False}},
+            }
+        },
+        "OR": [
+            {"name": {"contains": "scraper", "mode": "insensitive"}},
+            {"description": {"contains": "scraper", "mode": "insensitive"}},
+        ],
+    }
+    expected_where = {
+        "userId": "user-id",
+        "AgentGraph": {"is": expected_agent_graph_filter},
+        "isArchived": False,
+        "isDeleted": False,
+    }
+    assert result.pagination.total_items == 0
+    assert (
+        mock_library.return_value.find_many.call_args.kwargs["where"] == expected_where
+    )
+    mock_library.return_value.count.assert_called_once_with(where=expected_where)
+
+
+def _submission_version(
+    owning_org_id: str | None,
+    owning_user_id: str = "user-1",
+):
+    """Minimal object graph for delete/edit authz checks (attr reads only)."""
+    from unittest.mock import MagicMock
+
+    version = MagicMock()
+    version.id = "slv-1"
+    version.storeListingId = "sl-1"
+    version.submissionStatus = prisma.enums.SubmissionStatus.PENDING
+    version.StoreListing = MagicMock()
+    version.StoreListing.owningOrgId = owning_org_id
+    version.StoreListing.owningUserId = owning_user_id
+    return version
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_blocks_cross_org(mocker):
+    """A caller acting in org A must not delete org B's submission, even if
+    they were the original submitting user."""
+    version = _submission_version(owning_org_id="org-B")
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = version
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    result = await db.delete_store_submission(
+        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+    )
+
+    assert result is False
+    mock_client.delete.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_allows_own_org(mocker):
+    version = _submission_version(owning_org_id="org-A")
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = version
+    mock_client.count.return_value = 1  # other versions remain
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    result = await db.delete_store_submission(
+        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+    )
+
+    assert result is True
+    mock_client.delete.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_tenantless_personal_fallback(mocker):
+    """Pre-backfill listings (owningOrgId NULL) stay deletable by their
+    personal owner even when the caller has an active org."""
+    version = _submission_version(owning_org_id=None, owning_user_id="user-1")
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = version
+    mock_client.count.return_value = 1
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    result = await db.delete_store_submission(
+        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+    )
+
+    assert result is True
+    mock_client.delete.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_edit_store_submission_blocks_cross_org(mocker):
+    from backend.api.features.store import exceptions as store_exceptions
+
+    version = _submission_version(owning_org_id="org-B")
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = version
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(store_exceptions.UnauthorizedError):
+        await db.edit_store_submission(
+            user_id="user-1",
+            store_listing_version_id="slv-1",
+            name="New Name",
+            organization_id="org-A",
+        )
+    mock_client.update.assert_not_called()
+
+
+def _patch_submission_stats(mocker):
+    """Stub the raw-SQL stats aggregate so where-clause unit tests stay
+    database-free."""
+    mocker.patch.object(
+        db,
+        "_get_submission_stats",
+        AsyncMock(
+            return_value=db.store_model.SubmissionStats(
+                total=0, approved=0, pending=0, total_runs=0, average_rating=None
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_org_visibility(mocker):
+    """Org members see the org's submissions; tenant-less rows stay visible
+    to their submitting user; the search OR-clause is not clobbered."""
+    mock_client = AsyncMock()
+    mock_client.find_many.return_value = []
+    mock_client.count.return_value = 0
+    mocker.patch.object(
+        prisma.models.StoreSubmission, "prisma", return_value=mock_client
+    )
+    # _get_submission_stats runs a raw SQL aggregate — patch it so this
+    # where-clause unit test never touches the database.
+    _patch_submission_stats(mocker)
+
+    await db.get_store_submissions(
+        user_id="user-1", organization_id="org-A", search_query="tool"
+    )
+
+    where = mock_client.find_many.call_args.kwargs["where"]
+    assert where["AND"] == [
+        {
+            "OR": [
+                {"organization_id": "org-A"},
+                {"user_id": "user-1", "organization_id": None},
+            ]
+        }
+    ]
+    assert "user_id" not in where
+    # search OR survives alongside the visibility AND
+    assert any("name" in clause for clause in where["OR"])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_without_org_strict_ownership(mocker):
+    mock_client = AsyncMock()
+    mock_client.find_many.return_value = []
+    mock_client.count.return_value = 0
+    mocker.patch.object(
+        prisma.models.StoreSubmission, "prisma", return_value=mock_client
+    )
+    _patch_submission_stats(mocker)
+
+    await db.get_store_submissions(user_id="user-1")
+
+    where = mock_client.find_many.call_args.kwargs["where"]
+    assert where["user_id"] == "user-1"
+    assert "AND" not in where

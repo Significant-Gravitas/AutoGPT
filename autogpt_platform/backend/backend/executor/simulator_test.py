@@ -807,6 +807,11 @@ class TestSimulatorCostTracking:
         assert create_kwargs["extra_body"] == {"usage": {"include": True}}
 
         track_kwargs = mock_track.await_args.kwargs
+        # The simulator routes through ``get_openai_client(prefer_openrouter=True)``,
+        # which only ever hits OpenRouter (or None) under non-local transport — so
+        # the cost row is always ``open_router`` here, never the chat transport's
+        # identity. See ``clients_test.TestOpenrouterHelperCostProvider`` for the
+        # per-transport matrix (incl. the subscription / direct_anthropic regression).
         assert track_kwargs["provider"] == "open_router"
         assert track_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
         assert track_kwargs["user_id"] == "user-42"
@@ -846,6 +851,7 @@ class TestSimulatorCostTracking:
         track_kwargs = mock_track.await_args.kwargs
         assert track_kwargs["cost_usd"] is None
         assert track_kwargs["user_id"] == "user-7"
+        # Non-local prefer_openrouter route → always logged as ``open_router``.
         assert track_kwargs["provider"] == "open_router"
 
     @pytest.mark.asyncio

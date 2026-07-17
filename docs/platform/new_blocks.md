@@ -562,7 +562,18 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager6"
 ```
+
+!!! info "Signature verification (`verify_signature`)"
+    If the upstream provider signs its deliveries (e.g. GitHub's
+    `X-Hub-Signature-256`, Airtable's `X-Airtable-Content-MAC`), override
+    `verify_signature` and use `hmac.compare_digest` for the comparison.
+    Raise `fastapi.HTTPException(403)` on missing/invalid signatures.
+
+    If the provider has no signing scheme (consumer wearables, simple
+    "POST to this URL" tools), leave the default in place. The webhook
+    URL's UUID is then the bearer secret — document that for users.
 
 And add a reference to your `WebhooksManager` class in `load_webhook_managers`:
 

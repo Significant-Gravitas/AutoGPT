@@ -28,6 +28,7 @@ from pydantic import (
     Field,
     GetCoreSchemaHandler,
     SecretStr,
+    TypeAdapter,
     field_serializer,
     model_validator,
 )
@@ -445,6 +446,10 @@ Credentials = Annotated[
     Field(discriminator="type"),
 ]
 
+# For validating a bare Credentials union outside a parent model (e.g.
+# decrypted IntegrationCredential row payloads).
+CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
+
 
 CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
 
@@ -815,8 +820,21 @@ class UserTransaction(BaseModel):
     extra_data: str | None = None
 
 
+class CreditTransactionItem(BaseModel):
+    transaction_key: str = ""
+    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    user_id: str
+
+
 class TransactionHistory(BaseModel):
-    transactions: list[UserTransaction]
+    transactions: list[CreditTransactionItem]
     next_transaction_time: datetime | None
 
 

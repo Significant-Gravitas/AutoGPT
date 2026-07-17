@@ -5,7 +5,8 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 """
 
 import logging
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Literal
 
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
 from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
@@ -19,6 +20,20 @@ from .models import (
     MemoryForgetConfirmResponse,
     ToolResponseBase,
 )
+
+
+def _now_iso() -> str:
+    """Current UTC time as an ISO-8601 string for Cypher parameter binding.
+
+    FalkorDB does not implement Cypher's no-arg ``datetime()`` function
+    (the error is ``Unknown function 'datetime'``), so timestamp values
+    have to be generated in Python and passed as a parameter.  ISO
+    strings work for the comparison + ordering we use (lexical sort on
+    ISO-8601 matches chronological sort) and round-trip cleanly through
+    ``toString(...)`` reads we already do.
+    """
+    return datetime.now(timezone.utc).isoformat()
+
 
 logger = logging.getLogger(__name__)
 
@@ -237,8 +252,12 @@ class MemoryForgetConfirmTool(BaseTool):
             deleted, failed = await _hard_delete_edges(driver, uuids, user_id)
             mode = "permanently deleted"
         else:
-            deleted, failed = await _soft_delete_edges(driver, uuids, user_id)
-            mode = "invalidated"
+            # User-initiated forget is a *system* retraction, not a world
+            # change. Per Snodgrass bi-temporal semantics, only `expired_at`
+            # is set. `_soft_delete_edges` (which also sets `invalid_at`)
+            # is reserved for the contradiction detector.
+            deleted, failed = await _retract_edges(driver, uuids, user_id)
+            mode = "retracted from memory"
 
         return MemoryForgetConfirmResponse(
             message=(
@@ -251,16 +270,22 @@ class MemoryForgetConfirmTool(BaseTool):
         )
 
 
-async def _soft_delete_edges(
+async def _retract_edges(
     driver, uuids: list[str], user_id: str
 ) -> tuple[list[str], list[str]]:
-    """Temporal invalidation — mark edges as expired without removing them.
+    """System retraction — set ONLY ``expired_at`` on the edge.
 
-    Sets ``invalid_at`` and ``expired_at`` to now, which excludes them
-    from default search results while preserving history.
+    Per Snodgrass bi-temporal semantics (see ``dream/dreaming-graphiti.md``
+    §6.13), ``expired_at`` is *transaction time* ("we retracted the
+    record") and ``invalid_at`` is *valid time* ("the world changed").
+    User-initiated forget, dream demotion, and entity invalidation are
+    all system retractions and must NOT set ``invalid_at``.
+
+    For contradiction detection (the world really did change) use
+    ``_soft_delete_edges`` below, which sets both.
 
     Matches the same edge types as ``_hard_delete_edges`` so that edges of
-    any type (RELATES_TO, MENTIONS, HAS_MEMBER) can be soft-deleted.
+    any type (RELATES_TO, MENTIONS, HAS_MEMBER) can be retracted.
     """
     deleted = []
     failed = []
@@ -269,11 +294,53 @@ async def _soft_delete_edges(
             records, _, _ = await driver.execute_query(
                 """
                 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                SET e.invalid_at = datetime(),
-                    e.expired_at = datetime()
+                SET e.expired_at = $now
                 RETURN e.uuid AS uuid
                 """,
                 uuid=uuid,
+                now=_now_iso(),
+            )
+            if records:
+                deleted.append(uuid)
+            else:
+                failed.append(uuid)
+        except Exception:
+            logger.warning(
+                "Failed to retract edge %s for user %s",
+                uuid,
+                user_id[:12],
+                exc_info=True,
+            )
+            failed.append(uuid)
+    return deleted, failed
+
+
+async def _soft_delete_edges(
+    driver, uuids: list[str], user_id: str
+) -> tuple[list[str], list[str]]:
+    """Bi-temporal invalidation — mark edges as both expired AND invalid.
+
+    Reserved for the *contradiction detector*: when new evidence proves
+    a fact ceased being true in the world, set ``invalid_at`` (valid time)
+    in addition to ``expired_at`` (transaction time). User-initiated
+    forget should use ``_retract_edges`` instead; conflating the two
+    breaks the bi-temporal model (audit §6.13).
+
+    Matches RELATES_TO, MENTIONS, HAS_MEMBER edges.
+    """
+    deleted = []
+    failed = []
+    for uuid in uuids:
+        try:
+            records, _, _ = await driver.execute_query(
+                """
+                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
+                SET e.invalid_at = $now,
+                    e.expired_at = $now
+                RETURN e.uuid AS uuid
+                """,
+                uuid=uuid,
+                now=_now_iso(),
             )
             if records:
                 deleted.append(uuid)
@@ -288,6 +355,119 @@ async def _soft_delete_edges(
             )
             failed.append(uuid)
     return deleted, failed
+
+
+async def mark_edges_superseded(
+    driver,
+    uuids: list[str],
+    reason: str,
+    new_status: Literal["superseded", "contradicted"] = "superseded",
+    user_id: str | None = None,
+    group_id: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """Retract edges AND set the custom audit-trail ``status`` property.
+
+    Intended for the dream pass (P0.3 stale-fact deprecation): retract
+    the edge per ``_retract_edges`` semantics and stamp
+    ``status='superseded'`` (or ``'contradicted'``) plus
+    ``expiration_reason=<reason>`` so the demotion is queryable from
+    search (``WHERE e.status = 'superseded'``).
+
+    ``group_id`` adds defense-in-depth: the driver is normally opened
+    against the per-user FalkorDB database, but when provided the
+    Cypher predicate also requires the edge's ``group_id`` to match so
+    a future caller holding the wrong driver can't touch another
+    user's edges. ``None`` keeps the unscoped match (current
+    ratification behavior).
+
+    Returns ``(succeeded_uuids, failed_uuids)``.
+    """
+    deleted = []
+    failed = []
+    user_log = (user_id or "?")[:12]
+    edge_match = (
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
+        if group_id is not None
+        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
+    )
+    query = f"""
+                {edge_match}
+                SET e.expired_at = $now,
+                    e.status = $new_status,
+                    e.expiration_reason = $reason
+                RETURN e.uuid AS uuid
+                """
+    for uuid in uuids:
+        try:
+            params: dict[str, str] = {
+                "uuid": uuid,
+                "new_status": new_status,
+                "reason": reason,
+                "now": _now_iso(),
+            }
+            if group_id is not None:
+                params["group_id"] = group_id
+            records, _, _ = await driver.execute_query(query, **params)
+            if records:
+                deleted.append(uuid)
+            else:
+                failed.append(uuid)
+        except Exception:
+            logger.warning(
+                "Failed to mark edge %s superseded for user %s",
+                uuid,
+                user_log,
+                exc_info=True,
+            )
+            failed.append(uuid)
+    return deleted, failed
+
+
+async def invalidate_entity_direct_neighbors(
+    driver,
+    group_id: str,
+    entity_uuid: str,
+    reason: str,
+) -> list[str]:
+    """Demote every ``:RELATES_TO`` edge directly attached to an entity.
+
+    **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
+    The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
+    runaway-demotion bug we are protecting against (P0.3b in the dream
+    spec). Keep the single-hop discipline; ratification (P0.4) re-promotes
+    good facts that get caught in the cascade.
+
+    Returns the list of edge UUIDs that were demoted. ``DISTINCT``
+    matters: the undirected ``-[r]-`` pattern can yield the same edge
+    from both traversal directions, and duplicate uuids inflate the
+    demotion counts reported in ``DreamPassResult`` / the admin UI
+    (the ``SET`` itself is idempotent).
+    """
+    query = """
+    MATCH (e:Entity {uuid: $entity_uuid, group_id: $group_id})
+    MATCH (e)-[r:RELATES_TO]-(other)
+    SET r.expired_at = $now,
+        r.status = 'superseded',
+        r.expiration_reason = $reason
+    RETURN DISTINCT r.uuid AS edge_uuid
+    """
+    try:
+        records, _, _ = await driver.execute_query(
+            query,
+            entity_uuid=entity_uuid,
+            group_id=group_id,
+            reason=reason,
+            now=_now_iso(),
+        )
+        return [r["edge_uuid"] for r in records]
+    except Exception:
+        logger.warning(
+            "Failed to invalidate direct neighbors of entity %s in group %s",
+            entity_uuid,
+            group_id,
+            exc_info=True,
+        )
+        return []
 
 
 async def _hard_delete_edges(

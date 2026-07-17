@@ -21,11 +21,9 @@ function openPanelWith(artifact: ArtifactRef) {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: true,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: artifact,
       history: [],
+      activeTab: "files",
     },
   });
 }
@@ -39,7 +37,7 @@ const meta: Meta<typeof ArtifactPanel> = {
     docs: {
       description: {
         component:
-          "Side panel for previewing workspace artifacts. Supports resize, minimize, maximize, and navigation history. Bug: panel auto-opens on chat switch instead of staying collapsed.",
+          "Side panel for previewing workspace artifacts. Supports resize, navigation history, and a collapsed context rail. Bug: panel auto-opens on chat switch instead of staying collapsed.",
       },
     },
   },
@@ -144,25 +142,6 @@ export const OpenWithImageArtifact: Story = {
   },
 };
 
-export const MinimizedStrip: Story = {
-  name: "Minimized",
-  decorators: [
-    (Story) => {
-      useCopilotUIStore.setState({
-        artifactPanel: {
-          isOpen: true,
-          isMinimized: true,
-          isMaximized: false,
-          width: 600,
-          activeArtifact: makeArtifact(),
-          history: [],
-        },
-      });
-      return <Story />;
-    },
-  ],
-};
-
 export const ErrorState: Story = {
   name: "Error — Failed to Load (Stale Artifact)",
   decorators: [
@@ -202,11 +181,9 @@ export const Closed: Story = {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: false,
-          isMinimized: false,
-          isMaximized: false,
-          width: 600,
           activeArtifact: null,
           history: [],
+          activeTab: "files",
         },
       });
       return <Story />;

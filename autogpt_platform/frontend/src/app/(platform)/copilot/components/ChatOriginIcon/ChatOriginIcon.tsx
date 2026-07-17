@@ -2,40 +2,30 @@
 
 import Image from "next/image";
 import { useState } from "react";
-
-const PLATFORM_LOGOS: Record<string, { name: string; src: string }> = {
-  discord: { name: "Discord", src: "/integrations/discord.png" },
-  github: { name: "GitHub", src: "/integrations/github.png" },
-  linear: { name: "Linear", src: "/integrations/linear.png" },
-  slack: { name: "Slack", src: "/integrations/slack.png" },
-  teams: { name: "Teams", src: "/integrations/teams.png" },
-  telegram: { name: "Telegram", src: "/integrations/telegram.png" },
-  whatsapp: { name: "WhatsApp", src: "/integrations/whatsapp.png" },
-};
+import { resolvePlatformLogo } from "./platformLogos";
 
 interface Props {
   sourcePlatform?: string | null;
 }
 
 export function ChatOriginIcon({ sourcePlatform }: Props) {
-  const platform = sourcePlatform?.trim().toLowerCase();
-  const logo = platform ? PLATFORM_LOGOS[platform] : undefined;
+  const logo = resolvePlatformLogo(sourcePlatform);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 
   if (!logo || brokenSrc === logo.src) return null;
 
   return (
     <span
-      className="inline-flex size-4 shrink-0 items-center justify-center"
+      className="inline-flex size-3.5 shrink-0 items-center justify-center"
       title={`From ${logo.name}`}
     >
       <Image
         src={logo.src}
         alt={logo.name}
-        width={16}
-        height={16}
+        width={14}
+        height={14}
         loading="lazy"
-        className="size-4 object-contain"
+        className="size-3.5 object-contain opacity-80 grayscale"
         onError={() => setBrokenSrc(logo.src)}
       />
     </span>
