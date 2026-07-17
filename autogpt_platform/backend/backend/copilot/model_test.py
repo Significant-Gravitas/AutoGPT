@@ -1005,6 +1005,82 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
     assert new_msg.sequence == 1500
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfills_late_tool_calls(
+    mocker: MockerFixture,
+) -> None:
+    """An assistant row flushed before its tool_use blocks arrived gets its
+    toolCalls back-filled on the next save, and the dirty flag cleared."""
+    calls = [
+        {
+            "id": "c1",
+            "type": "function",
+            "function": {"name": "find_block", "arguments": "{}"},
+        }
+    ]
+    flushed = ChatMessage(
+        role="assistant",
+        content="Searching...",
+        sequence=7,
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    mock_db.add_chat_messages_batch.assert_not_awaited()
+    mock_db.update_chat_message_tool_calls.assert_awaited_once_with(
+        session_id=session.session_id, sequence=7, tool_calls=calls
+    )
+    assert flushed.tool_calls_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_new_rows_persist_tool_calls_without_backfill(
+    mocker: MockerFixture,
+) -> None:
+    """A not-yet-saved row keeps its tool_calls on the normal insert path —
+    no back-fill update is issued and the flag is cleared by the save."""
+    calls = [
+        {
+            "id": "c2",
+            "type": "function",
+            "function": {"name": "bash_exec", "arguments": "{}"},
+        }
+    ]
+    new_msg = ChatMessage(
+        role="assistant",
+        content="Running...",
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(new_msg)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=0)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=0, skip_existence_check=True
+    )
+
+    saved = mock_db.add_chat_messages_batch.call_args.kwargs["messages"]
+    assert saved[0]["tool_calls"] == calls
+    mock_db.update_chat_message_tool_calls.assert_not_awaited()
+    assert new_msg.tool_calls_pending_save is False
+
+
 # ─── _get_session_from_db cap-hit warning ──────────────────────────────
 
 

@@ -91,9 +91,9 @@ async def setup_triggered_preset(
             description=description,
             inputs=trigger_config_with_credentials,
             credentials=agent_credentials,
-            webhook_id=new_webhook.id,
             is_active=True,
         ),
+        webhook_id=new_webhook.id,
     )
 
 
