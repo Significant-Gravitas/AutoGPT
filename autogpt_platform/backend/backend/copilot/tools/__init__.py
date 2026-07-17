@@ -20,6 +20,7 @@ from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .edit_agent import EditAgentTool
+from .enter_building_mode import EnterAgentBuildingModeTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -117,6 +118,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    "enter_agent_building_mode": EnterAgentBuildingModeTool(),
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Skills (self-distilled procedure registry; see tools/skills.py).
     # Defaults seed the agent-building / MCP guides so the registry is
@@ -190,12 +192,20 @@ def get_available_tools(
     also filtered out — use this to hide capability-gated tools (e.g.
     ``graphiti`` when the memory backend is off for the current user).
     """
-    hidden = tool_names_in_groups(disabled_groups)
+    hidden = tool_names_in_groups(disabled_groups) | SDK_ONLY_TOOL_NAMES
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()
         if tool.is_available and name not in hidden
     ]
+
+
+# Tools whose behaviour depends on SDK-path machinery and must not be
+# offered on the baseline path. ``enter_agent_building_mode`` promises an
+# in-turn system-prompt upgrade that only the SDK service performs — on
+# baseline it would set a flag nobody consumes and strand the model at the
+# guide gate.
+SDK_ONLY_TOOL_NAMES: frozenset[str] = frozenset({"enter_agent_building_mode"})
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

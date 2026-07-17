@@ -319,3 +319,11 @@ def test_announce_inflight_captures_dict_arguments():
     session.announce_inflight_tool_call("read_skill", {"name": "mcp_tool_guide"})
     args = session.get_inflight_tool_call_args("read_skill")
     assert args == [{"name": "mcp_tool_guide"}]
+
+
+def test_guide_in_system_prompt_flag_gate_passes():
+    """When this turn's system prompt carries the guide (building session),
+    the gate passes without any guide tool call in history."""
+    session = _session_with_messages([])
+    session.guide_in_system_prompt = True
+    assert require_guide_read(session, "create_agent") is None
