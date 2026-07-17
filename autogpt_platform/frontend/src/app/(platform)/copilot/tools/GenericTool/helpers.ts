@@ -16,8 +16,24 @@ export function extractToolName(part: ToolUIPart): string {
   return part.type.replace(/^tool-/, "");
 }
 
+// Specific-case labels for tools whose auto-formatted name reads awkwardly
+// alongside a "Running …" prefix (e.g. avoid "Running Run sub session").
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  run_sub_session: "Sub-AutoPilot",
+  get_sub_session_result: "Sub-AutoPilot result",
+  run_agent: "Agent",
+  view_agent_output: "Agent output",
+  run_block: "Action",
+  run_mcp_tool: "MCP tool",
+  get_agent_building_guide: "Agent building guide",
+};
+
 export function formatToolName(name: string): string {
-  return name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  const override = TOOL_DISPLAY_NAMES[name];
+  if (override) return override;
+  // Drop a redundant "run_" prefix so "Running Run agent" → "Running agent".
+  const stripped = name.startsWith("run_") ? name.slice(4) : name;
+  return stripped.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +60,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     case "bash_exec":
       return "bash";
     case "web_fetch":
+    case "web_search":
     case "WebSearch":
     case "WebFetch":
       return "web";
@@ -98,6 +115,7 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "web_fetch":
     case "WebFetch":
       return typeof inp.url === "string" ? inp.url : null;
+    case "web_search":
     case "WebSearch":
       return typeof inp.query === "string" ? inp.query : null;
     case "browser_navigate":
@@ -184,19 +202,16 @@ export function humanizeFileName(filePath: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Exit code helper                                                   */
-/* ------------------------------------------------------------------ */
-
-function getExitCode(output: unknown): number | null {
-  if (!output || typeof output !== "object") return null;
-  const parsed = output as Record<string, unknown>;
-  if (typeof parsed.exit_code === "number") return parsed.exit_code;
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
 /*  Animation text                                                     */
 /* ------------------------------------------------------------------ */
+
+// web_search accepts a ``deep`` arg that dispatches to a multi-step
+// research model; render a distinct verb ("Researching"/"Researched"/
+// "Research failed") so users know the call takes longer.
+function _isDeepWebSearch(part: ToolUIPart): boolean {
+  const input = part.input as Record<string, unknown> | undefined;
+  return input?.deep === true;
+}
 
 export function getAnimationText(
   part: ToolUIPart,
@@ -215,10 +230,12 @@ export function getAnimationText(
             ? `Running: ${shortSummary}`
             : "Running command\u2026";
         case "web":
-          if (toolName === "WebSearch") {
+          if (toolName === "WebSearch" || toolName === "web_search") {
+            const deep = _isDeepWebSearch(part);
+            const verb = deep ? "Researching" : "Searching";
             return shortSummary
-              ? `Searching "${shortSummary}"`
-              : "Searching the web\u2026";
+              ? `${verb} "${shortSummary}"`
+              : `${verb} the web\u2026`;
           }
           return shortSummary
             ? `Fetching ${shortSummary}`
@@ -271,18 +288,19 @@ export function getAnimationText(
     }
     case "output-available": {
       switch (category) {
-        case "bash": {
-          const exitCode = getExitCode(part.output);
-          if (exitCode !== null && exitCode !== 0) {
-            return `Command exited with code ${exitCode}`;
-          }
+        case "bash":
+          // Subtitle always shows WHAT ran. The accordion title + description
+          // carry HOW it ended (exit code / "timed out"), so repeating the
+          // exit status here would just double up.
           return shortSummary ? `Ran: ${shortSummary}` : "Command completed";
-        }
         case "web":
-          if (toolName === "WebSearch") {
-            return shortSummary
-              ? `Searched "${shortSummary}"`
+          if (toolName === "WebSearch" || toolName === "web_search") {
+            const deep = _isDeepWebSearch(part);
+            const verb = deep ? "Researched" : "Searched";
+            const completed = deep
+              ? "Web research completed"
               : "Web search completed";
+            return shortSummary ? `${verb} "${shortSummary}"` : completed;
           }
           return shortSummary
             ? `Fetched ${shortSummary}`
@@ -349,7 +367,10 @@ export function getAnimationText(
         case "bash":
           return "Command failed";
         case "web":
-          return toolName === "WebSearch" ? "Search failed" : "Fetch failed";
+          if (toolName === "WebSearch" || toolName === "web_search") {
+            return _isDeepWebSearch(part) ? "Research failed" : "Search failed";
+          }
+          return "Fetch failed";
         case "browser":
           return "Browser action failed";
         default:

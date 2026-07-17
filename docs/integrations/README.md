@@ -41,7 +41,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Date Input](block-integrations/basic.md#agent-date-input) | Block for date input |
 | [Agent Dropdown Input](block-integrations/basic.md#agent-dropdown-input) | Block for dropdown text selection |
 | [Agent File Input](block-integrations/basic.md#agent-file-input) | Block for file upload input (string path for example) |
-| [Agent Google Drive File Input](block-integrations/basic.md#agent-google-drive-file-input) | Block for selecting a file from Google Drive |
+| [Agent Google Drive File Input](block-integrations/basic.md#agent-google-drive-file-input) | Agent-level input for a Google Drive file |
 | [Agent Input](block-integrations/basic.md#agent-input) | A block that accepts and processes user input values within a workflow, supporting various input types and validation |
 | [Agent Long Text Input](block-integrations/basic.md#agent-long-text-input) | Block for long text input (multi-line) |
 | [Agent Number Input](block-integrations/basic.md#agent-number-input) | Block for number input |
@@ -85,7 +85,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Get Orders](block-integrations/slant3d/order.md#slant3d-get-orders) | Get all orders for the account |
 | [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
 | [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
-| [Store Value](block-integrations/basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
+| [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
 | [Zip Lists](block-integrations/basic.md#zip-lists) | Zips multiple lists together into a list of grouped elements |
@@ -176,11 +176,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Update Cell](block-integrations/google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](block-integrations/google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
 | [Google Sheets Write](block-integrations/google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
+| [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
+| [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
-| [Persist Information](block-integrations/data.md#persist-information) | Persist key-value information for the current user |
+| [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
-| [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
+| [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
@@ -354,6 +356,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
+| [Send Slack Message](block-integrations/slack/blocks.md#send-slack-message) | Send a text message to any Slack channel, DM, or thread |
 | [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
 | [Send Telegram Document](block-integrations/telegram/blocks.md#send-telegram-document) | Send a document (any file type) to a Telegram chat |
 | [Send Telegram Message](block-integrations/telegram/blocks.md#send-telegram-message) | Send a text message to a Telegram chat |

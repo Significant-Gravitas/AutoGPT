@@ -137,8 +137,10 @@ describe("LibraryPage", () => {
             user_id: "test-user",
             name: "Work Agents",
             agent_count: 3,
+            subfolder_count: 0,
             color: null,
             icon: null,
+            parent_id: null,
             created_at: new Date(),
             updated_at: new Date(),
           },
@@ -147,8 +149,10 @@ describe("LibraryPage", () => {
             user_id: "test-user",
             name: "Personal",
             agent_count: 1,
+            subfolder_count: 0,
             color: null,
             icon: null,
+            parent_id: null,
             created_at: new Date(),
             updated_at: new Date(),
           },
@@ -158,12 +162,14 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
+    await waitForAgentsToLoad();
+
     expect(await screen.findByText("Work Agents")).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
     expect(screen.getAllByTestId("library-folder")).toHaveLength(2);
   });
 
-  test("shows See runs link on agent card", async () => {
+  test("shows See tasks link on agent card", async () => {
     setupHandlers({
       agents: [makeAgent({ name: "Linked Agent", can_access_graph: true })],
     });
@@ -172,7 +178,7 @@ describe("LibraryPage", () => {
 
     await screen.findByText("Linked Agent");
 
-    const runLinks = screen.getAllByText("See runs");
+    const runLinks = screen.getAllByText("See tasks");
     expect(runLinks.length).toBeGreaterThan(0);
   });
 
@@ -190,7 +196,7 @@ describe("LibraryPage", () => {
     expect(importButtons.length).toBeGreaterThan(0);
   });
 
-  test("renders Jump Back In when there is an active execution", async () => {
+  test("renders running agent card when execution is active", async () => {
     const agent = makeAgent({
       id: "lib-1",
       graph_id: "g-1",
@@ -218,6 +224,6 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
-    expect(await screen.findByText("Jump Back In")).toBeDefined();
+    expect(await screen.findByText("Running Agent")).toBeDefined();
   });
 });

@@ -143,7 +143,9 @@ class TestExaContentsCostTracking:
             mock_exa_cls.return_value = mock_exa
 
             async for _ in block.run(
-                block.Input(urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT),  # type: ignore[arg-type]
+                block.Input(
+                    urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT
+                ),  # type: ignore[arg-type]
                 credentials=TEST_CREDENTIALS,
             ):
                 pass
@@ -172,7 +174,9 @@ class TestExaContentsCostTracking:
             mock_exa_cls.return_value = mock_exa
 
             async for _ in block.run(
-                block.Input(urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT),  # type: ignore[arg-type]
+                block.Input(
+                    urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT
+                ),  # type: ignore[arg-type]
                 credentials=TEST_CREDENTIALS,
             ):
                 pass
@@ -201,7 +205,9 @@ class TestExaContentsCostTracking:
             mock_exa_cls.return_value = mock_exa
 
             async for _ in block.run(
-                block.Input(urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT),  # type: ignore[arg-type]
+                block.Input(
+                    urls=["https://example.com"], credentials=TEST_CREDENTIALS_INPUT
+                ),  # type: ignore[arg-type]
                 credentials=TEST_CREDENTIALS,
             ):
                 pass
@@ -297,7 +303,9 @@ class TestExaSimilarCostTracking:
             mock_exa_cls.return_value = mock_exa
 
             async for _ in block.run(
-                block.Input(url="https://example.com", credentials=TEST_CREDENTIALS_INPUT),  # type: ignore[arg-type]
+                block.Input(
+                    url="https://example.com", credentials=TEST_CREDENTIALS_INPUT
+                ),  # type: ignore[arg-type]
                 credentials=TEST_CREDENTIALS,
             ):
                 pass
@@ -326,7 +334,9 @@ class TestExaSimilarCostTracking:
             mock_exa_cls.return_value = mock_exa
 
             async for _ in block.run(
-                block.Input(url="https://example.com", credentials=TEST_CREDENTIALS_INPUT),  # type: ignore[arg-type]
+                block.Input(
+                    url="https://example.com", credentials=TEST_CREDENTIALS_INPUT
+                ),  # type: ignore[arg-type]
                 credentials=TEST_CREDENTIALS,
             ):
                 pass

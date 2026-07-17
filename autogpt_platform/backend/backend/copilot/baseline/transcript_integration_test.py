@@ -56,28 +56,142 @@ def _make_transcript_content(*roles: str) -> str:
 
 
 def _make_session_messages(*roles: str) -> list[ChatMessage]:
-    """Build a list of ChatMessage objects matching the given roles."""
+    """Build a list of ChatMessage objects matching the given roles.
+
+    Sequences are assigned 0..N-1 to mirror the production schema, where
+    ``ChatMessage.sequence`` is NOT NULL on every persisted row.
+    """
     return [
-        ChatMessage(role=r, content=f"{r} message {i}") for i, r in enumerate(roles)
+        ChatMessage(role=r, content=f"{r} message {i}", sequence=i)
+        for i, r in enumerate(roles)
     ]
 
 
 class TestResolveBaselineModel:
-    """Model selection honours the per-request mode."""
+    """Baseline model resolution honours the per-request tier toggle.
 
-    def test_fast_mode_selects_fast_model(self):
-        assert _resolve_baseline_model("fast") == config.fast_model
+    Baseline reads the ``fast_*_model`` cells of the (path, tier) matrix
+    and never falls through to the SDK-side ``thinking_*_model`` cells.
+    Without a user_id (so no LD context) the resolver returns the
+    ``ChatConfig`` static default; per-user overrides are exercised in
+    ``copilot/model_router_test.py``.
+    """
 
-    def test_extended_thinking_selects_default_model(self):
-        assert _resolve_baseline_model("extended_thinking") == config.model
+    @pytest.mark.asyncio
+    async def test_advanced_tier_selects_fast_advanced_model(self):
+        assert (
+            await _resolve_baseline_model("advanced", None)
+            == config.fast_advanced_model
+        )
 
-    def test_none_mode_selects_default_model(self):
-        """Critical: baseline users without a mode MUST keep the default (opus)."""
-        assert _resolve_baseline_model(None) == config.model
+    @pytest.mark.asyncio
+    async def test_standard_tier_selects_fast_standard_model(self):
+        assert (
+            await _resolve_baseline_model("standard", None)
+            == config.fast_standard_model
+        )
 
-    def test_default_and_fast_models_same(self):
-        """SDK defaults currently keep standard and fast on Sonnet 4.6."""
-        assert config.model == config.fast_model
+    @pytest.mark.asyncio
+    async def test_none_tier_selects_fast_standard_model(self):
+        """Baseline users without a tier get the fast-standard default."""
+        assert await _resolve_baseline_model(None, None) == config.fast_standard_model
+
+    def test_fast_standard_default_is_sonnet(self):
+        """Shipped default: Sonnet on the baseline standard cell — the
+        non-Anthropic routes ship via the LD flag instead of a config
+        change.  Asserts the declared ``Field`` default so a deploy-time
+        ``CHAT_FAST_STANDARD_MODEL`` override doesn't flake CI."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_standard_model"].default
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    def test_fast_advanced_default_is_opus(self):
+        """Shipped default: Opus on the baseline advanced cell — mirrors
+        the SDK advanced cell so the advanced-tier A/B stays clean
+        (same model, different path)."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_advanced_model"].default
+            == "anthropic/claude-opus-4.7"
+        )
+
+    def test_standard_and_advanced_cells_differ_on_fast(self):
+        """Advanced tier defaults to a different model than standard on
+        the baseline path.  Checked against declared ``Field`` defaults
+        so operator env overrides don't flake the test."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_standard_model"].default
+            != ChatConfig.model_fields["fast_advanced_model"].default
+        )
+
+    def test_legacy_env_aliases_route_to_new_fields(self, monkeypatch):
+        """Backward compat: the pre-split env var names must still bind.
+
+        The four-field matrix was introduced with ``validation_alias``
+        entries so that existing deployments setting ``CHAT_MODEL`` /
+        ``CHAT_ADVANCED_MODEL`` / ``CHAT_FAST_MODEL`` continue to override
+        the same effective cell without a rename.  Construct a fresh
+        ``ChatConfig`` with each legacy name set and confirm it lands on
+        the new field.
+        """
+        from backend.copilot.config import ChatConfig
+
+        monkeypatch.setenv("CHAT_MODEL", "legacy/sonnet-via-chat-model")
+        monkeypatch.setenv("CHAT_ADVANCED_MODEL", "legacy/opus-via-advanced")
+        monkeypatch.setenv("CHAT_FAST_MODEL", "legacy/fast-via-fast-model")
+        # Force OR mode so the SDK-vendor validator doesn't reject the
+        # non-Anthropic legacy slugs — this test only cares about env-var
+        # binding, not transport compatibility.  (Default is now
+        # ``use_openrouter=False`` so we have to opt in explicitly.)
+        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
+        monkeypatch.setenv("CHAT_API_KEY", "or-key")
+        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
+
+        cfg = ChatConfig()
+
+        assert cfg.thinking_standard_model == "legacy/sonnet-via-chat-model"
+        assert cfg.thinking_advanced_model == "legacy/opus-via-advanced"
+        assert cfg.fast_standard_model == "legacy/fast-via-fast-model"
+
+    def test_all_four_new_env_vars_bind_to_their_cells(self, monkeypatch):
+        """Each of the four (path, tier) cells must be overridable via
+        its documented ``CHAT_*_*_MODEL`` env var — including
+        ``CHAT_FAST_ADVANCED_MODEL`` which was missing a
+        ``validation_alias`` in the original split and only bound
+        implicitly through ``env_prefix``.  Pinning all four here so
+        that whenever someone touches the config shape, an accidental
+        unbinding fails CI instead of silently ignoring operator
+        overrides.
+        """
+        from backend.copilot.config import ChatConfig
+
+        monkeypatch.setenv("CHAT_FAST_STANDARD_MODEL", "explicit/fast-std")
+        monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "explicit/fast-adv")
+        monkeypatch.setenv("CHAT_THINKING_STANDARD_MODEL", "explicit/think-std")
+        monkeypatch.setenv("CHAT_THINKING_ADVANCED_MODEL", "explicit/think-adv")
+        # Force OR mode so the SDK-vendor validator doesn't reject the
+        # non-Anthropic explicit slugs — this test only cares about
+        # env-var binding, not transport compatibility.
+        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
+        monkeypatch.setenv("CHAT_API_KEY", "or-key")
+        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
+        # Clear the legacy aliases so they don't win priority in
+        # ``AliasChoices`` (first match wins).
+        for legacy in ("CHAT_MODEL", "CHAT_ADVANCED_MODEL", "CHAT_FAST_MODEL"):
+            monkeypatch.delenv(legacy, raising=False)
+
+        cfg = ChatConfig()
+
+        assert cfg.fast_standard_model == "explicit/fast-std"
+        assert cfg.fast_advanced_model == "explicit/fast-adv"
+        assert cfg.thinking_standard_model == "explicit/think-std"
+        assert cfg.thinking_advanced_model == "explicit/think-adv"
 
 
 class TestLoadPriorTranscript:

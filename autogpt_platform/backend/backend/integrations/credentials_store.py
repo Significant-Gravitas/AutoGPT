@@ -55,13 +55,6 @@ ollama_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
-revid_credentials = APIKeyCredentials(
-    id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
-    provider="revid",
-    api_key=SecretStr(settings.secrets.revid_api_key),
-    title="Use Credits for Revid",
-    expires_at=None,
-)
 ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
     provider="ideogram",
@@ -258,7 +251,6 @@ elevenlabs_credentials = APIKeyCredentials(
 
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
-    revid_credentials,
     ideogram_credentials,
     replicate_credentials,
     openai_credentials,
@@ -330,9 +322,13 @@ class IntegrationCredentialsStore:
     ) -> list[Credentials]:
         """Return only the persisted (user-stored) credentials — no side effects.
 
+        Reads the IntegrationCredential table (source of truth since the
+        blob→table migration; the UserIntegrations blob is retained only
+        as a rollback artifact).
+
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        return list((await self._get_user_integrations(user_id)).credentials)
+        return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
@@ -360,15 +356,12 @@ class IntegrationCredentialsStore:
 
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        user_integrations = await self._get_user_integrations(user_id)
-        all_credentials = list(user_integrations.credentials)
+        all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
         # These will always be added
         all_credentials.append(ollama_credentials)
 
         # These will only be added if the API key is set
-        if settings.secrets.revid_api_key:
-            all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
             all_credentials.append(ideogram_credentials)
         if settings.secrets.groq_api_key:
@@ -501,11 +494,8 @@ class IntegrationCredentialsStore:
 
     async def has_managed_credential(self, user_id: str, provider: str) -> bool:
         """Check if a managed credential exists for *provider*."""
-        user_integrations = await self._get_user_integrations(user_id)
-        return any(
-            c.provider == provider and c.is_managed
-            for c in user_integrations.credentials
-        )
+        persisted = await self.db_manager.get_user_credentials(user_id=user_id)
+        return any(c.provider == provider and c.is_managed for c in persisted)
 
     async def add_managed_credential(
         self, user_id: str, credential: Credentials
@@ -517,27 +507,14 @@ class IntegrationCredentialsStore:
         """
         if not credential.is_managed:
             raise ValueError("credential.is_managed must be True")
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.credentials = [
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            kept = [
                 c
-                for c in user_integrations.credentials
+                for c in persisted
                 if not (c.provider == credential.provider and c.is_managed)
             ]
-            user_integrations.credentials.append(credential)
-
-    async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
-        """Set the Ayrshare profile key for a user.
-
-        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
-        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
-
-        Args:
-            user_id: The ID of the user to set the profile key for
-            profile_key: The profile key to set
-        """
-        _profile_key = SecretStr(profile_key)
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
+            await self._set_user_integration_creds(user_id, [*kept, credential])
 
     # ===================== OAUTH STATES ===================== #
 
@@ -551,6 +528,7 @@ class IntegrationCredentialsStore:
         callback_url: Optional[str] = None,
         state_metadata: Optional[dict] = None,
         initiated_by_api_key_id: Optional[str] = None,
+        credential_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -563,6 +541,7 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            credential_id=credential_id,
             # External API OAuth flow fields
             callback_url=callback_url,
             state_metadata=state_metadata or {},
@@ -628,14 +607,24 @@ class IntegrationCredentialsStore:
     async def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
-        integrations = await self._get_user_integrations(user_id)
         # Remove default credentials from the list
         credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
-        integrations.credentials = credentials
-        await self.db_manager.update_user_integrations(user_id, integrations)
+        await self.db_manager.set_user_credentials(user_id, credentials)
 
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)
+
+    async def get_user_integrations(self, user_id: str) -> UserIntegrations:
+        """Public read-only accessor for the caller's ``UserIntegrations`` row.
+
+        Use for read-only access — the write back mechanism lives in
+        :meth:`edit_user_integrations`, which always persists on exit.
+        Consumers (e.g. managed-credential providers reading legacy side
+        channels) should reach for this method instead of the private
+        ``_get_user_integrations`` or the edit-as-read trick, which would
+        otherwise trigger a spurious DB write + Redis lock round-trip.
+        """
+        return await self._get_user_integrations(user_id)
 
     async def locked_user_integrations(self, user_id: str):
         key = (f"user:{user_id}", "integrations")

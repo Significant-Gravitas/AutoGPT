@@ -8,7 +8,7 @@ interface Props {
 export function LibraryActionHeader({ setSearchTerm }: Props) {
   return (
     <>
-      <div className="mb-[32px] hidden items-center justify-center gap-4 md:flex">
+      <div className="mb-7 hidden items-center justify-center gap-4 md:flex">
         <LibrarySearchBar setSearchTerm={setSearchTerm} />
         <LibraryImportDialog />
       </div>

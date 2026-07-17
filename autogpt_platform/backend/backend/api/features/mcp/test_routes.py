@@ -476,7 +476,11 @@ class TestStoreToken:
         data = response.json()
         assert data["provider"] == "mcp"
         assert data["type"] == "oauth2"
-        assert data["host"] == "mcp.example.com"
+        # ``host`` carries the full normalized ``mcp_server_url`` (not just
+        # the bare hostname) so the response is parity with the OAuth
+        # callback path — ``MCPSetupCard`` matches against this URL to
+        # render the Connected/Reconnect state on chat refresh.
+        assert data["host"] == "https://mcp.example.com/mcp"
         mock_cm.create.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")

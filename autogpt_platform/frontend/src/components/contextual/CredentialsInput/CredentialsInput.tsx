@@ -82,6 +82,7 @@ export function CredentialsInput({
     isHostScopedCredentialsModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
+    oAuthPopupBlocked,
     cancelOAuthFlow,
     actionButtonText,
     setAPICredentialsModalOpen,
@@ -168,6 +169,7 @@ export function CredentialsInput({
               open={isOAuth2FlowInProgress}
               onClose={cancelOAuthFlow}
               providerName={providerName}
+              popupBlocked={oAuthPopupBlocked}
             />
           )}
           {supportsUserPassword && (

@@ -1,15 +1,15 @@
-import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { NetworkStatusMonitor } from "@/services/network-status/NetworkStatusMonitor";
+import { PushNotificationProvider } from "@/services/push-notifications/PushNotificationProvider";
 import { ReactNode } from "react";
-import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
+import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
+import { PlatformChrome } from "./PlatformChrome/PlatformChrome";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
-    <main className="flex h-screen w-full flex-col">
+    <AutoPilotBridgeProvider>
       <NetworkStatusMonitor />
-      <Navbar />
-      <AdminImpersonationBanner />
-      <section className="flex-1">{children}</section>
-    </main>
+      <PushNotificationProvider />
+      <PlatformChrome>{children}</PlatformChrome>
+    </AutoPilotBridgeProvider>
   );
 }

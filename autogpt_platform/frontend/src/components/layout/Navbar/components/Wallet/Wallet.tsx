@@ -43,7 +43,11 @@ export interface TaskGroup {
   tasks: Task[];
 }
 
-export function Wallet() {
+interface Props {
+  compact?: boolean;
+}
+
+export function Wallet({ compact = false }: Props) {
   const { state, updateState } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
@@ -54,21 +58,14 @@ export function Wallet() {
         details: "Kickstart your journey with quick wins.",
         tasks: [
           {
-            id: "GET_RESULTS",
-            name: "Complete onboarding and see your first agent's results",
+            id: "VISIT_COPILOT",
+            name: "Complete onboarding",
             amount: 3,
             details: "",
           },
           {
-            id: "MARKETPLACE_VISIT",
-            name: "Go to Marketplace",
-            amount: 1,
-            details: "Click Marketplace in the top navigation",
-            video: "/onboarding/marketplace-visit.mp4",
-          },
-          {
             id: "MARKETPLACE_ADD_AGENT",
-            name: "Find and add an agent",
+            name: "Get an agent from the marketplace",
             amount: 1,
             details:
               "Search for an agent in the Marketplace and add it to your Library",
@@ -79,15 +76,7 @@ export function Wallet() {
             name: "Open the Library page and run an agent",
             amount: 1,
             details: "Go to the Library, open an agent you want, and run it",
-            video: "/onboarding/marketplace-run.mp4",
-          },
-          {
-            id: "BUILDER_SAVE_AGENT",
-            name: "Place your first blocks and save your agent",
-            amount: 1,
-            details:
-              "Open block library on the left and add a block to the canvas then save your agent",
-            video: "/onboarding/builder-save.mp4",
+            video: "/onboarding/agent-run.mp4",
           },
         ],
       },
@@ -96,26 +85,11 @@ export function Wallet() {
         details: "Build your rhythm and make agents part of your routine.",
         tasks: [
           {
-            id: "RE_RUN_AGENT",
-            name: "Re-run an agent",
-            amount: 1,
-            details: "Re-run an agent from the Library",
-          },
-          {
             id: "SCHEDULE_AGENT",
             name: "Schedule your first agent",
             amount: 1,
             details: "Schedule an agent to run on a recurring basis",
-          },
-          {
-            id: "RUN_AGENTS",
-            name: "Run 10 agents",
-            amount: 3,
-            details: "Run agents from Library or Builder 10 times",
-            progress: {
-              current: state?.agentRuns || 0,
-              target: 10,
-            },
+            video: "/onboarding/agent-schedule.mp4",
           },
           {
             id: "RUN_3_DAYS",
@@ -144,9 +118,9 @@ export function Wallet() {
           {
             id: "RUN_14_DAYS",
             name: "Run agents 14 days in a row",
-            amount: 3,
+            amount: 1,
             details:
-              "Run any agents from the Library or Builder for 10 days in a row",
+              "Run any agents from the Library or Builder for 14 days in a row",
             progress: {
               current: state?.consecutiveRunDays || 0,
               target: 14,
@@ -155,7 +129,7 @@ export function Wallet() {
           {
             id: "RUN_AGENTS_100",
             name: "Complete 100 agent runs",
-            amount: 3,
+            amount: 1,
             details: "Let your agents run and complete 100 tasks in total",
             progress: {
               current: state?.agentRuns || 0,
@@ -296,28 +270,49 @@ export function Wallet() {
         <div className="relative inline-block">
           <button
             ref={walletRef}
-            className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
+            className={cn(
+              "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm",
+              compact
+                ? "h-8 rounded-lg px-2 py-0 transition-colors hover:bg-zinc-100"
+                : "bg-zinc-50",
+            )}
             onClick={onWalletOpen}
           >
-            <WalletIcon size={20} className="inline-block xl:hidden" />
+            <WalletIcon
+              size={20}
+              className={cn("inline-block", !compact && "xl:hidden")}
+            />
             <div>
-              <span className="mr-1 hidden xl:inline-block">Earn credits </span>
-              <span className="text-sm font-semibold">
+              {!compact && (
+                <span className="mr-1 hidden xl:inline-block">
+                  Earn credits{" "}
+                </span>
+              )}
+              <span
+                className={cn(
+                  compact ? "text-xs font-medium" : "text-sm font-semibold",
+                )}
+              >
                 {formatCredits(credits)}
               </span>
-              {completedCount !== null && completedCount < totalCount && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+              {!compact &&
+                completedCount !== null &&
+                completedCount < totalCount && (
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+                )}
+              {!compact && (
+                <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+                  <Text variant="body-medium">
+                    {completedCount} of {totalCount} rewards claimed
+                  </Text>
+                </div>
               )}
-              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
-                <Text variant="body-medium">
-                  {completedCount} of {totalCount} rewards claimed
-                </Text>
-              </div>
             </div>
           </button>
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 rounded-md bg-violet-400 duration-2000 ease-in-out",
+              "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+              compact ? "rounded-lg" : "rounded-md",
               flash ? "opacity-50 duration-0" : "opacity-0",
             )}
           />
@@ -327,14 +322,20 @@ export function Wallet() {
         side="bottom"
         align="end"
         collisionPadding={16}
-        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-[28.5rem] px-4 py-4")}
       >
         {/* Header */}
-        <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
-          <span className="font-poppins font-medium text-zinc-900">
-            Your credits
-          </span>
-          <div className="flex items-center text-sm text-violet-700">
+        <div className="mx-1 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="font-poppins text-base font-semibold text-zinc-900">
+              Automation Credits
+            </span>
+            <span className="font-sans text-xs text-zinc-500">
+              Platform-only credits for automations. This is separate from your
+              subscription and is not usable for plan fees.
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center text-sm text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>

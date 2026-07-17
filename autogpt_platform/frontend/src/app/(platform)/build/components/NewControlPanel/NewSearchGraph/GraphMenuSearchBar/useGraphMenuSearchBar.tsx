@@ -69,6 +69,9 @@ function calculateNodeScore(
   const customizedName = String(
     node.data?.metadata?.customized_name || "",
   ).toLowerCase();
+  const agentName = String(
+    node.data?.hardcodedValues?.agent_name || "",
+  ).toLowerCase();
 
   // Get input and output names with defensive checks
   const inputNames = Object.keys(node.data?.inputSchema?.properties || {}).map(
@@ -81,6 +84,7 @@ function calculateNodeScore(
   // 1. Check exact match in customized name, title (includes ID), node ID, or block type (highest priority)
   if (
     customizedName.includes(query) ||
+    agentName.includes(query) ||
     nodeTitle.includes(query) ||
     nodeID.includes(query) ||
     blockType.includes(query) ||
@@ -95,6 +99,7 @@ function calculateNodeScore(
     queryWords.every(
       (word) =>
         customizedName.includes(word) ||
+        agentName.includes(word) ||
         nodeTitle.includes(word) ||
         beautifiedBlockType.includes(word),
     )

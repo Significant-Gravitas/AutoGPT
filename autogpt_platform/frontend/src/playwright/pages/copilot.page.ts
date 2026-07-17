@@ -14,11 +14,21 @@ export class CopilotPage extends BasePage {
   }
 
   async dismissNotificationPrompt(): Promise<void> {
-    // Notification permission prompt is optional — only shown on first visit
-    const notNowButton = this.page.getByRole("button", { name: "Not now" });
-    if (await notNowButton.isVisible({ timeout: 3000 })) {
-      await notNowButton.click();
+    // The dialog mounts after React hydrates + reads localStorage; on slow CI
+    // it can appear AFTER the call returned, leaving a fixed overlay that
+    // blocks the chat input. Wait for it to either mount or stay absent.
+    const dialog = this.page.getByRole("dialog").filter({
+      has: this.page.getByText("Stay in the loop"),
+    });
+    try {
+      await dialog.waitFor({ state: "visible", timeout: 3000 });
+    } catch {
+      return;
     }
+    await this.page
+      .getByRole("button", { name: "Not now" })
+      .click({ timeout: 3000 });
+    await dialog.waitFor({ state: "hidden", timeout: 5000 });
   }
 
   async createSessionViaApi(): Promise<string> {

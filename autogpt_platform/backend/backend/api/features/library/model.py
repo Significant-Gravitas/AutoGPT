@@ -213,7 +213,17 @@ class LibraryAgent(pydantic.BaseModel):
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
 
+    is_hidden: bool = False
+
     recommended_schedule_cron: str | None = None
+    is_scheduled: bool = pydantic.Field(
+        default=False,
+        description="Whether this agent has active execution schedules",
+    )
+    next_scheduled_run: str | None = pydantic.Field(
+        default=None,
+        description="ISO 8601 timestamp of the next scheduled run, if any",
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
 
@@ -223,6 +233,8 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         profile: Optional[prisma.models.Profile] = None,
+        execution_count_override: Optional[int] = None,
+        schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -258,10 +270,14 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        execution_count = len(executions)
+        execution_count = (
+            execution_count_override
+            if execution_count_override is not None
+            else len(executions)
+        )
         success_rate: float | None = None
         avg_correctness_score: float | None = None
-        if execution_count > 0:
+        if executions and execution_count > 0:
             success_count = sum(
                 1
                 for e in executions
@@ -351,9 +367,14 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
+            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
+            next_scheduled_run=(
+                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
         )
@@ -415,6 +436,10 @@ class LibraryAgentResponse(pydantic.BaseModel):
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
+
+    A preset's webhook is never caller-specified here; webhook-triggered presets
+    are created through ``POST /presets/setup-trigger``, which provisions a
+    webhook owned by the caller server-side.
     """
 
     graph_id: str
@@ -427,8 +452,6 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     description: str
 
     is_active: bool = True
-
-    webhook_id: Optional[str] = None
 
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
@@ -479,7 +502,27 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    # Read-only in responses; set server-side via the setup-trigger flow only.
+    webhook_id: Optional[str] = None
     webhook: "Webhook | None"
+
+    @pydantic.field_serializer("webhook")
+    def _redact_webhook_signing_material(
+        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
+    ):
+        # Never expose a webhook's signing secret / provider webhook id to API
+        # clients; callers only need the ingress URL and non-sensitive metadata.
+        if webhook is None:
+            return None
+        return webhook.model_dump(
+            mode=info.mode, exclude={"secret", "provider_webhook_id"}
+        )
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
@@ -515,6 +558,8 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
         )
@@ -560,6 +605,10 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"

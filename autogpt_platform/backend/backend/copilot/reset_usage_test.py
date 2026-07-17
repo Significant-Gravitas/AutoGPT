@@ -16,14 +16,14 @@ from backend.util.exceptions import InsufficientBalanceError
 # Minimal config mock matching ChatConfig fields used by the endpoint.
 def _make_config(
     rate_limit_reset_cost: int = 500,
-    daily_token_limit: int = 2_500_000,
-    weekly_token_limit: int = 12_500_000,
+    daily_cost_limit_microdollars: int = 10_000_000,
+    weekly_cost_limit_microdollars: int = 50_000_000,
     max_daily_resets: int = 5,
 ):
     cfg = MagicMock()
     cfg.rate_limit_reset_cost = rate_limit_reset_cost
-    cfg.daily_token_limit = daily_token_limit
-    cfg.weekly_token_limit = weekly_token_limit
+    cfg.daily_cost_limit_microdollars = daily_cost_limit_microdollars
+    cfg.weekly_cost_limit_microdollars = weekly_cost_limit_microdollars
     cfg.max_daily_resets = max_daily_resets
     return cfg
 
@@ -77,10 +77,10 @@ class TestResetCopilotUsage:
             assert "not available" in exc_info.value.detail
 
     async def test_no_daily_limit_returns_400(self):
-        """When daily_token_limit=0 (unlimited), endpoint returns 400."""
+        """When daily_cost_limit=0 (unlimited), endpoint returns 400."""
 
         with (
-            patch(f"{_MODULE}.config", _make_config(daily_token_limit=0)),
+            patch(f"{_MODULE}.config", _make_config(daily_cost_limit_microdollars=0)),
             patch(f"{_MODULE}.settings", _mock_settings()),
             _mock_rate_limits(daily=0),
         ):
@@ -282,14 +282,16 @@ class TestResetCopilotUsage:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 503
             assert "not been charged" in exc_info.value.detail
-            mock_credit_model.top_up_credits.assert_awaited_once()
+            mock_credit_model.grant_credits.assert_awaited_once()
+            # Refund must NOT route through Stripe top-up.
+            mock_credit_model.top_up_credits.assert_not_called()
 
     async def test_redis_reset_failure_refund_also_fails(self):
         """When both reset and refund fail, error message reflects the truth."""
 
         mock_credit_model = AsyncMock()
         mock_credit_model.spend_credits.return_value = 1500
-        mock_credit_model.top_up_credits.side_effect = RuntimeError("db down")
+        mock_credit_model.grant_credits.side_effect = RuntimeError("db down")
 
         cfg = _make_config()
         with (

@@ -257,14 +257,34 @@ function getExtension(filename?: string): string {
   return filename.slice(lastDot).toLowerCase();
 }
 
+// Types the browser renders natively — we don't run their bytes through our
+// React/JS pipeline, so the size gate doesn't need to apply.
+const NATIVELY_RENDERED = new Set<ArtifactClassification["type"]>([
+  "image",
+  "video",
+  "pdf",
+]);
+
 export function classifyArtifact(
   mimeType: string | null,
   filename?: string,
   sizeBytes?: number,
 ): ArtifactClassification {
-  // Size gate: >10MB is download-only regardless of type.
-  if (sizeBytes && sizeBytes > TEN_MB) return KIND["download-only"];
+  const kind = classifyByTypeOnly(mimeType, filename);
+  // Size gate: >10MB is download-only, but only for content we actually
+  // render in JS. Images, videos, and PDFs are handled natively by the
+  // browser — gating them produced "broken previews" for hi-res files
+  // (SECRT-2221).
+  if (sizeBytes && sizeBytes > TEN_MB && !NATIVELY_RENDERED.has(kind.type)) {
+    return KIND["download-only"];
+  }
+  return kind;
+}
 
+function classifyByTypeOnly(
+  mimeType: string | null,
+  filename?: string,
+): ArtifactClassification {
   const basename = getBasename(filename);
   const exactKind = EXACT_FILENAME_KIND[basename];
   if (exactKind) return KIND[exactKind];
