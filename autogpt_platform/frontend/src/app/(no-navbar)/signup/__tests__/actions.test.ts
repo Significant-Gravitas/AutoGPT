@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { signup } from "../actions";
 
 const mocks = vi.hoisted(() => ({
+  captureException: vi.fn(),
   getOnboardingStatus: vi.fn(),
   getServerSupabase: vi.fn(),
   postV1GetOrCreateUser: vi.fn(),
@@ -17,10 +18,18 @@ vi.mock("@/app/api/helpers", () => ({
 vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
   getServerSupabase: mocks.getServerSupabase,
 }));
-vi.mock("@/services/analytics/datafast-server", () => ({
-  scheduleAccountCreatedGoal: mocks.scheduleAccountCreatedGoal,
-  wasAccountCreated: (headers: Headers) =>
-    headers.get("X-AutoGPT-User-Created") === "true",
+vi.mock("@/services/analytics/datafast-server", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/analytics/datafast-server")
+    >();
+  return {
+    ...actual,
+    scheduleAccountCreatedGoal: mocks.scheduleAccountCreatedGoal,
+  };
+});
+vi.mock("@sentry/nextjs", () => ({
+  captureException: mocks.captureException,
 }));
 
 describe("email signup account creation tracking", () => {
@@ -74,6 +83,25 @@ describe("email signup account creation tracking", () => {
     );
 
     expect(result.success).toBe(true);
+    expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
+  });
+
+  it("reports a resolved backend error instead of completing signup", async () => {
+    mocks.postV1GetOrCreateUser.mockResolvedValue({
+      status: 500,
+      data: {},
+      headers: new Headers(),
+    });
+
+    const result = await signup(
+      "new@example.com",
+      "ValidPassword123!",
+      "ValidPassword123!",
+      true,
+    );
+
+    expect(result.success).toBe(false);
+    expect(mocks.captureException).toHaveBeenCalledOnce();
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
   });
 });

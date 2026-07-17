@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
@@ -16,7 +16,8 @@ const VISITOR_ID = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd";
 describe("DataFast server-side account creation tracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.DATAFAST_API_KEY = "df_test";
+    vi.stubEnv("DATAFAST_API_KEY", "df_test");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
     vi.mocked(cookies).mockResolvedValue({
       get: vi.fn((name: string) => {
         if (name === "agpt_analytics_consent") return { value: "granted" };
@@ -28,6 +29,10 @@ describe("DataFast server-side account creation tracking", () => {
       "fetch",
       vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("sends the signup goal after the response completes", async () => {
@@ -81,8 +86,27 @@ describe("DataFast server-side account creation tracking", () => {
     expect(after).not.toHaveBeenCalled();
   });
 
-  it("does not schedule tracking without a configured website API key", async () => {
-    delete process.env.DATAFAST_API_KEY;
+  it("does not report a missing website API key outside cloud", async () => {
+    vi.stubEnv("DATAFAST_API_KEY", "");
+
+    await scheduleAccountCreatedGoal("email");
+
+    expect(after).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing website API key in cloud", async () => {
+    vi.stubEnv("DATAFAST_API_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+
+    await scheduleAccountCreatedGoal("email");
+
+    expect(after).not.toHaveBeenCalled();
+    expect(Sentry.captureException).toHaveBeenCalledOnce();
+  });
+
+  it("reports a malformed configured website API key", async () => {
+    vi.stubEnv("DATAFAST_API_KEY", "invalid-key");
 
     await scheduleAccountCreatedGoal("email");
 
@@ -116,11 +140,30 @@ describe("DataFast server-side account creation tracking", () => {
 describe("wasAccountCreated", () => {
   it("only accepts the explicit backend creation header", () => {
     expect(
-      wasAccountCreated(new Headers({ "X-AutoGPT-User-Created": "true" })),
+      wasAccountCreated({
+        status: 200,
+        headers: new Headers({ "X-AutoGPT-User-Created": "true" }),
+      }),
     ).toBe(true);
     expect(
-      wasAccountCreated(new Headers({ "X-AutoGPT-User-Created": "false" })),
+      wasAccountCreated({
+        status: 200,
+        headers: new Headers({ "X-AutoGPT-User-Created": "false" }),
+      }),
     ).toBe(false);
-    expect(wasAccountCreated(new Headers())).toBe(false);
+    expect(wasAccountCreated({ status: 200, headers: new Headers() })).toBe(
+      false,
+    );
+  });
+
+  it("throws a status-bearing error for a resolved backend failure", () => {
+    expect.assertions(2);
+
+    try {
+      wasAccountCreated({ status: 500, headers: new Headers() });
+    } catch (error) {
+      expect(error).toMatchObject({ status: 500 });
+      expect(error).toBeInstanceOf(Error);
+    }
   });
 });

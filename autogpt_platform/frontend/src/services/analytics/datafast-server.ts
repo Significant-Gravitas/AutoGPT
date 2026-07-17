@@ -5,6 +5,7 @@ import {
   ANALYTICS_CONSENT_COOKIE,
   ANALYTICS_CONSENT_GRANTED,
 } from "@/services/consent/constants";
+import { environment } from "@/services/environment";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
 const DATAFAST_VISITOR_COOKIE = "datafast_visitor_id";
@@ -20,8 +21,20 @@ interface GoalContext {
   visitorID: string;
 }
 
-export function wasAccountCreated(headers: Headers) {
-  return headers.get(USER_CREATED_HEADER) === "true";
+interface AccountCreationResponse {
+  headers: Headers;
+  status: number;
+}
+
+export function wasAccountCreated(response: AccountCreationResponse) {
+  if (response.status !== 200) {
+    throw Object.assign(
+      new Error(`Unexpected account creation status ${response.status}`),
+      { status: response.status },
+    );
+  }
+
+  return response.headers.get(USER_CREATED_HEADER) === "true";
 }
 
 export async function scheduleAccountCreatedGoal(method: SignupMethod) {
@@ -64,10 +77,14 @@ async function getGoalContext(
   if (!visitorID || !VISITOR_ID_PATTERN.test(visitorID)) return null;
 
   const apiKey = process.env.DATAFAST_API_KEY?.trim();
-  if (!apiKey?.startsWith("df_")) {
-    throw new Error(
-      "DATAFAST_API_KEY must be configured with a df_ website key",
-    );
+  if (!apiKey) {
+    if (!environment.isCloud()) return null;
+
+    throw new Error("DATAFAST_API_KEY must be configured in cloud");
+  }
+
+  if (!apiKey.startsWith("df_")) {
+    throw new Error("DATAFAST_API_KEY must use a df_ website key");
   }
 
   return { apiKey, method, visitorID };

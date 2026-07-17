@@ -18,11 +18,16 @@ vi.mock("@/app/api/helpers", () => ({
 vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
   getServerSupabase: mocks.getServerSupabase,
 }));
-vi.mock("@/services/analytics/datafast-server", () => ({
-  scheduleAccountCreatedGoal: mocks.scheduleAccountCreatedGoal,
-  wasAccountCreated: (headers: Headers) =>
-    headers.get("X-AutoGPT-User-Created") === "true",
-}));
+vi.mock("@/services/analytics/datafast-server", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/analytics/datafast-server")
+    >();
+  return {
+    ...actual,
+    scheduleAccountCreatedGoal: mocks.scheduleAccountCreatedGoal,
+  };
+});
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
 describe("OAuth callback account creation tracking", () => {
@@ -64,6 +69,23 @@ describe("OAuth callback account creation tracking", () => {
 
     await GET(new Request("http://localhost/auth/callback?code=valid"));
 
+    expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
+  });
+
+  it("redirects a resolved backend error without tracking", async () => {
+    mocks.postV1GetOrCreateUser.mockResolvedValue({
+      status: 500,
+      data: {},
+      headers: new Headers(),
+    });
+
+    const response = await GET(
+      new Request("http://localhost/auth/callback?code=valid"),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/error?message=server-error",
+    );
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
   });
 });

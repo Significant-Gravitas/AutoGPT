@@ -64,7 +64,7 @@ export async function signup(
 
     try {
       const createUserResponse = await postV1GetOrCreateUser();
-      if (wasAccountCreated(createUserResponse.headers)) {
+      if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("email");
       }
     } catch (createUserError) {

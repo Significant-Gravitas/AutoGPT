@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     if (!error) {
       try {
         const createUserResponse = await postV1GetOrCreateUser();
-        if (wasAccountCreated(createUserResponse.headers)) {
+        if (wasAccountCreated(createUserResponse)) {
           await scheduleAccountCreatedGoal("google");
         }
 

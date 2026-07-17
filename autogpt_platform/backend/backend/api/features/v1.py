@@ -192,6 +192,17 @@ USER_CREATED_HEADER = "X-AutoGPT-User-Created"
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
+    responses={
+        200: {
+            "description": "Successful Response",
+            "headers": {
+                USER_CREATED_HEADER: {
+                    "description": "Whether this request created a new user",
+                    "schema": {"type": "string", "enum": ["true", "false"]},
+                }
+            },
+        }
+    },
     dependencies=[Security(requires_user)],
 )
 async def get_or_create_user_route(
