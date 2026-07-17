@@ -13,6 +13,8 @@ export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
 export const OAUTH_ERROR_FLOW_TIMED_OUT = "OAuth flow timed out";
 export const OAUTH_ERROR_POPUP_BLOCKED =
   "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.";
+export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
+  "Popup blocked — allow popups for this site and try again.";
 
 export type OAuthPopupResult = {
   code: string;
@@ -120,13 +122,19 @@ export function openOAuthPopup(
       : preOpenOAuthPopup();
 
   let popupBlocked = false;
+  let fallbackBlocked = false;
   if (popup && !popup.closed) {
     popup.location.href = loginUrl;
   } else {
     // Popup was blocked — open in new tab as fallback so the OAuth flow can
     // still complete via postMessage / BroadcastChannel / localStorage poll.
     popupBlocked = true;
-    window.open(loginUrl, "_blank");
+    const fallback = window.open(loginUrl, "_blank");
+    // The fallback open can be blocked too — iOS Safari blocks every
+    // window.open() after an async break, so when the caller pre-opened
+    // (and lost) the window, this open has no gesture context either. No
+    // window exists at all then, so no result can ever arrive.
+    fallbackBlocked = !fallback || fallback.closed;
   }
 
   // Close popup on abort
@@ -149,6 +157,17 @@ export function openOAuthPopup(
 
   const promise = new Promise<OAuthPopupResult>((resolve, reject) => {
     let handled = false;
+
+    // Both the popup and the new-tab fallback were blocked — no window
+    // exists, so no result can ever arrive. Fail fast instead of hanging
+    // until the timeout while the UI claims a tab opened. Retrying from a
+    // fresh tap (the connect button is re-enabled once this rejects) gets a
+    // new user-gesture context.
+    if (fallbackBlocked) {
+      handled = true;
+      reject(new Error(OAUTH_ERROR_POPUP_BLOCKED_NO_TAB));
+      return;
+    }
 
     const handleResult = (data: any) => {
       if (handled) return; // Prevent double-handling
