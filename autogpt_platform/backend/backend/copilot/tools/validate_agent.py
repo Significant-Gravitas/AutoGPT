@@ -41,9 +41,9 @@ class ValidateAgentGraphTool(BaseTool):
                 "agent_json": {
                     "type": ["object", "string"],
                     "description": (
-                        "Agent JSON with 'nodes' and 'links' arrays. For "
-                        "large graphs, write the JSON to a file and pass the "
-                        'string "@@agptfile:<path>" instead of inlining it.'
+                        "Agent JSON with 'nodes' and 'links' arrays, or the "
+                        'string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
                     ),
                 },
             },

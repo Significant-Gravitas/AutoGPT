@@ -827,7 +827,11 @@ class FixResultResponse(ToolResponseBase):
     """Response for fix_agent_graph tool."""
 
     type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
-    fixed_agent_json: dict[str, Any]
+    # None when the fixed JSON was written to a workspace file instead
+    # (see fixed_agent_ref + fix_diff).
+    fixed_agent_json: dict[str, Any] | None = None
+    fixed_agent_ref: str | None = None
+    fix_diff: str | None = None
     fixes_applied: list[str] = Field(default_factory=list)
     fix_count: int = 0
     valid_after_fix: bool = False

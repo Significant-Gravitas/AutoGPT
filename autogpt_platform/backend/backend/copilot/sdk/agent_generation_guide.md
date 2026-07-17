@@ -80,7 +80,13 @@ sampling (step 2), not by deliberation.
    - Use `AgentInputBlock` for values the user provides at runtime
    - When editing, apply targeted changes and preserve unchanged parts
 8. **Write to workspace**: Save the JSON to a workspace file so the user
-   can review it: `write_workspace_file(filename="agent.json", content=...)`
+   can review it: `write_workspace_file(filename="agent.json", content=...)`.
+   Write it **pretty-printed** (2-space indent, one field per line) — later
+   fixes then become small targeted edits instead of full-file rewrites.
+   Keep ONE canonical `agent.json`: apply changes to it in place (targeted
+   string/line edits via your file tools or `python3` + `json` in
+   `bash_exec`); never fork `agent_fixed.json` / `agent_v2.json` variants
+   and never rewrite the whole file to change a few nodes.
 9. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors. For any non-trivial graph, pass the file from step 8 by
    reference instead of re-emitting the JSON inline:
@@ -89,6 +95,10 @@ sampling (step 2), not by deliberation.
    JSON in tool arguments, where it can get truncated.
 10. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
     or fix manually based on the error descriptions. Iterate until valid.
+    Pass `write_to="agent.json"` so the fixed JSON is written back to the
+    workspace file (pretty-printed) and the response returns a file
+    reference — chain it straight into the next step without re-emitting
+    the graph.
 11. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
     the final `agent_json` — again by file reference when it lives in a
     file: `agent_json="@@agptfile:workspace:///agent.json"`.

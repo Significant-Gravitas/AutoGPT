@@ -1,8 +1,11 @@
 """FixAgentGraphTool - Auto-fixes common agent JSON issues."""
 
+import difflib
+import json
 import logging
 from typing import Any
 
+from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
@@ -42,10 +45,18 @@ class FixAgentGraphTool(BaseTool):
                 "agent_json": {
                     "type": ["object", "string"],
                     "description": (
-                        "The agent JSON to fix. Must contain 'nodes' and "
-                        "'links' arrays. For large graphs, write the JSON to "
-                        'a file and pass the string "@@agptfile:<path>" '
-                        "instead of inlining it."
+                        "The agent JSON to fix ('nodes' + 'links' arrays), or "
+                        'the string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
+                    ),
+                },
+                "write_to": {
+                    "type": "string",
+                    "description": (
+                        "Workspace filename (no directories) to write the "
+                        "fixed JSON to (pretty-printed, overwrites). The "
+                        "response then returns an @@agptfile ref to pass to "
+                        "create_agent/edit_agent instead of the full JSON."
                     ),
                 },
             },
@@ -57,6 +68,7 @@ class FixAgentGraphTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_json: dict | str | None = None,
+        write_to: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
@@ -109,28 +121,106 @@ class FixAgentGraphTool(BaseTool):
             is_valid = False
 
         if is_valid:
-            return FixResultResponse(
-                message=(
-                    f"Applied {len(fixes_applied)} fix(es). Agent graph is now valid!"
-                ),
-                fixed_agent_json=fixed_agent,
-                fixes_applied=fixes_applied,
-                fix_count=len(fixes_applied),
-                valid_after_fix=True,
-                remaining_errors=[],
-                session_id=session_id,
-            )
-
-        return FixResultResponse(
-            message=(
+            message = f"Applied {len(fixes_applied)} fix(es). Agent graph is now valid!"
+        else:
+            message = (
                 f"Applied {len(fixes_applied)} fix(es), but "
                 f"{len(remaining_errors)} issue(s) remain. "
                 "Review the remaining errors and fix manually."
-            ),
-            fixed_agent_json=fixed_agent,
+            )
+
+        fixed_ref: str | None = None
+        fix_diff: str | None = None
+        if write_to := write_to.strip():
+            fixed_ref, write_note = await _write_fixed_agent(
+                fixed_agent, write_to, user_id, session_id
+            )
+            message += write_note
+            if fixed_ref and fixes_applied:
+                fix_diff = _build_fix_diff(agent_json, fixed_agent, write_to)
+
+        return FixResultResponse(
+            message=message,
+            fixed_agent_json=None if fixed_ref else fixed_agent,
+            fixed_agent_ref=fixed_ref,
+            fix_diff=fix_diff,
             fixes_applied=fixes_applied,
             fix_count=len(fixes_applied),
-            valid_after_fix=False,
-            remaining_errors=remaining_errors,
+            valid_after_fix=is_valid,
+            remaining_errors=remaining_errors if not is_valid else [],
             session_id=session_id,
         )
+
+
+async def _write_fixed_agent(
+    fixed_agent: dict[str, Any],
+    write_to: str,
+    user_id: str | None,
+    session_id: str | None,
+) -> tuple[str | None, str]:
+    """Write the fixed agent JSON to a workspace file, pretty-printed.
+
+    Returns (file reference to pass to create_agent/edit_agent, message
+    note). On any failure the reference is None and the note explains the
+    fallback to inline JSON.
+    """
+    if "/" in write_to or "\\" in write_to:
+        return None, (
+            f" NOTE: write_to must be a plain filename (got {write_to!r}); "
+            "returning the fixed JSON inline instead."
+        )
+    if not user_id or not session_id:
+        return None, (
+            " NOTE: write_to requires an authenticated session; "
+            "returning the fixed JSON inline instead."
+        )
+    try:
+        manager = await get_workspace_manager(user_id, session_id)
+        rec = await manager.write_file(
+            content=json.dumps(fixed_agent, indent=2).encode("utf-8"),
+            filename=write_to,
+            overwrite=True,
+            metadata={"origin": "agent-created"},
+        )
+    except Exception as e:
+        logger.warning("fix_agent_graph: failed to write %r: %s", write_to, e)
+        return None, (
+            f" NOTE: could not write {write_to} ({e}); "
+            "returning the fixed JSON inline instead."
+        )
+    ref = f"@@agptfile:workspace://{rec.path}"
+    return ref, (
+        f" Fixed JSON written to workspace file {rec.path} — pass "
+        f'agent_json="{ref}" to create_agent/edit_agent (do not re-emit '
+        "the JSON)."
+    )
+
+
+_MAX_DIFF_CHARS = 4000
+
+
+def _build_fix_diff(
+    original: dict[str, Any], fixed: dict[str, Any], filename: str
+) -> str | None:
+    """Unified diff of the applied fixes against the pretty-printed JSON.
+
+    Lets the model keep its mental copy of the (just-overwritten) workspace
+    file current without re-reading it. Both sides are normalized with
+    ``json.dumps(indent=2)`` — the "after" side is byte-identical to what
+    ``_write_fixed_agent`` wrote.
+    """
+    diff_lines = difflib.unified_diff(
+        json.dumps(original, indent=2).splitlines(keepends=True),
+        json.dumps(fixed, indent=2).splitlines(keepends=True),
+        fromfile=f"{filename} (before fixes)",
+        tofile=f"{filename} (after fixes)",
+        n=2,
+    )
+    diff = "".join(diff_lines)
+    if not diff:
+        return None
+    if len(diff) > _MAX_DIFF_CHARS:
+        diff = diff[:_MAX_DIFF_CHARS] + (
+            "\n... [diff truncated — re-read the file before making " "targeted edits]"
+        )
+    return diff
