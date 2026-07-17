@@ -360,16 +360,26 @@ function cmdBatch() {
   const key = batchKey(arg1);
   const p = assertBatchable(prNumber);
 
-  // Concurrency cap: a brand-new batch key can't push us past BATCH_MAX active batches.
+  // Concurrency cap: starting a brand-new batch can't push us past BATCH_MAX active
+  // batches — but moving this PR out of a batch it's the SOLE member of vacates that
+  // batch, freeing a slot, so those must not count against the cap.
   const active = activeKeys();
-  if (!active.has(key) && active.size >= MAX_BATCHES) {
-    comment(
-      prNumber,
-      `${MARKER}\n🤖 Can't start batch \`${key}\` — the limit of ${MAX_BATCHES} concurrent batches is reached ` +
-        `(active: ${[...active].sort().map((k) => "`" + k + "`").join(", ")}). Add this PR to one of those ` +
-        `(\`/batch <name>\`), or free a slot with \`/batch-merge\` / \`/batch-remove\`.`,
-    );
-    return;
+  if (!active.has(key)) {
+    const freed = batchesOf(p)
+      .filter((k) => k !== key)
+      .filter((o) => {
+        const m = members(o);
+        return m.length === 1 && m[0].number === prNumber;
+      }).length;
+    if (active.size - freed >= MAX_BATCHES) {
+      comment(
+        prNumber,
+        `${MARKER}\n🤖 Can't start batch \`${key}\` — the limit of ${MAX_BATCHES} concurrent batches is reached ` +
+          `(active: ${[...active].sort().map((k) => "`" + k + "`").join(", ")}). Add this PR to one of those ` +
+          `(\`/batch <name>\`), or free a slot with \`/batch-merge\` / \`/batch-remove\`.`,
+      );
+      return;
+    }
   }
 
   // One batch per PR: move it out of any other batch it's in, and rebuild those
@@ -432,7 +442,10 @@ function cmdBatchMerge() {
     return;
   }
   const key = keys[0]; // one batch per PR
-  const list = members(key);
+  // Use the lag-compensated list (ensuring the commenting PR, which we just confirmed
+  // is a member): a member added right before this in the serialized handler queue
+  // could otherwise be missed — a false "empty" reply or a partial rollup.
+  const list = membersFor(key, { ensure: prNumber });
   if (list.length === 0) {
     comment(prNumber, `${MARKER}\n🤖 Batch \`${key}\` is empty — nothing to merge.`);
     return;
