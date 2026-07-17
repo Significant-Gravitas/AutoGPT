@@ -600,6 +600,16 @@ class TestApplyToolPermissions:
         assert "mcp__copilot__list_recordings" not in allowed
         assert "mcp__copilot__generate_skill_from_recording" in allowed
 
+    def test_hidden_local_tools_are_removed_from_empty_permissions(self):
+        allowed, _ = apply_tool_permissions(
+            CopilotPermissions(),
+            use_e2b=True,
+            hidden_tool_names={"bash_exec", "grep"},
+        )
+
+        assert "mcp__copilot__bash_exec" not in allowed
+        assert "mcp__copilot__grep" not in allowed
+
 
 # ---------------------------------------------------------------------------
 # SDK_BUILTIN_TOOL_NAMES sanity check

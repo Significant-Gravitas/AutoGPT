@@ -36,6 +36,11 @@ export enum Flag {
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
+  // Bots settings page. Lets ops hide a platform (e.g. Slack while its
+  // Marketplace review is pending) without a deploy. Missing keys default to
+  // visible — only an explicit ``false`` hides a card.
+  COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -63,6 +68,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -130,6 +136,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_BOT_PLATFORMS:
+      return undefined;
   }
 }
 
@@ -141,6 +149,7 @@ function readEnvOverride(flag: Flag): string | undefined {
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.BETA_BLOCKS,
   Flag.MARKETPLACE_SEARCH_TERMS,
+  Flag.COPILOT_BOT_PLATFORMS,
 ]);
 
 export function envFlagOverride<T extends Flag>(

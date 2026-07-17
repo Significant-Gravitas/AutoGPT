@@ -174,7 +174,8 @@ the model as available tools.
 # baseline mode ships an MCP-wrapped platform version
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# ``Task`` remains an SDK-only built-in
 # (for queue-backed context-isolation on baseline, use ``run_sub_session``
 # instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
@@ -443,6 +444,7 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
     use_local_pc_computer: bool = False,
     local_pc_computer_tool_names: Iterable[str] | None = None,
     use_recording: bool = False,
@@ -475,6 +477,7 @@ def apply_tool_permissions(
     base_allowed = get_copilot_tool_names(
         use_e2b=use_e2b,
         disabled_groups=disabled_groups,
+        hidden_tool_names=hidden_tool_names,
         use_local_pc_computer=use_local_pc_computer,
         local_pc_computer_tool_names=local_pc_computer_tool_names,
         use_recording=use_recording,

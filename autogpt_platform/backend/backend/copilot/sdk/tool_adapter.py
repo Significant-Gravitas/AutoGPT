@@ -872,6 +872,27 @@ def local_pc_tool_names_for_features(
     return frozenset(allowed)
 
 
+_SDK_FILE_TOOL_ALIASES = ("Read", "Write", "Edit", "Glob", "Grep")
+
+
+def _normalize_hidden_tool_names(
+    hidden_tool_names: Iterable[str], *, use_e2b: bool
+) -> frozenset[str]:
+    hidden = set(hidden_tool_names)
+    if use_e2b:
+        mapped_names = E2B_FILE_TOOL_NAMES
+        aliases = _SDK_FILE_TOOL_ALIASES
+    else:
+        mapped_names = [READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME]
+        aliases = _SDK_FILE_TOOL_ALIASES[:3]
+    hidden.update(
+        mapped
+        for alias, mapped in zip(aliases, mapped_names, strict=True)
+        if alias in hidden
+    )
+    return frozenset(hidden)
+
+
 def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
@@ -917,11 +938,16 @@ def create_copilot_mcp_server(
     in copilot).  Hiding the tool removes the temptation entirely.
     """
 
-    hidden = frozenset(hidden_tool_names)
+    hidden = _normalize_hidden_tool_names(hidden_tool_names, use_e2b=use_e2b)
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
-        if tool_name in hidden:
+        # Baseline-only wrappers (TodoWrite) must not be registered here:
+        # SDK mode uses the CLI-native built-ins, and these names are
+        # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
+        # can never approve makes the model call it, receive a permission
+        # denial, and silently abandon the feature (e.g. the task checklist).
+        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
@@ -1196,10 +1222,14 @@ DANGEROUS_PATTERNS = [
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
 # keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
-# there is no double exposure.  Public (no leading underscore) so a future
-# refactor renaming it is visible at both call sites —
-# ``permissions.apply_tool_permissions`` maps short tool names back to the
-# CLI built-in form for SDK mode.
+# there is no double exposure.  These names are both excluded from
+# ``allowed_tools`` (see ``_registry_mcp_tools``) AND skipped during MCP
+# server registration in ``create_copilot_mcp_server`` — filtering the
+# allowed list alone still advertises the tool to the model, which then
+# calls it and hits an unapprovable permission prompt.  Public (no leading
+# underscore) so a future refactor renaming it is visible at both call
+# sites — ``permissions.apply_tool_permissions`` maps short tool names back
+# to the CLI built-in form for SDK mode.
 BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
 
 
@@ -1250,8 +1280,9 @@ def get_copilot_tool_names(
     (``list_recordings`` etc.) are appended under the same allow-list
     contract — pass the same boolean to :func:`create_copilot_mcp_server`.
     """
-    hidden_short_names = tool_names_in_groups(disabled_groups) | frozenset(
-        hidden_tool_names
+    hidden_short_names = _normalize_hidden_tool_names(
+        tool_names_in_groups(disabled_groups) | frozenset(hidden_tool_names),
+        use_e2b=use_e2b,
     )
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
@@ -1294,7 +1325,11 @@ def get_copilot_tool_names(
     return [
         *_registry_mcp_tools(hidden=hidden_short_names),
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-        *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
+        *[
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in E2B_FILE_TOOL_NAMES
+            if name not in hidden_short_names
+        ],
         *local_pc_names,
         *recording_names,
         *_SDK_BUILTIN_ALWAYS,

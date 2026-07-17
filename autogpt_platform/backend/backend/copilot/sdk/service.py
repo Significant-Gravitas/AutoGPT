@@ -4365,6 +4365,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 permissions,
                 use_e2b=use_executor,
                 disabled_groups=disabled_tool_groups,
+                hidden_tool_names=hidden_tools,
                 use_local_pc_computer=use_local_pc_computer,
                 local_pc_computer_tool_names=local_pc_computer_tool_names,
                 use_recording=use_recording,

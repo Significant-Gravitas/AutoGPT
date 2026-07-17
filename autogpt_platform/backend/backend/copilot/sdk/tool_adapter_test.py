@@ -18,12 +18,14 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
+    BASELINE_ONLY_MCP_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_copilot_tool_names,
     local_pc_tool_names_for_features,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
@@ -1267,7 +1269,23 @@ class TestCreateCopilotMcpServerHidden:
         server = create_copilot_mcp_server()
         registered = await self._registered_tool_names(server)
         for short in TOOL_REGISTRY:
+            if short in BASELINE_ONLY_MCP_TOOLS:
+                continue
             assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_baseline_only_tools_never_registered(self):
+        """Baseline-only MCP wrappers (TodoWrite) must not register on the
+        SDK server. They are excluded from ``allowed_tools`` (SDK mode uses
+        the CLI-native built-ins), so advertising them makes the model call
+        a tool the CLI can never approve — it answers "Claude requested
+        permissions to use mcp__copilot__TodoWrite, but you haven't granted
+        it yet" and the model silently abandons the checklist."""
+        assert "TodoWrite" in BASELINE_ONLY_MCP_TOOLS
+        for use_e2b in (False, True):
+            server = create_copilot_mcp_server(use_e2b=use_e2b)
+            registered = await self._registered_tool_names(server)
+            assert not BASELINE_ONLY_MCP_TOOLS & registered
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
@@ -1289,6 +1307,8 @@ class TestCreateCopilotMcpServerHidden:
         registered = await self._registered_tool_names(server)
         # All real tools still register.
         for short in TOOL_REGISTRY:
+            if short in BASELINE_ONLY_MCP_TOOLS:
+                continue
             assert short in registered
 
     @pytest.mark.asyncio
@@ -1306,12 +1326,54 @@ class TestCreateCopilotMcpServerHidden:
         assert "local_pc_screenshot" in registered
         assert "list_recordings" in registered
 
+    @pytest.mark.asyncio
+    async def test_hidden_sdk_file_aliases_hide_e2b_tools(self):
+        server = create_copilot_mcp_server(
+            use_e2b=True,
+            hidden_tool_names=["Read", "Grep"],
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "grep" not in registered
+        assert "write_file" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_read_alias_hides_unified_read_tool(self):
+        server = create_copilot_mcp_server(hidden_tool_names=["Read"])
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "Write" in registered
+
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
         instance = server["instance"]
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+@pytest.mark.parametrize(
+    ("use_e2b", "hidden", "expected_hidden", "expected_visible"),
+    [
+        (True, ["Read", "Grep"], {"read_file", "grep"}, "write_file"),
+        (True, ["grep"], {"grep"}, "write_file"),
+        (False, ["Read"], {"read_file"}, "Write"),
+    ],
+)
+def test_hidden_file_tools_are_omitted_from_allowed_tools(
+    use_e2b: bool,
+    hidden: list[str],
+    expected_hidden: set[str],
+    expected_visible: str,
+) -> None:
+    allowed = set(get_copilot_tool_names(use_e2b=use_e2b, hidden_tool_names=hidden))
+
+    assert not {f"mcp__copilot__{name}" for name in expected_hidden} & allowed
+    assert f"mcp__copilot__{expected_visible}" in allowed
 
 
 class TestNavigableToolResultText:

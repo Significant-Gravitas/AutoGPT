@@ -146,7 +146,7 @@ describe("PlatformLinkPage", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: /set up autopilot for builders guild/i,
+        name: /set up autogpt for builders guild/i,
       }),
     ).toBeDefined();
     expect(screen.getByText(/signed in as owner@example.com/i)).toBeDefined();
@@ -156,9 +156,72 @@ describe("PlatformLinkPage", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: /autopilot is ready/i }),
+      await screen.findByRole("heading", { name: /autogpt is ready/i }),
     ).toBeDefined();
     expect(screen.getByText(/builders guild/i)).toBeDefined();
+  });
+
+  test("falls back to a generic title when the server has no name", async () => {
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "DISCORD",
+        link_type: LinkType.SERVER,
+        server_name: null,
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: /set up autogpt for this discord server/i,
+      }),
+    ).toBeDefined();
+  });
+
+  test("forwards telegram login params to the confirm endpoint", async () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      }),
+    );
+    let capturedBody: unknown = null;
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "TELEGRAM",
+        link_type: LinkType.USER,
+        server_name: null,
+      }),
+      getPostPlatformLinkingConfirmAUserLinkTokenUserMustBeAuthenticatedMockHandler200(
+        async (info) => {
+          capturedBody = await info.request.json();
+          return {
+            success: true,
+            link_type: LinkType.USER,
+            platform: "TELEGRAM",
+            platform_user_id: "424242",
+          };
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect my telegram dms/i }),
+    );
+    await screen.findByRole("heading", { name: /autogpt is ready/i });
+
+    expect(capturedBody).toEqual({
+      telegram_auth: {
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      },
+    });
   });
 
   test("loads user link details and confirms the user link endpoint", async () => {
@@ -206,7 +269,7 @@ describe("PlatformLinkPage", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: /autopilot is ready/i }),
+      await screen.findByRole("heading", { name: /autogpt is ready/i }),
     ).toBeDefined();
     expect(userConfirmCalls).toBe(1);
     expect(serverConfirmCalls).toBe(0);
