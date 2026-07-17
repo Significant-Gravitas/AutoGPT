@@ -63,6 +63,8 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
@@ -91,6 +93,11 @@ settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+
+# Backing client for webhook chat adapters (Slack Events API, etc.) whose routes
+# mount on this API. Owned at module level so `lifespan_context` can close it on
+# shutdown; the routes themselves are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
@@ -167,6 +174,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Each cleanup is wrapped so one failure doesn't block the rest. The
     # Redis close in particular silences asyncio's "Unclosed ClusterNode"
     # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
     try:
         await backend.data.redis_client.disconnect_async()
     except Exception:
@@ -485,6 +497,10 @@ app.include_router(
     tags=["platform-linking"],
     prefix="/api/platform-linking",
 )
+
+# Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
+# No-op when no webhook platform is configured; errors surface at startup.
+register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
 
