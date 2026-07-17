@@ -849,26 +849,41 @@ async def compress_context(
                 content_str = _truncate_middle_tokens(content_str, enc, 20_000)
             m["content"] = content_str
 
+    # Steps 3-5 repeatedly check the total size while mutating or deleting one
+    # message at a time. Re-summing all messages there re-tokenizes the whole
+    # history on each iteration, which is quadratic on long transcripts.
+    counts = [_msg_tokens(m, enc) for m in msgs]
+    total = sum(counts)
+
+    def _recount(i: int) -> None:
+        nonlocal total
+        new = _msg_tokens(msgs[i], enc)
+        total += new - counts[i]
+        counts[i] = new
+
     # ---- STEP 3: Token-aware content truncation ---------------------------
     # Progressively halve per-message cap and truncate bloated content.
     # This preserves all messages but shortens their content.
     cap = start_cap
-    while total_tokens() + reserve > target_tokens and cap >= floor_cap:
-        for m in msgs[1:-1]:
+    while total + reserve > target_tokens and cap >= floor_cap:
+        for i in range(1, len(msgs) - 1):
+            m = msgs[i]
             if _is_tool_message(m):
                 _truncate_tool_message_content(m, enc, cap)
+                _recount(i)
                 continue
             if _is_objective_message(m):
                 continue
             content = m.get("content") or ""
             if _tok_len(content, enc) > cap:
                 m["content"] = _truncate_middle_tokens(content, enc, cap)
+                _recount(i)
         cap //= 2
 
     # ---- STEP 4: Middle-out deletion --------------------------------------
     # Delete messages one at a time from the center outward.
     # This is more granular than dropping all old messages at once.
-    while total_tokens() + reserve > target_tokens and len(msgs) > 2:
+    while total + reserve > target_tokens and len(msgs) > 2:
         deletable: list[int] = []
         for i in range(1, len(msgs) - 1):
             msg = msgs[i]
@@ -883,21 +898,24 @@ async def compress_context(
         centre = len(msgs) // 2
         to_delete = min(deletable, key=lambda i: abs(i - centre))
         del msgs[to_delete]
+        total -= counts.pop(to_delete)
         messages_dropped += 1
 
     # ---- STEP 5: Final trim on first/last ---------------------------------
     cap = start_cap
-    while total_tokens() + reserve > target_tokens and cap >= floor_cap:
+    while total + reserve > target_tokens and cap >= floor_cap:
         for idx in (0, -1):
             msg = msgs[idx]
             if msg is None:
                 continue
             if _is_tool_message(msg):
                 _truncate_tool_message_content(msg, enc, cap)
+                _recount(idx)
                 continue
             text = msg.get("content") or ""
             if _tok_len(text, enc) > cap:
                 msg["content"] = _truncate_middle_tokens(text, enc, cap)
+                _recount(idx)
         cap //= 2
 
     # Filter out any None values that may have been introduced

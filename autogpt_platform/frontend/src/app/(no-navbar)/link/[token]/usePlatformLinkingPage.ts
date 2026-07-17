@@ -11,6 +11,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getTelegramAuth,
   isUserLink,
   TOKEN_PATTERN,
 } from "./helpers";
@@ -74,7 +75,12 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    mutation.mutate({ token });
+    // A login_url button tap appends a Telegram-signed identity to this
+    // page's URL; forwarding it lets the backend verify WHO opened the link.
+    mutation.mutate({
+      token,
+      data: { telegram_auth: getTelegramAuth(searchParams) },
+    });
   }
 
   async function handleSwitchAccount() {

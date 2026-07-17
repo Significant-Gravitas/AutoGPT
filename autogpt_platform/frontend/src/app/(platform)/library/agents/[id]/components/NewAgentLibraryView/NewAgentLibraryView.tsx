@@ -177,12 +177,12 @@ export function NewAgentLibraryView() {
             <RunAgentModal
               triggerSlot={
                 <Button
-                  variant="primary"
-                  size="large"
+                  variant="outline"
+                  size="small"
                   className="w-full"
                   disabled={isTemplateLoading && activeTab === "templates"}
                 >
-                  <PlusIcon size={20} /> New task
+                  <PlusIcon size={16} /> New agent task
                 </Button>
               }
               agent={agent}

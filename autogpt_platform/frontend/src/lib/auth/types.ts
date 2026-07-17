@@ -13,6 +13,7 @@ export interface User {
   user_metadata: {
     name?: string;
     email?: string;
+    preferred_name?: string;
   };
 }
 
@@ -21,6 +22,7 @@ interface SessionUserLike {
   email: string;
   name?: string | null;
   role?: string | null;
+  preferredName?: string | null;
   createdAt?: Date | string;
 }
 
@@ -36,6 +38,7 @@ export function mapSessionUser(user: SessionUserLike): User {
     user_metadata: {
       name: user.name ?? undefined,
       email: user.email,
+      preferred_name: user.preferredName ?? undefined,
     },
   };
 }

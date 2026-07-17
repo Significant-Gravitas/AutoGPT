@@ -1,22 +1,22 @@
-# Slack app manifest for AutoPilot
+# Slack app manifest for AutoGPT
 #
 # Import at https://api.slack.com/apps → Create New App → From an app manifest.
 # Once the backend is deployed, fill in <BASE_URL> below with the public origin
 # of the main backend API (e.g. https://dev-server.agpt.co) and re-import.
 
 display_information:
-  name: AutoPilot
-  description: AutoPilot — your AutoGPT agent in Slack
+  name: AutoGPT
+  description: AutoGPT — your AutoGPT agent in Slack
   background_color: "#1a1a1a"
   long_description: |
-    AutoPilot brings your AutoGPT account into Slack. Mention @AutoPilot in a
+    AutoGPT brings your AutoGPT account into Slack. Mention @AutoGPT in a
     channel or DM the app to chat with your AutoGPT agent. Run /setup in a
     channel to link the workspace to your AutoGPT account; DM the app to link
     your own DMs as a personal account.
 
 features:
   bot_user:
-    display_name: AutoPilot
+    display_name: AutoGPT
     always_online: true
   app_home:
     home_tab_enabled: false
@@ -29,7 +29,7 @@ features:
       should_escape: false
     - command: /help
       url: <BASE_URL>/api/copilot-webhooks/slack/commands
-      description: How to use AutoPilot in Slack
+      description: How to use AutoGPT in Slack
       should_escape: false
     - command: /unlink
       url: <BASE_URL>/api/copilot-webhooks/slack/commands
@@ -43,7 +43,7 @@ oauth_config:
     - <BASE_URL>/api/copilot-webhooks/slack/oauth/callback
   scopes:
     bot:
-      - app_mentions:read   # @AutoPilot in any channel the app is in
+      - app_mentions:read   # @AutoGPT in any channel the app is in
       - channels:history    # read messages in public channels (for thread follow-ups)
       - channels:read       # list public channels for proactive posting
       - chat:write          # post messages as the bot

@@ -13,11 +13,6 @@ from backend.blocks.ai_condition import AIConditionBlock
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
-from backend.blocks.ai_shortform_video_block import (
-    AIAdMakerVideoCreatorBlock,
-    AIScreenshotToVideoAdBlock,
-    AIShortformVideoCreatorBlock,
-)
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
@@ -96,7 +91,6 @@ from backend.integrations.credentials_store import (
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
-    revid_credentials,
     screenshotone_credentials,
     smartlead_credentials,
     unreal_credentials,
@@ -625,42 +619,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
-    ],
-    AIShortformVideoCreatorBlock: [
-        BlockCost(
-            cost_amount=307,
-            cost_filter={
-                "credentials": {
-                    "id": revid_credentials.id,
-                    "provider": revid_credentials.provider,
-                    "type": revid_credentials.type,
-                }
-            },
-        )
-    ],
-    AIAdMakerVideoCreatorBlock: [
-        BlockCost(
-            cost_amount=714,
-            cost_filter={
-                "credentials": {
-                    "id": revid_credentials.id,
-                    "provider": revid_credentials.provider,
-                    "type": revid_credentials.type,
-                }
-            },
-        )
-    ],
-    AIScreenshotToVideoAdBlock: [
-        BlockCost(
-            cost_amount=612,
-            cost_filter={
-                "credentials": {
-                    "id": revid_credentials.id,
-                    "provider": revid_credentials.provider,
-                    "type": revid_credentials.type,
-                }
-            },
-        )
     ],
     ReplicateFluxAdvancedModelBlock: [
         BlockCost(

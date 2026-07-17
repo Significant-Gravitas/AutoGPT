@@ -114,6 +114,14 @@ export const auth = betterAuth({
     },
   },
   user: {
+    additionalFields: {
+      // Onboarding's "What should I call you?" answer; surfaced to
+      // consumers as user_metadata.preferred_name (see mapSessionUser).
+      preferredName: {
+        type: "string",
+        required: false,
+      },
+    },
     changeEmail: {
       // Off by default in Better Auth; the settings page's email form
       // depends on it. Verified users approve the change via a link sent

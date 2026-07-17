@@ -101,6 +101,50 @@ describe("PUT /api/auth/user", () => {
     });
   });
 
+  it("updates the trimmed preferred name via Better Auth", async () => {
+    updateUserMock.mockResolvedValue({ status: true });
+    getSessionMock.mockResolvedValue({
+      user: { ...sessionUser, preferredName: "Rein" },
+    });
+
+    const request = makePutRequest(
+      JSON.stringify({ preferred_name: " Rein " }),
+    );
+    const response = await PUT(request);
+
+    expect(updateUserMock).toHaveBeenCalledWith({
+      body: { preferredName: "Rein" },
+      headers: request.headers,
+    });
+    expect(changeEmailMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user: {
+        ...mappedUser,
+        user_metadata: {
+          ...mappedUser.user_metadata,
+          preferred_name: "Rein",
+        },
+      },
+    });
+  });
+
+  it("sends name and preferred name in one Better Auth update", async () => {
+    updateUserMock.mockResolvedValue({ status: true });
+    getSessionMock.mockResolvedValue({ user: sessionUser });
+
+    const request = makePutRequest(
+      JSON.stringify({ full_name: "Jane Doe", preferred_name: "Jane" }),
+    );
+    const response = await PUT(request);
+
+    expect(updateUserMock).toHaveBeenCalledWith({
+      body: { name: "Jane Doe", preferredName: "Jane" },
+      headers: request.headers,
+    });
+    expect(response.status).toBe(200);
+  });
+
   it("changes the email via Better Auth when only email is provided", async () => {
     changeEmailMock.mockResolvedValue({ status: true });
     getSessionMock.mockResolvedValue({ user: sessionUser });
@@ -118,12 +162,14 @@ describe("PUT /api/auth/user", () => {
     expect(response.status).toBe(200);
   });
 
-  it("returns 400 when neither email nor full_name is provided", async () => {
-    const response = await PUT(makePutRequest(JSON.stringify({})));
+  it("returns 400 when no supported field is provided", async () => {
+    const response = await PUT(
+      makePutRequest(JSON.stringify({ something: "else" })),
+    );
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "Email or full_name is required",
+      error: "Email, full_name or preferred_name is required",
     });
     expect(updateUserMock).not.toHaveBeenCalled();
     expect(changeEmailMock).not.toHaveBeenCalled();

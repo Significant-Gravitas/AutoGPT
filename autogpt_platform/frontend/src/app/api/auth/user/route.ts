@@ -23,26 +23,38 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { email: rawEmail, full_name: rawFullName } = body as {
+    const {
+      email: rawEmail,
+      full_name: rawFullName,
+      preferred_name: rawPreferredName,
+    } = body as {
       email?: unknown;
       full_name?: unknown;
+      preferred_name?: unknown;
     };
 
     const email = typeof rawEmail === "string" ? rawEmail.trim() : undefined;
     const fullName =
       typeof rawFullName === "string" ? rawFullName.trim() : undefined;
+    const preferredName =
+      typeof rawPreferredName === "string"
+        ? rawPreferredName.trim()
+        : undefined;
 
-    if (!email && !fullName) {
+    if (!email && !fullName && !preferredName) {
       return NextResponse.json(
-        { error: "Email or full_name is required" },
+        { error: "Email, full_name or preferred_name is required" },
         { status: 400 },
       );
     }
 
     try {
-      if (fullName) {
+      if (fullName || preferredName) {
         await auth.api.updateUser({
-          body: { name: fullName },
+          body: {
+            ...(fullName && { name: fullName }),
+            ...(preferredName && { preferredName }),
+          },
           headers: request.headers,
         });
       }

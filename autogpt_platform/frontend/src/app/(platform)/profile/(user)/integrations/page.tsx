@@ -95,7 +95,6 @@ export default function UserIntegrationsPage() {
   const hiddenCredentials = useMemo(
     () => [
       "744fdc56-071a-4761-b5a5-0af0ce10a2b5", // Ollama
-      "fdb7f412-f519-48d1-9b5f-d2f73d0e01fe", // Revid
       "760f84fc-b270-42de-91f6-08efe1b512d0", // Ideogram
       "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
       "53c25cb8-e3ee-465c-a4d1-e75a4c899c2a", // OpenAI

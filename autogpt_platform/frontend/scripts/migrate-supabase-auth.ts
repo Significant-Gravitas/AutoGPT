@@ -1,5 +1,13 @@
 /**
- * One-time migration of Supabase GoTrue users into the Better Auth tables.
+ * Post-cutover sweep of Supabase GoTrue users into the Better Auth tables.
+ *
+ * The BULK copy is done by backend Prisma migration
+ * 20260716120000_copy_supabase_users_to_better_auth, which runs in the
+ * normal `prisma migrate deploy` pipeline step. This script is the same
+ * copy as a re-runnable sweep: run it once AFTER the frontend has switched
+ * to Better Auth, to catch users who signed up (or changed identities) via
+ * GoTrue between the migration running and the flip. Trigger it via the
+ * "Supabase Auth Sweep" GitHub workflow, or by hand.
  *
  * Copies:
  *   - auth.users        -> platform."user"
@@ -8,12 +16,8 @@
  *                          configured to verify with bcrypt)
  *   - auth.identities   -> platform.account (google / github / discord)
  *
- * When to run:
- *   Once, after the Better Auth schema migration has been deployed
- *   (backend Prisma migration 20260610120000_add_better_auth_tables),
- *   before — or while — old Supabase sessions are being bridged. Keep
- *   SUPABASE_JWT_SECRET set in the frontend environment for the duration of
- *   the bridge window so pre-migration sessions keep working.
+ * Keep SUPABASE_JWT_SECRET set in the frontend environment for the duration
+ * of the bridge window so pre-migration sessions keep working.
  *
  * Usage:
  *   DATABASE_URL=postgresql://... npx tsx scripts/migrate-supabase-auth.ts
@@ -21,6 +25,9 @@
  * Idempotent: every insert is guarded (ON CONFLICT DO NOTHING / NOT EXISTS),
  * so the script is safe to re-run. Each batch of users runs in its own
  * transaction; the script exits non-zero on the first failed batch.
+ * NOTE: a password CHANGED via GoTrue after the user was copied is not
+ * re-copied (the existing credential account wins) — those users reset
+ * their password through the normal flow.
  */
 import { Pool } from "pg";
 
@@ -102,7 +109,8 @@ async function main() {
         //    of failing the whole batch on the unique(email) index.
         const userRes = await client.query(
           `INSERT INTO platform."user"
-             (id, name, email, "emailVerified", role, banned, "createdAt", "updatedAt")
+             (id, name, email, "emailVerified", role, banned, "preferredName",
+              "createdAt", "updatedAt")
            SELECT
              u.id::text,
              COALESCE(
@@ -117,6 +125,7 @@ async function main() {
                THEN 'admin' ELSE 'user'
              END,
              (u.banned_until IS NOT NULL AND u.banned_until > now()),
+             u.raw_user_meta_data->>'preferred_name',
              COALESCE(u.created_at, now()),
              COALESCE(u.updated_at, now())
            FROM auth.users u

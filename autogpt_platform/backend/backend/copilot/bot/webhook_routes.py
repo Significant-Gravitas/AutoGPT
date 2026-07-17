@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from .adapters.base import WebhookAdapter
 from .adapters.slack import config as slack_config
 from .adapters.slack.adapter import SlackAdapter
+from .adapters.telegram import config as telegram_config
+from .adapters.telegram.adapter import TelegramAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 
@@ -51,4 +53,9 @@ def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     if slack_config.get_signing_secret() and has_credentials:
         adapters.append(SlackAdapter(api))
         logger.info("Slack adapter enabled")
+    # Telegram: one BotFather token for every chat; the webhook secret is what
+    # authenticates inbound updates, so both are required.
+    if telegram_config.get_bot_token() and telegram_config.get_webhook_secret():
+        adapters.append(TelegramAdapter(api))
+        logger.info("Telegram adapter enabled")
     return adapters
