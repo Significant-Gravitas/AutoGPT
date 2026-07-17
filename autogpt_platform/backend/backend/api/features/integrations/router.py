@@ -717,6 +717,14 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
+    # A webhook only ever runs triggers owned by the webhook owner
+    if preset.user_id != webhook.user_id:
+        logger.warning(
+            f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
+            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+        )
+        return
+
     graph = await get_graph(
         preset.graph_id, preset.graph_version, user_id=webhook.user_id
     )
