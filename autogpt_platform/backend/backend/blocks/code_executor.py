@@ -243,8 +243,8 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             title="Variables (Python/JS only)",
             description=(
                 "Variables defined here can be used directly in your code. "
-                "Each key (`variables_#_<name>`) is injected directly as a local "
-                "variable with the same name in your code. "
+                "Each key (`variables_#_{name}`) is injected directly as a local "
+                "variable with the same name (`{name}`) in your code. "
                 "Values wired in from other blocks keep their type; default values set "
                 "on this node come in as strings, so parse them in your code "
                 "if you need a number or other type."
