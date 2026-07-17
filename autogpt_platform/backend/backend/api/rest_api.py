@@ -42,6 +42,7 @@ import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
+import backend.api.features.orgs.grant_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.memory_routes
 import backend.api.features.orgs.routes as org_routes
@@ -521,6 +522,11 @@ app.include_router(
     backend.api.features.orgs.memory_routes.router,
     tags=["v2", "orgs", "memory"],
     prefix="/api/orgs/{org_id}/memory",
+)
+app.include_router(
+    backend.api.features.orgs.grant_routes.router,
+    tags=["v2", "orgs", "grants"],
+    prefix="/api/orgs/{org_id}",
 )
 app.include_router(
     backend.api.features.orgs.invitation_routes.org_router,
