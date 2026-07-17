@@ -478,3 +478,27 @@ class TestVerificationOrder:
         assert resp.status_code == 403
         mock_manager.verify_signature.assert_awaited_once()
         mock_manager.validate_payload.assert_not_called()
+
+
+async def test_preset_trigger_refuses_foreign_owner(mocker):
+    """A webhook only runs triggers owned by its owner: a preset owned by a
+    different user must not enqueue execution under the webhook owner's context
+    (GHSA-4m2w-qfr5-9f3v). Guards against a foreign preset bound before the
+    create/set-webhook ownership checks were in place."""
+    from backend.api.features.integrations import router as ingress_router
+
+    add_exec = mocker.patch.object(
+        ingress_router, "add_graph_execution", new_callable=AsyncMock
+    )
+    get_graph = mocker.patch.object(ingress_router, "get_graph", new_callable=AsyncMock)
+
+    webhook = _make_webhook(ProviderName.GITHUB)  # owned by USER_ID
+    foreign_preset = MagicMock(id="preset-x", user_id="attacker", is_active=True)
+
+    await ingress_router._execute_webhook_preset_trigger(
+        foreign_preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    # Bailed out before touching the graph or enqueuing anything.
+    get_graph.assert_not_awaited()
+    add_exec.assert_not_awaited()

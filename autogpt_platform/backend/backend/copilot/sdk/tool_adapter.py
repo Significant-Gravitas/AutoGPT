@@ -854,7 +854,12 @@ def create_copilot_mcp_server(
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
-        if tool_name in hidden:
+        # Baseline-only wrappers (TodoWrite) must not be registered here:
+        # SDK mode uses the CLI-native built-ins, and these names are
+        # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
+        # can never approve makes the model call it, receive a permission
+        # denial, and silently abandon the feature (e.g. the task checklist).
+        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
@@ -1066,10 +1071,14 @@ DANGEROUS_PATTERNS = [
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
 # keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
-# there is no double exposure.  Public (no leading underscore) so a future
-# refactor renaming it is visible at both call sites —
-# ``permissions.apply_tool_permissions`` maps short tool names back to the
-# CLI built-in form for SDK mode.
+# there is no double exposure.  These names are both excluded from
+# ``allowed_tools`` (see ``_registry_mcp_tools``) AND skipped during MCP
+# server registration in ``create_copilot_mcp_server`` — filtering the
+# allowed list alone still advertises the tool to the model, which then
+# calls it and hits an unapprovable permission prompt.  Public (no leading
+# underscore) so a future refactor renaming it is visible at both call
+# sites — ``permissions.apply_tool_permissions`` maps short tool names back
+# to the CLI built-in form for SDK mode.
 BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
 
 

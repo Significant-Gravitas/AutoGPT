@@ -25,3 +25,14 @@ export function appendPartToLastMessage(
   next[next.length - 1] = { ...last, parts: [...last.parts, part] };
   return next;
 }
+
+export const REVEAL_CHARS_PER_TICK = 2;
+export const REVEAL_TICK_MS = 16;
+
+/** How long TourStreamingText takes to type out a text part — the turn isn't
+ * visually over when its last part commits, but when this reveal finishes. */
+export function textRevealDurationMs(text: string) {
+  return (
+    Math.ceil(Array.from(text).length / REVEAL_CHARS_PER_TICK) * REVEAL_TICK_MS
+  );
+}
