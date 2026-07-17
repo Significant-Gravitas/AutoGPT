@@ -101,7 +101,11 @@ export function createSmoothingTransform(
     }
   }
 
-  return new TransformStream<UIMessageChunk, UIMessageChunk>({
+  // The bundled lib.dom typings predate the Transformer `cancel` hook
+  // (whatwg/streams#1283); extend the type until the TS lib catches up.
+  const transformer: Transformer<UIMessageChunk, UIMessageChunk> & {
+    cancel?: (reason: unknown) => void;
+  } = {
     async transform(chunk, controller) {
       if (!isSmoothable(chunk) || chunk.providerMetadata) {
         flushPending(controller);
@@ -127,5 +131,7 @@ export function createSmoothingTransform(
     cancel() {
       pending = null;
     },
-  });
+  };
+
+  return new TransformStream<UIMessageChunk, UIMessageChunk>(transformer);
 }
