@@ -20,7 +20,7 @@ LD payload shape::
 
     {
       "fast":     {"standard": "anthropic/claude-sonnet-4-6", "advanced": "anthropic/claude-opus-4-6"},
-      "thinking": {"standard": "moonshotai/kimi-k2.6",         "advanced": "anthropic/claude-opus-4-6"}
+      "thinking": {"standard": "moonshotai/kimi-k3",            "advanced": "anthropic/claude-opus-4-6"}
     }
 
 Missing mode, missing tier-within-mode, non-string cell value, non-dict

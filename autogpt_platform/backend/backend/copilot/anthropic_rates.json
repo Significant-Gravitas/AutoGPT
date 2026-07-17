@@ -587,6 +587,18 @@
       "supports_tool_choice": true,
       "supports_vision": true,
       "tool_use_system_prompt_tokens": 346
+    },
+    "moonshotai/kimi-k3": {
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "litellm_provider": "openrouter",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 32768,
+      "max_tokens": 32768,
+      "mode": "chat",
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_vision": true
     }
   }
 }
