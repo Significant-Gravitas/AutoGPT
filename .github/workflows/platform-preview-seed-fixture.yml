@@ -85,6 +85,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # Always bake dev: schedule/dispatch runs execute from the DEFAULT
+          # branch (master), which would otherwise silently bake master's
+          # schema into a fixture that previews (built from dev) restore.
+          ref: dev
+          # Only the release-publish step needs a token, via env — don't
+          # persist credentials into the workspace git config.
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -185,7 +193,9 @@ jobs:
           # baked_at comes from the checked-out commit (NOT wall-clock), so the
           # manifest is reproducible for a given dev SHA.
           BAKED_AT="$(git log -1 --format=%cI)"
-          DEV_SHA="${GITHUB_SHA}"
+          # NOT GITHUB_SHA: on schedule/dispatch runs that is the default
+          # branch's commit; the checkout above is pinned to dev.
+          DEV_SHA="$(git rev-parse HEAD)"
           MIGRATION_HEAD="$(docker exec "${PG_CID}" psql -U postgres -d postgres -tAc \
             "SELECT migration_name FROM platform._prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1;" \
             | tr -d '[:space:]')"
@@ -213,16 +223,22 @@ jobs:
           FIXTURE="${GITHUB_WORKSPACE}/fixture.dump.gz"
           MANIFEST="${GITHUB_WORKSPACE}/manifest.json"
           MIGRATION_HEAD="$(jq -r .migration_head "${MANIFEST}")"
-          NOTES="Rolling, fully SYNTHETIC preview-database seed fixture baked from dev@${GITHUB_SHA:0:12} (migration head: ${MIGRATION_HEAD}). Preview environments restore fixture.dump.gz (custom-format, gzipped, platform schema only, including _prisma_migrations) BEFORE running a PR's own migrations, so schema changes run against populated tables. SECURITY INVARIANT: this bake holds no cloud credentials and has no read path to any real database — it runs entirely against a throwaway Postgres container and contains only Faker-generated synthetic rows plus the already-public marketplace agent exports checked into autogpt_platform/backend/agents/. This asset is regenerated on every eligible dev push and weekly; treat it as disposable."
+          DEV_SHA="$(jq -r .dev_sha "${MANIFEST}")"
+          NOTES="Rolling, fully SYNTHETIC preview-database seed fixture baked from dev@${DEV_SHA:0:12} (migration head: ${MIGRATION_HEAD}). Preview environments restore fixture.dump.gz (custom-format, gzipped, platform schema only, including _prisma_migrations) BEFORE running a PR's own migrations, so schema changes run against populated tables. SECURITY INVARIANT: this bake holds no cloud credentials and has no read path to any real database — it runs entirely against a throwaway Postgres container and contains only Faker-generated synthetic rows plus the already-public marketplace agent exports checked into autogpt_platform/backend/agents/. This asset is regenerated on every eligible dev push and weekly; treat it as disposable."
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Updating existing rolling release ${TAG}"
             gh release edit "${TAG}" --title "Preview seed fixture (rolling)" --notes "${NOTES}" --prerelease
             gh release upload "${TAG}" "${FIXTURE}" "${MANIFEST}" --clobber
+            # Retarget the rolling tag at the baked dev commit so release
+            # metadata matches the published assets (manifest.dev_sha is the
+            # authoritative record either way).
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" \
+              -f sha="${DEV_SHA}" -F force=true >/dev/null
           else
             echo "Creating rolling release ${TAG}"
             gh release create "${TAG}" "${FIXTURE}" "${MANIFEST}" \
               --title "Preview seed fixture (rolling)" \
               --notes "${NOTES}" \
               --prerelease \
-              --target "${GITHUB_SHA}"
+              --target "${DEV_SHA}"
           fi
