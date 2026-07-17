@@ -25,6 +25,7 @@ interface Args {
 export function useOAuthConnect({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
+  const isPendingRef = useRef(false);
   const abortRef = useRef<(() => void) | null>(null);
   const isUnmountedRef = useRef(false);
   const preOpenedWindowRef = useRef<Window | null>(null);
@@ -44,6 +45,12 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   }, []);
 
   async function connect() {
+    // Ignore re-entry while a flow is in flight: a rapid double-click fires
+    // again before the pending state re-renders the button, and a second
+    // concurrent flow would overwrite preOpenedWindowRef/abortRef. State
+    // isn't readable synchronously here, so track it in a ref.
+    if (isPendingRef.current) return;
+    isPendingRef.current = true;
     setIsPending(true);
     // Open the sign-in window synchronously, before the first await — iOS
     // Safari discards the tap's user-gesture context at any async break and
@@ -121,6 +128,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
         variant: "destructive",
       });
     } finally {
+      isPendingRef.current = false;
       setIsPending(false);
     }
   }

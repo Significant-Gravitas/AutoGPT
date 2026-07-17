@@ -367,4 +367,43 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       "Popup blocked — allow popups for this site and try again.",
     );
   });
+
+  it("ignores a re-entrant connect() while a flow is in flight", async () => {
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
+
+    let resolveInitiate: (value: unknown) => void = () => {};
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInitiate = resolve;
+        }) as never,
+    );
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    // A rapid double-click fires the second call while the first is still
+    // awaiting the initiate request — it must return without side effects.
+    const first = result.current.connect();
+    await result.current.connect();
+
+    expect(vi.mocked(preOpenOAuthPopup)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getV1InitiateOauthFlow)).toHaveBeenCalledTimes(1);
+
+    // Let the first flow finish so the test doesn't leak a pending flow.
+    await setupSuccessfulPopup();
+    resolveInitiate({
+      status: 200,
+      data: {
+        login_url: "https://github.com/login/oauth",
+        state_token: "state-token",
+      },
+    });
+    await first;
+  });
 });
