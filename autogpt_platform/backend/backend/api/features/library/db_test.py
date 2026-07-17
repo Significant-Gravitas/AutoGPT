@@ -854,17 +854,6 @@ async def test_fetch_execution_counts_uses_group_by(mocker):
 async def test_create_preset_inherits_graph_org(mocker):
     """A preset lives in the same org/team as the graph it runs
     (resource-follows-parent), regardless of the caller's active org."""
-    graph_row = prisma.models.AgentGraph(
-        id="graph-1",
-        version=2,
-        name="Org Graph",
-        userId="test-user",
-        isActive=True,
-        createdAt=datetime.now(),
-        visibility=prisma.enums.ResourceVisibility.PRIVATE,
-        organizationId="org-of-graph",
-        teamId="team-of-graph",
-    )
     created_row = prisma.models.AgentPreset(
         id="preset-1",
         userId="test-user",
@@ -880,10 +869,14 @@ async def test_create_preset_inherits_graph_org(mocker):
         InputPresets=[],
     )
 
-    mock_graph_client = AsyncMock()
-    mock_graph_client.find_first.return_value = graph_row
     mocker.patch.object(
-        prisma.models.AgentGraph, "prisma", return_value=mock_graph_client
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(
+                organization_id="org-of-graph", team_id="team-of-graph"
+            )
+        ),
     )
     mock_preset_client = AsyncMock()
     mock_preset_client.create.return_value = created_row
@@ -914,15 +907,6 @@ async def test_create_preset_inherits_graph_org(mocker):
 async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     """Graphs predating org tagging have no org — the preset create must
     not write organizationId/teamId keys at all (backfill sweep owns them)."""
-    graph_row = prisma.models.AgentGraph(
-        id="graph-1",
-        version=2,
-        name="Legacy Graph",
-        userId="test-user",
-        isActive=True,
-        createdAt=datetime.now(),
-        visibility=prisma.enums.ResourceVisibility.PRIVATE,
-    )
     created_row = prisma.models.AgentPreset(
         id="preset-2",
         userId="test-user",
@@ -938,10 +922,10 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
         InputPresets=[],
     )
 
-    mock_graph_client = AsyncMock()
-    mock_graph_client.find_first.return_value = graph_row
     mocker.patch.object(
-        prisma.models.AgentGraph, "prisma", return_value=mock_graph_client
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
     )
     mock_preset_client = AsyncMock()
     mock_preset_client.create.return_value = created_row
@@ -965,6 +949,177 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     create_data = mock_preset_client.create.call_args.kwargs["data"]
     assert "organizationId" not in create_data
     assert "teamId" not in create_data
+
+
+@pytest.mark.asyncio
+async def test_create_preset_rejects_inaccessible_graph(mocker):
+    """A caller can't create a preset bound to a graph they can't access:
+    get_graph() returns None → NotFoundError, no row written (GHSA-4m2w-qfr5-9f3v)."""
+    mocker.patch.object(db.graph_db, "get_graph", new=AsyncMock(return_value=None))
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_preset(
+            user_id="attacker",
+            preset=library_model.LibraryAgentPresetCreatable(
+                inputs={},
+                credentials={},
+                graph_id="victim-graph",
+                graph_version=1,
+                name="x",
+                description="",
+                is_active=True,
+            ),
+        )
+
+    mock_preset_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_preset_rejects_foreign_webhook(mocker):
+    """A caller can't bind another user's webhook to their preset:
+    NotFoundError, no row written (GHSA-4m2w-qfr5-9f3v)."""
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    get_webhook_mock = AsyncMock(return_value=MagicMock(user_id="victim"))
+    mocker.patch.object(db.integrations_db, "get_webhook", new=get_webhook_mock)
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_preset(
+            user_id="attacker",
+            preset=library_model.LibraryAgentPresetCreatable(
+                inputs={},
+                credentials={},
+                graph_id="graph-1",
+                graph_version=1,
+                name="x",
+                description="",
+                is_active=True,
+            ),
+            webhook_id="victim-webhook",
+        )
+
+    get_webhook_mock.assert_awaited_once_with("victim-webhook")
+    mock_preset_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_preset_accepts_own_webhook(mocker):
+    """Binding the caller's OWN webhook is allowed and persisted."""
+    created_row = prisma.models.AgentPreset(
+        id="preset-own-wh",
+        userId="owner",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(return_value=MagicMock(user_id="owner")),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="owner",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+        webhook_id="own-webhook",
+    )
+
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert create_data["webhookId"] == "own-webhook"
+
+
+@pytest.mark.asyncio
+async def test_creatable_preset_model_has_no_webhook_id_field():
+    """The public create request model must not expose `webhook_id`; a
+    webhook-triggered preset may only be made via setup-trigger
+    (GHSA-4m2w-qfr5-9f3v)."""
+    assert "webhook_id" not in library_model.LibraryAgentPresetCreatable.model_fields
+
+    # A client that smuggles `webhook_id` into the JSON body has it ignored,
+    # not persisted onto the preset.
+    parsed = library_model.LibraryAgentPresetCreatable.model_validate(
+        {
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {},
+            "name": "x",
+            "description": "",
+            "webhook_id": "victim-webhook",
+        }
+    )
+    assert not hasattr(parsed, "webhook_id")
+
+
+@pytest.mark.asyncio
+async def test_set_preset_webhook_rejects_foreign_webhook(mocker):
+    """set_preset_webhook must reject a webhook owned by another user
+    (GHSA-4m2w-qfr5-9f3v)."""
+    existing = prisma.models.AgentPreset(
+        id="preset-1",
+        userId="owner",
+        name="p",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.find_unique.return_value = existing
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(return_value=MagicMock(user_id="attacker")),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.set_preset_webhook("owner", "preset-1", "foreign-webhook")
+
+    mock_preset_client.update.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -273,7 +273,7 @@ export function Wallet({ compact = false }: Props) {
             className={cn(
               "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm",
               compact
-                ? "rounded-xl border border-zinc-200 bg-zinc-100 py-1 hover:bg-zinc-200"
+                ? "h-8 rounded-lg px-2 py-0 transition-colors hover:bg-zinc-100"
                 : "bg-zinc-50",
             )}
             onClick={onWalletOpen}
@@ -288,7 +288,11 @@ export function Wallet({ compact = false }: Props) {
                   Earn credits{" "}
                 </span>
               )}
-              <span className="text-sm font-semibold">
+              <span
+                className={cn(
+                  compact ? "text-xs font-medium" : "text-sm font-semibold",
+                )}
+              >
                 {formatCredits(credits)}
               </span>
               {!compact &&
@@ -308,7 +312,7 @@ export function Wallet({ compact = false }: Props) {
           <div
             className={cn(
               "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
-              compact ? "rounded-xl" : "rounded-md",
+              compact ? "rounded-lg" : "rounded-md",
               flash ? "opacity-50 duration-0" : "opacity-0",
             )}
           />

@@ -749,7 +749,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
-    revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
     autopilot_bot_discord_token: str = Field(
         default="",
@@ -766,6 +765,45 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Discord permissions bitfield for the 'Add to server' "
         "invite URL. Overrides the built-in default when non-empty.",
+    )
+    autopilot_bot_slack_token: str = Field(
+        default="",
+        description="Slack bot (xoxb-) token for the CoPilot chat bridge. When "
+        "set together with the signing secret, the bridge mounts its Slack "
+        "webhook adapter (Events API) on the main backend API.",
+    )
+    autopilot_bot_slack_signing_secret: str = Field(
+        default="",
+        description="Slack app signing secret — verifies inbound Slack request "
+        "signatures (HMAC-SHA256). Required alongside the token to enable the "
+        "Slack adapter.",
+    )
+    autopilot_bot_slack_client_id: str = Field(
+        default="",
+        description="Slack app OAuth client ID. Set together with the client "
+        "secret to enable the multi-workspace 'Add to Slack' install flow; each "
+        "workspace's bot token is then obtained via OAuth and stored per team.",
+    )
+    autopilot_bot_slack_client_secret: str = Field(
+        default="",
+        description="Slack app OAuth client secret — exchanged with the auth "
+        "code on the install callback for a per-workspace bot token.",
+    )
+    autopilot_bot_telegram_token: str = Field(
+        default="",
+        description="Telegram bot token (from @BotFather). Set together with "
+        "the webhook secret to mount the Telegram adapter on the main API.",
+    )
+    autopilot_bot_telegram_webhook_secret: str = Field(
+        default="",
+        description="Secret registered with Telegram's setWebhook; Telegram "
+        "echoes it in the X-Telegram-Bot-Api-Secret-Token header and inbound "
+        "updates are rejected unless it matches.",
+    )
+    autopilot_bot_telegram_username: str = Field(
+        default="",
+        description="The bot's public @username (without the @) — used to "
+        "build the t.me add-to-group link on the Bots settings page.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

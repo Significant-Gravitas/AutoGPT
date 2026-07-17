@@ -76,7 +76,7 @@ export function RecentChats() {
       <div className="mt-2 flex flex-col gap-4">
         {groupSessionsByDate(sessions).map((group) => (
           <div key={group.label}>
-            <div className="px-2 pb-1 text-xs font-medium text-zinc-600">
+            <div className="px-2 pb-1 text-xs font-medium text-zinc-500">
               {group.label}
             </div>
             <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
