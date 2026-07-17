@@ -1532,7 +1532,12 @@ def _flush_orphan_tool_uses_to_session(
                 else json.dumps(resp.output, ensure_ascii=False)
             )
             session.messages.append(
-                ChatMessage(role="tool", content=content, tool_call_id=resp.toolCallId)
+                ChatMessage(
+                    role="tool",
+                    content=content,
+                    tool_call_id=resp.toolCallId,
+                    name=resp.toolName,
+                )
             )
     return safety
 
@@ -3069,6 +3074,10 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
+        if acc.assistant_response.sequence is not None:
+            # Row already flushed to the DB without this call — flag it so
+            # the next save back-fills toolCalls instead of skipping the row.
+            acc.assistant_response.tool_calls_pending_save = True
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
@@ -3107,6 +3116,7 @@ def _dispatch_response(
                 role="tool",
                 content=content,
                 tool_call_id=response.toolCallId,
+                name=response.toolName,
             )
         )
         if not entries_replaced:
