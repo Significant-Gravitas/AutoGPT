@@ -1904,6 +1904,8 @@ async def get_preset(
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
+    *,
+    webhook_id: str | None = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Creates a new AgentPreset for a user.
@@ -1911,6 +1913,9 @@ async def create_preset(
     Args:
         user_id: The ID of the user creating the preset.
         preset: The preset data used for creation.
+        webhook_id: Internal-only; not part of the public request model. Only
+            trusted callers (the setup-trigger flow, legacy migration) pass a
+            webhook they provisioned for the caller.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -1921,12 +1926,25 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    # Resource-follows-parent tenancy: a preset lives in the same org/team
-    # as the graph it runs, regardless of the caller's active org. Resolved
-    # here (not threaded by callers) so the invariant can't be forgotten.
-    graph_row = await prisma.models.AgentGraph.prisma().find_first(
-        where={"id": preset.graph_id, "version": preset.graph_version},
+    # A preset may only reference a graph the caller can access (own / store /
+    # library); get_graph() enforces that and a foreign/unknown graph is None.
+    # The preset then inherits the graph's org/team (resource-follows-parent),
+    # resolved here so callers can't forget it.
+    graph = await graph_db.get_graph(
+        preset.graph_id, preset.graph_version, user_id=user_id
     )
+    if not graph:
+        raise NotFoundError(
+            f"Graph #{preset.graph_id} v{preset.graph_version} "
+            "not found or not accessible"
+        )
+
+    # Refuse to attach a webhook the caller doesn't own
+    if webhook_id:
+        webhook = await integrations_db.get_webhook(webhook_id)
+        if webhook.user_id != user_id:
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
         name=preset.name,
@@ -1934,7 +1952,7 @@ async def create_preset(
         agentGraphId=preset.graph_id,
         agentGraphVersion=preset.graph_version,
         isActive=preset.is_active,
-        webhookId=preset.webhook_id,
+        webhookId=webhook_id,
         InputPresets={
             "create": [
                 prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
@@ -1947,10 +1965,10 @@ async def create_preset(
             ]
         },
     )
-    if graph_row and graph_row.organizationId:
-        create_input["organizationId"] = graph_row.organizationId
-    if graph_row and graph_row.teamId:
-        create_input["teamId"] = graph_row.teamId
+    if graph.organization_id:
+        create_input["organizationId"] = graph.organization_id
+    if graph.team_id:
+        create_input["teamId"] = graph.team_id
     new_preset = await prisma.models.AgentPreset.prisma().create(
         data=create_input,
         include=AGENT_PRESET_INCLUDE,
@@ -2101,6 +2119,12 @@ async def set_preset_webhook(
     )
     if not current or current.userId != user_id:
         raise NotFoundError(f"Preset #{preset_id} not found")
+
+    # Refuse to attach a webhook the caller doesn't own
+    if webhook_id:
+        webhook = await integrations_db.get_webhook(webhook_id)
+        if webhook.user_id != user_id:
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
 
     updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
