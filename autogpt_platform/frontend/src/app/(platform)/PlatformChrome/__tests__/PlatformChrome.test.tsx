@@ -115,6 +115,8 @@ describe("PlatformChrome", () => {
     // Clicking a demo session stores the scenario and navigates to the tour.
     fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
     expect(useTourStore.getState().activeScenarioId).toBe("daily-brief");
-    expect(pushMock).toHaveBeenCalledWith("/tour/chat");
+    expect(pushMock).toHaveBeenCalledWith(
+      "/tour/chat?utm_source=platform_marketplace",
+    );
   });
 });

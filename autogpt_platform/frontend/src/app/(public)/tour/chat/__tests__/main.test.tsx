@@ -165,27 +165,25 @@ describe("Tour chat scripted demo", () => {
     expect(useTourStore.getState().isDemoComplete).toBe(true);
   });
 
-  test("switching scenario after a completed demo un-dims the chat column", async () => {
+  test("switching scenario after a completed demo closes the artifact panel", async () => {
     render(<TourChatPage />);
 
     // Play the default demo through both turns so it completes and opens
-    // the payoff artifact panel — which dims the chat column behind it.
+    // the payoff artifact panel. (The chat column no longer dims behind it —
+    // the end card has to stay legible.)
     await advanceThroughTurn();
     await pressEnterToSend();
 
     expect(useTourStore.getState().isDemoComplete).toBe(true);
-    expect(document.querySelector(".transition-opacity.opacity-50")).not.toBe(
-      null,
-    );
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
-    // Picking another chat example from the sidebar must reset the dim —
-    // the artifact panel belongs to the finished demo, not the new one.
+    // Picking another chat example from the sidebar must close the panel —
+    // it belongs to the finished demo, not the new one.
     fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(document.querySelector(".transition-opacity.opacity-50")).toBe(null);
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 

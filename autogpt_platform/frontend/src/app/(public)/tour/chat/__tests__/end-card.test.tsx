@@ -66,9 +66,10 @@ describe("Tour demo end state", () => {
 
     await playDemoThrough();
 
-    expect(
-      screen.getByText(/That took \d+ seconds\. Yours will too\./i),
-    ).toBeDefined();
+    // The heading breaks "Yours will too." onto its own line with a <br/>,
+    // so the two halves are separate text nodes.
+    expect(screen.getByText(/That took \d+ seconds\./i)).toBeDefined();
+    expect(screen.getByText(/Yours will too\./i)).toBeDefined();
     expect(
       screen.getByText(/Start with Pro · \$42\.50\/mo · cancel anytime/i),
     ).toBeDefined();
