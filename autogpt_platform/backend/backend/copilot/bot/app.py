@@ -171,6 +171,21 @@ class CoPilotChatBridge(AppService):
         )
 
     @expose
+    async def send_dm_to_user(
+        self,
+        platform: Platform,
+        user_id: str,
+        content: str,
+    ) -> DeliveryResult:
+        """Send ``content`` to ``user_id``'s own DM with the bot.
+
+        The target is resolved from the user's DM link — never a
+        caller-supplied recipient — so a user can only DM themself.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.deliver_dm(adapter, api, platform.value, user_id, content)
+
+    @expose
     async def create_thread_in_channel(
         self,
         platform: Platform,
@@ -195,6 +210,7 @@ class CoPilotChatBridgeClient(AppServiceClient):
     send_message_to_channel = endpoint_to_async(
         CoPilotChatBridge.send_message_to_channel
     )
+    send_dm_to_user = endpoint_to_async(CoPilotChatBridge.send_dm_to_user)
     create_thread_in_channel = endpoint_to_async(
         CoPilotChatBridge.create_thread_in_channel
     )
