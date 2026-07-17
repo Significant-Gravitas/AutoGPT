@@ -9,7 +9,11 @@ import {
   postV1ExchangeOauthCodeForTokens,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import {
+  OAUTH_ERROR_POPUP_BLOCKED,
+  openOAuthPopup,
+  preOpenOAuthPopup,
+} from "@/lib/oauth-popup";
 
 import { getOAuthErrorMessage } from "./helpers";
 
@@ -34,6 +38,11 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
 
   async function connect() {
     setIsPending(true);
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback, so
+    // nothing would open at all.
+    const preOpenedWindow = preOpenOAuthPopup();
     try {
       const initiateResponse = await getV1InitiateOauthFlow(provider);
       // customMutator rejects non-2xx, so this branch is unreachable at
@@ -44,10 +53,25 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       }
       const { login_url, state_token } = initiateResponse.data;
 
-      const { promise, cleanup } = openOAuthPopup(login_url, {
+      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
         stateToken: state_token,
+        preOpenedWindow,
+        // BroadcastChannel + localStorage listeners are the only delivery
+        // path when the flow runs in a tab without window.opener (the iOS
+        // fallback) — the callback page already writes to both.
+        useCrossOriginListeners: true,
+        acceptMessageTypes: ["oauth_popup_result"],
       });
       abortRef.current = () => cleanup.abort("unmounted");
+
+      // The browser blocked even the synchronous window.open — the helper
+      // fell back to a new tab, which is easy to miss. Tell the user.
+      if (popupBlocked) {
+        toast({
+          title: "Popup blocked",
+          description: OAUTH_ERROR_POPUP_BLOCKED,
+        });
+      }
 
       const { code, state } = await promise;
       abortRef.current = null;
@@ -63,6 +87,12 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       });
       onSuccess();
     } catch (error) {
+      // If the flow threw before openOAuthPopup took ownership of the window,
+      // close the dangling about:blank tab ourselves (after handoff the
+      // helper closes it on abort, so this guard is a no-op then).
+      if (preOpenedWindow && !preOpenedWindow.closed) {
+        preOpenedWindow.close();
+      }
       if (isUnmountedRef.current) return;
       toast({
         title: "OAuth connection failed",

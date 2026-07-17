@@ -3,6 +3,7 @@ import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
+  preOpenOAuthPopup,
 } from "./oauth-popup";
 
 // Minimal popup stub — window.open returns this. `closed` flips when the
@@ -241,5 +242,68 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect(onReject).not.toHaveBeenCalled();
 
     cleanup.abort();
+  });
+});
+
+describe("preOpenedWindow option", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("navigates the pre-opened window instead of calling window.open again", () => {
+    const openSpy = vi.spyOn(window, "open");
+    const preOpened = makePopupStub();
+
+    const { promise, cleanup, popupBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-pre",
+        preOpenedWindow: preOpened as unknown as Window,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(preOpened.location.href).toBe("https://example.com/oauth");
+    expect(popupBlocked).toBe(false);
+
+    cleanup.abort();
+  });
+
+  test("null preOpenedWindow goes straight to the new-tab fallback", () => {
+    const openSpy = setupPopup(makePopupStub());
+
+    const { promise, cleanup, popupBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-null",
+        preOpenedWindow: null,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(popupBlocked).toBe(true);
+    // Only the fallback open fires, with the real login URL.
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
+
+    cleanup.abort();
+  });
+
+  test("preOpenOAuthPopup opens a blank popup window", () => {
+    const popup = makePopupStub();
+    const openSpy = setupPopup(popup);
+
+    const result = preOpenOAuthPopup();
+
+    expect(result).toBe(popup);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy.mock.calls[0][0]).toBe("about:blank");
   });
 });

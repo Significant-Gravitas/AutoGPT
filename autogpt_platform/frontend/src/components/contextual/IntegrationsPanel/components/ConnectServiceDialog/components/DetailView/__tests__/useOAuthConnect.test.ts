@@ -10,6 +10,9 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  preOpenOAuthPopup: vi.fn(() => null),
+  OAUTH_ERROR_POPUP_BLOCKED:
+    "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.",
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
@@ -43,6 +46,7 @@ async function setupSuccessfulPopup() {
   vi.mocked(openOAuthPopup).mockReturnValue({
     promise: Promise.resolve({ code: "auth-code", state: "state-token" }),
     cleanup: { abort: vi.fn() },
+    popupBlocked: false,
   } as unknown as ReturnType<typeof openOAuthPopup>);
 }
 
@@ -173,5 +177,107 @@ describe("useOAuthConnect — error toast", () => {
     await result.current.connect();
 
     await waitFor(() => expect(toastMock).toHaveBeenCalled());
+  });
+});
+
+describe("useOAuthConnect — popup window lifecycle", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("pre-opens the window before the initiate await and passes it to openOAuthPopup", async () => {
+    await setupSuccessfulPopup();
+
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const callOrder: string[] = [];
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockImplementation(async () => {
+      callOrder.push("initiate");
+      return {
+        status: 200,
+        data: {
+          login_url: "https://github.com/login/oauth",
+          state_token: "state-token",
+        },
+      } as never;
+    });
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    await result.current.connect();
+
+    // The window must be opened synchronously, before the initiate request —
+    // after an await iOS Safari blocks every window.open().
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://github.com/login/oauth",
+      expect.objectContaining({
+        stateToken: "state-token",
+        preOpenedWindow: fakeWindow,
+        useCrossOriginListeners: true,
+      }),
+    );
+  });
+
+  it("closes the pre-opened window when the initiate request fails", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
+      makeApiError(501, { detail: { message: "not configured" } }),
+    );
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    await result.current.connect();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(fakeWindow.close).toHaveBeenCalled();
+  });
+
+  it("warns the user when the browser blocked the popup", async () => {
+    await mockInitiateOk();
+
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}), // flow stays in flight
+      cleanup: { abort: vi.fn() },
+      popupBlocked: true,
+    } as unknown as ReturnType<typeof openOAuthPopup>);
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    // The mocked popup promise never settles, so connect() stays in flight —
+    // don't await it; just wait for the warning toast it fires synchronously
+    // after openOAuthPopup returns.
+    void result.current.connect();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    const arg = toastMock.mock.calls[0][0] as { title: string };
+    expect(arg.title).toBe("Popup blocked");
   });
 });
