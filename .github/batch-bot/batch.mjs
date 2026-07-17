@@ -360,26 +360,21 @@ function cmdBatch() {
   const key = batchKey(arg1);
   const p = assertBatchable(prNumber);
 
-  // Concurrency cap: starting a brand-new batch can't push us past BATCH_MAX active
-  // batches — but moving this PR out of a batch it's the SOLE member of vacates that
-  // batch, freeing a slot, so those must not count against the cap.
+  // Concurrency cap: a brand-new batch key can't push us past BATCH_MAX active
+  // batches. This deliberately does NOT try to credit a batch this PR might vacate by
+  // moving: the label search index lags, so "is this PR the sole member of that
+  // batch?" can't be answered reliably, and crediting an only-seemingly-empty batch
+  // would let a 5th batch slip past the cap. Erring strict never exceeds the cap; the
+  // workaround for a move at the limit is `/batch-remove` first (pointed to below).
   const active = activeKeys();
-  if (!active.has(key)) {
-    const freed = batchesOf(p)
-      .filter((k) => k !== key)
-      .filter((o) => {
-        const m = members(o);
-        return m.length === 1 && m[0].number === prNumber;
-      }).length;
-    if (active.size - freed >= MAX_BATCHES) {
-      comment(
-        prNumber,
-        `${MARKER}\n🤖 Can't start batch \`${key}\` — the limit of ${MAX_BATCHES} concurrent batches is reached ` +
-          `(active: ${[...active].sort().map((k) => "`" + k + "`").join(", ")}). Add this PR to one of those ` +
-          `(\`/batch <name>\`), or free a slot with \`/batch-merge\` / \`/batch-remove\`.`,
-      );
-      return;
-    }
+  if (!active.has(key) && active.size >= MAX_BATCHES) {
+    comment(
+      prNumber,
+      `${MARKER}\n🤖 Can't start batch \`${key}\` — the limit of ${MAX_BATCHES} concurrent batches is reached ` +
+        `(active: ${[...active].sort().map((k) => "`" + k + "`").join(", ")}). Add this PR to one of those ` +
+        `(\`/batch <name>\`), land one with \`/batch-merge\`, or \`/batch-remove\` here then \`/batch ${key}\`.`,
+    );
+    return;
   }
 
   // One batch per PR: move it out of any other batch it's in, and rebuild those
@@ -441,7 +436,17 @@ function cmdBatchMerge() {
     comment(prNumber, `${MARKER}\n🤖 #${prNumber} isn't in any batch — nothing to merge.`);
     return;
   }
-  const key = keys[0]; // one batch per PR
+  if (keys.length > 1) {
+    // A PR should only ever be in one batch (re-batching moves it). If it somehow
+    // carries multiple batch:* labels, refuse rather than guess which one to land.
+    comment(
+      prNumber,
+      `${MARKER}\n🤖 #${prNumber} is in multiple batches (${keys.map((k) => "`" + k + "`").join(", ")}) — ` +
+        `remove it from all but one with \`/batch-remove\` before \`/batch-merge\`.`,
+    );
+    return;
+  }
+  const key = keys[0];
   // Use the lag-compensated list (ensuring the commenting PR, which we just confirmed
   // is a member): a member added right before this in the serialized handler queue
   // could otherwise be missed — a false "empty" reply or a partial rollup.
