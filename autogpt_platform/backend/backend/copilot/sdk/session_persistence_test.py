@@ -29,6 +29,7 @@ from backend.copilot.response_model import (
     StreamStartStep,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.service import (
     _dispatch_response,
@@ -594,3 +595,64 @@ class TestIntermediateFlushBlocked:
             session.messages[0].tool_calls[0]["function"]["name"]
             == "setup_agent_webhook_trigger"
         )
+
+
+class TestLateToolCallPersistence:
+    """Tool calls arriving after the assistant row was flushed to the DB must
+    be flagged for back-fill, and tool-result rows must carry the tool name —
+    otherwise the tool activity is invisible in session history (both UIs
+    render from toolCalls / name)."""
+
+    def _acc_with_appended_assistant(
+        self, ctx: MagicMock, *, sequence: int | None
+    ) -> _StreamAccumulator:
+        msg = ChatMessage(role="assistant", content="Working...", sequence=sequence)
+        ctx.session.messages.append(msg)
+        return _StreamAccumulator(
+            assistant_response=msg,
+            accumulated_tool_calls=[],
+            has_appended_assistant=True,
+            has_tool_results=False,
+        )
+
+    def test_tool_call_after_flush_flags_row_for_backfill(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=42)
+
+        ev = StreamToolInputAvailable(
+            toolCallId="c1", toolName="find_block", input={"query": "notion"}
+        )
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        assert acc.assistant_response.tool_calls is not None
+        assert acc.assistant_response.tool_calls[0]["function"]["name"] == "find_block"
+        assert acc.assistant_response.tool_calls_pending_save is True
+
+    def test_tool_call_before_flush_is_not_flagged(self) -> None:
+        """Unsaved rows (sequence None) are persisted with their tool_calls by
+        the normal insert path — no back-fill needed."""
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolInputAvailable(toolCallId="c1", toolName="find_block", input={})
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        assert acc.assistant_response.tool_calls is not None
+        assert acc.assistant_response.tool_calls_pending_save is False
+
+    def test_tool_result_row_carries_tool_name(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolOutputAvailable(
+            toolCallId="c1", toolName="find_block", output="found 3 blocks"
+        )
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name == "find_block"
+        assert tool_rows[0].tool_call_id == "c1"

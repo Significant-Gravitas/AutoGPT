@@ -21,7 +21,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 from backend.data.db_accessors import chat_db, library_db
 from backend.data.graph import GraphSettings
@@ -103,6 +103,16 @@ class ChatMessage(BaseModel):
     sequence: int | None = None
     duration_ms: int | None = None
     created_at: datetime | None = None
+
+    tool_calls_pending_save: bool = Field(default=False, exclude=True)
+    """True when ``tool_calls`` mutated after this row was already persisted.
+
+    An assistant row is often flushed to the DB (getting its ``sequence``)
+    while its text streams, BEFORE the turn's tool_use blocks arrive — the
+    save path only inserts ``sequence is None`` rows, so late-attached
+    tool_calls would otherwise never reach the DB and the tool activity
+    becomes invisible in session history. ``_save_session_to_db`` back-fills
+    rows flagged here and clears the flag."""
 
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
@@ -892,6 +902,31 @@ async def _save_session_to_db(
         )
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
+            msg.tool_calls_pending_save = False
+
+    # Back-fill tool_calls onto rows that were flushed before their
+    # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
+    dirty = [
+        m
+        for m in session.messages
+        if m.tool_calls_pending_save and m.sequence is not None
+    ]
+    for msg in dirty:
+        assert msg.sequence is not None
+        updated = await db.update_chat_message_tool_calls(
+            session_id=session.session_id,
+            sequence=msg.sequence,
+            tool_calls=msg.tool_calls or [],
+        )
+        if updated:
+            msg.tool_calls_pending_save = False
+        else:
+            logger.warning(
+                "Failed to back-fill tool_calls for session %s seq %s "
+                "(row not found)",
+                session.session_id,
+                msg.sequence,
+            )
 
 
 async def append_and_save_message(
