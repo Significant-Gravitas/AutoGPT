@@ -380,6 +380,21 @@ class ChatSession(ChatSessionInfo):
         """
         return list(self._inflight_tool_call_args.get(tool_name, ()))
 
+    guide_in_system_prompt: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True when this turn's system prompt includes the
+    agent-building guide (builder-bound session, or a building session detected
+    from a prior-turn guide read / mode switch). Set by the SDK service at turn
+    start after the system prompt is assembled; never persisted — recomputed
+    every turn. The guide gate and ``get_agent_building_guide`` consult it to
+    skip redundant guide round-trips."""
+
+    building_mode_requested: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
+    SDK service to restart the in-flight attempt with the agent-building
+    guide in the system prompt. Cleared by the restart handler; never
+    persisted — the durable mode signal is the tool call in message
+    history."""
+
     def has_tool_been_called(self, tool_name: str) -> bool:
         """True when *tool_name* has been called in this session.
 

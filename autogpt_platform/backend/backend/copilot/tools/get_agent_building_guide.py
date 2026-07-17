@@ -50,10 +50,8 @@ class GetAgentBuildingGuideTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Agent JSON building guide (nodes, links, AgentExecutorBlock, "
-            "MCPToolBlock, iterative create->dry-run->fix flow). REQUIRED "
-            "before create_agent / edit_agent / validate_agent_graph / "
-            "fix_agent_graph — they refuse until called once per session."
+            "Returns the agent JSON building guide inline. Fallback — "
+            "prefer enter_agent_building_mode (compaction-proof)."
         )
 
     @property
@@ -75,6 +73,20 @@ class GetAgentBuildingGuideTool(BaseTool):
         **kwargs,  # no tool-specific params; accepts kwargs for forward-compat
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+        if session is not None and session.guide_in_system_prompt:
+            # The guide already rides in this turn's (cached) system prompt —
+            # returning it again would duplicate ~9K tokens in the
+            # compactable conversation tail.
+            return AgentBuildingGuideResponse(
+                message="Agent building guide already loaded.",
+                content=(
+                    "The complete agent-building guide is already included in "
+                    "your system prompt (see <building_guide>). Refer to it "
+                    "directly — it stays available for the rest of this "
+                    "session, including after context compaction."
+                ),
+                session_id=session_id,
+            )
         try:
             content = _load_guide()
             triggers_enabled = (

@@ -129,3 +129,71 @@ async def test_guide_strips_trigger_section_when_no_user_id(mocker):
     result = await tool._execute(user_id=None, session=_make_session())
     assert "Building Trigger Agents" not in result.content  # type: ignore[attr-defined]
     spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_guide_stubbed_when_already_in_system_prompt():
+    """Building sessions carry the guide in the cached system prompt — the
+    tool returns a pointer instead of duplicating ~9K tokens in context."""
+    tool = GetAgentBuildingGuideTool()
+    session = _make_session()
+    session.guide_in_system_prompt = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert result.type == ResponseType.AGENT_BUILDER_GUIDE
+    assert "system prompt" in result.content  # type: ignore[attr-defined]
+    assert len(result.content) < 500  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_guide_returned_in_full_without_flag(mocker):
+    mocker.patch(
+        "backend.copilot.tools.get_agent_building_guide.is_feature_enabled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    tool = GetAgentBuildingGuideTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert result.type == ResponseType.AGENT_BUILDER_GUIDE
+    assert len(result.content) > 10_000  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_sets_request_flag():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert session.building_mode_requested is True
+    assert "upgraded" in result.content  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_noop_when_already_active():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.guide_in_system_prompt = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert session.building_mode_requested is False
+    assert "already active" in result.content  # type: ignore[attr-defined]
+
+
+def test_enter_building_mode_is_sdk_only():
+    """Baseline tool schemas must not offer enter_agent_building_mode —
+    its prompt-upgrade promise only the SDK service can fulfil."""
+    from backend.copilot.tools import SDK_ONLY_TOOL_NAMES, get_available_tools
+
+    assert "enter_agent_building_mode" in SDK_ONLY_TOOL_NAMES
+    names = {t["function"]["name"] for t in get_available_tools()}
+    assert "enter_agent_building_mode" not in names
+    assert "get_agent_building_guide" in names

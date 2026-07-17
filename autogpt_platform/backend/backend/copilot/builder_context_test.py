@@ -360,3 +360,69 @@ async def test_turn_prefix_xml_escaping_in_node_names():
     # The raw closing tag must never appear inside the block content —
     # escaping stops a user-controlled name from breaking out of the block.
     assert "&lt;/builder_context&gt;" in block
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_for_building_session():
+    """A non-builder session with a prior-turn guide read gets the guide
+    (and only the guide) in the system-prompt suffix."""
+    from backend.copilot.model import ChatMessage
+
+    session = _session(None)
+    session.messages = [
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
+        )
+    ]
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        result = await build_builder_system_prompt_suffix(session)
+
+    assert "<building_guide>" in result
+    assert "# Guide body" in result
+    assert "<builder_session>" not in result
+    assert "do NOT call" in result.lower() or "Do NOT call" in result
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_empty_without_prior_guide_read():
+    from backend.copilot.model import ChatMessage
+
+    session = _session(None)
+    session.messages = [
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[{"function": {"name": "find_block"}}],
+        )
+    ]
+    result = await build_builder_system_prompt_suffix(session)
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_for_enter_building_mode_call():
+    """The enter_agent_building_mode call (preferred path) also activates
+    the building-session suffix."""
+    from backend.copilot.model import ChatMessage
+
+    session = _session(None)
+    session.messages = [
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
+        )
+    ]
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        result = await build_builder_system_prompt_suffix(session)
+
+    assert "<building_guide>" in result
+    assert "# Guide body" in result
