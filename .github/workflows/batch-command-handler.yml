@@ -5,7 +5,8 @@ name: batch-command-handler
 # `git` + `gh` via array-arg execFileSync — no shell). repository_dispatch always
 # checks out the DEFAULT branch, so this workflow never runs PR-controlled code;
 # member branches are only ever `git merge`d (data), never executed here.
-# Runs under BATCH_BOT_TOKEN so the rollup-branch push triggers the preview deploy
+# Runs under a GitHub App installation token (minted per-run from BATCH_BOT_APP_ID
+# + BATCH_BOT_PRIVATE_KEY) so the rollup-branch push triggers the preview deploy
 # (GITHUB_TOKEN pushes do not trigger other workflows).
 on:
   repository_dispatch:
@@ -24,20 +25,39 @@ concurrency:
 jobs:
   handle:
     runs-on: ubuntu-latest
+    # Cap the run so a stuck git/gh call can't hold the serialized `batch-bot`
+    # concurrency group (and every queued /batch* command) for the default 6h.
+    timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.BATCH_BOT_TOKEN }}
       REPO: ${{ github.repository }}
       BASE: ${{ vars.BATCH_BASE_BRANCH || 'dev' }}
       COMMAND: ${{ github.event.action }}
       PR_NUMBER: ${{ github.event.client_payload.slash_command.args.named.pr }}
       ARG1: ${{ github.event.client_payload.slash_command.args.unnamed.arg1 }}
+      # Set repo variable BATCH_REQUIRE_APPROVAL=1 to gate `/batch` on an approval
+      # (it deploys pre-code-review); batch.mjs reads it, so it must be exported here.
+      BATCH_REQUIRE_APPROVAL: ${{ vars.BATCH_REQUIRE_APPROVAL }}
       BOT_NAME: ${{ vars.BATCH_BOT_NAME || 'autogpt-batch-bot' }}
       BOT_EMAIL: ${{ vars.BATCH_BOT_EMAIL || 'autogpt-batch-bot@users.noreply.github.com' }}
     steps:
+      # Mint a short-lived installation token for the batch-bot GitHub App. Pushes
+      # made with it DO trigger the preview-deploy workflow (unlike GITHUB_TOKEN),
+      # and the App identity can be precisely push-restricted on batch/rollup.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          # Scope the minted token to only what batch.mjs needs (not blanket install).
+          permission-contents: write # create/force-update/delete batch/rollup
+          permission-pull-requests: write # open/update/merge rollup PR, comment
+          permission-issues: write # labels + PR conversation comments
+          permission-actions: read # read member CI status before merge
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.BATCH_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -49,4 +69,6 @@ jobs:
           git config user.email "$BOT_EMAIL"
 
       - name: Run batch bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/batch-bot/batch.mjs
