@@ -21,6 +21,7 @@ from prisma.enums import ContentType
 from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+from backend.util.docs import get_docs_root
 from backend.util.text import split_camelcase
 
 if TYPE_CHECKING:
@@ -390,19 +391,9 @@ class DocumentationHandler(ContentHandler):
         return ContentType.DOCUMENTATION
 
     def _get_docs_root(self) -> Path:
-        """Get the documentation root directory."""
-        # content_handlers.py is at: backend/backend/api/features/store/content_handlers.py
-        # Need to go up to project root then into docs/
-        # In container: /app/autogpt_platform/backend/backend/api/features/store -> /app/docs
-        # In development: /repo/autogpt_platform/backend/backend/api/features/store -> /repo/docs
-        this_file = Path(
-            __file__
-        )  # .../backend/backend/api/features/store/content_handlers.py
-        project_root = (
-            this_file.parent.parent.parent.parent.parent.parent.parent
-        )  # -> /app or /repo
-        docs_root = project_root / "docs"
-        return docs_root
+        """Get the documentation root directory (shared with the copilot
+        docs tools so indexed paths and page reads always agree)."""
+        return get_docs_root()
 
     def _extract_doc_title(self, file_path: Path) -> str:
         """Extract the document title from a markdown file."""
