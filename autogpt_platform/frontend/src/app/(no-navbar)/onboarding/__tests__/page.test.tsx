@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 
@@ -34,9 +41,27 @@ vi.mock("next/navigation", () => ({
 }));
 
 let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+const mockRefreshSession = vi.fn(() => Promise.resolve({ user: null }));
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ ...mockSupabaseState, user: null }),
+  useSupabase: () => ({
+    ...mockSupabaseState,
+    user: null,
+    refreshSession: mockRefreshSession,
+  }),
 }));
+
+// The onboarding page writes preferred_name through the server route (the
+// browser Supabase client has no session — persistSession: false — so
+// client-side auth.updateUser silently fails; regression caught in manual QA).
+const authUserPutBodies: unknown[] = [];
+function mockAuthUserRoute() {
+  server.use(
+    http.put("/api/auth/user", async ({ request }) => {
+      authUserPutBodies.push(await request.json());
+      return HttpResponse.json({ user: { id: "u1" } });
+    }),
+  );
+}
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
@@ -84,6 +109,9 @@ beforeEach(() => {
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
   mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+  authUserPutBodies.length = 0;
+  mockAuthUserRoute();
+  mockRefreshSession.mockClear();
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -258,6 +286,37 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     // After init defers (auth not ready), currentStep stays at the
     // store default of 1 — no premature jump to 5.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+  });
+
+  it("saves the onboarding name to auth metadata on Preparing-step submit", async () => {
+    // Regression for OPEN-3200: the "what should I call you?" answer was
+    // only sent to the business-understanding store, so the copilot
+    // greeting (which reads auth user_metadata) never used it.
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    useOnboardingWizardStore.setState({
+      name: "  Reinier  ",
+      role: "Engineering",
+      painPoints: [],
+    });
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    await waitFor(() => {
+      expect(authUserPutBodies).toEqual([{ preferred_name: "Reinier" }]);
+    });
+    await waitFor(() => {
+      expect(mockRefreshSession).toHaveBeenCalled();
+    });
+  });
+
+  it("does not touch auth metadata when the wizard has no name", async () => {
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(authUserPutBodies).toEqual([]);
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {

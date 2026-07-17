@@ -137,26 +137,25 @@ function buildRollup(list) {
     );
   }
 
-  // Force-update the ephemeral, bot-owned rollup branch via the refs API. This is
-  // a non-ff update of a throwaway branch nobody builds on — protect it in branch
-  // settings so only the bot can push to it (see README).
-  const sha = git(["rev-parse", "HEAD"]);
-  const ref = `refs/heads/${ROLLUP}`;
-  const exists = tryGh(["api", `repos/${REPO}/git/${ref}`]).ok;
-  if (exists) {
-    gh(["api", "-X", "PATCH", `repos/${REPO}/git/${ref}`, "-f", `sha=${sha}`, "-F", "force=true"]);
-  } else {
-    gh(["api", "-X", "POST", `repos/${REPO}/git/refs`, "-f", `ref=${ref}`, "-f", `sha=${sha}`]);
-  }
+  // Force-push the ephemeral, bot-owned rollup branch. The refs API cannot be
+  // used here: the merge commits exist only in this runner's clone, and the
+  // API refuses to point a ref at objects the server has never received
+  // (422 "Object does not exist"). The push uploads the objects and creates
+  // or force-moves the branch in one step, authenticated as the bot via the
+  // checkout token — keep batch/rollup protected to bot-only pushes (README).
+  git(["push", "--force", "origin", `HEAD:refs/heads/${ROLLUP}`]);
   return { merged, ejected };
 }
 
 // --- rollup PR (sticky status + deploy + merge target) -------------------
 
 function findRollupPR() {
-  const owner = REPO.split("/")[0];
+  // Plain branch name only: `gh pr list --head` does NOT understand the
+  // owner-qualified `owner:branch` form (that's a `pr create` convention) —
+  // it silently matches nothing, which made every rebuild after the first
+  // try to create a duplicate rollup PR and die on "already exists".
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--head", `${owner}:${ROLLUP}`, "--base", BASE, "--state", "open",
+    "pr", "list", "--repo", REPO, "--head", ROLLUP, "--base", BASE, "--state", "open",
     "--json", "number,url",
   ]);
   return rows[0] || null;
@@ -229,8 +228,19 @@ function assertBatchable(pr) {
   return p;
 }
 
-function rebuildAndReport(actionNote) {
-  const { merged, ejected } = buildRollup(members());
+function rebuildAndReport(actionNote, ensureNumber = null) {
+  // GitHub's label index lags behind `pr edit --add-label`, so the very first
+  // /batch on a PR can list an empty batch and build nothing. When the caller
+  // just labeled a PR, fetch it directly and union it into the member list.
+  let list = members();
+  if (ensureNumber && !list.some((p) => p.number === ensureNumber)) {
+    const row = ghJSON([
+      "pr", "view", String(ensureNumber), "--repo", REPO,
+      "--json", "number,title,headRefName,headRefOid,url,labels,reviewDecision,mergeable,isDraft",
+    ]);
+    if (!row.labels.some((l) => l.name === NEVER)) list.push(row);
+  }
+  const { merged, ejected } = buildRollup(list);
   const pr = upsertRollupPR(merged, ejected);
   if (pr) deployRollup(pr); // (re)deploy the combined preview to reflect the new batch
   if (prNumber) {
@@ -250,7 +260,7 @@ function cmdBatch() {
   if (!prNumber) throw new Error("no PR number");
   assertBatchable(prNumber);
   gh(["pr", "edit", String(prNumber), "--repo", REPO, "--add-label", LABEL]);
-  rebuildAndReport(`Added #${prNumber} to the batch.`);
+  rebuildAndReport(`Added #${prNumber} to the batch.`, prNumber);
 }
 
 function cmdBatchRemove() {
