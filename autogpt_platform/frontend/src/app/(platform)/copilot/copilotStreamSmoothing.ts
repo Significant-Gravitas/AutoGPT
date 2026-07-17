@@ -120,5 +120,12 @@ export function createSmoothingTransform(
     flush(controller) {
       flushPending(controller);
     },
+    // Reader cancellation (stop button, unmount) tears the stream down —
+    // nothing can be delivered after it, so drop the buffer instead of
+    // flushing and let any in-flight drain loop exit without enqueueing
+    // into the cancelled stream.
+    cancel() {
+      pending = null;
+    },
   });
 }

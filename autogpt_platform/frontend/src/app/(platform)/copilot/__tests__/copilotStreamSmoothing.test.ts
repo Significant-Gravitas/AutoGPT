@@ -117,6 +117,31 @@ describe("createSmoothingTransform", () => {
     expect(joinedText(out)).toBe(burst);
   });
 
+  it("tears down cleanly when the reader cancels mid-drain", async () => {
+    let release = () => {};
+    const gatedWait = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    const source = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        controller.enqueue(textDelta("one two three four five "));
+      },
+    });
+
+    const reader = source
+      .pipeThrough(createSmoothingTransform(gatedWait))
+      .getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+
+    // Cancel while the drain loop is parked on the gated wait, then let it
+    // resume — it must exit without enqueueing into the cancelled stream.
+    await reader.cancel();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("drains large backlogs in bounded ticks via adaptive catch-up", async () => {
     const words = Array.from({ length: 300 }, (_, i) => `w${i}`).join(" ");
     const out = await pipe([textDelta(`${words} `)]);
