@@ -287,7 +287,7 @@ class DiscordAdapter(SocketAdapter):
             ) or await self._client.fetch_user(int(platform_user_id))
             dm = user.dm_channel or await user.create_dm()
         except (ValueError, discord.NotFound, discord.HTTPException):
-            logger.warning("Cannot open DM with user %s", platform_user_id)
+            logger.warning(f"Cannot open DM with user {platform_user_id}")
             return None
         return str(dm.id)
 

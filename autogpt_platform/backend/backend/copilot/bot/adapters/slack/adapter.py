@@ -476,7 +476,7 @@ class SlackAdapter(WebhookAdapter):
         try:
             resp = await client.conversations_open(users=platform_user_id)
         except Exception:
-            logger.warning("Cannot open Slack DM with user %s", platform_user_id)
+            logger.warning(f"Cannot open Slack DM with user {platform_user_id}")
             return None
         return (resp.get("channel") or {}).get("id") or None
 
