@@ -73,11 +73,11 @@ class FindBlockTool(BaseTool):
                     "type": "string",
                     "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
-                "include_schemas": {
-                    "type": "boolean",
-                    "description": "Include full input/output schemas (for agent JSON generation).",
-                    "default": False,
-                },
+                # "include_schemas": {
+                #     "type": "boolean",
+                #     "description": "Include full input/output schemas (for agent JSON generation).",
+                #     "default": False,
+                # },
                 "for_agent_generation": {
                     "type": "boolean",
                     "description": (
