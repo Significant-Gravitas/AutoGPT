@@ -8,20 +8,20 @@ interface Props {
   sessionId: string;
   script: TourScript;
   onComplete?: () => void;
-  onReset?: () => void;
+  completionNotice?: string;
 }
 
 export function TourChatHost({
   sessionId,
   script,
   onComplete,
-  onReset,
+  completionNotice,
 }: Props) {
   const chat = useTourCopilot({
     sessionId,
     script,
     onComplete: onComplete ?? (() => {}),
-    onReset,
+    completionNotice,
   });
 
   return <TourChatContainer chat={chat} />;

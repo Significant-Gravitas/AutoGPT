@@ -1,18 +1,38 @@
 """Abstract base for platform adapters.
 
-Each chat platform (Discord, Telegram, Slack, etc.) implements this interface.
-The core bot logic in handler.py is platform-agnostic — it only speaks through
-these methods.
+``PlatformAdapter`` is the outbound contract the platform-agnostic core handler
+(``handler.py``) speaks through — it never names a platform. Concrete adapters
+extend one of two subtypes depending on how inbound events arrive:
+``SocketAdapter`` (owns a long-lived connection — Discord Gateway, Slack Socket
+Mode) or ``WebhookAdapter`` (receives inbound HTTPS POSTs — Slack Events API,
+Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
+
+
+class StreamDraftOutcome(Enum):
+    """Result of a live-preview draft update — see ``send_stream_draft``.
+
+    Three outcomes, not a bool: the streamer must tell a rendered preview
+    (advance the throttle) apart from a transient no-op it should retry next
+    chunk without burning the throttle, apart from a permanent stop.
+    """
+
+    SHOWN = "shown"
+    SKIPPED = "skipped"
+    STOPPED = "stopped"
+
 
 # Where the message came from:
 # - "dm"      — 1:1 conversation, reply in-place
@@ -135,7 +155,12 @@ class MessageContext:
 
 
 class PlatformAdapter(ABC):
-    """Interface that each chat platform must implement."""
+    """Outbound contract shared by every platform adapter.
+
+    The core handler only ever holds a ``PlatformAdapter`` — it speaks through
+    these methods and never cares whether events arrive over a socket or a
+    webhook. Inbound wiring lives on the two subtypes below.
+    """
 
     @property
     @abstractmethod
@@ -143,12 +168,6 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None: ...
-
-    @abstractmethod
-    async def start(self) -> None: ...
-
-    @abstractmethod
-    async def stop(self) -> None: ...
 
     @abstractmethod
     async def send_message(
@@ -193,11 +212,37 @@ class PlatformAdapter(ABC):
         self, channel_id: str, user_id: str, text: str
     ) -> None: ...
 
-    @abstractmethod
-    async def start_typing(self, channel_id: str) -> None: ...
+    async def start_typing(self, channel_id: str) -> None:
+        """Show the platform's typing indicator. Default no-op — several
+        platforms (Slack bot apps, most webhook platforms) don't expose one."""
 
-    @abstractmethod
-    async def stop_typing(self, channel_id: str) -> None: ...
+    async def stop_typing(self, channel_id: str) -> None:
+        """Clear the typing indicator. Default no-op (see ``start_typing``)."""
+
+    @property
+    def supports_stream_drafts(self) -> bool:
+        """Whether ``send_stream_draft`` can show a live in-progress preview.
+
+        Default False — only platforms with a native draft-streaming API
+        (Telegram ``sendMessageDraft``) override this. When False the shared
+        streamer never calls ``send_stream_draft``.
+        """
+        return False
+
+    async def send_stream_draft(
+        self, channel_id: str, draft_id: int, text: str
+    ) -> StreamDraftOutcome:
+        """Show/update an ephemeral preview of the reply being generated.
+
+        Repeated calls with the same nonzero ``draft_id`` update the preview
+        in place. The finished reply is still delivered through the normal
+        send path, which supersedes the preview — a failed or skipped draft
+        never loses content. Returns ``SHOWN`` when the preview rendered,
+        ``SKIPPED`` for a transient no-op the caller should retry on the next
+        chunk, or ``STOPPED`` (unsupported chat, API error) to stop drafting
+        for the turn. Default: unsupported.
+        """
+        return StreamDraftOutcome.STOPPED
 
     @abstractmethod
     async def create_thread(
@@ -208,10 +253,10 @@ class PlatformAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def rename_thread(self, thread_id: str, name: str) -> bool:
-        """Rename a platform thread/conversation when supported."""
-        ...
+        """Rename a platform thread/conversation. Default: unsupported —
+        platforms with unnamed/implicit threads (Slack) simply inherit this."""
+        return False
 
     @property
     @abstractmethod
@@ -236,6 +281,28 @@ class PlatformAdapter(ABC):
         """Hard platform cap on a single uploaded file's size in bytes."""
         ...
 
+    @property
+    @abstractmethod
+    def max_thread_name_length(self) -> int:
+        """Hard platform cap on a thread/topic name's length.
+
+        The shared thread-naming logic clamps candidate titles to this before
+        handing them to ``create_thread``/``rename_thread``. Platforms without
+        named threads (Slack) can return any value — the name is unused there.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def typing_refresh_interval(self) -> float:
+        """Seconds between typing-indicator refreshes while a turn streams.
+
+        Platform typing indicators auto-expire (Discord ~10s, Telegram ~5s);
+        the shared keep-alive loop re-fires at this cadence. Platforms with no
+        typing indicator can return any value — ``start_typing`` is a no-op.
+        """
+        ...
+
     @abstractmethod
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         """Send a single file as an attachment, with optional accompanying text.
@@ -245,11 +312,35 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    def localize_markup(self, text: str) -> str:
+        """Convert the bot's canonical markup into this platform's dialect.
+
+        The core handler and the model speak one canonical flavour (CommonMark:
+        ``**bold**``, ``[label](url)``, ``- bullets``). Each adapter converts
+        that to what its platform renders (Discord ≈ CommonMark, so the default
+        identity is correct; Slack overrides to mrkdwn). Adapters MUST apply
+        this to outbound text in their ``send_*`` methods so no send path
+        bypasses it — the default here keeps text unchanged.
+        """
+        return text
+
     # -- Proactive output (backend → platform) ----------------------------
     # These power scheduled / autopilot-initiated posts, where the bot speaks
     # without a triggering user message. Authorization (which servers a user
     # may post to) is enforced one layer up; adapters here only translate an
     # already-authorized request into platform API calls.
+
+    @abstractmethod
+    def looks_like_channel_id(self, ref: str) -> bool:
+        """Whether ``ref`` is one of this platform's channel IDs (vs a name).
+
+        The shared proactive-post resolver uses this to decide whether to treat
+        a target reference as a raw channel ID or a channel name to look up.
+        Each platform's ID grammar differs (Discord numeric snowflakes, Slack
+        ``C0123ABCD``, Telegram signed integers), so the discrimination can't
+        live in the platform-agnostic layer.
+        """
+        ...
 
     @abstractmethod
     async def list_text_channels(
@@ -294,3 +385,54 @@ class PlatformAdapter(ABC):
         the platform/channel doesn't support it.
         """
         ...
+
+
+class SocketAdapter(PlatformAdapter):
+    """Adapter that owns a long-lived connection (Discord Gateway, Slack Socket
+    Mode). The connection is a per-token singleton held open for the process's
+    lifetime, so each socket adapter runs in the ``copilot-bot`` pod and is
+    driven by ``start``/``stop``.
+    """
+
+    @abstractmethod
+    async def start(self) -> None: ...
+
+    @abstractmethod
+    async def stop(self) -> None: ...
+
+
+class WebhookAdapter(PlatformAdapter):
+    """Adapter driven by inbound HTTPS webhooks (Slack Events API, Telegram,
+    Teams, WhatsApp). Stateless — its routes mount on the main backend API and
+    ride the existing N-replica deployment, so no dedicated pod is needed.
+    """
+
+    @abstractmethod
+    def register_routes(self, app: FastAPI) -> None:
+        """Mount this adapter's inbound webhook route(s) onto ``app``.
+
+        The adapter owns its own request signature verification and must ACK
+        within the platform's timeout, scheduling the real work off-request.
+        """
+        ...
+
+
+async def read_verified_webhook_body(
+    request: Request, verify: Callable[[Request, bytes], bool]
+) -> bytes | None:
+    """Read an inbound webhook body and verify its platform signature.
+
+    Returns the raw body when the signature checks out, ``None`` otherwise —
+    the route should then return :func:`unauthorized_webhook_response`. Shared
+    so every webhook adapter verifies BEFORE parsing, against the same raw
+    bytes the platform signed.
+    """
+    raw = await request.body()
+    if not verify(request, raw):
+        return None
+    return raw
+
+
+def unauthorized_webhook_response() -> PlainTextResponse:
+    """The uniform 401 for a webhook that failed signature verification."""
+    return PlainTextResponse("invalid signature", status_code=401)

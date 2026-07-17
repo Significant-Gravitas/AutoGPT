@@ -35,9 +35,10 @@ export function ReviewHero({
       {showConfetti && !shouldReduceMotion ? (
         <Confetti
           options={{
-            particleCount: 80,
+            particleCount: 50,
             spread: 70,
             startVelocity: 35,
+            ticks: 120,
             origin: { y: 0.3 },
           }}
         />
@@ -53,7 +54,7 @@ export function ReviewHero({
               transition={{
                 duration: 1.6,
                 ease: "easeOut",
-                repeat: Infinity,
+                repeat: 3,
                 repeatDelay: 0.4,
               }}
               className={cn(
@@ -68,7 +69,7 @@ export function ReviewHero({
               transition={{
                 duration: 1.6,
                 ease: "easeOut",
-                repeat: Infinity,
+                repeat: 3,
                 repeatDelay: 0.4,
                 delay: 0.5,
               }}
