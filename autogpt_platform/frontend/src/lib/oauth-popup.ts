@@ -99,6 +99,13 @@ export function openOAuthPopup(
    * tab can be easy to miss) and offer a retry path.
    */
   popupBlocked: boolean;
+  /**
+   * True iff the new-tab fallback was refused too — no window exists at all
+   * and the promise has already rejected. Callers must NOT show the
+   * popupBlocked "opened in a new tab" hint in this case; the rejection
+   * already carries the correct allow-popups-and-retry message.
+   */
+  fallbackBlocked: boolean;
 } {
   const {
     stateToken,
@@ -349,5 +356,6 @@ export function openOAuthPopup(
       signal: controller.signal,
     },
     popupBlocked,
+    fallbackBlocked,
   };
 }

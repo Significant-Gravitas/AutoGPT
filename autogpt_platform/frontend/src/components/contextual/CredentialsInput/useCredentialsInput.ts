@@ -200,23 +200,26 @@ export function useCredentialsInput({
       setOAuth2FlowInProgress(true);
       setOAuthPopupBlocked(false);
 
-      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        // Always enable BroadcastChannel + localStorage listeners — they are
-        // the only path that works when the popup is blocked and we fall back
-        // to a new tab (window.opener can be severed by cross-origin COOP).
-        useCrossOriginListeners: true,
-        acceptMessageTypes: isMCP
-          ? ["mcp_oauth_result"]
-          : ["oauth_popup_result"],
-      });
+      const { promise, cleanup, popupBlocked, fallbackBlocked } =
+        openOAuthPopup(login_url, {
+          stateToken: state_token,
+          // Always enable BroadcastChannel + localStorage listeners — they are
+          // the only path that works when the popup is blocked and we fall back
+          // to a new tab (window.opener can be severed by cross-origin COOP).
+          useCrossOriginListeners: true,
+          acceptMessageTypes: isMCP
+            ? ["mcp_oauth_result"]
+            : ["oauth_popup_result"],
+        });
 
       // The blank popup window was rejected by the browser — the helper has
       // already fallen back to opening the login URL in a new tab, but that
       // tab is easy to miss. Track the state so the waiting modal can
       // change its copy and direct the user to the right place, and emit a
       // toast in case they've already dismissed the modal.
-      if (popupBlocked) {
+      // Skip when the fallback was blocked too — the promise has already
+      // rejected and the error below carries the correct retry message.
+      if (popupBlocked && !fallbackBlocked) {
         setOAuthPopupBlocked(true);
         toast({
           title: "Popup blocked",

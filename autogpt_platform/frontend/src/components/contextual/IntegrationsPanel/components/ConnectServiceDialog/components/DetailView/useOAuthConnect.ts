@@ -53,20 +53,24 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       }
       const { login_url, state_token } = initiateResponse.data;
 
-      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        preOpenedWindow,
-        // BroadcastChannel + localStorage listeners are the only delivery
-        // path when the flow runs in a tab without window.opener (the iOS
-        // fallback) — the callback page already writes to both.
-        useCrossOriginListeners: true,
-        acceptMessageTypes: ["oauth_popup_result"],
-      });
+      const { promise, cleanup, popupBlocked, fallbackBlocked } =
+        openOAuthPopup(login_url, {
+          stateToken: state_token,
+          preOpenedWindow,
+          // BroadcastChannel + localStorage listeners are the only delivery
+          // path when the flow runs in a tab without window.opener (the iOS
+          // fallback) — the callback page already writes to both.
+          useCrossOriginListeners: true,
+          acceptMessageTypes: ["oauth_popup_result"],
+        });
       abortRef.current = () => cleanup.abort("unmounted");
 
-      // The browser blocked even the synchronous window.open — the helper
-      // fell back to a new tab, which is easy to miss. Tell the user.
-      if (popupBlocked) {
+      // The browser blocked even the synchronous window.open but the new-tab
+      // fallback opened — that tab is easy to miss, so tell the user. Skip
+      // the hint when the fallback was blocked too: the promise has already
+      // rejected and the catch below shows the correct allow-popups-and-retry
+      // message — showing both would contradict each other.
+      if (popupBlocked && !fallbackBlocked) {
         toast({
           title: "Popup blocked",
           description: OAUTH_ERROR_POPUP_BLOCKED,

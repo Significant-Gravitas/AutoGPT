@@ -261,7 +261,7 @@ describe("preOpenedWindow option", () => {
     const openSpy = vi.spyOn(window, "open");
     const preOpened = makePopupStub();
 
-    const { promise, cleanup, popupBlocked } = openOAuthPopup(
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
       {
         stateToken: "tok-pre",
@@ -273,6 +273,7 @@ describe("preOpenedWindow option", () => {
     expect(openSpy).not.toHaveBeenCalled();
     expect(preOpened.location.href).toBe("https://example.com/oauth");
     expect(popupBlocked).toBe(false);
+    expect(fallbackBlocked).toBe(false);
 
     cleanup.abort();
   });
@@ -280,7 +281,7 @@ describe("preOpenedWindow option", () => {
   test("null preOpenedWindow goes straight to the new-tab fallback", () => {
     const openSpy = setupPopup(makePopupStub());
 
-    const { promise, cleanup, popupBlocked } = openOAuthPopup(
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
       {
         stateToken: "tok-null",
@@ -290,6 +291,7 @@ describe("preOpenedWindow option", () => {
     promise.catch(() => {});
 
     expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(false);
     // Only the fallback open fires, with the real login URL.
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
@@ -313,7 +315,7 @@ describe("preOpenedWindow option", () => {
     // fallback open after the async break has no gesture context either.
     setupPopup(null);
 
-    const { promise, popupBlocked } = openOAuthPopup(
+    const { promise, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
       {
         stateToken: "tok-blocked",
@@ -326,6 +328,7 @@ describe("preOpenedWindow option", () => {
     await vi.advanceTimersByTimeAsync(10);
 
     expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(true);
     expect(onReject).toHaveBeenCalledTimes(1);
     expect((onReject.mock.calls[0][0] as Error).message).toBe(
       OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
@@ -337,7 +340,7 @@ describe("preOpenedWindow option", () => {
     // fallback (e.g. aggressive popup blocker). Must not wait for timeout.
     setupPopup(null);
 
-    const { promise, popupBlocked } = openOAuthPopup(
+    const { promise, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
       {
         stateToken: "tok-blocked-2",
@@ -349,6 +352,7 @@ describe("preOpenedWindow option", () => {
     await vi.advanceTimersByTimeAsync(10);
 
     expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(true);
     expect(onReject).toHaveBeenCalledTimes(1);
     expect((onReject.mock.calls[0][0] as Error).message).toBe(
       OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,

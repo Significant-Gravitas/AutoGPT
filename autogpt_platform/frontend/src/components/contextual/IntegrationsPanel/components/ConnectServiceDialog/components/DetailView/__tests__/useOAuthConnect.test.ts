@@ -47,6 +47,7 @@ async function setupSuccessfulPopup() {
     promise: Promise.resolve({ code: "auth-code", state: "state-token" }),
     cleanup: { abort: vi.fn() },
     popupBlocked: false,
+    fallbackBlocked: false,
   } as unknown as ReturnType<typeof openOAuthPopup>);
 }
 
@@ -265,6 +266,7 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       promise: new Promise(() => {}), // flow stays in flight
       cleanup: { abort: vi.fn() },
       popupBlocked: true,
+      fallbackBlocked: false,
     } as unknown as ReturnType<typeof openOAuthPopup>);
 
     const { result } = renderHook(() =>
@@ -279,5 +281,45 @@ describe("useOAuthConnect — popup window lifecycle", () => {
     await waitFor(() => expect(toastMock).toHaveBeenCalled());
     const arg = toastMock.mock.calls[0][0] as { title: string };
     expect(arg.title).toBe("Popup blocked");
+  });
+
+  it("shows only the failure toast when both popup and fallback tab are blocked", async () => {
+    await mockInitiateOk();
+
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(null);
+    vi.mocked(openOAuthPopup).mockImplementation(
+      () =>
+        ({
+          promise: Promise.reject(
+            new Error(
+              "Popup blocked — allow popups for this site and try again.",
+            ),
+          ),
+          cleanup: { abort: vi.fn() },
+          popupBlocked: true,
+          fallbackBlocked: true,
+        }) as unknown as ReturnType<typeof openOAuthPopup>,
+    );
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    await result.current.connect();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    // Exactly one toast — the "opened in a new tab" hint would contradict it.
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    const arg = toastMock.mock.calls[0][0] as {
+      title: string;
+      description: string;
+    };
+    expect(arg.title).toBe("OAuth connection failed");
+    expect(arg.description).toBe(
+      "Popup blocked — allow popups for this site and try again.",
+    );
   });
 });
