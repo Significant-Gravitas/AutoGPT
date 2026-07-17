@@ -2295,16 +2295,7 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } },
-            "headers": {
-              "X-AutoGPT-User-Created": {
-                "description": "Whether this request created a new user",
-                "schema": {
-                  "type": "string",
-                  "enum": ["true", "false"]
-                }
-              }
-            }
+            "content": { "application/json": { "schema": {} } }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -2586,6 +2577,12 @@
         "responses": {
           "200": {
             "description": "Successful Response",
+            "headers": {
+              "X-AutoGPT-User-Created": {
+                "description": "Whether this request created a new user",
+                "schema": { "type": "string", "enum": ["true", "false"] }
+              }
+            },
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
