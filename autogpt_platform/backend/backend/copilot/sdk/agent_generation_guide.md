@@ -82,11 +82,16 @@ sampling (step 2), not by deliberation.
 8. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
 9. **Validate**: Call `validate_agent_graph` with the agent JSON to check
-   for errors
+   for errors. For any non-trivial graph, pass the file from step 8 by
+   reference instead of re-emitting the JSON inline:
+   `agent_json="@@agptfile:workspace:///agent.json"` (a plain string — the
+   platform reads and parses the file). This avoids re-generating large
+   JSON in tool arguments, where it can get truncated.
 10. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
     or fix manually based on the error descriptions. Iterate until valid.
 11. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-    the final `agent_json`.
+    the final `agent_json` — again by file reference when it lives in a
+    file: `agent_json="@@agptfile:workspace:///agent.json"`.
 12. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
 13. **Inspect & fix**: Check the dry-run output for errors. If issues are

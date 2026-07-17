@@ -7,7 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
-from .helpers import require_guide_read
+from .helpers import coerce_agent_json, require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -40,9 +40,12 @@ class FixAgentGraphTool(BaseTool):
             "type": "object",
             "properties": {
                 "agent_json": {
-                    "type": "object",
+                    "type": ["object", "string"],
                     "description": (
-                        "The agent JSON to fix. Must contain 'nodes' and 'links' arrays."
+                        "The agent JSON to fix. Must contain 'nodes' and "
+                        "'links' arrays. For large graphs, write the JSON to "
+                        'a file and pass the string "@@agptfile:<path>" '
+                        "instead of inlining it."
                     ),
                 },
             },
@@ -53,7 +56,7 @@ class FixAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict | None = None,
+        agent_json: dict | str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
@@ -62,9 +65,13 @@ class FixAgentGraphTool(BaseTool):
         if guide_gate is not None:
             return guide_gate
 
-        if not agent_json or not isinstance(agent_json, dict):
+        agent_json = coerce_agent_json(agent_json)
+        if not agent_json:
             return ErrorResponse(
-                message="Please provide a valid agent JSON object.",
+                message=(
+                    "Please provide a valid agent JSON object, or the string "
+                    '"@@agptfile:<path>" referencing a JSON file.'
+                ),
                 error="Missing or invalid agent_json parameter",
                 session_id=session_id,
             )
