@@ -18,7 +18,7 @@ from backend.util.service import (
 from backend.util.settings import Settings
 
 from . import outbound
-from .adapters.base import ChannelInfo, PlatformAdapter
+from .adapters.base import ChannelInfo, PlatformAdapter, SocketAdapter
 from .adapters.discord import config as discord_config
 from .adapters.discord.adapter import DiscordAdapter
 from .bot_backend import BotBackend
@@ -63,7 +63,7 @@ class CoPilotChatBridge(AppService):
     async def _run_adapters(self) -> None:
         api = BotBackend()
         self._api = api
-        adapters = _build_adapters(api)
+        adapters = _build_socket_adapters(api)
         self._adapters_by_platform = {a.platform_name: a for a in adapters}
 
         if not adapters:
@@ -192,15 +192,15 @@ class CoPilotChatBridgeClient(AppServiceClient):
     )
 
 
-def _build_adapters(api: BotBackend) -> list[PlatformAdapter]:
-    """Instantiate adapters based on which platform tokens are configured."""
-    adapters: list[PlatformAdapter] = []
+def _build_socket_adapters(api: BotBackend) -> list[SocketAdapter]:
+    """Instantiate socket adapters (start/stop-driven) whose tokens are set.
+
+    Webhook-driven adapters (Slack, Telegram, …) mount onto the main backend
+    API instead — see ``webhook_routes.register_webhook_adapters`` — so they
+    are not built here.
+    """
+    adapters: list[SocketAdapter] = []
     if discord_config.get_bot_token():
         adapters.append(DiscordAdapter(api))
         logger.info("Discord adapter enabled")
-    # Future:
-    # if telegram_config.get_bot_token():
-    #     adapters.append(TelegramAdapter(api))
-    # if slack_config.get_bot_token():
-    #     adapters.append(SlackAdapter(api))
     return adapters

@@ -13,6 +13,7 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import TourChatPage from "../page";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
@@ -62,6 +63,9 @@ describe("Tour chat scripted demo", () => {
       watchedScenarioIds: [],
       isNudgeVisible: false,
     });
+    // The artifact panel lives in the shared copilot UI store (also
+    // module-level) — a completed demo leaves it open across tests.
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
   });
 
   afterEach(() => {
@@ -159,6 +163,30 @@ describe("Tour chat scripted demo", () => {
 
     // Completion flips the store flag that hides the sidebar card.
     expect(useTourStore.getState().isDemoComplete).toBe(true);
+  });
+
+  test("switching scenario after a completed demo un-dims the chat column", async () => {
+    render(<TourChatPage />);
+
+    // Play the default demo through both turns so it completes and opens
+    // the payoff artifact panel — which dims the chat column behind it.
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    expect(useTourStore.getState().isDemoComplete).toBe(true);
+    expect(document.querySelector(".transition-opacity.opacity-50")).not.toBe(
+      null,
+    );
+
+    // Picking another chat example from the sidebar must reset the dim —
+    // the artifact panel belongs to the finished demo, not the new one.
+    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(document.querySelector(".transition-opacity.opacity-50")).toBe(null);
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   test("scenario chips switch the demo path", async () => {

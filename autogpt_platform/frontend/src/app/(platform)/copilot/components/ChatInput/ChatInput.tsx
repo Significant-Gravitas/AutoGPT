@@ -6,6 +6,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import {
@@ -24,7 +25,7 @@ import {
   partitionAttachments,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
-import { AttachmentMenu } from "./components/AttachmentMenu";
+import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { BlockCaret } from "./components/BlockCaret";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
@@ -221,6 +222,12 @@ export function ChatInput({
     !isRecording &&
     !isTranscribing;
 
+  function handleClearGuidedPrompt() {
+    // Only discard untouched guided prompts — never a draft the user typed
+    // or edited themselves.
+    if (isGuidedPrompt(value)) setValue("");
+  }
+
   function handleFilesSelected(newFiles: File[]) {
     setAttachments((prev) => [
       ...prev,
@@ -299,10 +306,10 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            <AttachmentMenu
+            <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
-              showWorkspaceOption={showWorkspaceFiles}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
             {/* Mode and model are per-message settings sent with each stream request,

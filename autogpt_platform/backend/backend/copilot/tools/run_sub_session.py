@@ -153,7 +153,12 @@ class RunSubSessionTool(BaseTool):
                 )
             inner_session_id = sub_session_param
         else:
-            new_session = await create_chat_session(user_id, dry_run=session.dry_run)
+            new_session = await create_chat_session(
+                user_id,
+                dry_run=session.dry_run,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
             inner_session_id = new_session.session_id
 
         effective_prompt = prompt
