@@ -7,7 +7,11 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import {
+  getGetV2GetASpecificPresetMockHandler,
+  getGetV2GetASpecificPresetResponseMock,
+  getGetV2ListPresetsMockHandler,
+} from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
@@ -65,6 +69,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     GENERIC_TRIGGER_AGENTS: "generic-trigger-agents",
   },
   useGetFlag: mockUseGetFlag,
+  useFlagStatus: () => ({ enabled: mockUseGetFlag(), ready: true }),
 }));
 
 // Per-test render wrapper so we can set the nuqs initial URL state
@@ -451,6 +456,146 @@ describe("Library agent view — trigger agents", () => {
         }),
       );
     });
+  });
+
+  test("selecting a webhook trigger renders its preset detail view", async () => {
+    const webhookPreset = {
+      id: "preset-1",
+      user_id: "user-1",
+      graph_id: PARENT_GRAPH_ID,
+      graph_version: 1,
+      name: "Webhook Trigger",
+      description: "Fires on webhook",
+      inputs: {},
+      credentials: {},
+      is_active: true,
+      webhook_id: "webhook-1",
+      webhook: null,
+      created_at: new Date("2026-01-01T00:00:00.000Z"),
+      updated_at: new Date("2026-01-01T00:00:00.000Z"),
+    };
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler({
+        presets: [webhookPreset],
+        pagination: {
+          total_items: 1,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 100,
+        },
+      }),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=preset-1",
+    );
+
+    await screen.findByText("Trigger Details");
+    expect(screen.getByDisplayValue("Webhook Trigger")).toBeDefined();
+  });
+
+  test("agent:-prefixed activeItem renders the trigger agent detail view", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Hinted Watcher",
+      description: "Selected via type-hinted URL",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=agent:${TRIGGER_ID}`,
+    );
+
+    await screen.findByText("Selected via type-hinted URL");
+  });
+
+  test("preset:-prefixed activeItem renders the webhook trigger detail view", async () => {
+    const webhookPreset = {
+      id: "preset-1",
+      user_id: "user-1",
+      graph_id: PARENT_GRAPH_ID,
+      graph_version: 1,
+      name: "Hinted Webhook Trigger",
+      description: "",
+      inputs: {},
+      credentials: {},
+      is_active: true,
+      webhook_id: "webhook-1",
+      webhook: null,
+      created_at: new Date("2026-01-01T00:00:00.000Z"),
+      updated_at: new Date("2026-01-01T00:00:00.000Z"),
+    };
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler({
+        presets: [webhookPreset],
+        pagination: {
+          total_items: 1,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 100,
+        },
+      }),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=preset:preset-1",
+    );
+
+    await screen.findByText("Trigger Details");
+    expect(screen.getByDisplayValue("Hinted Webhook Trigger")).toBeDefined();
+  });
+
+  test("stale trigger id shows a graceful not-found state without fetching a preset", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Still Alive",
+      is_hidden: true,
+    });
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+      // If the view wrongly assumes the unknown id is a preset, this
+      // handler fires — the old behavior that produced a 404 error page.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return getGetV2GetASpecificPresetResponseMock();
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=deleted-preset-id",
+    );
+
+    await screen.findByText("Trigger not found");
+    await screen.findByText(/no longer exists/i);
+    expect(presetGetCalls).toBe(0);
   });
 
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {

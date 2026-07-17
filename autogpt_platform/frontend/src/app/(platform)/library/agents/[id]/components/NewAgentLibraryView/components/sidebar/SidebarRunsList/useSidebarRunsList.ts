@@ -190,9 +190,9 @@ export function useSidebarRunsList({
   useEffect(() => {
     if (tabValue !== "triggers" || activeItem) return;
     if (triggers.length > 0) {
-      onSelectRun(triggers[0].id, "triggers");
+      onSelectRun(`preset:${triggers[0].id}`, "triggers");
     } else if (triggerAgents.length > 0) {
-      onSelectRun(triggerAgents[0].id, "triggers");
+      onSelectRun(`agent:${triggerAgents[0].id}`, "triggers");
     }
   }, [triggers, triggerAgents, activeItem, tabValue, onSelectRun]);
 

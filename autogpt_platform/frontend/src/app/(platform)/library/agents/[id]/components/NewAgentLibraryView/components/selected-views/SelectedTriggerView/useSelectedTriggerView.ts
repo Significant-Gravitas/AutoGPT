@@ -9,6 +9,7 @@ import {
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -26,6 +27,15 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     query: {
       enabled: !!triggerId,
       select: okData,
+      // A 4xx (e.g. 404 for a deleted trigger) won't heal on retry; failing
+      // fast avoids showing a loading state for ~7s before the error.
+      retry: (failureCount, error) =>
+        failureCount < 3 &&
+        !(
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ),
     },
   });
 

@@ -2,13 +2,17 @@ import {
   useGetV2GetLibraryAgent,
   useGetV2ListTriggerAgents,
 } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  useGetV2GetASpecificPreset,
+  useGetV2ListPresets,
+} from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { parseActiveItemParam, TriggerKind } from "./helpers";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -42,10 +46,24 @@ export function useNewAgentLibraryView() {
     error,
   } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
-  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
-  const { data: triggerAgents } = useGetV2ListTriggerAgents(agentId, {
+  const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
+    useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
+  const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
     query: { enabled: triggerAgentsEnabled && !!agentId, select: okData },
   });
+  const triggerAgents = triggerAgentsQuery.data;
+
+  // Same params as the sidebar's presets query so both share one cache entry.
+  const presetsQuery = useGetV2ListPresets(
+    { graph_id: agent?.graph_id ?? "", page: 1, page_size: 100 },
+    {
+      query: {
+        enabled: !!agent?.graph_id,
+        select: (r) => okData(r)?.presets,
+      },
+    },
+  );
+  const presets = presetsQuery.data;
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
     useQueryStates({
@@ -54,22 +72,23 @@ export function useNewAgentLibraryView() {
     });
 
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+  const { activeItemId, triggerKindHint } = parseActiveItemParam(activeItem);
 
   const {
     data: _template,
     isSuccess: isTemplateLoaded,
     isLoading: isTemplateLoading,
     error: templateError,
-  } = useGetV2GetASpecificPreset(activeItem ?? "", {
+  } = useGetV2GetASpecificPreset(activeItemId ?? "", {
     query: {
-      enabled: Boolean(activeTab === "templates" && activeItem),
+      enabled: Boolean(activeTab === "templates" && activeItemId),
       select: okData,
     },
   });
   const activeTemplate =
     isTemplateLoaded &&
     activeTab === "templates" &&
-    _template?.id === activeItem
+    _template?.id === activeItemId
       ? _template
       : null;
 
@@ -237,11 +256,36 @@ export function useNewAgentLibraryView() {
     onItemCreated({ item: newSchedule, type: "scheduled" });
   }
 
-  const isActiveItemTriggerAgent =
-    triggerAgentsEnabled &&
-    activeTab === "triggers" &&
-    !!activeItem &&
-    !!triggerAgents?.some((t) => t.id === activeItem);
+  // What the selected item on the Triggers tab actually is. An unknown ID
+  // must never be assumed to be a preset: firing a preset fetch for a
+  // trigger-agent ID (or a stale link) guarantees a 404 error screen.
+  // List membership is the source of truth; the URL's `agent:`/`preset:`
+  // hint only short-circuits the loading state, so a wrong or stale hint
+  // still resolves to the right view (or "not-found") once the lists load.
+  function getSelectedTriggerKind():
+    | TriggerKind
+    | "loading"
+    | "not-found"
+    | null {
+    if (activeTab !== "triggers" || !activeItemId) return null;
+    if (triggerAgents?.some((t) => t.id === activeItemId)) {
+      return "trigger-agent";
+    }
+    if (presets?.some((p) => p.webhook_id && p.id === activeItemId)) {
+      return "webhook-trigger";
+    }
+
+    // "not-found" requires both lists to have actually resolved: a pending
+    // or failed fetch says nothing about whether the item exists.
+    const triggerAgentsUnresolved =
+      !triggerAgentsFlagReady ||
+      (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
+    if (!presetsQuery.isSuccess || triggerAgentsUnresolved) {
+      return triggerKindHint ?? "loading";
+    }
+    return "not-found";
+  }
+  const selectedTriggerKind = getSelectedTriggerKind();
 
   return {
     agentId: id,
@@ -253,7 +297,8 @@ export function useNewAgentLibraryView() {
     hasAnyItems,
     showSidebarLayout,
     activeItem,
-    isActiveItemTriggerAgent,
+    activeItemId,
+    selectedTriggerKind,
     sidebarLoading,
     activeTab,
     setActiveTab: handleSetActiveTab,

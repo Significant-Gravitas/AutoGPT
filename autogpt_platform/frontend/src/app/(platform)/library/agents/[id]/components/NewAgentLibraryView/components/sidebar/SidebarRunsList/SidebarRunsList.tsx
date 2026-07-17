@@ -223,7 +223,9 @@ export function SidebarRunsList({
                           trigger={trigger}
                           agent={agent}
                           selected={selectedRunId === trigger.id}
-                          onClick={() => onSelectRun(trigger.id, "triggers")}
+                          onClick={() =>
+                            onSelectRun(`preset:${trigger.id}`, "triggers")
+                          }
                         />
                       </div>
                     ))}
@@ -246,7 +248,7 @@ export function SidebarRunsList({
                           parentAgent={agent}
                           selected={selectedRunId === triggerAgent.id}
                           onClick={() =>
-                            onSelectRun(triggerAgent.id, "triggers")
+                            onSelectRun(`agent:${triggerAgent.id}`, "triggers")
                           }
                         />
                       </div>
