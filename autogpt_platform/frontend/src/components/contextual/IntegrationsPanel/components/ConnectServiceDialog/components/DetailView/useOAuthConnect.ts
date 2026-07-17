@@ -27,12 +27,19 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   const [isPending, setIsPending] = useState(false);
   const abortRef = useRef<(() => void) | null>(null);
   const isUnmountedRef = useRef(false);
+  const preOpenedWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
     isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
       abortRef.current?.();
+      // Close a window pre-opened by a flow still fetching the login URL —
+      // its abort isn't registered yet, so the line above can't reach it.
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
     };
   }, []);
 
@@ -43,6 +50,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     // then blocks every window.open(), including the new-tab fallback, so
     // nothing would open at all.
     const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
     try {
       const initiateResponse = await getV1InitiateOauthFlow(provider);
       // customMutator rejects non-2xx, so this branch is unreachable at
@@ -52,6 +60,10 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
         throw new Error("Unexpected OAuth initiate response");
       }
       const { login_url, state_token } = initiateResponse.data;
+
+      // Unmounted while the login URL was being fetched — the cleanup
+      // already closed the window; don't adopt it.
+      if (isUnmountedRef.current) return;
 
       const { promise, cleanup, popupBlocked, fallbackBlocked } =
         openOAuthPopup(login_url, {
@@ -63,6 +75,8 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
           useCrossOriginListeners: true,
           acceptMessageTypes: ["oauth_popup_result"],
         });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
       abortRef.current = () => cleanup.abort("unmounted");
 
       // The browser blocked even the synchronous window.open but the new-tab
@@ -94,6 +108,9 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       // If the flow threw before openOAuthPopup took ownership of the window,
       // close the dangling about:blank tab ourselves (after handoff the
       // helper closes it on abort, so this guard is a no-op then).
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+      }
       if (preOpenedWindow && !preOpenedWindow.closed) {
         preOpenedWindow.close();
       }

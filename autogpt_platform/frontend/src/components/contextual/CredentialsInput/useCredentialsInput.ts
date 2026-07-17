@@ -71,12 +71,22 @@ export function useCredentialsInput({
   const credentials = useCredentials(schema, siblingInputs);
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const oauthFlowIdRef = useRef(0);
+  const preOpenedWindowRef = useRef<Window | null>(null);
   const [isDeletingCredential, setIsDeletingCredential] = useState(false);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      // Invalidate any in-flight flow so its continuation bails instead of
+      // adopting the window, and close a window pre-opened by a flow that
+      // never reached openOAuthPopup (its abort isn't registered yet).
+      oauthFlowIdRef.current += 1;
       oauthAbortRef.current?.();
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
     };
   }, []);
 
@@ -174,13 +184,24 @@ export function useCredentialsInput({
   async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
 
-    // Abort any previous OAuth flow
+    // Abort any previous OAuth flow, and close the window of one that was
+    // still initiating (its abort wasn't registered yet, so the abort above
+    // can't reach it).
     oauthAbortRef.current?.();
+    if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+      preOpenedWindowRef.current.close();
+    }
+    preOpenedWindowRef.current = null;
+
+    // Generation marker — lets this flow's continuation detect that it was
+    // superseded (new flow, or unmount) while awaiting the login URL.
+    const flowId = ++oauthFlowIdRef.current;
 
     // Open the sign-in window synchronously, before the first await — iOS
     // Safari discards the tap's user-gesture context at any async break and
     // then blocks every window.open(), including the new-tab fallback.
     const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     // MCP uses dynamic OAuth discovery per server URL
     const isMCP = provider === "mcp" && !!discriminatorValue;
@@ -203,6 +224,11 @@ export function useCredentialsInput({
         ));
       }
 
+      // A newer flow (or an unmount) superseded this one while the login
+      // URL was being fetched — the superseding path already closed the
+      // pre-opened window; don't adopt it or touch state.
+      if (flowId !== oauthFlowIdRef.current) return;
+
       setOAuth2FlowInProgress(true);
       setOAuthPopupBlocked(false);
 
@@ -218,6 +244,8 @@ export function useCredentialsInput({
             ? ["mcp_oauth_result"]
             : ["oauth_popup_result"],
         });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
 
       // The blank popup window was rejected by the browser — the helper has
       // already fallen back to opening the login URL in a new tab, but that
@@ -272,6 +300,9 @@ export function useCredentialsInput({
       // If the flow threw before openOAuthPopup took ownership of the window,
       // close the dangling about:blank tab ourselves (after handoff the
       // helper closes it on abort, so this guard is a no-op then).
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+      }
       if (preOpenedWindow && !preOpenedWindow.closed) {
         preOpenedWindow.close();
       }

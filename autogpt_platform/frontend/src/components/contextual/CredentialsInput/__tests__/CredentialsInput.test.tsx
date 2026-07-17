@@ -31,13 +31,16 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
 
 const mockUseCredentials = useCredentials as unknown as ReturnType<
   typeof vi.fn
 >;
 const mockUseBackendAPI = useBackendAPI as unknown as ReturnType<typeof vi.fn>;
 const mockOpenOAuthPopup = openOAuthPopup as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockPreOpenOAuthPopup = preOpenOAuthPopup as unknown as ReturnType<
   typeof vi.fn
 >;
 
@@ -139,5 +142,53 @@ describe("CredentialsInput – OAuth flow", () => {
         undefined,
       );
     });
+  });
+
+  it("closes the pre-opened window and skips adoption when unmounted mid-initiation", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    mockPreOpenOAuthPopup.mockReturnValue(fakeWindow);
+
+    let resolveLogin: (value: unknown) => void = () => {};
+    const oAuthLoginMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLogin = resolve;
+        }),
+    );
+    mockUseBackendAPI.mockReturnValue(
+      makeBackendAPI({ oAuthLogin: oAuthLoginMock }),
+    );
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "code-2", state: "state-xyz" }),
+      cleanup: { abort: vi.fn() },
+    });
+
+    const { unmount } = render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+    await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalled());
+
+    // Unmount while the login-URL request is still in flight — the cleanup
+    // must close the pre-opened window immediately.
+    unmount();
+    expect(fakeWindow.close).toHaveBeenCalled();
+
+    // When the request resolves, the stale continuation must not adopt the
+    // window into a new OAuth popup.
+    resolveLogin({
+      login_url: "https://accounts.google.com/o/oauth2/auth",
+      state_token: "state-xyz",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
   });
 });

@@ -255,6 +255,51 @@ describe("useOAuthConnect — popup window lifecycle", () => {
     expect(fakeWindow.close).toHaveBeenCalled();
   });
 
+  it("closes the pre-opened window and skips adoption when unmounted mid-initiation", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+
+    let resolveInitiate: (value: unknown) => void = () => {};
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInitiate = resolve;
+        }) as never,
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn() }),
+    );
+
+    void result.current.connect();
+
+    // Unmount while the initiate request is still in flight — the cleanup
+    // must close the pre-opened window immediately.
+    unmount();
+    expect(fakeWindow.close).toHaveBeenCalled();
+
+    // When the request resolves, the stale continuation must not adopt the
+    // window or surface anything.
+    resolveInitiate({
+      status: 200,
+      data: {
+        login_url: "https://github.com/login/oauth",
+        state_token: "state-token",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(vi.mocked(openOAuthPopup)).not.toHaveBeenCalled();
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
   it("warns the user when the browser blocked the popup", async () => {
     await mockInitiateOk();
 
