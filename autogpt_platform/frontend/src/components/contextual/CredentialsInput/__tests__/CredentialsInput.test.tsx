@@ -20,6 +20,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  preOpenOAuthPopup: vi.fn(() => null),
   OAUTH_ERROR_WINDOW_CLOSED: "Sign-in window was closed",
   OAUTH_ERROR_FLOW_CANCELED: "OAuth flow was canceled",
   OAUTH_ERROR_FLOW_TIMED_OUT: "OAuth flow timed out",

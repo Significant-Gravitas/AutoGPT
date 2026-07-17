@@ -12,6 +12,7 @@ import {
   OAUTH_ERROR_POPUP_BLOCKED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
+  preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -176,6 +177,11 @@ export function useCredentialsInput({
     // Abort any previous OAuth flow
     oauthAbortRef.current?.();
 
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback.
+    const preOpenedWindow = preOpenOAuthPopup();
+
     // MCP uses dynamic OAuth discovery per server URL
     const isMCP = provider === "mcp" && !!discriminatorValue;
 
@@ -203,6 +209,7 @@ export function useCredentialsInput({
       const { promise, cleanup, popupBlocked, fallbackBlocked } =
         openOAuthPopup(login_url, {
           stateToken: state_token,
+          preOpenedWindow,
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).
@@ -262,6 +269,12 @@ export function useCredentialsInput({
         provider,
       });
     } catch (error) {
+      // If the flow threw before openOAuthPopup took ownership of the window,
+      // close the dangling about:blank tab ourselves (after handoff the
+      // helper closes it on abort, so this guard is a no-op then).
+      if (preOpenedWindow && !preOpenedWindow.closed) {
+        preOpenedWindow.close();
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
