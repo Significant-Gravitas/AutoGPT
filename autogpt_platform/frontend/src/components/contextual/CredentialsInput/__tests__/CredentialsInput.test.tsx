@@ -191,4 +191,79 @@ describe("CredentialsInput – OAuth flow", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
   });
+
+  it("a superseded flow does not clear the newer flow's abort handler", async () => {
+    const windowA = { closed: false, close: vi.fn() };
+    const windowB = { closed: false, close: vi.fn() };
+    mockPreOpenOAuthPopup
+      .mockReturnValueOnce(windowA)
+      .mockReturnValueOnce(windowB);
+
+    let resolveA: (value: unknown) => void = () => {};
+    let resolveB: (value: unknown) => void = () => {};
+    const oAuthLoginMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveB = resolve;
+          }),
+      );
+    mockUseBackendAPI.mockReturnValue(
+      makeBackendAPI({ oAuthLogin: oAuthLoginMock }),
+    );
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+
+    const abortB = vi.fn();
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: new Promise(() => {}), // flow stays in flight
+      cleanup: { abort: abortB },
+    });
+
+    const { unmount } = render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    const addAccountButton = await screen.findByRole("button", {
+      name: /add account/i,
+    });
+
+    // Flow A starts, then flow B supersedes it while A's request is pending.
+    fireEvent.click(addAccountButton);
+    await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(addAccountButton);
+    await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(2));
+
+    // Starting B closes A's still-pending pre-opened window.
+    expect(windowA.close).toHaveBeenCalled();
+
+    // B's request resolves first and registers its abort handler.
+    resolveB({
+      login_url: "https://accounts.google.com/o/oauth2/auth",
+      state_token: "state-xyz",
+    });
+    await waitFor(() => expect(mockOpenOAuthPopup).toHaveBeenCalledTimes(1));
+
+    // A's request resolves late — its continuation must bail without
+    // nulling B's abort handler in its finally block.
+    resolveA({
+      login_url: "https://accounts.google.com/o/oauth2/auth",
+      state_token: "state-xyz",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Unmount must still reach B's abort — i.e. A's finally did not clear it.
+    unmount();
+    expect(abortB).toHaveBeenCalled();
+  });
 });

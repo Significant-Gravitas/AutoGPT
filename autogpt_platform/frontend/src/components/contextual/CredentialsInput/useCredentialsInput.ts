@@ -306,6 +306,8 @@ export function useCredentialsInput({
       if (preOpenedWindow && !preOpenedWindow.closed) {
         preOpenedWindow.close();
       }
+      // A superseded flow must not surface its errors over the newer flow.
+      if (flowId !== oauthFlowIdRef.current) return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -318,8 +320,13 @@ export function useCredentialsInput({
         setOAuthError(`OAuth error: ${message}`);
       }
     } finally {
-      setOAuth2FlowInProgress(false);
-      oauthAbortRef.current = null;
+      // A superseded flow must not tear down the newer flow's state —
+      // nulling oauthAbortRef here would orphan the newer popup's abort
+      // handler, and resetting the in-progress flag would close its UI.
+      if (flowId === oauthFlowIdRef.current) {
+        setOAuth2FlowInProgress(false);
+        oauthAbortRef.current = null;
+      }
     }
   }
 
