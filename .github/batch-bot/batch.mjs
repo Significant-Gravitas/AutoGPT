@@ -111,10 +111,14 @@ function keyFromBranch(branch) {
 }
 
 // Distinct batch keys currently in use across open PRs (for the concurrency cap).
-// `--limit` is a hard fetch cap, not pagination — set it well above the realistic
-// open-PR count so the count can't silently miss labeled PRs.
+// `gh pr list --limit` is a hard fetch cap, not pagination — fetch a large page and
+// FAIL LOUDLY if it saturates rather than silently undercount batches (which could
+// let a new batch exceed the cap).
 function activeKeys() {
-  const rows = ghJSON(["pr", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "labels"]);
+  const LIMIT = 1000;
+  const rows = ghJSON(["pr", "list", "--repo", REPO, "--state", "open", "--limit", String(LIMIT), "--json", "labels"]);
+  if (rows.length >= LIMIT)
+    throw new Error(`activeKeys hit the ${LIMIT}-open-PR list cap — needs true pagination to count batches safely`);
   const keys = new Set();
   for (const p of rows)
     for (const l of p.labels)
@@ -129,12 +133,16 @@ function activeKeys() {
 
 const PR_FIELDS = "number,title,headRefName,headRefOid,url,labels,reviewDecision,mergeable,isDraft";
 
-// `--limit` above the realistic member count so a batch can't silently drop members.
+// `gh pr list --limit` caps results (no pagination); fail loudly if a single batch
+// ever saturates it rather than silently drop members from the rollup.
 function members(key) {
+  const LIMIT = 300;
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--state", "open", "--label", labelFor(key), "--limit", "300",
+    "pr", "list", "--repo", REPO, "--state", "open", "--label", labelFor(key), "--limit", String(LIMIT),
     "--json", PR_FIELDS,
   ]);
+  if (rows.length >= LIMIT)
+    throw new Error(`batch \`${key}\` hit the ${LIMIT}-member list cap — needs true pagination`);
   return rows.filter((p) => !p.labels.some((l) => l.name === NEVER));
 }
 
