@@ -42,7 +42,11 @@ const LABEL_PREFIX = process.env.BATCH_LABEL_PREFIX || "batch:";
 const NEVER_KEY = "never"; // batch:never = opt-out escape hatch
 const NEVER = LABEL_PREFIX + NEVER_KEY;
 const DEFAULT_KEY = "default";
-const MAX_BATCHES = Number(process.env.BATCH_MAX || "4");
+// Positive-integer cap; a non-numeric BATCH_MAX must not silently disable the limit.
+const MAX_BATCHES = (() => {
+  const n = Number(process.env.BATCH_MAX);
+  return Number.isInteger(n) && n > 0 ? n : 4;
+})();
 const RESERVED = new Set([NEVER_KEY, "help", "remove", "merge"]); // not usable as batch names
 const REQUIRE_APPROVAL_TO_ADD = process.env.BATCH_REQUIRE_APPROVAL === "1";
 const MARKER = "<!-- batch-bot:rollup -->";
@@ -107,8 +111,10 @@ function keyFromBranch(branch) {
 }
 
 // Distinct batch keys currently in use across open PRs (for the concurrency cap).
+// `--limit` is a hard fetch cap, not pagination — set it well above the realistic
+// open-PR count so the count can't silently miss labeled PRs.
 function activeKeys() {
-  const rows = ghJSON(["pr", "list", "--repo", REPO, "--state", "open", "--limit", "300", "--json", "labels"]);
+  const rows = ghJSON(["pr", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "labels"]);
   const keys = new Set();
   for (const p of rows)
     for (const l of p.labels)
@@ -123,25 +129,28 @@ function activeKeys() {
 
 const PR_FIELDS = "number,title,headRefName,headRefOid,url,labels,reviewDecision,mergeable,isDraft";
 
+// `--limit` above the realistic member count so a batch can't silently drop members.
 function members(key) {
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--state", "open", "--label", labelFor(key), "--limit", "100",
+    "pr", "list", "--repo", REPO, "--state", "open", "--label", labelFor(key), "--limit", "300",
     "--json", PR_FIELDS,
   ]);
   return rows.filter((p) => !p.labels.some((l) => l.name === NEVER));
 }
 
-// `members()` lists via the label search index, which lags a just-added label by a
-// few seconds — so the FIRST /batch on a PR would otherwise miss it and build an
-// empty rollup. When we just labeled `ensurePr`, fetch it directly (a consistent
-// read) and union it in.
-function membersEnsuring(key, ensurePr) {
-  const list = members(key);
-  if (ensurePr && !list.some((p) => p.number === ensurePr)) {
-    const p = ghJSON(["pr", "view", String(ensurePr), "--repo", REPO, "--json", PR_FIELDS]);
-    const labeled = p.labels.some((l) => l.name === labelFor(key));
-    const optedOut = p.labels.some((l) => l.name === NEVER);
-    if (labeled && !optedOut) list.push(p);
+// `members()` lists via GitHub's label search index, which lags a just-edited label
+// by a few seconds in BOTH directions — a just-added PR can be missing and a
+// just-removed one can still appear. Reconcile the caller's known edit with a direct
+// (consistent) read so the first /batch and /batch-remove aren't no-ops.
+function membersFor(key, { ensure = null, exclude = null } = {}) {
+  let list = members(key);
+  if (exclude != null && list.some((p) => p.number === exclude)) {
+    const p = ghJSON(["pr", "view", String(exclude), "--repo", REPO, "--json", "number,labels"]);
+    if (!p.labels.some((l) => l.name === labelFor(key))) list = list.filter((q) => q.number !== exclude);
+  }
+  if (ensure != null && !list.some((p) => p.number === ensure)) {
+    const p = ghJSON(["pr", "view", String(ensure), "--repo", REPO, "--json", PR_FIELDS]);
+    if (p.labels.some((l) => l.name === labelFor(key)) && !p.labels.some((l) => l.name === NEVER)) list.push(p);
   }
   return list;
 }
@@ -215,28 +224,25 @@ function buildRollup(key, list) {
     );
   }
 
-  // Force-update the ephemeral, bot-owned rollup branch via the refs API. This is a
-  // non-ff update of a throwaway branch nobody builds on — the batch/rollup-* ruleset
-  // restricts these branches to the bot (see README).
-  const sha = git(["rev-parse", "HEAD"]);
-  const ref = `refs/heads/${branch}`;
-  // Exact-match existence check via the singular `git/ref/…`; the plural `git/refs/…`
-  // prefix-matches and can false-positive on a sibling branch.
-  const exists = tryGh(["api", `repos/${REPO}/git/ref/heads/${branch}`]).ok;
-  if (exists) {
-    gh(["api", "-X", "PATCH", `repos/${REPO}/git/${ref}`, "-f", `sha=${sha}`, "-F", "force=true"]);
-  } else {
-    gh(["api", "-X", "POST", `repos/${REPO}/git/refs`, "-f", `ref=${ref}`, "-f", `sha=${sha}`]);
-  }
+  // Force-push the ephemeral, bot-owned rollup branch. The refs API can't be used
+  // here: the merge commits exist only in this runner's clone and the API refuses to
+  // point a ref at objects the server has never received (422 "Object does not
+  // exist"). The push uploads the objects and creates/force-moves the branch in one
+  // step, as the bot (checkout token) — the batch/rollup-* ruleset keeps these
+  // branches bot-only (see README).
+  git(["push", "--force", "origin", `HEAD:refs/heads/${branch}`]);
   return { merged, ejected };
 }
 
 // --- rollup PR (sticky status + deploy + merge target) -------------------
 
 function findRollupPR(key) {
-  const owner = REPO.split("/")[0];
+  // Plain branch name only: `gh pr list --head` does NOT understand the
+  // owner-qualified `owner:branch` form (that's a `pr create` convention) — it
+  // silently matches nothing, which makes every rebuild after the first try to
+  // create a duplicate rollup PR and die on "already exists".
   const rows = ghJSON([
-    "pr", "list", "--repo", REPO, "--head", `${owner}:${rollupBranch(key)}`, "--base", BASE, "--state", "open",
+    "pr", "list", "--repo", REPO, "--head", rollupBranch(key), "--base", BASE, "--state", "open",
     "--json", "number,url",
   ]);
   return rows[0] || null;
@@ -294,6 +300,15 @@ function deployRollup(pr) {
   tryGh(["pr", "comment", String(pr.number), "--repo", REPO, "--body", "!deploy"]);
 }
 
+// Clear any armed auto-merge on a batch's rollup PR before we rewrite the branch.
+// The bot has write access, so GitHub does NOT auto-cancel auto-merge on our own
+// push — without this, a rebuilt (content-changed) rollup could still land on the
+// prior approval/checks. /batch-merge re-arms it only after the fresh set passes.
+function disarmRollup(key) {
+  const pr = findRollupPR(key);
+  if (pr) tryGh(["pr", "merge", String(pr.number), "--repo", REPO, "--disable-auto"]);
+}
+
 // --- commands ------------------------------------------------------------
 
 function assertBatchable(pr) {
@@ -309,10 +324,12 @@ function assertBatchable(pr) {
   return p;
 }
 
-// Rebuild one batch's rollup branch + PR + preview. Optionally ensure a just-added
-// PR is included (label-index lag) and report the outcome on a PR.
-function rebuildBatch(key, { ensurePr = null, note = null, reportTo = null } = {}) {
-  const list = membersEnsuring(key, ensurePr);
+// Rebuild one batch's rollup branch + PR + preview. Disarms any armed auto-merge
+// first (branch is about to change), reconciles label-index lag for a just-added
+// (ensurePr) or just-removed (excludePr) member, and optionally reports on a PR.
+function rebuildBatch(key, { ensurePr = null, excludePr = null, note = null, reportTo = null } = {}) {
+  disarmRollup(key);
+  const list = membersFor(key, { ensure: ensurePr, exclude: excludePr });
   const { merged, ejected } = buildRollup(key, list);
   const pr = upsertRollupPR(key, merged, ejected);
   if (pr) deployRollup(pr); // (re)deploy the combined preview to reflect the new batch
@@ -347,11 +364,12 @@ function cmdBatch() {
     return;
   }
 
-  // One batch per PR: move it out of any other batch it's in, and rebuild those.
+  // One batch per PR: move it out of any other batch it's in, and rebuild those
+  // (excluding this PR, since the label-search index lags the removal).
   const others = batchesOf(p).filter((k) => k !== key);
   for (const other of others) removeLabel(prNumber, other);
   addLabel(prNumber, key);
-  for (const other of others) rebuildBatch(other);
+  for (const other of others) rebuildBatch(other, { excludePr: prNumber });
   rebuildBatch(key, { ensurePr: prNumber, note: `Added #${prNumber} to batch \`${key}\`.`, reportTo: prNumber });
 }
 
@@ -364,7 +382,8 @@ function cmdBatchRemove() {
     return;
   }
   for (const key of keys) removeLabel(prNumber, key);
-  for (const key of keys) rebuildBatch(key, { note: `Removed #${prNumber} from batch \`${key}\`.`, reportTo: prNumber });
+  for (const key of keys)
+    rebuildBatch(key, { excludePr: prNumber, note: `Removed #${prNumber} from batch \`${key}\`.`, reportTo: prNumber });
 }
 
 // Returns merge-blocker strings for a member's CI. `gh pr checks --json` exits
@@ -410,6 +429,7 @@ function cmdBatchMerge() {
     comment(prNumber, `${MARKER}\n🤖 Batch \`${key}\` is empty — nothing to merge.`);
     return;
   }
+  disarmRollup(key); // clear any prior auto-merge before the branch is rewritten
   const { merged, ejected } = buildRollup(key, list);
   const pr = upsertRollupPR(key, merged, ejected);
   if (!pr) {

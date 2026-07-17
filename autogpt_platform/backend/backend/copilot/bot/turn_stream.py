@@ -12,6 +12,7 @@ import logging
 import time
 from typing import Any
 from urllib.parse import quote
+from uuid import uuid4
 
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.workspace_refs import (
@@ -23,7 +24,12 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
 from . import sessions
-from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
+from .adapters.base import (
+    FileAttachment,
+    MessageContext,
+    PlatformAdapter,
+    StreamDraftOutcome,
+)
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .prompt import clamp_thread_name
@@ -33,6 +39,58 @@ logger = logging.getLogger(__name__)
 
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+
+# Cadence for live draft previews on platforms that support them — throttled
+# so a fast stream doesn't turn every chunk into an API call.
+DRAFT_UPDATE_INTERVAL_SECONDS = 1.0
+
+
+class DraftStreamer:
+    """Throttled live preview of the in-progress reply.
+
+    Purely additive on top of the buffered sends: drafts are ephemeral
+    previews (Telegram ``sendMessageDraft``), and the finished reply still
+    arrives via the normal send path, which supersedes them. Any failure
+    silently disables previews for the rest of the turn — content delivery
+    is never at stake.
+    """
+
+    def __init__(self, adapter: PlatformAdapter, target_id: str):
+        self._adapter = adapter
+        self._target_id = target_id
+        self._enabled = adapter.supports_stream_drafts
+        # Telegram requires a nonzero draft id; same id per turn = animated
+        # in-place updates.
+        self._draft_id = (uuid4().int & 0x7FFFFFFF) or 1
+        self._last_sent_at = 0.0
+        self._last_text = ""
+
+    async def update(self, text: str) -> None:
+        if not self._enabled:
+            return
+        now = time.monotonic()
+        if now - self._last_sent_at < DRAFT_UPDATE_INTERVAL_SECONDS:
+            return
+        preview = text.strip()
+        if not preview or preview == self._last_text:
+            return
+        try:
+            outcome = await self._adapter.send_stream_draft(
+                self._target_id, self._draft_id, preview
+            )
+        except Exception:
+            logger.debug("Stream draft update failed", exc_info=True)
+            self._enabled = False
+            return
+        if outcome is StreamDraftOutcome.STOPPED:
+            self._enabled = False
+            return
+        # SKIPPED = transient no-op (preview momentarily too long): leave the
+        # throttle untouched so the next chunk retries instead of eating a
+        # full interval of silence on a draft the user never saw.
+        if outcome is StreamDraftOutcome.SHOWN:
+            self._last_sent_at = now
+            self._last_text = preview
 
 
 async def send_denial(
@@ -173,6 +231,7 @@ class TurnStreamer:
 
         started_at = time.monotonic()
         reply_chars = 0
+        draft = DraftStreamer(adapter, target_id)
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
             async for chunk in self._api.stream_chat(
@@ -188,6 +247,7 @@ class TurnStreamer:
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
+                await draft.update(buffer)
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
                     if post and post.strip():

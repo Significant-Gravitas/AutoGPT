@@ -1,6 +1,6 @@
 # CoPilot Bot
 
-Multi-platform chat bot that bridges AutoPilot to Discord (and later Telegram, Slack, etc).
+Multi-platform chat bot that bridges AutoGPT to Discord, Slack, and Telegram (Teams/WhatsApp next).
 
 ## Running
 
@@ -38,6 +38,7 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 |----------|---------|
 | `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord (socket) adapter |
 | `AUTOPILOT_BOT_SLACK_TOKEN` + `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack bot token + signing secret — set **both** to mount the Slack (webhook / Events API) adapter on the main backend API |
+| `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`). Also disable group privacy mode via BotFather `/setprivacy` or the bot can't see @mentions in groups |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
 | `PLATFORMLINKINGMANAGER_HOST` | DNS name of the `PlatformLinkingManager` service pod (cluster-internal RPC) |
@@ -64,13 +65,19 @@ bot/
     │   ├── adapter.py  # Gateway connection, events, sends, thread creation
     │   ├── commands.py # Slash commands (/setup, /help, /unlink)
     │   └── config.py   # Discord token + platform limits
-    └── slack/          # WebhookAdapter — Slack Events API
-        ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
-        ├── commands.py      # Slash commands (/setup, /help, /unlink)
-        ├── config.py        # Slack token + signing secret + platform limits
-        ├── signing.py       # HMAC-SHA256 request signature verification
-        ├── text.py          # CommonMark → Slack mrkdwn
-        └── app-manifest.yaml # Importable Slack app definition (scopes, events, commands)
+    ├── slack/          # WebhookAdapter — Slack Events API
+    │   ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
+    │   ├── commands.py      # Slash commands (/setup, /help, /unlink)
+    │   ├── config.py        # Slack token + signing secret + platform limits
+    │   ├── signing.py       # HMAC-SHA256 request signature verification
+    │   ├── text.py          # CommonMark → Slack mrkdwn
+    │   └── app-manifest.yaml # Importable Slack app definition (scopes, events, commands)
+    └── telegram/       # WebhookAdapter — Telegram Bot API
+        ├── adapter.py       # Inbound updates route, sends, chat-model mapping
+        ├── api_client.py    # Thin httpx Bot API client (JSON + multipart + getFile)
+        ├── commands.py      # Bot commands (/setup, /help, /unlink)
+        ├── config.py        # BotFather token + webhook secret + platform limits
+        └── text.py          # CommonMark → Telegram HTML
 ```
 
 **Connector taxonomy.** `PlatformAdapter` is the outbound contract the core

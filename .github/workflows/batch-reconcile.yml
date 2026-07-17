@@ -17,8 +17,12 @@ jobs:
     # Only when a rollup branch's PR actually merged. Rollup branches are
     # `batch/rollup-<key>` (one per named batch); batch.mjs derives the key from
     # ROLLUP_BRANCH to close the right members and delete the right branch.
+    # Require the PR to originate from THIS repo — head.ref is just a branch name,
+    # so a merged fork PR named `batch/rollup-<key>` must not trigger reconcile
+    # (it could close a real batch's members).
     if: >-
       github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       startsWith(github.event.pull_request.head.ref, 'batch/rollup-')
     runs-on: ubuntu-latest
     env:
