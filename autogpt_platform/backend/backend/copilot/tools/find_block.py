@@ -5,6 +5,7 @@ from prisma.enums import ContentType
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
@@ -38,9 +39,13 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
 COPILOT_EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology;
+    # OrchestratorBlock - dynamically discovers downstream blocks via graph topology;
     # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
     "3b191d9f-356f-482d-8238-ba04b6d18381",
+    # AutoPilotBlock - has dedicated run_sub_session tool with async start +
+    # poll lifecycle. Calling it via run_block would block the parent stream
+    # for the sub-AutoPilot's entire runtime (15-45+ min typical).
+    "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
 }
 
 
@@ -73,6 +78,15 @@ class FindBlockTool(BaseTool):
                     "description": "Include full input/output schemas (for agent JSON generation).",
                     "default": False,
                 },
+                "for_agent_generation": {
+                    "type": "boolean",
+                    "description": (
+                        "Set to true when searching for blocks to use inside an agent graph "
+                        "(e.g. AgentInputBlock, AgentOutputBlock, OrchestratorBlock). "
+                        "Bypasses the CoPilot-only filter so graph-only blocks are visible."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["query"],
         }
@@ -85,6 +99,9 @@ class FindBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
+        include_schemas: bool = False,
+        for_agent_generation: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         """Search for blocks matching the query.
@@ -93,14 +110,16 @@ class FindBlockTool(BaseTool):
             user_id: User ID (required)
             session: Chat session
             query: Search query
+            include_schemas: Whether to include block schemas in results
+            for_agent_generation: When True, bypasses the CoPilot exclusion filter
+                so graph-only blocks (INPUT, OUTPUT, ORCHESTRATOR, etc.) are visible.
 
         Returns:
             BlockListResponse: List of matching blocks
             NoResultsResponse: No blocks found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
-        include_schemas = kwargs.get("include_schemas", False)
+        query = (query or "").strip()
         session_id = session.session_id
 
         if not query:
@@ -120,31 +139,46 @@ class FindBlockTool(BaseTool):
                             suggestions=["Search for an alternative block by name"],
                             session_id=session_id,
                         )
-                    if (
+                    is_excluded = (
                         block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                         or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-                    ):
-                        if block.block_type == BlockType.MCP_TOOL:
+                    )
+                    if is_excluded:
+                        # Graph-only blocks (INPUT, OUTPUT, MCP_TOOL, AGENT, etc.) are
+                        # exposed when building an agent graph so the LLM can inspect
+                        # their schemas and wire them as nodes.  In CoPilot direct use
+                        # they are not executable — guide the LLM to the right tool.
+                        if not for_agent_generation:
+                            if block.block_type == BlockType.MCP_TOOL:
+                                message = (
+                                    f"Block '{block.name}' (ID: {block.id}) cannot be "
+                                    "run directly in CoPilot. Use run_mcp_tool for "
+                                    "interactive MCP execution, or call find_block with "
+                                    "for_agent_generation=true to embed it in an agent graph."
+                                )
+                            else:
+                                message = (
+                                    f"Block '{block.name}' (ID: {block.id}) is not available "
+                                    "in CoPilot. It can only be used within agent graphs."
+                                )
                             return NoResultsResponse(
-                                message=(
-                                    f"Block '{block.name}' (ID: {block.id}) is not "
-                                    "runnable through find_block/run_block. Use "
-                                    "run_mcp_tool instead."
-                                ),
+                                message=message,
                                 suggestions=[
-                                    "Use run_mcp_tool to discover and run this MCP tool",
                                     "Search for an alternative block by name",
+                                    "Use this block in an agent graph instead",
                                 ],
                                 session_id=session_id,
                             )
+
+                    # Check block-level permissions — hide denied blocks entirely
+                    perms = get_current_permissions()
+                    if perms is not None and not perms.is_block_allowed(
+                        block.id, block.name
+                    ):
                         return NoResultsResponse(
-                            message=(
-                                f"Block '{block.name}' (ID: {block.id}) is not available "
-                                "in CoPilot. It can only be used within agent graphs."
-                            ),
+                            message=f"No blocks found for '{query}'",
                             suggestions=[
                                 "Search for an alternative block by name",
-                                "Use this block in an agent graph instead",
                             ],
                             session_id=session_id,
                         )
@@ -195,6 +229,7 @@ class FindBlockTool(BaseTool):
                 )
 
             # Enrich results with block information
+            perms = get_current_permissions()
             blocks: list[BlockInfoSummary] = []
             for result in results:
                 block_id = result["content_id"]
@@ -204,10 +239,17 @@ class FindBlockTool(BaseTool):
                 if not block or block.disabled:
                     continue
 
-                # Skip blocks excluded from CoPilot (graph-only blocks)
-                if (
+                # Graph-only blocks (INPUT, OUTPUT, MCP_TOOL, AGENT, etc.) are
+                # skipped in CoPilot direct use but surfaced for agent graph building.
+                if not for_agent_generation and (
                     block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                     or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                ):
+                    continue
+
+                # Skip blocks denied by execution permissions
+                if perms is not None and not perms.is_block_allowed(
+                    block.id, block.name
                 ):
                     continue
 

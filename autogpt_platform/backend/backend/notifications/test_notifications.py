@@ -324,11 +324,7 @@ class TestNotificationErrorHandling:
                 data = kwargs.get("data", {}).get("notifications", [])
                 if data and len(data) == 1:
                     # Check notification content to identify index 3
-                    if any(
-                        "Test Agent 3" in str(n.data)
-                        for n in data
-                        if hasattr(n, "data")
-                    ):
+                    if any("Test Agent 3" in str(n.data) for n in data):
                         # Return oversized message for index 3
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
@@ -345,11 +341,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None
@@ -448,11 +440,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             # Index 1 has generic API error
                             if i == 1:
                                 failed_indices.append(i)
@@ -559,11 +547,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None  # Success
@@ -598,3 +582,229 @@ class TestNotificationErrorHandling:
             # Info message about successful sends should be logged
             info_calls = [call[0][0] for call in mock_logger.info.call_args_list]
             assert any("sent and removed" in call.lower() for call in info_calls)
+
+
+class TestConsumerRetryWithBackoff:
+    """Verify _process_message_with_retry retries transient failures and only DLQs after exhausting attempts."""
+
+    @pytest.fixture
+    def manager(self):
+        # Build a NotificationManager without invoking __init__ side effects
+        # (RabbitMQ connections, threads). We only exercise the
+        # _process_message_with_retry method.
+        m = NotificationManager.__new__(NotificationManager)
+        return m
+
+    def _make_message(self, body: bytes = b"{}"):
+        msg = MagicMock()
+        msg.body = body
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_acks_on_success(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=True)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 1
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_process_returns_false_no_retry(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=False)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        # Explicit False = unrecoverable, do not retry
+        assert process.call_count == 1
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_retries_transient_then_succeeds(self, manager):
+        msg = self._make_message()
+        # Fail twice, succeed on 3rd attempt
+        process = AsyncMock(
+            side_effect=[RuntimeError("blip"), RuntimeError("blip"), True]
+        )
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 3
+        assert sleep.await_count == 2  # backoff sleeps before attempts 2 and 3
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dlqs_after_exhausting_retries(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("permanent boom"))
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # Defaults: 3 attempts total
+        assert process.call_count == 3
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_backoff_doubles_per_attempt(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("boom"))
+        sleeps = []
+
+        async def fake_sleep(s):
+            sleeps.append(s)
+
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", side_effect=fake_sleep
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # CONSUMER_RETRY_BACKOFF_SECONDS = 2, so delays are 2*(2**0)=2, 2*(2**1)=4
+        assert sleeps == [2, 4]
+
+    @pytest.mark.asyncio
+    async def test_inner_process_raises_so_retry_triggers(self, manager):
+        """Regression: the four `_process_*` methods must let transient
+        exceptions propagate so `_process_message_with_retry` can retry them.
+        If they swallow exceptions and return False instead, the retry loop
+        treats it as a permanent failure and DLQs on the first attempt.
+        """
+        # Stand up just enough state for _process_immediate to reach the
+        # email_sender call (mocked) and raise.
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link",
+            return_value="unsub",
+        ):
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            event = MagicMock()
+            event.user_id = "u1"
+            event.type = MagicMock()
+            # _process_immediate uses self._parse_message
+            manager._parse_message = MagicMock(return_value=event)
+
+            with pytest.raises(RuntimeError, match="postmark 502"):
+                await manager._process_immediate("{}")
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_true_on_send(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock()
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        result = await manager._process_admin_message("{}")
+        assert result is True
+        manager.email_sender.send_templated.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_admin_message("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_admin_message_propagates_send_failure(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with pytest.raises(RuntimeError, match="postmark 502"):
+            await manager._process_admin_message("{}")
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_immediate("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_when_no_email(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value=None)
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_true_when_user_opted_out(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            # Opted-out = "delivered" from queue's POV, no retry needed
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_undecodable_body_dlqs_without_retry(self, manager):
+        """Decode failure must reject-to-DLQ, not crash the consumer task."""
+        msg = MagicMock()
+        # Lone continuation byte — not valid UTF-8.
+        msg.body = b"\xff\xfe\x00"
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        process = AsyncMock()
+        await manager._process_message_with_retry(msg, process, "test_q")
+        process.assert_not_called()
+        msg.ack.assert_not_called()
+        msg.reject.assert_awaited_once_with(requeue=False)
+
+    @pytest.mark.asyncio
+    async def test_summary_unparseable_returns_false_not_raise(self, manager):
+        """_process_summary must return False (DLQ) on parse failure,
+        not raise a ValidationError that triggers retry-with-backoff.
+        """
+        result = await manager._process_summary("{not json")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_batch_not_old_enough_acks(self, manager):
+        """When the batch isn't ready to flush, the trigger message must be
+        acked — the notification is already persisted. Returning False would
+        DLQ the trigger and silently drop a future delivery.
+        """
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+        manager._should_batch = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_batch("{}")
+            assert result is True

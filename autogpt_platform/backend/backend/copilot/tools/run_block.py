@@ -4,33 +4,18 @@ import logging
 import uuid
 from typing import Any
 
-from backend.blocks import BlockType, get_block
-from backend.blocks._base import AnyBlockSchema
-from backend.copilot.constants import (
-    COPILOT_NODE_EXEC_ID_SEPARATOR,
-    COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
-)
+from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
-from backend.data.db_accessors import review_db
-from backend.data.execution import ExecutionContext
 
 from .base import BaseTool
-from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
-from .helpers import execute_block, get_inputs_from_schema, resolve_block_credentials
-from .models import (
-    BlockDetails,
-    BlockDetailsResponse,
-    ErrorResponse,
-    InputValidationErrorResponse,
-    ReviewRequiredResponse,
-    SetupInfo,
-    SetupRequirementsResponse,
-    ToolResponseBase,
-    UserReadiness,
+from .helpers import (
+    BlockPreparation,
+    check_hitl_review,
+    execute_block,
+    prepare_block_for_execution,
 )
-from .utils import build_missing_credentials_from_field_info
+from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +33,8 @@ class RunBlockTool(BaseTool):
             "Execute a block. IMPORTANT: Always get block_id from find_block first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
+            "Pass `validate_only: true` to inspect a block without running it "
+            "(safe pre-flight — returns schema + detected missing inputs). "
             "If review_required, use continue_run_block."
         )
 
@@ -64,6 +51,18 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
+                "validate_only": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, describe what the block would do without "
+                        "executing it or rendering any picker cards. Use this "
+                        "as a safe pre-flight for blocks with no required "
+                        "inputs (where empty input_data would otherwise "
+                        "execute immediately) or to check what a call "
+                        "_would_ need before committing."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["block_id", "input_data"],
         }
@@ -76,7 +75,11 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        *,
+        block_id: str = "",
+        input_data: dict | None = None,
+        validate_only: bool = False,
+        **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
 
@@ -91,8 +94,11 @@ class RunBlockTool(BaseTool):
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
+        # Session-level flag drives dry-run mode — not exposed to the LLM.
+        dry_run = session.dry_run
         session_id = session.session_id
 
         if not block_id:
@@ -113,267 +119,172 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Get the block
-        block = get_block(block_id)
-        if not block:
-            return ErrorResponse(
-                message=f"Block '{block_id}' not found",
-                session_id=session_id,
+        logger.info("Preparing block %s for user %s", block_id, user_id)
+
+        prep_or_err = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=input_data,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            dry_run=dry_run,
+            validate_only=validate_only,
+        )
+        if isinstance(prep_or_err, ToolResponseBase):
+            return prep_or_err
+        prep: BlockPreparation = prep_or_err
+
+        # Check block-level permissions before execution.
+        perms = get_current_permissions()
+        if perms is not None and not perms.is_block_allowed(block_id, prep.block.name):
+            available_hint = (
+                f"Allowed identifiers: {perms.blocks!r}. "
+                if not perms.blocks_exclude and perms.blocks
+                else (
+                    f"Blocked identifiers: {perms.blocks!r}. "
+                    if perms.blocks_exclude and perms.blocks
+                    else ""
+                )
             )
-        if block.disabled:
             return ErrorResponse(
-                message=f"Block '{block_id}' is disabled",
+                message=(
+                    f"Block '{prep.block.name}' ({block_id}) is not permitted "
+                    f"by the current execution permissions. {available_hint}"
+                    "Use find_block to discover blocks that are allowed."
+                ),
                 session_id=session_id,
             )
 
-        # Check if block is excluded from CoPilot (graph-only blocks)
-        if (
-            block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-            or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
+        # the real service so credentials and review gates are not needed.
+        # Input field validation (unrecognized fields) is already handled by
+        # prepare_block_for_execution above.
+        if dry_run:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            return await execute_block(
+                block=prep.block,
+                block_id=block_id,
+                input_data=prep.input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=synthetic_node_exec_id,
+                matched_credentials=prep.matched_credentials,
+                dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+
+        # Show block details when required inputs are not yet provided
+        # (two-step UX: first call returns the schema, second call actually
+        # executes) or when the caller asked for introspection only via
+        # validate_only — in both cases we return BlockDetailsResponse and
+        # do not execute.
+        if validate_only or not (
+            prep.required_non_credential_keys <= prep.provided_input_keys
         ):
-            # Provide actionable guidance for blocks with dedicated tools
-            if block.block_type == BlockType.MCP_TOOL:
-                hint = (
-                    " Use the `run_mcp_tool` tool instead — it handles "
-                    "MCP server discovery, authentication, and execution."
-                )
-            elif block.block_type == BlockType.AGENT:
-                hint = " Use the `run_agent` tool instead."
-            else:
-                hint = " This block is designed for use within graphs only."
-            return ErrorResponse(
-                message=f"Block '{block.name}' cannot be run directly.{hint}",
-                session_id=session_id,
-            )
-
-        logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
-
-        (
-            matched_credentials,
-            missing_credentials,
-        ) = await resolve_block_credentials(user_id, block, input_data)
-
-        # Get block schemas for details/validation
-        try:
-            input_schema: dict[str, Any] = block.input_schema.jsonschema()
-        except Exception as e:
-            logger.warning(
-                "Failed to generate input schema for block %s: %s",
-                block_id,
-                e,
-            )
-            return ErrorResponse(
-                message=f"Block '{block.name}' has an invalid input schema",
-                error=str(e),
-                session_id=session_id,
-            )
-        try:
-            output_schema: dict[str, Any] = block.output_schema.jsonschema()
-        except Exception as e:
-            logger.warning(
-                "Failed to generate output schema for block %s: %s",
-                block_id,
-                e,
-            )
-            return ErrorResponse(
-                message=f"Block '{block.name}' has an invalid output schema",
-                error=str(e),
-                session_id=session_id,
-            )
-
-        # Expand @@agptfile: refs in input_data with the block's input
-        # schema.  The generic _truncating wrapper skips opaque object
-        # properties (input_data has no declared inner properties in the
-        # tool schema), so file ref tokens are still intact here.
-        # Using the block's schema lets us return raw text for string-typed
-        # fields and parsed structures for list/dict-typed fields.
-        if input_data:
             try:
-                input_data = await expand_file_refs_in_args(
-                    input_data,
-                    user_id,
-                    session,
-                    input_schema=input_schema,
+                output_schema: dict[str, Any] = prep.block.output_schema.jsonschema()
+            except Exception as e:
+                logger.warning(
+                    "Failed to generate output schema for block %s: %s", block_id, e
                 )
-            except FileRefExpansionError as exc:
                 return ErrorResponse(
-                    message=(
-                        f"Failed to resolve file reference: {exc}. "
-                        "Ensure the file exists before referencing it."
-                    ),
+                    message=f"Block '{prep.block.name}' has an invalid output schema",
+                    error=str(e),
                     session_id=session_id,
                 )
 
-        if missing_credentials:
-            # Return setup requirements response with missing credentials
-            credentials_fields_info = block.input_schema.get_credentials_fields_info()
-            missing_creds_dict = build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
+            credentials_meta = list(prep.matched_credentials.values())
+            missing = sorted(
+                prep.required_non_credential_keys - prep.provided_input_keys
             )
-            missing_creds_list = list(missing_creds_dict.values())
-
-            return SetupRequirementsResponse(
-                message=(
-                    f"Block '{block.name}' requires credentials that are not configured. "
-                    "Please set up the required credentials before running this block."
-                ),
-                session_id=session_id,
-                setup_info=SetupInfo(
-                    agent_id=block_id,
-                    agent_name=block.name,
-                    user_readiness=UserReadiness(
-                        has_all_credentials=False,
-                        missing_credentials=missing_creds_dict,
-                        ready_to_run=False,
-                    ),
-                    requirements={
-                        "credentials": missing_creds_list,
-                        "inputs": self._get_inputs_list(block),
-                        "execution_modes": ["immediate"],
-                    },
-                ),
-                graph_id=None,
-                graph_version=None,
+            # Hide credential fields from the schema sent to the LLM — the
+            # backend resolves them automatically from the user's connected
+            # integrations, and exposing the picker shape (id/provider/type)
+            # tempts the LLM to fabricate values it cannot construct.
+            llm_input_schema = _strip_credentials_from_schema(
+                prep.input_schema, prep.credentials_fields
             )
-
-        # Check if this is a first attempt (required inputs missing)
-        # Return block details so user can see what inputs are needed
-        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        required_keys = set(input_schema.get("required", []))
-        required_non_credential_keys = required_keys - credentials_fields
-        provided_input_keys = set(input_data.keys()) - credentials_fields
-
-        # Check for unknown input fields
-        valid_fields = (
-            set(input_schema.get("properties", {}).keys()) - credentials_fields
-        )
-        unrecognized_fields = provided_input_keys - valid_fields
-        if unrecognized_fields:
-            return InputValidationErrorResponse(
-                message=(
-                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
-                    f"Block was not executed. Please use the correct field names from the schema."
-                ),
-                session_id=session_id,
-                unrecognized_fields=sorted(unrecognized_fields),
-                inputs=input_schema,
-            )
-
-        # Show details when not all required non-credential inputs are provided
-        if not (required_non_credential_keys <= provided_input_keys):
-            # Get credentials info for the response
-            credentials_meta = []
-            for field_name, cred_meta in matched_credentials.items():
-                credentials_meta.append(cred_meta)
-
+            if validate_only and not missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — all required inputs "
+                    f"provided, ready to run."
+                )
+            elif missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — missing required input(s): "
+                    f"{', '.join(repr(m) for m in missing)}."
+                )
+            else:
+                detail_msg = (
+                    f"Block '{prep.block.name}' details. Provide input_data "
+                    f"matching the inputs schema to execute the block. "
+                    f"Credentials are auto-resolved by the backend — do not "
+                    f"include them in input_data."
+                )
             return BlockDetailsResponse(
-                message=(
-                    f"Block '{block.name}' details. "
-                    "Provide input_data matching the inputs schema to execute the block."
-                ),
+                message=detail_msg,
                 session_id=session_id,
                 block=BlockDetails(
                     id=block_id,
-                    name=block.name,
-                    description=block.description or "",
-                    inputs=input_schema,
+                    name=prep.block.name,
+                    description=prep.block.description or "",
+                    inputs=llm_input_schema,
                     outputs=output_schema,
                     credentials=credentials_meta,
                 ),
                 user_authenticated=True,
             )
 
-        # Generate synthetic IDs for CoPilot context.
-        # Encode node_id in node_exec_id so it can be extracted later
-        # (e.g. for auto-approve, where we need node_id but have no NodeExecution row).
-        synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
-        synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
-
-        # Check for an existing WAITING review for this block with the same input.
-        # If the LLM retries run_block with identical input, we reuse the existing
-        # review instead of creating duplicates. Different inputs = new execution.
-        existing_reviews = await review_db().get_pending_reviews_for_execution(
-            synthetic_graph_id, user_id
+        hitl_or_err = await check_hitl_review(
+            prep,
+            user_id,
+            session_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
-        existing_review = next(
-            (
-                r
-                for r in existing_reviews
-                if r.node_id == synthetic_node_id
-                and r.status.value == "WAITING"
-                and r.payload == input_data
-            ),
-            None,
-        )
-        if existing_review:
-            return ReviewRequiredResponse(
-                message=(
-                    f"Block '{block.name}' requires human review. "
-                    f"After the user approves, call continue_run_block with "
-                    f"review_id='{existing_review.node_exec_id}' to execute."
-                ),
-                session_id=session_id,
-                block_id=block_id,
-                block_name=block.name,
-                review_id=existing_review.node_exec_id,
-                graph_exec_id=synthetic_graph_id,
-                input_data=input_data,
-            )
-
-        synthetic_node_exec_id = (
-            f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}"
-            f"{uuid.uuid4().hex[:8]}"
-        )
-
-        # Check for HITL review before execution.
-        # This creates the review record in the DB for CoPilot flows.
-        review_context = ExecutionContext(
-            user_id=user_id,
-            graph_id=synthetic_graph_id,
-            graph_exec_id=synthetic_graph_id,
-            graph_version=1,
-            node_id=synthetic_node_id,
-            node_exec_id=synthetic_node_exec_id,
-            sensitive_action_safe_mode=True,
-        )
-        should_pause, input_data = await block.is_block_exec_need_review(
-            input_data,
-            user_id=user_id,
-            node_id=synthetic_node_id,
-            node_exec_id=synthetic_node_exec_id,
-            graph_exec_id=synthetic_graph_id,
-            graph_id=synthetic_graph_id,
-            graph_version=1,
-            execution_context=review_context,
-            is_graph_execution=False,
-        )
-        if should_pause:
-            return ReviewRequiredResponse(
-                message=(
-                    f"Block '{block.name}' requires human review. "
-                    f"After the user approves, call continue_run_block with "
-                    f"review_id='{synthetic_node_exec_id}' to execute."
-                ),
-                session_id=session_id,
-                block_id=block_id,
-                block_name=block.name,
-                review_id=synthetic_node_exec_id,
-                graph_exec_id=synthetic_graph_id,
-                input_data=input_data,
-            )
+        if isinstance(hitl_or_err, ToolResponseBase):
+            return hitl_or_err
+        synthetic_node_exec_id, input_data = hitl_or_err
 
         return await execute_block(
-            block=block,
+            block=prep.block,
             block_id=block_id,
             input_data=input_data,
             user_id=user_id,
             session_id=session_id,
             node_exec_id=synthetic_node_exec_id,
-            matched_credentials=matched_credentials,
+            matched_credentials=prep.matched_credentials,
+            dry_run=dry_run,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
-    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
-        """Extract non-credential inputs from block schema."""
-        schema = block.input_schema.jsonschema()
-        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)
+
+def _strip_credentials_from_schema(
+    input_schema: dict[str, Any], credentials_fields: set[str]
+) -> dict[str, Any]:
+    """Return a copy of *input_schema* without credential properties.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out when it can't (see the Replicate "Seed Dance 2.0" copilot session).
+    """
+    if not credentials_fields:
+        return input_schema
+    cleaned = dict(input_schema)
+    properties = dict(cleaned.get("properties", {}))
+    for field in credentials_fields:
+        properties.pop(field, None)
+    cleaned["properties"] = properties
+    required = [r for r in cleaned.get("required", []) if r not in credentials_fields]
+    if required:
+        cleaned["required"] = required
+    elif "required" in cleaned:
+        del cleaned["required"]
+    return cleaned

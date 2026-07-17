@@ -10,6 +10,7 @@ import {
   CarouselPrevious,
 } from "@/components/__legacy__/ui/carousel";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { SparkleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
@@ -68,8 +69,13 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
           <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
           <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
         </div>
-        <div className="relative mt-2">
-          <CarouselIndicator className="-mt-6 ml-8" />
+        <div
+          className={cn(
+            "relative -mt-2",
+            featuredAgents.length === 3 && "md:hidden",
+          )}
+        >
+          <CarouselIndicator className="relative top-2 ml-8" />
           <CarouselPrevious
             afterClick={handlePrevSlide}
             className="right-14 h-10 w-10"

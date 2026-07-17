@@ -159,6 +159,7 @@ export const useEditAgentForm = ({
 
   return {
     form,
+    images,
     isSubmitting,
     handleFormSubmit,
     handleImagesChange,

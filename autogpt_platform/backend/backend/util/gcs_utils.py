@@ -78,6 +78,52 @@ async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
         await session.close()
 
 
+async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
+    """
+    Download only the first ``max_bytes`` of a GCS object using a Range request.
+
+    Falls back to a full download when the installed ``gcloud-aio`` build does
+    not accept a ``headers`` kwarg; the result is sliced to ``max_bytes`` either
+    way so callers always get at most ``max_bytes``.
+
+    Args:
+        bucket: GCS bucket name
+        blob: Blob path within the bucket
+        max_bytes: Maximum number of leading bytes to fetch
+
+    Returns:
+        Up to ``max_bytes`` of file content as bytes
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+    """
+    session = aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=10, force_close=True)
+    )
+    client: async_gcs_storage.Storage | None = None
+    try:
+        client = async_gcs_storage.Storage(session=session)
+        try:
+            content = await client.download(
+                bucket, blob, headers={"Range": f"bytes=0-{max(0, max_bytes - 1)}"}
+            )
+        except TypeError:
+            # Older gcloud-aio without a headers kwarg: full download, then slice.
+            content = await client.download(bucket, blob)
+        return content[:max_bytes]
+    except Exception as e:
+        if "404" in str(e) or "Not Found" in str(e):
+            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}")
+        raise
+    finally:
+        if client:
+            try:
+                await client.close()
+            except Exception:
+                pass  # Best-effort cleanup
+        await session.close()
+
+
 async def generate_signed_url(
     sync_client: gcs_storage.Client,
     bucket_name: str,

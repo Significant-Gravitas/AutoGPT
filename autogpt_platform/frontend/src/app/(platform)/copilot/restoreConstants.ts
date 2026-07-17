@@ -1,0 +1,1 @@
+export const RESTORE_STALL_TIMEOUT_MS = 6_000;

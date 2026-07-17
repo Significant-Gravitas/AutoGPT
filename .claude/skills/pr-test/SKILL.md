@@ -5,12 +5,95 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "1.0.0"
+  version: "2.1.0"
 ---
 
 # Manual E2E Test
 
 Test a PR/branch end-to-end by building the full platform, interacting via browser and API, capturing screenshots, and reporting results.
+
+## Critical Requirements
+
+These are NON-NEGOTIABLE. Every test run MUST satisfy ALL the following:
+
+### 1. Screenshots at Every Step
+- Take a screenshot at EVERY significant test step — not just at the end
+- Every test scenario MUST have at least one BEFORE and one AFTER screenshot
+- Name screenshots sequentially: `{NN}-{action}-{state}.png` (e.g., `01-credits-before.png`, `02-credits-after.png`)
+- If a screenshot is missing for a scenario, the test is INCOMPLETE — go back and take it
+
+### 2. Screenshots MUST Be Posted to PR
+- Push ALL screenshots to a temp branch `test-screenshots/pr-{N}`
+- Post a PR comment with ALL screenshots embedded inline using GitHub raw URLs
+- This is NOT optional — every test run MUST end with a PR comment containing screenshots
+- If screenshot upload fails, retry. If it still fails, list failed files and require manual drag-and-drop/paste attachment in the PR comment
+
+### 3. State Verification with Before/After Evidence
+- For EVERY state-changing operation (API call, user action), capture the state BEFORE and AFTER
+- Log the actual API response values (e.g., `credits_before=100, credits_after=95`)
+- Screenshot MUST show the relevant UI state change
+- Compare expected vs actual values explicitly — do not just eyeball it
+
+### 4. Negative Test Cases Are Mandatory
+- Test at least ONE negative case per feature (e.g., insufficient credits, invalid input, unauthorized access)
+- Verify error messages are user-friendly and accurate
+- Verify the system state did NOT change after a rejected operation
+
+### 5. Test Report Must Include Full Evidence
+Each test scenario in the report MUST have:
+- **Steps**: What was done (exact commands or UI actions)
+- **Expected**: What should happen
+- **Actual**: What actually happened
+- **API Evidence**: Before/after API response values for state-changing operations
+- **Screenshot Evidence**: Before/after screenshots with explanations
+
+## State Manipulation for Realistic Testing
+
+When testing features that depend on specific states (rate limits, credits, quotas):
+
+1. **Use Redis CLI to set counters directly:**
+   ```bash
+   # Find the Redis container
+   REDIS_CONTAINER=$(docker ps --format '{{.Names}}' | grep redis | head -1)
+   # Set a key with expiry
+   docker exec $REDIS_CONTAINER redis-cli SET key value EX ttl
+   # Example: Set rate limit counter to near-limit
+   docker exec $REDIS_CONTAINER redis-cli SET "rate_limit:user:$PR_TEST_USER_EMAIL" 99 EX 3600
+   # Example: Check current value
+   docker exec $REDIS_CONTAINER redis-cli GET "rate_limit:user:$PR_TEST_USER_EMAIL"
+   ```
+
+2. **Use API calls to check before/after state:**
+   ```bash
+   # BEFORE: Record current state
+   BEFORE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   echo "Credits BEFORE: $BEFORE"
+
+   # Perform the action...
+
+   # AFTER: Record new state and compare
+   AFTER=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   echo "Credits AFTER: $AFTER"
+   echo "Delta: $(( BEFORE - AFTER ))"
+   ```
+
+3. **Take screenshots BEFORE and AFTER state changes** — the UI must reflect the backend state change
+
+4. **Never rely on mocked/injected browser state** — always use real backend state. Do NOT use `agent-browser eval` to fake UI state. The backend must be the source of truth.
+
+5. **Use direct DB queries when needed:**
+   ```bash
+   # Query via Supabase's PostgREST or docker exec into the DB
+   docker exec supabase-db psql -U supabase_admin -d postgres -c "SELECT credits FROM user_credits WHERE user_id = '...';"
+   ```
+
+6. **After every API test, verify the state change actually persisted:**
+   ```bash
+   # Example: After a credits purchase, verify DB matches API
+   API_CREDITS=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   DB_CREDITS=$(docker exec supabase-db psql -U supabase_admin -d postgres -t -c "SELECT credits FROM user_credits WHERE user_id = '...';" | tr -d ' ')
+   [ "$API_CREDITS" = "$DB_CREDITS" ] && echo "CONSISTENT" || echo "MISMATCH: API=$API_CREDITS DB=$DB_CREDITS"
+   ```
 
 ## Arguments
 
@@ -43,9 +126,39 @@ RESULTS_DIR="$REPO_ROOT/test-results/PR-${PR_NUMBER}-${PR_TITLE}"
 mkdir -p $RESULTS_DIR
 ```
 
-**Test user credentials** (for logging into the UI or verifying results manually):
-- Email: `test@test.com`
-- Password: `testtest123`
+**Test user credentials** — required to log into the UI or call authenticated APIs.
+
+NEVER hardcode these in this SKILL, a PR comment, a screenshot, or any committed file. Sources, in priority order:
+
+1. **Env vars** (CI / preconfigured local shell): `$PR_TEST_USER_EMAIL` + `$PR_TEST_USER_PASSWORD`. If both are set, use them.
+2. **Interactive prompt** (everything else, including dev-preview runs): if the env vars are not set, ASK the user at the start of the run — e.g. "I need test-user credentials for this run; paste the email and password." Hold them in shell vars only for the duration of the run. Do not echo, log, or write them to disk.
+
+Acquire the variables — env first, prompt if missing — and only then lock them in:
+
+```bash
+# 1. Prefer env vars (CI / preconfigured shell). Prompt only for the
+#    specific var that is unset so an already-exported credential is
+#    not overwritten by the prompt when only the other one is missing.
+if [ -z "${PR_TEST_USER_EMAIL:-}" ] || [ -z "${PR_TEST_USER_PASSWORD:-}" ]; then
+  echo "Test user credentials required for this run."
+  if [ -z "${PR_TEST_USER_EMAIL:-}" ]; then
+    read -r -p   "Email:    " PR_TEST_USER_EMAIL
+  fi
+  if [ -z "${PR_TEST_USER_PASSWORD:-}" ]; then
+    read -r -s -p "Password: " PR_TEST_USER_PASSWORD
+    echo
+  fi
+  export PR_TEST_USER_EMAIL PR_TEST_USER_PASSWORD
+fi
+
+# 2. Lock them in — fail loudly if either is STILL unset (e.g. the user
+#    pressed Enter on an empty prompt). The error message names the var so
+#    the agent / operator knows what to fix.
+: "${PR_TEST_USER_EMAIL:?PR_TEST_USER_EMAIL is empty after env+prompt — supply a value before re-running}"
+: "${PR_TEST_USER_PASSWORD:?PR_TEST_USER_PASSWORD is empty after env+prompt — supply a value before re-running}"
+```
+
+For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's Supabase — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default).
 
 ## Step 1: Understand the PR
 
@@ -53,14 +166,20 @@ Before testing, understand what changed:
 
 ```bash
 cd $WORKTREE_PATH
+
+# Read PR description to understand the WHY
+gh pr view {N} --json body --jq '.body'
+
 git log --oneline dev..HEAD | head -20
 git diff dev --stat
 ```
 
-Read the changed files to understand:
-1. What feature/fix does this PR implement?
-2. What components are affected? (backend, frontend, copilot, executor, etc.)
-3. What are the key user-facing behaviors to test?
+Read the PR description (Why / What / How) and changed files to understand:
+0. **Why** does this PR exist? What problem does it solve?
+1. **What** feature/fix does this PR implement?
+2. **How** does it work? What's the approach?
+3. What components are affected? (backend, frontend, copilot, executor, etc.)
+4. What are the key user-facing behaviors to test?
 
 ## Step 2: Write test scenarios
 
@@ -75,15 +194,135 @@ Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
 
 ## API Tests (if applicable)
 1. [Endpoint] — [expected behavior]
+   - Before state: [what to check before]
+   - After state: [what to verify changed]
 
 ## UI Tests (if applicable)
 1. [Page/component] — [interaction to test]
+   - Screenshot before: [what to capture]
+   - Screenshot after: [what to capture]
 
-## Negative Tests
-1. [What should NOT happen]
+## Negative Tests (REQUIRED — at least one per feature)
+1. [What should NOT happen] — [how to trigger it]
+   - Expected error: [what error message/code]
+   - State unchanged: [what to verify did NOT change]
 ```
 
-**Be critical** — include edge cases, error paths, and security checks.
+**Be critical** — include edge cases, error paths, and security checks. Every scenario MUST specify what screenshots to take and what state to verify.
+
+## Step 3.0: Claim the testing lock (coordinate parallel agents)
+
+Multiple worktrees share the same host — Docker infra (postgres, redis, clamav), app ports (3000/8006/…), and the test user. Two agents running `/pr-test` concurrently will corrupt each other's state (connection-pool exhaustion, port binds failing silently, cross-test assertions). Use the root-worktree lock file to take turns.
+
+### Lock file contract
+
+Path (**always** the root worktree so all siblings see it): `$REPO_ROOT/.ign.testing.lock`
+
+Body (one `key=value` per line):
+```
+holder=<pr-XXXXX-purpose>
+pid=<pid-or-"self">
+started=<iso8601>
+heartbeat=<iso8601, updated every ~2 min>
+worktree=<full path>
+branch=<branch name>
+intent=<one-line description + rough duration>
+```
+
+### Claim
+
+```bash
+LOCK=$REPO_ROOT/.ign.testing.lock
+NOW=$(date -u +%Y-%m-%dT%H:%MZ)
+STALE_AFTER_MIN=5
+
+if [ -f "$LOCK" ]; then
+  HB=$(grep '^heartbeat=' "$LOCK" | cut -d= -f2)
+  HB_EPOCH=$(date -j -f '%Y-%m-%dT%H:%MZ' "$HB" +%s 2>/dev/null || date -d "$HB" +%s 2>/dev/null || echo 0)
+  AGE_MIN=$(( ( $(date -u +%s) - HB_EPOCH ) / 60 ))
+  if [ "$AGE_MIN" -gt "$STALE_AFTER_MIN" ]; then
+    echo "WARN: stale lock (${AGE_MIN}m old) — reclaiming"
+    cat "$LOCK" | sed 's/^/  stale: /'
+  else
+    echo "Another agent holds the lock:"; cat "$LOCK"
+    echo "Wait until released or resume after $((STALE_AFTER_MIN - AGE_MIN))m."
+    exit 1
+  fi
+fi
+
+cat > "$LOCK" <<EOF
+holder=pr-${PR_NUMBER}-e2e
+pid=self
+started=$NOW
+heartbeat=$NOW
+worktree=$WORKTREE_PATH
+branch=$(cd $WORKTREE_PATH && git branch --show-current)
+intent=E2E test PR #${PR_NUMBER}, native mode, ~60min
+EOF
+echo "Lock claimed"
+```
+
+### Heartbeat (MUST run in background during the whole test)
+
+Without a heartbeat a crashed agent keeps the lock forever. Run this as a background process right after claim:
+
+```bash
+(while true; do
+   sleep 120
+   [ -f "$LOCK" ] || exit 0   # lock released → exit heartbeat
+   perl -i -pe "s/^heartbeat=.*/heartbeat=$(date -u +%Y-%m-%dT%H:%MZ)/" "$LOCK"
+ done) &
+HEARTBEAT_PID=$!
+echo "$HEARTBEAT_PID" > /tmp/pr-test-heartbeat.pid
+```
+
+### Release (always — even on failure)
+
+```bash
+kill "$HEARTBEAT_PID" 2>/dev/null
+rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock" \
+    >> $REPO_ROOT/.ign.testing.log
+```
+
+Use a `trap` so release runs even on `exit 1`:
+```bash
+trap 'kill "$HEARTBEAT_PID" 2>/dev/null; rm -f "$LOCK"' EXIT INT TERM
+```
+
+### **Release the lock AS SOON AS the test run is done**
+
+The lock guards **test execution**, not **app lifecycle**. Once Step 5 (record results) and Step 6 (post PR comment) are complete, release the lock IMMEDIATELY — even if:
+
+- The native `poetry run app` / `pnpm dev` processes are still running so the user can keep poking at the app manually.
+- You're leaving docker containers up.
+- You're tailing logs for a minute or two.
+
+Keeping the lock held past the test run is the single most common way `/pr-test` stalls other agents. **The app staying up is orthogonal to the lock; don't conflate them.** Sibling worktrees running their own `/pr-test` will kill the stray processes and free the ports themselves (Step 3c/3e-native handle that) — they just need the lock file gone.
+
+Concretely, the sequence at the end of every `/pr-test` run (success or failure) is:
+
+```bash
+# 1. Write the final report + post PR comment — done above in Step 5/6.
+# 2. Release the lock right now, even if the app is still up.
+kill "$HEARTBEAT_PID" 2>/dev/null
+rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock (app may still be running)" \
+    >> $REPO_ROOT/.ign.testing.log
+# 3. Optionally leave the app running and note it so the user knows:
+echo "Native stack still running on :3000 / :8006 for manual poking. Kill with:"
+echo "  pkill -9 -f 'poetry run app'; pkill -9 -f 'next-server|next dev'"
+```
+
+If a sibling agent's `/pr-test` needs to take over, it'll do the kill+rebuild dance from Step 3c/3e-native on its own — your only job is to not hold the lock file past the end of your test.
+
+### Shared status log
+
+`$REPO_ROOT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
+```bash
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] <message>" \
+    >> $REPO_ROOT/.ign.testing.log
+```
 
 ## Step 3: Environment setup
 
@@ -153,7 +392,87 @@ docker ps --format "{{.Names}}" | grep -E "rest_server|executor|copilot|websocke
 done
 ```
 
-### 3e. Build and start
+**Native mode also:** when running the app natively (see 3e-native), kill any stray host processes and free the app ports before starting — otherwise `poetry run app` and `pnpm dev` will fail to bind.
+
+```bash
+# Kill stray native app processes from prior runs
+pkill -9 -f "python.*backend" 2>/dev/null || true
+pkill -9 -f "poetry run app" 2>/dev/null || true
+pkill -9 -f "next-server|next dev" 2>/dev/null || true
+
+# Free app ports (errors per port are ignored — port may simply be unused)
+for port in 3000 8006 8001 8002 8005 8008; do
+  lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
+done
+```
+
+### 3e-native. Run the app natively (PREFERRED for iterative dev)
+
+Native mode runs infra (postgres, supabase, redis, rabbitmq, clamav) in docker but runs the backend and frontend directly on the host. This avoids the 3-8 minute `docker compose build` cycle on every backend change — code edits are picked up on process restart (seconds) instead of a full image rebuild.
+
+**When to prefer native mode (default for this skill):**
+- Iterative dev/debug loops where you're editing backend or frontend code between test runs
+- Any PR that touches Python/TS source but not Dockerfiles, compose config, or infra images
+- Fast repro of a failing scenario — restart `poetry run app` in a couple of seconds
+
+**When to prefer docker mode (3e fallback):**
+- Testing changes to `Dockerfile`, `docker-compose.yml`, or base images
+- Production-parity smoke tests (exact container env, networking, volumes)
+- CI-equivalent runs where you need the exact image that'll ship
+
+**Note on 3b (copilot auth):** no npm install anywhere. `poetry install` pulls in `claude_agent_sdk`, which ships its own Claude CLI binary — available on `PATH` whenever you run commands via `poetry run` (native) OR whenever the copilot_executor container is built from its Poetry lockfile (docker). The OAuth token extraction still applies (same `refresh_claude_token.sh` call).
+
+**Preamble:** before starting native, run the kill-stray + free-ports block from 3c's "Native mode also" subsection.
+
+**1. Start infra only (one-time per session):**
+
+```bash
+cd $PLATFORM_DIR && docker compose --profile local up deps --detach --remove-orphans --build
+```
+
+This brings up postgres/supabase/redis/rabbitmq/clamav and skips all app services.
+
+**2. Start the backend natively:**
+
+```bash
+cd $BACKEND_DIR && (poetry run app 2>&1 | tee .ign.application.logs) &
+```
+
+`poetry run app` spawns **all** app subprocesses — `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, `database_manager` — inside ONE parent process. No separate containers, no separate terminals. The `.ign.application.logs` prefix is already gitignored.
+
+**3. Wait for the backend on :8006 BEFORE starting the frontend.** This ordering matters — the frontend's `pnpm dev` startup invokes `generate-api-queries`, which fetches `/openapi.json` from the backend. If the backend isn't listening yet, `pnpm dev` fails immediately.
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8006/docs 2>/dev/null)" = "200" ]; then
+    echo "Backend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+**4. Start the frontend natively:**
+
+```bash
+cd $FRONTEND_DIR && (pnpm dev 2>&1 | tee .ign.frontend.logs) &
+```
+
+**5. Wait for the frontend on :3000:**
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null)" = "200" ]; then
+    echo "Frontend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+Once both are up, skip 3e/3f and go straight to **3g/3h** (feature flags / test user creation).
+
+### 3e. Build and start (docker — fallback)
 
 ```bash
 cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
@@ -189,30 +508,55 @@ done
 ANON_KEY=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | sed 's/.*NEXT_PUBLIC_SUPABASE_ANON_KEY=//' | tr -d '[:space:]')
 
 # Signup (idempotent — returns "User already registered" if exists)
+SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p}')
 RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"test@test.com","password":"testtest123"}')
+  -d "$SIGNUP_PAYLOAD")
 
-# If "Database error finding user", restart supabase-auth and retry
+# If "Database error finding user", restart supabase-auth and retry —
+# capture the retry result back into $RESULT so the token step below
+# reads the post-retry state, not the original failure.
 if echo "$RESULT" | grep -q "Database error"; then
   docker restart supabase-auth && sleep 5
-  curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
+  RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
     -H "apikey: $ANON_KEY" \
     -H 'Content-Type: application/json' \
-    -d '{"email":"test@test.com","password":"testtest123"}'
+    -d "$SIGNUP_PAYLOAD")
 fi
 
 # Get auth token
 TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"test@test.com","password":"testtest123"}' | jq -r '.access_token // ""')
+  -d "$SIGNUP_PAYLOAD" | jq -r '.access_token // ""')
 ```
 
 **Use this token for ALL API calls:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
+```
+
+### 3i. Disable onboarding for test user
+
+The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in `completedSteps`.
+Mark it complete via the backend API so every browser test lands on the real feature UI:
+
+```bash
+ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
+  "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
+  -H "Authorization: Bearer $TOKEN")
+echo "Onboarding bypass: $ONBOARDING_RESULT"
+
+# Verify it took effect
+ONBOARDING_STATUS=$(curl -s --max-time 30 \
+  "http://localhost:8006/api/onboarding/completed" \
+  -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
+echo "Onboarding completed: $ONBOARDING_STATUS"
+if [ "$ONBOARDING_STATUS" != "true" ]; then
+  echo "ERROR: onboarding bypass failed — browser tests will hit /onboarding instead of the target feature. Investigate before proceeding."
+  exit 1
+fi
 ```
 
 ## Step 4: Run tests
@@ -233,7 +577,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 
 ### API testing
 
-Use `curl` with the auth token for backend API tests:
+Use `curl` with the auth token for backend API tests. **For EVERY API call that changes state, record before/after values:**
 
 ```bash
 # Example: List agents
@@ -256,6 +600,27 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8006/api/graphs/{graph_id}/executions/{exec_id}" | jq .
 ```
 
+**State verification pattern (use for EVERY state-changing API call):**
+```bash
+# 1. Record BEFORE state
+BEFORE_STATE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/{resource} | jq '{relevant_fields}')
+echo "BEFORE: $BEFORE_STATE"
+
+# 2. Perform the action
+ACTION_RESULT=$(curl -s -X POST ... | jq .)
+echo "ACTION RESULT: $ACTION_RESULT"
+
+# 3. Record AFTER state
+AFTER_STATE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/{resource} | jq '{relevant_fields}')
+echo "AFTER: $AFTER_STATE"
+
+# 4. Log the comparison
+echo "=== STATE CHANGE VERIFICATION ==="
+echo "Before: $BEFORE_STATE"
+echo "After: $AFTER_STATE"
+echo "Expected change: {describe what should have changed}"
+```
+
 ### Browser testing with agent-browser
 
 ```bash
@@ -269,9 +634,9 @@ agent-browser --session-name pr-test open 'http://localhost:3000/login' --timeou
 # Get interactive elements
 agent-browser --session-name pr-test snapshot | grep "textbox\|button"
 
-# Login
-agent-browser --session-name pr-test fill {email_ref} "test@test.com"
-agent-browser --session-name pr-test fill {password_ref} "testtest123"
+# Login (read creds from env — set PR_TEST_USER_EMAIL / PR_TEST_USER_PASSWORD or ask the user)
+agent-browser --session-name pr-test fill {email_ref} "$PR_TEST_USER_EMAIL"
+agent-browser --session-name pr-test fill {password_ref} "$PR_TEST_USER_PASSWORD"
 agent-browser --session-name pr-test click {login_button_ref}
 sleep 5
 
@@ -303,6 +668,22 @@ agent-browser --session-name pr-test snapshot | grep "text:"
 - `/marketplace` — Marketplace
 
 ### Checking logs
+
+**Native mode:** when running via `poetry run app` + `pnpm dev`, all app logs stream to the `.ign.*.logs` files written by the `tee` pipes in 3e-native. `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, and `database_manager` are all subprocesses of the single `poetry run app` parent, so their output is interleaved in `.ign.application.logs`.
+
+```bash
+# Backend (all app subprocesses interleaved)
+tail -f $BACKEND_DIR/.ign.application.logs
+
+# Frontend (Next.js dev server)
+tail -f $FRONTEND_DIR/.ign.frontend.logs
+
+# Filter for errors across either log
+grep -iE "error|exception|traceback" $BACKEND_DIR/.ign.application.logs | tail -20
+grep -iE "error|exception|traceback" $FRONTEND_DIR/.ign.frontend.logs | tail -20
+```
+
+**Docker mode:**
 
 ```bash
 # Backend REST server
@@ -346,59 +727,105 @@ agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --time
 # ... fill chat input and press Enter, wait 20-30s for response
 ```
 
-## Step 5: Record results
+## Step 5: Record results and take screenshots
 
-For each test scenario, record in `$RESULTS_DIR/test-report.md`:
+**Take a screenshot at EVERY significant test step** — before and after interactions, on success, and on failure. This is NON-NEGOTIABLE.
+
+**Required screenshot pattern for each test scenario:**
+```bash
+# BEFORE the action
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{scenario}-before.png
+
+# Perform the action...
+
+# AFTER the action
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{scenario}-after.png
+```
+
+**Naming convention:**
+```bash
+# Examples:
+# $RESULTS_DIR/01-login-page-before.png
+# $RESULTS_DIR/02-login-page-after.png
+# $RESULTS_DIR/03-credits-page-before.png
+# $RESULTS_DIR/04-credits-purchase-after.png
+# $RESULTS_DIR/05-negative-insufficient-credits.png
+# $RESULTS_DIR/06-error-state.png
+```
+
+**Minimum requirements:**
+- At least TWO screenshots per test scenario (before + after)
+- At least ONE screenshot for each negative test case showing the error state
+- If a test fails, screenshot the failure state AND any error logs visible in the UI
+
+## Step 6: Show results to user with screenshots
+
+**CRITICAL: After all tests complete, you MUST show every screenshot to the user using the Read tool, with an explanation of what each screenshot shows.** This is the most important part of the test report — the user needs to visually verify the results.
+
+For each screenshot:
+1. Use the `Read` tool to display the PNG file (Claude can read images)
+2. Write a 1-2 sentence explanation below it describing:
+   - What page/state is being shown
+   - What the screenshot proves (which test scenario it validates)
+   - Any notable details visible in the UI
+
+Format the output like this:
 
 ```markdown
-# E2E Test Report: PR #{N} — {title}
-Date: {date}
-Branch: {branch}
-Worktree: {path}
+### Screenshot 1: {descriptive title}
+[Read the PNG file here]
 
-## Environment
-- Docker services: [list running containers]
-- API keys: OpenRouter={present/missing}, E2B={present/missing}
+**What it shows:** {1-2 sentence explanation of what this screenshot proves}
 
-## Test Results
-
-### Scenario 1: {name}
-**Steps:**
-1. ...
-2. ...
-**Expected:** ...
-**Actual:** ...
-**Result:** PASS / FAIL
-**Screenshot:** {filename}.png
-**Logs:** (if relevant)
-
-### Scenario 2: {name}
-...
-
-## Summary
-- Total: X scenarios
-- Passed: Y
-- Failed: Z
-- Bugs found: [list]
+---
 ```
 
-Take screenshots at each significant step:
+After showing all screenshots, output a **detailed** summary table:
+
+| # | Scenario | Result | API Evidence | Screenshot Evidence |
+|---|----------|--------|-------------|-------------------|
+| 1 | {name} | PASS/FAIL | Before: X, After: Y | 01-before.png, 02-after.png |
+| 2 | ... | ... | ... | ... |
+
+**IMPORTANT:** As you show each screenshot and record test results, persist them in shell variables for Step 7:
+
 ```bash
-agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{description}.png
+# Build these variables during Step 6 — they are required by Step 7's script
+# NOTE: declare -A requires Bash 4.0+. This is standard on modern systems (macOS ships zsh
+# but Homebrew bash is 5.x; Linux typically has bash 5.x). If running on Bash <4, use a
+# plain variable with a lookup function instead.
+declare -A SCREENSHOT_EXPLANATIONS=(
+  ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
+  ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
+  # ... one entry per screenshot, using the same explanations you showed the user above
+)
+
+TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-login-after.png |
+| 2 | Credits purchase | PASS | Before: 100, After: 95 | 03-credits-before.png, 04-credits-after.png |
+| 3 | Insufficient credits (negative) | PASS | Credits: 0, rejected | 05-insufficient-credits-error.png |"
+# ... one row per test scenario with actual results
 ```
 
-## Step 6: Report results
+## Step 7: Post test report as PR comment with screenshots
 
-After all tests complete, output a summary to the user:
+Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
 
-1. Table of all scenarios with PASS/FAIL
-2. Screenshots of failures (read the PNG files to show them)
-3. Any bugs found with details
-4. Recommendations
+**This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
-### Post test results as PR comment with screenshots
+**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
 
-Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees).
+**CRITICAL — NEVER paste absolute local paths into the PR comment.** Strings like `/Users/…`, `/home/…`, `C:\…` are useless to every reviewer except you. Before posting, grep the final body for `/Users/`, `/home/`, `/tmp/`, `/private/`, `C:\`, `~/` and either drop those lines entirely or rewrite them as repo-relative paths (`autogpt_platform/backend/…`). The PR comment is an artifact reviewers on GitHub read — it must be self-contained on github.com. Keep local paths in `$RESULTS_DIR/test-report.md` for yourself; only copy the *content* they reference (excerpts, test names, log lines) into the PR comment, not the path.
+
+**Pre-post sanity check** (paste after building the comment body, before `gh api ... comments`):
+
+```bash
+# Reject any local-looking absolute path or home-dir shortcut in the body
+if grep -nE '(^|[^A-Za-z])(/Users/|/home/|/tmp/|/private/|C:\\|~/)[A-Za-z0-9]' "$COMMENT_FILE" ; then
+  echo "ABORT: local filesystem paths detected in PR comment body."
+  echo "Remove or rewrite as repo-relative (autogpt_platform/...) before posting."
+  exit 1
+fi
+```
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
@@ -406,92 +833,283 @@ REPO="Significant-Gravitas/AutoGPT"
 SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
 SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
 
-# Step 1: Create blobs for each screenshot
-declare -a TREE_ENTRIES
-for img in $RESULTS_DIR/*.png; do
-  BASENAME=$(basename "$img")
-  B64=$(base64 < "$img")
-  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
-  TREE_ENTRIES+=("-f" "tree[][path]=${SCREENSHOTS_DIR}/${BASENAME}" "-f" "tree[][mode]=100644" "-f" "tree[][type]=blob" "-f" "tree[][sha]=${BLOB_SHA}")
-done
-
-# Step 2: Create a tree with all screenshot blobs
-# Build the tree JSON manually since gh api doesn't handle arrays well
+# Step 1: Create blobs for each screenshot and build tree JSON
+# Retry each blob upload up to 3 times. If still failing, list them at end of report.
+shopt -s nullglob
+SCREENSHOT_FILES=("$RESULTS_DIR"/*.png)
+if [ ${#SCREENSHOT_FILES[@]} -eq 0 ]; then
+  echo "ERROR: No screenshots found in $RESULTS_DIR. Test run is incomplete."
+  exit 1
+fi
 TREE_JSON='['
 FIRST=true
-for img in $RESULTS_DIR/*.png; do
+FAILED_UPLOADS=()
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
   B64=$(base64 < "$img")
-  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
+  BLOB_SHA=""
+  for attempt in 1 2 3; do
+    BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha' 2>/dev/null || true)
+    [ -n "$BLOB_SHA" ] && break
+    sleep 1
+  done
+  if [ -z "$BLOB_SHA" ]; then
+    FAILED_UPLOADS+=("$img")
+    continue
+  fi
   if [ "$FIRST" = true ]; then FIRST=false; else TREE_JSON+=','; fi
   TREE_JSON+="{\"path\":\"${SCREENSHOTS_DIR}/${BASENAME}\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"${BLOB_SHA}\"}"
 done
 TREE_JSON+=']'
 
-TREE_SHA=$(echo "$TREE_JSON" | gh api "repos/${REPO}/git/trees" --input - -f base_tree="" --jq '.sha' 2>/dev/null \
-  || echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
+# Step 2: Create tree, commit, and branch ref
+TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
 
-# Step 3: Create a commit pointing to that tree
-COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-  -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-  -f tree="$TREE_SHA" \
-  --jq '.sha')
+# Resolve parent commit so screenshots are chained, not orphan root commits
+PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || echo "")
+if [ -n "$PARENT_SHA" ]; then
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    -f "parents[]=$PARENT_SHA" \
+    --jq '.sha')
+else
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    --jq '.sha')
+fi
 
-# Step 4: Create or update the ref (branch) — no local checkout needed
 gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
   || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
-    -X PATCH -f sha="$COMMIT_SHA" -f force=true
+    -X PATCH -f sha="$COMMIT_SHA" -F force=true
+```
 
-# Step 5: Build image markdown and post the comment
+Then post the comment with **inline images AND explanations for each screenshot**:
+
+```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
+
+# Build image markdown using uploaded image URLs; skip FAILED_UPLOADS (listed separately)
+
 IMAGE_MARKDOWN=""
-for img in $RESULTS_DIR/*.png; do
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
-  IMAGE_MARKDOWN="$IMAGE_MARKDOWN
-![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})"
+  TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+  # Skip images that failed to upload — they will be listed at the end
+  IS_FAILED=false
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    [ "$(basename "$failed")" = "$BASENAME" ] && IS_FAILED=true && break
+  done
+  if [ "$IS_FAILED" = true ]; then
+    continue
+  fi
+  EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
+  if [ -z "$EXPLANATION" ]; then
+    echo "ERROR: Missing screenshot explanation for $BASENAME. Add it to SCREENSHOT_EXPLANATIONS in Step 6."
+    exit 1
+  fi
+  IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
+### ${TITLE}
+![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
+${EXPLANATION}
+"
 done
 
-gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -f body="$(cat <<EOF
-## 🧪 E2E Test Report
+# Write comment body to file to avoid shell interpretation issues with special characters
+COMMENT_FILE=$(mktemp)
+# If any uploads failed, append a section listing them with instructions
+FAILED_SECTION=""
+if [ ${#FAILED_UPLOADS[@]} -gt 0 ]; then
+  FAILED_SECTION="
+## ⚠️ Failed Screenshot Uploads
+The following screenshots could not be uploaded via the GitHub API after 3 retries.
+**To add them:** drag-and-drop or paste these files into a PR comment manually:
+"
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    FAILED_SECTION="${FAILED_SECTION}
+- \`$(basename "$failed")\` (local path: \`$failed\`)"
+  done
+  FAILED_SECTION="${FAILED_SECTION}
 
-$(cat $RESULTS_DIR/test-report.md)
+**Run status:** INCOMPLETE until the files above are manually attached and visible inline in the PR."
+fi
 
-### Screenshots
+cat > "$COMMENT_FILE" <<INNEREOF
+## E2E Test Report
+
+| # | Scenario | Result | API Evidence | Screenshot Evidence |
+|---|----------|--------|-------------|-------------------|
+${TEST_RESULTS_TABLE}
+
 ${IMAGE_MARKDOWN}
-EOF
-)"
+${FAILED_SECTION}
+INNEREOF
+
+gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
+rm -f "$COMMENT_FILE"
+
+# Verify the posted comment contains inline images — exit 1 if none found
+# Use separate --paginate + jq pipe: --jq applies per-page, not to the full list
+LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -r '.[-1].body // ""')
+if ! echo "$LAST_COMMENT" | grep -q '!\['; then
+  echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
+  exit 1
+fi
+echo "✓ Inline images verified in posted comment"
 ```
+
+**The PR comment MUST include:**
+1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
+2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
+3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
+## Step 8: Evaluate and post a formal PR review
+
+After the test comment is posted, evaluate whether the run was thorough enough to make a merge decision, then post a formal GitHub review (approve or request changes). **This step is mandatory — every test run MUST end with a formal review decision.**
+
+### Evaluation criteria
+
+Re-read the PR description:
+```bash
+gh pr view "$PR_NUMBER" --json body --jq '.body' --repo "$REPO"
+```
+
+Score the run against each criterion:
+
+| Criterion | Pass condition |
+|-----------|---------------|
+| **Coverage** | Every feature/change described in the PR has at least one test scenario |
+| **All scenarios pass** | No FAIL rows in the results table |
+| **Negative tests** | At least one failure-path test per feature (invalid input, unauthorized, edge case) |
+| **Before/after evidence** | Every state-changing API call has before/after values logged |
+| **Screenshots are meaningful** | Screenshots show the actual state change, not just a loading spinner or blank page |
+| **No regressions** | Existing core flows (login, agent create/run) still work |
+
+### Decision logic
+
+```
+ALL criteria pass                            → APPROVE
+Any scenario FAIL or missing PR feature      → REQUEST_CHANGES (list gaps)
+Evidence weak (no before/after, vague shots) → REQUEST_CHANGES (list what's missing)
+```
+
+### Post the review
+
+```bash
+REVIEW_FILE=$(mktemp)
+
+# Count results
+PASS_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "PASS" || true)
+FAIL_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "FAIL" || true)
+TOTAL=$(( PASS_COUNT + FAIL_COUNT ))
+
+# List any coverage gaps found during evaluation (populate this array as you assess)
+# e.g. COVERAGE_GAPS=("PR claims to add X but no test covers it")
+COVERAGE_GAPS=()
+```
+
+**If APPROVING** — all criteria met, zero failures, full coverage:
+
+```bash
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — APPROVED
+
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed.
+
+**Coverage:** All features described in the PR were exercised.
+
+**Evidence:** Before/after API values logged for all state-changing operations; screenshots show meaningful state transitions.
+
+**Negative tests:** Failure paths tested for each feature.
+
+No regressions observed on core flows.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --approve --body "$(cat "$REVIEW_FILE")"
+echo "✅ PR approved"
+```
+
+**If REQUESTING CHANGES** — any failure, coverage gap, or missing evidence:
+
+```bash
+FAIL_LIST=$(echo "$TEST_RESULTS_TABLE" | grep "FAIL" | awk -F'|' '{print "- Scenario" $2 "failed"}' || true)
+
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — Changes Requested
+
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed, ${FAIL_COUNT} failed.
+
+### Required before merge
+
+${FAIL_LIST}
+$(for gap in "${COVERAGE_GAPS[@]}"; do echo "- $gap"; done)
+
+Please fix the above and re-run the E2E tests.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes --body "$(cat "$REVIEW_FILE")"
+echo "❌ Changes requested"
+```
+
+```bash
+rm -f "$REVIEW_FILE"
+```
+
+**Rules:**
+- In `--fix` mode, fix all failures before posting the review — the review reflects the final state after fixes
+- Never approve if any scenario failed, even if it seems like a flake — rerun that scenario first
+- Never request changes for issues already fixed in this run
+
 ## Fix mode (--fix flag)
 
-When `--fix` is present, after finding a bug:
+When `--fix` is present, the standard is HIGHER. Do not just note issues — FIX them immediately.
 
-1. Identify the root cause in the code
-2. Fix it in the worktree
-3. Rebuild the affected service: `cd $PLATFORM_DIR && docker compose up --build -d {service_name}`
-4. Re-test the scenario
-5. If fix works, commit and push:
+### Fix protocol for EVERY issue found (including UX issues):
+
+1. **Identify** the root cause in the code — read the relevant source files
+2. **Write a failing test first** (TDD): For backend bugs, write a test marked with `pytest.mark.xfail(reason="...")`. For frontend/Playwright bugs, write a test with `.fixme` annotation. Run it to confirm it fails as expected.
+3. **Screenshot** the broken state: `agent-browser screenshot $RESULTS_DIR/{NN}-broken-{description}.png`
+4. **Fix** the code in the worktree
+5. **Rebuild** ONLY the affected service (not the whole stack):
+   ```bash
+   cd $PLATFORM_DIR && docker compose up --build -d {service_name}
+   # e.g., docker compose up --build -d rest_server
+   # e.g., docker compose up --build -d frontend
+   ```
+6. **Wait** for the service to be ready (poll health endpoint)
+7. **Re-test** the same scenario
+8. **Screenshot** the fixed state: `agent-browser screenshot $RESULTS_DIR/{NN}-fixed-{description}.png`
+9. **Remove the xfail/fixme marker** from the test written in step 2, and verify it passes
+10. **Verify** the fix did not break other scenarios (run a quick smoke test)
+11. **Commit and push** immediately:
    ```bash
    cd $WORKTREE_PATH
    git add -A
    git commit -m "fix: {description of fix}"
    git push
    ```
-6. Continue testing remaining scenarios
-7. After all fixes, run the full test suite again to ensure no regressions
+12. **Continue** to the next test scenario
 
 ### Fix loop (like pr-address)
 
 ```text
-test scenario → find bug → fix code → rebuild service → re-test
-→ repeat until all scenarios pass
-→ commit + push all fixes
-→ run full re-test to verify
+test scenario → find issue (bug OR UX problem) → screenshot broken state
+→ fix code → rebuild affected service only → re-test → screenshot fixed state
+→ verify no regressions → commit + push
+→ repeat for next scenario
+→ after ALL scenarios pass, run full re-test to verify everything together
 ```
+
+**Key differences from non-fix mode:**
+- UX issues count as bugs — fix them (bad alignment, confusing labels, missing loading states)
+- Every fix MUST have a before/after screenshot pair proving it works
+- Commit after EACH fix, not in a batch at the end
+- The final re-test must produce a clean set of all-passing screenshots
 
 ## Known issues and workarounds
 
@@ -514,9 +1132,15 @@ test scenario → find bug → fix code → rebuild service → re-test
 ### Problem: Frontend shows cookie banner blocking interaction
 **Fix:** `agent-browser click 'text=Accept All'` before other interactions.
 
-### Problem: Container loses npm packages after rebuild
-**Cause:** `docker compose up --build` rebuilds the image, losing runtime installs.
-**Fix:** Add packages to the Dockerfile instead of installing at runtime.
+### Problem: Claude CLI not found in copilot_executor container
+**Symptom:** Copilot logs say `claude: command not found` or similar when starting an SDK turn.
+**Cause:** Image was built without `poetry install` (stale base layer, or Dockerfile bypass). The SDK CLI ships inside the `claude_agent_sdk` Poetry dep — it is NOT an npm package.
+**Fix:** Rebuild the image cleanly: `docker compose build --no-cache copilot_executor && docker compose up -d copilot_executor`. Do NOT `docker exec ... npm install -g @anthropic-ai/claude-code` — that is outdated guidance and will pollute the container with a second CLI that the SDK won't use.
+
+### Problem: agent-browser screenshot hangs / times out
+**Symptom:** `agent-browser screenshot` exits with code 124 even on `about:blank`.
+**Cause:** Stuck CDP connection or Chromium process tree. Seen on macOS when a prior `/pr-test` left a zombie Chrome for Testing.
+**Fix:** `pkill -9 -f "agent-browser|chromium|Chrome for Testing" && sleep 2`, then reopen the browser with a fresh `--session-name`. If still failing, verify via `agent-browser eval` + `agent-browser snapshot` (DOM state) instead of relying on PNGs — the feature under test is the same.
 
 ### Problem: Services not starting after `docker compose up`
 **Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.

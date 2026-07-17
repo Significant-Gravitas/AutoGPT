@@ -5,16 +5,11 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Text } from "@/components/atoms/Text/Text";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/atoms/Tooltip/BaseTooltip";
+import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
 
 interface Props {
@@ -48,13 +43,6 @@ export function StoreCard({
 }: Props) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const titleRef = useRef<HTMLSpanElement>(null);
-  const [isTitleTruncated, setIsTitleTruncated] = useState(false);
-
-  function checkTitleOverflow() {
-    const el = titleRef.current;
-    if (el) setIsTitleTruncated(el.scrollHeight > el.clientHeight);
-  }
 
   const handleClick = () => {
     onClick();
@@ -62,7 +50,7 @@ export function StoreCard({
 
   return (
     <div
-      className="relative flex h-[25rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-border/50 bg-background p-4 shadow-md transition-all duration-300 hover:shadow-lg"
+      className="relative flex h-[26.5rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-border/50 bg-background p-4 shadow-md transition-all duration-300 hover:shadow-lg"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -91,39 +79,23 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-50" />
+          <div
+            className="absolute inset-0 rounded-xl"
+            style={{ backgroundColor: "rgb(216, 208, 255)" }}
+          />
         )}
       </div>
 
       <div className="mt-3 flex w-full flex-1 flex-col">
         {/* Second Section: Agent Name and Creator Name */}
-        <div className="flex w-full flex-col">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  ref={titleRef}
-                  onPointerEnter={checkTitleOverflow}
-                  className="line-clamp-2 block min-h-[2.7lh] min-w-0 leading-tight"
-                >
-                  <Text
-                    variant="h4"
-                    as="span"
-                    className="text-xl leading-tight"
-                  >
-                    {agentName}
-                  </Text>
-                </span>
-              </TooltipTrigger>
-              {isTitleTruncated && (
-                <TooltipContent>
-                  <p>{agentName}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <OverflowText
+            value={agentName}
+            variant="h4"
+            className="text-xl leading-tight"
+          />
           {!hideAvatar && creatorName && (
-            <div className="mb-4 mt-2 flex items-center gap-2">
+            <div className="mb-2 mt-2 flex items-center gap-2">
               <Avatar className="h-6 w-6 shrink-0">
                 {avatarSrc && (
                   <AvatarImage
@@ -144,7 +116,7 @@ export function StoreCard({
 
         {/* Third Section: Description */}
         <div className="mt-2.5 flex w-full flex-col">
-          <Text variant="body" className="line-clamp-2 leading-normal">
+          <Text variant="body" className="line-clamp-3 leading-normal">
             {description}
           </Text>
         </div>

@@ -65,9 +65,11 @@ class JSONSchema(BaseModel):
             type=schema["type"],
             enum=schema.get("enum"),
             items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
-            properties=JSONSchema.parse_properties(schema)
-            if schema["type"] == "object"
-            else None,
+            properties=(
+                JSONSchema.parse_properties(schema)
+                if schema["type"] == "object"
+                else None
+            ),
             minimum=schema.get("minimum"),
             maximum=schema.get("maximum"),
             minItems=schema.get("minItems"),
@@ -86,7 +88,9 @@ class JSONSchema(BaseModel):
                 v.required = k in schema_node["required"]
         return properties
 
-    def validate_object(self, object: object) -> tuple[bool, list[ValidationError]]:
+    def validate_object(
+        self, object: object  # noqa: A002 - shadows builtin intentionally
+    ) -> tuple[bool, list[ValidationError]]:
         """
         Validates an object or a value against the JSONSchema.
 
@@ -100,7 +104,10 @@ class JSONSchema(BaseModel):
         """
         validator = Draft7Validator(self.to_dict())
 
-        if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
+        if errors := sorted(
+            validator.iter_errors(object),  # type: ignore[arg-type]
+            key=lambda e: e.path,
+        ):
             return False, errors
 
         return True, []
@@ -148,13 +155,11 @@ class JSONSchema(BaseModel):
 
 
 @overload
-def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict:
-    ...
+def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict: ...
 
 
 @overload
-def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list:
-    ...
+def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list: ...
 
 
 def _resolve_type_refs_in_schema(schema: dict | list, definitions: dict) -> dict | list:

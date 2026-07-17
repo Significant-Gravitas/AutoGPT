@@ -12,7 +12,7 @@ from .find_block import (
     COPILOT_EXCLUDED_BLOCK_TYPES,
     FindBlockTool,
 )
-from .models import BlockListResponse
+from .models import BlockListResponse, NoResultsResponse
 
 _TEST_USER_ID = "test-user-find-block"
 
@@ -69,8 +69,8 @@ class TestFindBlockFiltering:
         assert BlockType.HUMAN_IN_THE_LOOP in COPILOT_EXCLUDED_BLOCK_TYPES
         assert BlockType.AGENT in COPILOT_EXCLUDED_BLOCK_TYPES
 
-    def test_excluded_block_ids_contains_smart_decision_maker(self):
-        """Verify SmartDecisionMakerBlock is in COPILOT_EXCLUDED_BLOCK_IDS."""
+    def test_excluded_block_ids_contains_orchestrator(self):
+        """Verify OrchestratorBlock is in COPILOT_EXCLUDED_BLOCK_IDS."""
         assert "3b191d9f-356f-482d-8238-ba04b6d18381" in COPILOT_EXCLUDED_BLOCK_IDS
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -120,18 +120,18 @@ class TestFindBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_filtered_from_results(self):
-        """Verify SmartDecisionMakerBlock is filtered from search results."""
+        """Verify OrchestratorBlock is filtered from search results."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         search_results = [
-            {"content_id": smart_decision_id, "score": 0.9},
+            {"content_id": orchestrator_id, "score": 0.9},
             {"content_id": "normal-block-id", "score": 0.8},
         ]
 
-        # SmartDecisionMakerBlock has STANDARD type but is excluded by ID
+        # OrchestratorBlock has STANDARD type but is excluded by ID
         smart_block = make_mock_block(
-            smart_decision_id, "Smart Decision Maker", BlockType.STANDARD
+            orchestrator_id, "Orchestrator", BlockType.STANDARD
         )
         normal_block = make_mock_block(
             "normal-block-id", "Normal Block", BlockType.STANDARD
@@ -139,7 +139,7 @@ class TestFindBlockFiltering:
 
         def mock_get_block(block_id):
             return {
-                smart_decision_id: smart_block,
+                orchestrator_id: smart_block,
                 "normal-block-id": normal_block,
             }.get(block_id)
 
@@ -161,10 +161,198 @@ class TestFindBlockFiltering:
                     user_id=_TEST_USER_ID, session=session, query="decision"
                 )
 
-        # Should only return normal block, not SmartDecisionMakerBlock
+        # Should only return normal block, not OrchestratorBlock
         assert isinstance(response, BlockListResponse)
         assert len(response.blocks) == 1
         assert response.blocks[0].id == "normal-block-id"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_for_agent_generation_exposes_excluded_blocks_in_search(self):
+        """With for_agent_generation=True, excluded block types appear in search results."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        search_results = [
+            {"content_id": "input-block-id", "score": 0.9},
+            {"content_id": "output-block-id", "score": 0.8},
+        ]
+        input_block = make_mock_block("input-block-id", "Agent Input", BlockType.INPUT)
+        output_block = make_mock_block(
+            "output-block-id", "Agent Output", BlockType.OUTPUT
+        )
+
+        def mock_get_block(block_id):
+            return {
+                "input-block-id": input_block,
+                "output-block-id": output_block,
+            }.get(block_id)
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=mock_get_block,
+            ):
+                tool = FindBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    query="agent input",
+                    for_agent_generation=True,
+                )
+
+        assert isinstance(response, BlockListResponse)
+        assert len(response.blocks) == 2
+        block_ids = {b.id for b in response.blocks}
+        assert "input-block-id" in block_ids
+        assert "output-block-id" in block_ids
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_mcp_tool_exposed_with_for_agent_generation_in_search(self):
+        """MCP_TOOL blocks appear in search results when for_agent_generation=True."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        search_results = [
+            {"content_id": "mcp-block-id", "score": 0.9},
+            {"content_id": "standard-block-id", "score": 0.8},
+        ]
+        mcp_block = make_mock_block("mcp-block-id", "MCP Tool", BlockType.MCP_TOOL)
+        standard_block = make_mock_block(
+            "standard-block-id", "Normal Block", BlockType.STANDARD
+        )
+
+        def mock_get_block(block_id):
+            return {
+                "mcp-block-id": mcp_block,
+                "standard-block-id": standard_block,
+            }.get(block_id)
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=mock_get_block,
+            ):
+                tool = FindBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    query="mcp tool",
+                    for_agent_generation=True,
+                )
+
+        assert isinstance(response, BlockListResponse)
+        assert len(response.blocks) == 2
+        assert any(b.id == "mcp-block-id" for b in response.blocks)
+        assert any(b.id == "standard-block-id" for b in response.blocks)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_mcp_tool_excluded_without_for_agent_generation_in_search(self):
+        """MCP_TOOL blocks are excluded from search in normal CoPilot mode."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        search_results = [
+            {"content_id": "mcp-block-id", "score": 0.9},
+            {"content_id": "standard-block-id", "score": 0.8},
+        ]
+        mcp_block = make_mock_block("mcp-block-id", "MCP Tool", BlockType.MCP_TOOL)
+        standard_block = make_mock_block(
+            "standard-block-id", "Normal Block", BlockType.STANDARD
+        )
+
+        def mock_get_block(block_id):
+            return {
+                "mcp-block-id": mcp_block,
+                "standard-block-id": standard_block,
+            }.get(block_id)
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=mock_get_block,
+            ):
+                tool = FindBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    query="mcp tool",
+                    for_agent_generation=False,
+                )
+
+        assert isinstance(response, BlockListResponse)
+        assert len(response.blocks) == 1
+        assert response.blocks[0].id == "standard-block-id"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_for_agent_generation_exposes_excluded_ids_in_search(self):
+        """With for_agent_generation=True, excluded block IDs appear in search results."""
+        session = make_session(user_id=_TEST_USER_ID)
+        orchestrator_id = next(iter(COPILOT_EXCLUDED_BLOCK_IDS))
+
+        search_results = [
+            {"content_id": orchestrator_id, "score": 0.9},
+            {"content_id": "normal-block-id", "score": 0.8},
+        ]
+        orchestrator_block = make_mock_block(
+            orchestrator_id, "Orchestrator", BlockType.STANDARD
+        )
+        normal_block = make_mock_block(
+            "normal-block-id", "Normal Block", BlockType.STANDARD
+        )
+
+        def mock_get_block(block_id):
+            return {
+                orchestrator_id: orchestrator_block,
+                "normal-block-id": normal_block,
+            }.get(block_id)
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=mock_get_block,
+            ):
+                tool = FindBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    query="orchestrator",
+                    for_agent_generation=True,
+                )
+
+        assert isinstance(response, BlockListResponse)
+        assert len(response.blocks) == 2
+        block_ids = {b.id for b in response.blocks}
+        assert orchestrator_id in block_ids
+        assert "normal-block-id" in block_ids
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_response_size_average_chars_per_block(self):
@@ -549,8 +737,6 @@ class TestFindBlockDirectLookup:
                 user_id=_TEST_USER_ID, session=session, query=block_id
             )
 
-        from .models import NoResultsResponse
-
         assert isinstance(response, NoResultsResponse)
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -571,8 +757,6 @@ class TestFindBlockDirectLookup:
                 user_id=_TEST_USER_ID, session=session, query=block_id
             )
 
-        from .models import NoResultsResponse
-
         assert isinstance(response, NoResultsResponse)
         assert "disabled" in response.message.lower()
 
@@ -592,8 +776,6 @@ class TestFindBlockDirectLookup:
                 user_id=_TEST_USER_ID, session=session, query=block_id
             )
 
-        from .models import NoResultsResponse
-
         assert isinstance(response, NoResultsResponse)
         assert "not available" in response.message.lower()
 
@@ -601,10 +783,8 @@ class TestFindBlockDirectLookup:
     async def test_uuid_lookup_excluded_block_id(self):
         """UUID matching an excluded block ID returns NoResultsResponse."""
         session = make_session(user_id=_TEST_USER_ID)
-        smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
-        block = make_mock_block(
-            smart_decision_id, "Smart Decision Maker", BlockType.STANDARD
-        )
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        block = make_mock_block(orchestrator_id, "Orchestrator", BlockType.STANDARD)
 
         with patch(
             "backend.copilot.tools.find_block.get_block",
@@ -612,10 +792,77 @@ class TestFindBlockDirectLookup:
         ):
             tool = FindBlockTool()
             response = await tool._execute(
-                user_id=_TEST_USER_ID, session=session, query=smart_decision_id
+                user_id=_TEST_USER_ID, session=session, query=orchestrator_id
             )
-
-        from .models import NoResultsResponse
 
         assert isinstance(response, NoResultsResponse)
         assert "not available" in response.message.lower()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_excluded_block_type_allowed_with_for_agent_generation(
+        self,
+    ):
+        """With for_agent_generation=True, excluded block types (INPUT) are visible."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(block_id, "Agent Input Block", BlockType.INPUT)
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                query=block_id,
+                for_agent_generation=True,
+            )
+
+        assert isinstance(response, BlockListResponse)
+        assert response.count == 1
+        assert response.blocks[0].id == block_id
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_mcp_tool_exposed_with_for_agent_generation(self):
+        """MCP_TOOL blocks are returned by UUID lookup when for_agent_generation=True."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(block_id, "MCP Tool", BlockType.MCP_TOOL)
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                query=block_id,
+                for_agent_generation=True,
+            )
+
+        assert isinstance(response, BlockListResponse)
+        assert response.blocks[0].id == block_id
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_mcp_tool_excluded_without_for_agent_generation(self):
+        """MCP_TOOL blocks are excluded by UUID lookup in normal CoPilot mode."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(block_id, "MCP Tool", BlockType.MCP_TOOL)
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                query=block_id,
+                for_agent_generation=False,
+            )
+
+        assert isinstance(response, NoResultsResponse)
+        assert "run_mcp_tool" in response.message

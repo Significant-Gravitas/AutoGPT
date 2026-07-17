@@ -250,7 +250,7 @@ class TestCompactionE2E:
         # --- Step 4: SDK starts streaming ---
         builder.append_assistant(
             [{"type": "thinking", "thinking": "Let me read file2.py..."}],
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
         )
         assert builder.entry_count == 9
 
@@ -275,7 +275,7 @@ class TestCompactionE2E:
 
         # --- Step 7: CompactionTracker receives PreCompact hook ---
         tracker = CompactionTracker()
-        session = ChatSession.new(user_id="test-user")
+        session = ChatSession.new(user_id="test-user", dry_run=False)
         tracker.on_compact(str(session_file))
 
         # --- Step 8: Next SDK message arrives → emit_start ---
@@ -321,7 +321,7 @@ class TestCompactionE2E:
         # --- Step 11: More assistant messages after compaction ---
         builder.append_assistant(
             [{"type": "text", "text": "Here is file2.py:\n\ndef hello():\n    pass"}],
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             stop_reason="end_turn",
         )
         assert builder.entry_count == 5
@@ -376,7 +376,7 @@ class TestCompactionE2E:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
 
         tracker = CompactionTracker()
-        session = ChatSession.new(user_id="test")
+        session = ChatSession.new(user_id="test", dry_run=False)
         builder = TranscriptBuilder()
 
         # --- First query with compaction ---
@@ -493,7 +493,7 @@ class TestCompactionE2E:
         builder.append_user("Now show file2.py")
         builder.append_assistant(
             [{"type": "text", "text": "Reading file2.py..."}],
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
         )
 
         # CLI writes session file with compaction

@@ -18,6 +18,7 @@ import pytest
 
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
+    _SANDBOX_CREATE_MAX_RETRIES,
     _try_reconnect,
     get_or_create_sandbox,
     kill_sandbox,
@@ -258,6 +259,142 @@ class TestGetOrCreateSandbox:
             )
 
         assert result is sb
+
+    def test_create_retries_on_timeout_then_succeeds(self):
+        """On first-attempt timeout, retries and succeeds on second attempt."""
+        new_sb = _mock_sandbox("sb-retry")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+
+        call_count = 0
+
+        async def _create_side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise asyncio.TimeoutError
+            return new_sb
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(side_effect=_create_side_effect)
+            result = asyncio.run(
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+            )
+
+        assert result is new_sb
+        assert call_count == 2
+
+    def test_create_exhausts_all_retries_then_raises(self):
+        """When all retry attempts fail, the last exception is re-raised."""
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(side_effect=asyncio.TimeoutError)
+            with pytest.raises(asyncio.TimeoutError):
+                asyncio.run(
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+                )
+
+        assert mock_cls.create.await_count == _SANDBOX_CREATE_MAX_RETRIES
+        # Creation slot must be released even after full retry exhaustion
+        redis.delete.assert_awaited_once()
+
+    def test_create_non_timeout_exception_also_retried(self):
+        """Non-timeout exceptions (e.g., network errors) are also retried."""
+        new_sb = _mock_sandbox("sb-net-retry")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+
+        call_count = 0
+
+        async def _create_side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("temporary network blip")
+            return new_sb
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(side_effect=_create_side_effect)
+            result = asyncio.run(
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+            )
+
+        assert result is new_sb
+        assert call_count == 2
+
+    def test_create_cancellation_releases_creation_slot(self):
+        """CancelledError during creation must release the Redis sentinel."""
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+
+        async def _create_side_effect(**kwargs):
+            raise asyncio.CancelledError
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(side_effect=_create_side_effect)
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+                )
+
+        # Sentinel must be released even on task cancellation
+        redis.delete.assert_awaited_once()
+
+    def test_post_create_cancellation_kills_sandbox(self):
+        """CancelledError during _set_stored_sandbox_id must kill the already-created sandbox."""
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        created_sb = _mock_sandbox()
+
+        async def _set_side_effect(*_args, **_kwargs):
+            raise asyncio.CancelledError
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox._set_stored_sandbox_id",
+                side_effect=_set_side_effect,
+            ),
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(return_value=created_sb)
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+                )
+
+        # Sandbox must be killed and Redis sentinel cleared on post-create cancellation
+        created_sb.kill.assert_awaited_once()
+        redis.delete.assert_awaited_once()
 
     def test_stale_reconnect_clears_and_creates(self):
         """When stored sandbox is stale (not running), clear it and create a new one."""

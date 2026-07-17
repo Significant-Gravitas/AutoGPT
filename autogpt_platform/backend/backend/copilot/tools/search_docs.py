@@ -5,6 +5,7 @@ from typing import Any
 
 from prisma.enums import ContentType
 
+from backend.api.features.search.hybrid_search import HybridSearchRow
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
@@ -85,6 +86,7 @@ class SearchDocsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         """Search documentation and return relevant sections.
@@ -99,7 +101,7 @@ class SearchDocsTool(BaseTool):
             NoResultsResponse: No results found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
+        query = query.strip()
         session_id = session.session_id if session else None
 
         if not query:
@@ -131,7 +133,7 @@ class SearchDocsTool(BaseTool):
                 )
 
             # Deduplicate by document path (keep highest scoring section per doc)
-            seen_docs: dict[str, dict[str, Any]] = {}
+            seen_docs: dict[str, HybridSearchRow] = {}
             for result in results:
                 metadata = result.get("metadata", {})
                 doc_path = metadata.get("path", "")

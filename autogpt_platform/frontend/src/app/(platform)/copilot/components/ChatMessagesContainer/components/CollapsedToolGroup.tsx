@@ -90,13 +90,13 @@ export function CollapsedToolGroup({ parts }: Props) {
       : `${parts.length} tool calls completed`;
 
   return (
-    <div className="py-1">
+    <div className="py-1 text-xs opacity-50 transition-opacity group-hover:opacity-100">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex items-center gap-1.5 !text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <CaretRightIcon
           size={12}

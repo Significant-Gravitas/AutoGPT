@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from e2b_code_interpreter import AsyncSandbox
@@ -12,6 +11,10 @@ from backend.blocks._base import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.code_executor_helpers import (
+    ProgrammingLanguage,
+    build_variable_injection,
 )
 from backend.data.model import (
     APIKeyCredentials,
@@ -35,20 +38,26 @@ TEST_CREDENTIALS = APIKeyCredentials(
     title="Mock E2B API key",
     expires_at=None,
 )
+
+
+def _mock_execute_code(
+    *args: Any, **kwargs: Any
+) -> tuple[list, str, str, str, str, list]:
+    """Stub for `execute_code` used by the blocks' test_mock.
+
+    Returns the (results, text, stdout, stderr, sandbox_id, files) tuple,
+    echoing back any provided `sandbox_id` so the step block's test sees it.
+    """
+    sandbox_id = kwargs.get("sandbox_id") or "sandbox_id"
+    return [], "Hello World", "Hello World\n", "", sandbox_id, []
+
+
 TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.type,
 }
-
-
-class ProgrammingLanguage(Enum):
-    PYTHON = "python"
-    JAVASCRIPT = "js"
-    BASH = "bash"
-    R = "r"
-    JAVA = "java"
 
 
 class MainCodeExecutionResult(BaseModel):
@@ -107,6 +116,7 @@ class BaseE2BExecutorMixin:
         dispose_sandbox: bool = False,
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
+        envs: Optional[dict[str, str]] = None,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -145,6 +155,7 @@ class BaseE2BExecutorMixin:
             execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
+                envs=envs or {},
                 on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
             )
 
@@ -228,6 +239,18 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             advanced=False,
         )
 
+        variables: dict[str, Any] = SchemaField(
+            title="Variables (Python/JS only)",
+            description=(
+                "Variables defined here can be used directly in your Python or "
+                "JavaScript code. Values wired in from other blocks keep their "
+                "type; default values set on this node come in as strings, so parse "
+                "them in your code if you need a number or other type."
+            ),
+            default_factory=dict,
+            advanced=False,
+        )
+
         code: str = SchemaField(
             description="Code to execute in the sandbox",
             placeholder="print('Hello, World!')",
@@ -307,16 +330,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 ("stdout_logs", "Hello World\n"),
                 ("files", []),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout, dispose_sandbox, execution_context, extract_files: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    "sandbox_id",  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(
@@ -328,9 +342,17 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         **kwargs,
     ) -> BlockOutput:
         try:
+            # Expose user-provided variables by passing them as a JSON env var and
+            # prepending a constant snippet that deserializes them into the runtime.
+            # Keeping the data in the env var (not the code string) avoids injection.
+            envs, prefix = build_variable_injection(
+                input_data.variables, input_data.language
+            )
+            code = prefix + input_data.code
+
             results, text_output, stdout, stderr, _, files = await self.execute_code(
                 api_key=credentials.api_key.get_secret_value(),
-                code=input_data.code,
+                code=code,
                 language=input_data.language,
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
@@ -338,6 +360,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 dispose_sandbox=input_data.dispose_sandbox,
                 execution_context=execution_context,
                 extract_files=True,
+                envs=envs,
             )
 
             # Determine result object shape & filter out empty formats
@@ -443,16 +466,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    "sandbox_id",  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(
@@ -551,16 +565,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, sandbox_id, dispose_sandbox: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    sandbox_id,  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(

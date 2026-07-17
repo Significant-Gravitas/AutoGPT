@@ -7,6 +7,7 @@ import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { environment } from "../environment";
+import { buildLDContext } from "./helpers";
 
 const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
@@ -17,24 +18,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   const context = useMemo(() => {
     if (isUserLoading) return;
-
-    if (!user) {
-      return {
-        kind: "user" as const,
-        key: "anonymous",
-        anonymous: true,
-      };
-    }
-
-    return {
-      kind: "user" as const,
-      key: user.id,
-      ...(user.email && { email: user.email }),
-      anonymous: false,
-      custom: {
-        ...(user.role && { role: user.role }),
-      },
-    };
+    return buildLDContext(user);
   }, [user, isUserLoading]);
 
   if (!envEnabled) {
@@ -52,7 +36,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
-        bootstrap: "localStorage",
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
       }}
     >

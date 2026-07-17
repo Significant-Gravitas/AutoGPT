@@ -1,10 +1,13 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ExclamationMarkIcon } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useState } from "react";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
+import { DecomposeGoalTool } from "../../../tools/DecomposeGoal/DecomposeGoal";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
 import {
   CreateFeatureRequestTool,
@@ -18,8 +21,14 @@ import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
+import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
-import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
+import {
+  extractWorkspaceArtifacts,
+  parseSpecialMarkers,
+  resolveWorkspaceUrls,
+} from "../helpers";
+import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -28,12 +37,10 @@ import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
  */
 function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
-  const [imgFailed, setImgFailed] = useState(false);
-  const isWorkspace = src?.includes("/workspace/files/") ?? false;
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:") || (imgFailed && isWorkspace)) {
+  if (alt?.startsWith("video:")) {
     return (
       <span className="my-2 inline-block">
         <video
@@ -55,9 +62,6 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
       alt={alt || "Image"}
       className="h-auto max-w-full rounded-md border border-zinc-200"
       loading="lazy"
-      onError={() => {
-        if (isWorkspace) setImgFailed(true);
-      }}
       {...rest}
     />
   );
@@ -66,11 +70,58 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
+function TextWithArtifactCards({
+  text,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
+}: {
+  text: string;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
+}) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
+  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
+  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
+
+  return (
+    <>
+      {isArtifactsEnabled && artifacts.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {artifacts.map((artifact) => (
+            <ArtifactCard
+              key={artifact.id}
+              artifact={artifact}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      )}
+      <MessageResponse components={STREAMDOWN_COMPONENTS}>
+        {resolved}
+      </MessageResponse>
+    </>
+  );
+}
+
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
   partIndex: number;
   onRetry?: () => void;
+  /** Override the URL emitted when rewriting workspace:// references
+   *  in markdown.  Owner side defaults to the workspace-file endpoint;
+   *  the public share viewer passes a token-aware builder so anonymous
+   *  readers can download via the public allowlist-gated route. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Force inline artifact-card rendering for workspace:// URIs in
+   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
+  forceArtifacts?: boolean;
+  /** Read-only mode — forwarded so embedded ``ArtifactCard``s
+   *  download on click instead of opening a panel. */
+  readOnly?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -78,10 +129,31 @@ export function MessagePartRenderer({
   messageID,
   partIndex,
   onRetry,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
+    case "reasoning": {
+      const reasoningText =
+        "text" in part && typeof part.text === "string" ? part.text : "";
+      if (!reasoningText.trim()) return null;
+      // AI SDK reasoning parts carry an optional `state: "streaming" | "done"`.
+      // We pulse the indicator only while streaming so a finalized reasoning
+      // block doesn't keep looking like the model is still thinking.
+      const reasoningState =
+        "state" in part && typeof part.state === "string" ? part.state : null;
+      const isActive = reasoningState === "streaming";
+      return (
+        <ReasoningCollapse key={key} isActive={isActive}>
+          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+            {reasoningText}
+          </pre>
+        </ReasoningCollapse>
+      );
+    }
     case "text": {
       const { markerType, markerText, cleanText } = parseSpecialMarkers(
         part.text,
@@ -93,14 +165,7 @@ export function MessagePartRenderer({
           lowerMarker === "operation cancelled" ||
           lowerMarker === "execution stopped by user";
         if (isCancellation) {
-          return (
-            <div
-              key={key}
-              className="my-2 flex items-center gap-1 rounded-lg bg-neutral-200/50 px-3 py-2 text-sm text-neutral-600"
-            >
-              <ExclamationMarkIcon size={16} /> You manually stopped this chat
-            </div>
-          );
+          return <StoppedTaskCard key={key} />;
         }
         return (
           <ErrorCard
@@ -124,11 +189,17 @@ export function MessagePartRenderer({
       }
 
       return (
-        <MessageResponse key={key} components={STREAMDOWN_COMPONENTS}>
-          {resolveWorkspaceUrls(cleanText)}
-        </MessageResponse>
+        <TextWithArtifactCards
+          key={key}
+          text={cleanText}
+          fileUrlBuilder={fileUrlBuilder}
+          forceArtifacts={forceArtifacts}
+          readOnly={readOnly}
+        />
       );
     }
+    case "tool-ask_question":
+      return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":
@@ -147,6 +218,10 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-setup_agent_webhook_trigger":
+      return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
+    case "tool-decompose_goal":
+      return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":
@@ -164,6 +239,12 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case "tool-TodoWrite":
+      // Hidden inline — the chat shows a single persistent
+      // "Progress shown in the sidebar" pill at the bottom of the message
+      // list while any task is active. See `TaskListNotice` rendering in
+      // `ChatMessagesContainer`.
+      return null;
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool
