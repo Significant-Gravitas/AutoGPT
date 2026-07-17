@@ -7,11 +7,11 @@ import {
   copyFileSync,
   cpSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -32,7 +32,18 @@ function run(cmd, cwd) {
 }
 
 function git(args, cwd) {
-  return spawnSync("git", args, { encoding: "utf8", cwd });
+  // maxBuffer: worktrees can carry very large uncommitted diffs; the 1MB
+  // spawnSync default would silently truncate exactly what archive() backs up
+  return spawnSync("git", args, { encoding: "utf8", cwd, maxBuffer: 1024 ** 3 });
+}
+
+function gitStrict(args, cwd) {
+  const r = git(args, cwd);
+  if (r.error || r.status !== 0) {
+    console.error(`git ${args.join(" ")} failed: ${r.error?.message ?? r.stderr}`);
+    process.exit(1);
+  }
+  return r.stdout ?? "";
 }
 
 function setup() {
@@ -57,7 +68,13 @@ function setup() {
     for (const name of readdirSync(srcDir)) {
       if (!name.startsWith(".env")) continue;
       const src = join(srcDir, name);
-      if (!lstatSync(src).isFile()) continue;
+      let srcStat;
+      try {
+        srcStat = statSync(src); // follows links: root's .env may itself be a symlink
+      } catch {
+        continue; // broken symlink
+      }
+      if (!srcStat.isFile()) continue;
       if (git(["-C", root, "check-ignore", "-q", src]).status !== 0) continue;
       const destDir = join(worktree, dir);
       mkdirSync(destDir, { recursive: true });
@@ -102,6 +119,10 @@ function setup() {
 // Archive hooks are killed after 120s, so this only dumps text — no installs.
 function archive() {
   const status = git(["status", "--porcelain"], worktree);
+  if (status.error) {
+    console.error(`git unavailable: ${status.error.message}`);
+    process.exit(1);
+  }
   if (status.status !== 0) {
     console.log("not a git worktree, nothing to back up");
     return;
@@ -118,11 +139,13 @@ function archive() {
   const outPath = join(outDir, `${name.replace(/[^\w.-]+/g, "_")}-${stamp}.patch`);
 
   const parts = [
-    git(["diff"], worktree).stdout ?? "",
-    git(["diff", "--cached"], worktree).stdout ?? "",
+    gitStrict(["diff"], worktree),
+    gitStrict(["diff", "--cached"], worktree),
   ];
-  const untracked = (git(["ls-files", "--others", "--exclude-standard"], worktree)
-    .stdout ?? "")
+  const untracked = gitStrict(
+    ["ls-files", "--others", "--exclude-standard"],
+    worktree,
+  )
     .split("\n")
     .filter(Boolean);
   for (const f of untracked) {
