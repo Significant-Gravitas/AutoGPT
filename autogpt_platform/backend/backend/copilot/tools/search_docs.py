@@ -20,8 +20,10 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# Base URL for documentation (can be configured)
-DOCS_BASE_URL = "https://docs.agpt.co"
+# Public docs site. It serves the raw repo docs verbatim, INCLUDING the .md
+# extension (https://agpt.co/docs/<repo-relative-path>.md returns the page;
+# the extension-less variant 404s for pages outside the site navigation).
+DOCS_BASE_URL = "https://agpt.co/docs"
 
 # Maximum number of results to return
 MAX_RESULTS = 5
@@ -77,10 +79,9 @@ class SearchDocsTool(BaseTool):
         return truncated + "..."
 
     def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page."""
-        # Remove file extension for URL
-        url_path = path.rsplit(".", 1)[0] if "." in path else path
-        return f"{DOCS_BASE_URL}/{url_path}"
+        """Create a URL for a documentation page (extension kept — see
+        DOCS_BASE_URL)."""
+        return f"{DOCS_BASE_URL}/{path}"
 
     async def _execute(
         self,

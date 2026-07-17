@@ -1,18 +1,20 @@
 """GetDocPageTool - Fetch full content of a documentation page."""
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.util.docs import get_docs_root
 
 from .base import BaseTool
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
-# Base URL for documentation (can be configured)
-DOCS_BASE_URL = "https://docs.agpt.co"
+# Public docs site. It serves the raw repo docs verbatim, INCLUDING the .md
+# extension (https://agpt.co/docs/<repo-relative-path>.md returns the page;
+# the extension-less variant 404s for pages outside the site navigation).
+DOCS_BASE_URL = "https://agpt.co/docs"
 
 
 class GetDocPageTool(BaseTool):
@@ -45,12 +47,6 @@ class GetDocPageTool(BaseTool):
     def requires_auth(self) -> bool:
         return False  # Documentation is public
 
-    def _get_docs_root(self) -> Path:
-        """Get the documentation root directory."""
-        this_file = Path(__file__)
-        project_root = this_file.parent.parent.parent.parent.parent.parent.parent.parent
-        return project_root / "docs"
-
     def _extract_title(self, content: str, fallback: str) -> str:
         """Extract title from markdown content."""
         lines = content.split("\n")
@@ -60,9 +56,9 @@ class GetDocPageTool(BaseTool):
         return fallback
 
     def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page."""
-        url_path = path.rsplit(".", 1)[0] if "." in path else path
-        return f"{DOCS_BASE_URL}/{url_path}"
+        """Create a URL for a documentation page (extension kept — see
+        DOCS_BASE_URL)."""
+        return f"{DOCS_BASE_URL}/{path}"
 
     async def _execute(
         self,
@@ -100,7 +96,14 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
-        docs_root = self._get_docs_root()
+        try:
+            docs_root = get_docs_root()
+        except FileNotFoundError:
+            return ErrorResponse(
+                message="Documentation is not available in this deployment.",
+                error="docs_unavailable",
+                session_id=session_id,
+            )
         full_path = docs_root / path
 
         if not full_path.exists():
