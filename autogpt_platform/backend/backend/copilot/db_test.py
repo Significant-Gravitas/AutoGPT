@@ -16,6 +16,7 @@ from backend.copilot.db import (
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
+    update_chat_message_tool_calls,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
@@ -858,3 +859,75 @@ async def test_add_chat_message_omits_metadata_when_none() -> None:
         )
     data = create.call_args.kwargs["data"]
     assert "metadata" not in data
+
+
+# ---------- update_chat_message_tool_calls ----------
+
+_TOOL_CALLS = [
+    {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "web_search", "arguments": "{}"},
+    }
+]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_success():
+    """Returns True when update_many reports exactly one row updated."""
+    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+        mock_prisma.return_value.update_many = AsyncMock(return_value=1)
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is True
+    where = mock_prisma.return_value.update_many.call_args.kwargs["where"]
+    assert where == {"sessionId": "sess-1", "sequence": 7}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_not_found():
+    """Returns False (so the caller's dirty flag stays set) when no rows match."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(return_value=0)
+
+        result = await update_chat_message_tool_calls("sess-1", 99, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_multi_row_fails():
+    """>1 rows means the @@unique([sessionId, sequence]) invariant broke —
+    fail loudly instead of clearing the dirty flag."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(return_value=2)
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_db_error():
+    """Returns False and logs when the DB raises."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.error.assert_called_once()

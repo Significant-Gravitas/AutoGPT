@@ -468,7 +468,16 @@ class CoPilotExecutor(AppProcess):
                 # the fail-close CAS nor the RMQ same-session duplicate
                 # rejection can kill the new turn.
                 switch = engine_switch.pop_switch(session_id)
-                if switch is not None and error_msg is None:
+                if switch is not None and error_msg is not None:
+                    # Turn failed — the persisted history (and thus the
+                    # derived building-mode signal) can't be trusted, so no
+                    # continuation fires. Not silent: the session is idle
+                    # and the user's next message re-resolves the engine.
+                    logger.info(
+                        f"Engine-switch continuation for {session_id} not "
+                        f"dispatched — turn ended with error: {error_msg}"
+                    )
+                elif switch is not None:
                     # Dispatch on a dedicated short-lived thread: the async
                     # RabbitMQ client is @thread_cached and loop-bound, so
                     # asyncio.run() on this pool thread would reuse a client

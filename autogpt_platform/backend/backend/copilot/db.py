@@ -790,7 +790,7 @@ async def update_message_content_by_sequence(
 async def update_chat_message_tool_calls(
     session_id: str,
     sequence: int,
-    tool_calls: list[dict],
+    tool_calls: list[dict[str, Any]],
 ) -> bool:
     """Back-fill ``toolCalls`` on an already-persisted message row.
 
@@ -814,10 +814,14 @@ async def update_chat_message_tool_calls(
             )
             return False
         if result > 1:
+            # Structurally impossible under the @@unique([sessionId, sequence])
+            # constraint — if it ever fires, data is corrupted; fail loudly
+            # instead of clearing the caller's dirty flag.
             logger.error(
                 f"update_chat_message_tool_calls touched {result} rows "
                 f"for session {session_id}, sequence {sequence} — expected 1"
             )
+            return False
         return True
     except Exception as e:
         logger.error(

@@ -192,20 +192,12 @@ def get_available_tools(
     also filtered out — use this to hide capability-gated tools (e.g.
     ``graphiti`` when the memory backend is off for the current user).
     """
-    hidden = tool_names_in_groups(disabled_groups) | SDK_ONLY_TOOL_NAMES
+    hidden = tool_names_in_groups(disabled_groups)
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()
         if tool.is_available and name not in hidden
     ]
-
-
-# Tools whose behaviour depends on SDK-path machinery and must not be
-# offered on the baseline path. ``enter_agent_building_mode`` promises an
-# in-turn system-prompt upgrade that only the SDK service performs — on
-# baseline it would set a flag nobody consumes and strand the model at the
-# guide gate.
-SDK_ONLY_TOOL_NAMES: frozenset[str] = frozenset()
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

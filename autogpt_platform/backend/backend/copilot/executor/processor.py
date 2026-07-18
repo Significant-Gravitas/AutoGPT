@@ -190,6 +190,24 @@ async def resolve_use_sdk_for_mode(
 _tls = threading.local()
 
 
+async def _building_mode_forces_sdk(session_id: str) -> bool:
+    """True when the session's history shows it entered agent-building mode.
+
+    Building-mode sessions are pinned to the SDK engine (guide-in-prompt +
+    in-turn restart live there) regardless of the requested mode — derived
+    from message history, so it survives stale frontend mode pickers.
+    ``get_chat_session`` is Redis-cached: one cache hit, not a DB round-trip.
+    """
+    # Lazy imports: pulling these at module level drags the full tools/model
+    # chain into processor import, which reconfigures logging at import time
+    # and breaks caplog in tests.
+    from backend.copilot.model import get_chat_session
+    from backend.copilot.tools.helpers import session_entered_building_mode
+
+    session = await get_chat_session(session_id)
+    return session is not None and session_entered_building_mode(session)
+
+
 def execute_copilot_turn(
     entry: CoPilotExecutionEntry,
     cancel: threading.Event,
@@ -527,17 +545,7 @@ class CoPilotProcessor:
                 # pickers. get_chat_session is Redis-cached, so this is
                 # one cache hit, not a DB round-trip.
                 if not use_sdk and config.thinking_available:
-                    # Lazy imports: pulling these at module level drags the
-                    # full tools/model chain into processor import, which
-                    # reconfigures logging at import time and breaks caplog
-                    # in tests.
-                    from backend.copilot.model import get_chat_session
-                    from backend.copilot.tools.helpers import (
-                        session_entered_building_mode,
-                    )
-
-                    _session = await get_chat_session(entry.session_id)
-                    if _session is not None and session_entered_building_mode(_session):
+                    if await _building_mode_forces_sdk(entry.session_id):
                         use_sdk = True
                         log.info(
                             "Forcing SDK engine: session is in agent building mode"
