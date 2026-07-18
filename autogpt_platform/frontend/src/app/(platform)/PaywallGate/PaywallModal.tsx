@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
-import { SignOutIcon } from "@phosphor-icons/react";
+import { PlayCircleIcon, SignOutIcon } from "@phosphor-icons/react";
+import Link from "next/link";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";
 
@@ -65,6 +66,21 @@ export function PaywallModal() {
             <Text variant="body" className="!text-zinc-500">
               Pick a plan to unlock AutoPilot and start running agents.
             </Text>
+            <Link
+              href="/tour/chat?utm_source=platform_paywall"
+              target="_blank"
+              className="mt-2 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
+            >
+              <PlayCircleIcon
+                className="size-5 shrink-0 text-violet-600"
+                weight="fill"
+              />
+              <span>
+                Not sure yet?{" "}
+                <span className="font-semibold text-violet-700">Try it</span> —
+                Instant demo — No signup
+              </span>
+            </Link>
           </div>
 
           {plans.length > 0 && (

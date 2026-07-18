@@ -26,9 +26,12 @@ const CARD_ANIMATION_CLASSES =
 interface Props {
   messages: TourMessage[];
   isStreaming: boolean;
+  /** Rendered inside the conversation scroll area after the transcript —
+   * the demo end card lives here so it reads as part of the chat flow. */
+  footer?: React.ReactNode;
 }
 
-export function TourMessageList({ messages, isStreaming }: Props) {
+export function TourMessageList({ messages, isStreaming, footer }: Props) {
   const last = messages[messages.length - 1];
   const showThinking =
     isStreaming && last?.role === "assistant" && last.parts.length === 0;
@@ -58,6 +61,7 @@ export function TourMessageList({ messages, isStreaming }: Props) {
           </Message>
         ))}
         {showThinking && <ThinkingIndicator active elapsedSeconds={0} />}
+        {footer}
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>
