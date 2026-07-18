@@ -818,8 +818,8 @@ async def _consume_sdk_until_done(
             and not state.adapter.has_unresolved_tool_calls
         ):
             logger.info(
-                "%s Building mode requested — interrupting for prompt upgrade",
-                ctx.log_prefix,
+                f"{ctx.log_prefix} Building mode requested — interrupting "
+                f"for prompt upgrade"
             )
             try:
                 await client.interrupt()
@@ -827,9 +827,8 @@ async def _consume_sdk_until_done(
                 # Best-effort: client close in the caller's finally is the
                 # fallback shutdown path (same as transient retries).
                 logger.warning(
-                    "%s Interrupt for building-mode restart failed: %s",
-                    ctx.log_prefix,
-                    exc,
+                    f"{ctx.log_prefix} Interrupt for building-mode restart "
+                    f"failed: {exc}"
                 )
             raise _BuildingModeRestart()
 
@@ -4762,9 +4761,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.guide_in_system_prompt = bool(building_suffix)
                 if not building_suffix:
                     logger.error(
-                        "%s Building-mode restart: guide suffix empty — "
-                        "continuing without prompt upgrade",
-                        log_prefix,
+                        f"{log_prefix} Building-mode restart: guide suffix "
+                        f"empty — continuing without prompt upgrade"
                     )
                 system_prompt = (
                     base_system_prompt
