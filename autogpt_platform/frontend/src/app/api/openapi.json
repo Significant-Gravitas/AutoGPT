@@ -1220,6 +1220,648 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/llm/catalog/export": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "Export Catalog",
+        "description": "Current registry as a catalog payload — pipe to catalog.json to\nrefresh the bundled snapshot without direct DB access.",
+        "operationId": "getV2ExportCatalog",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CatalogPayload" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/llm/creators": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "List Creators",
+        "operationId": "getV2ListCreators",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmCreatorsAdminListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "admin"],
+        "summary": "Create Creator",
+        "operationId": "postV2CreateCreator",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmCreatorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmCreatorAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/llm/creators/{name}": {
+      "delete": {
+        "tags": ["v2", "admin"],
+        "summary": "Delete Creator",
+        "operationId": "deleteV2DeleteCreator",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Name" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "admin"],
+        "summary": "Update Creator",
+        "operationId": "patchV2UpdateCreator",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Name" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmCreatorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmCreatorAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/migrations": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "List Migrations",
+        "operationId": "getV2ListMigrations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "include_reverted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Reverted"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmMigrationsAdminListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/migrations/{migration_id}/revert": {
+      "post": {
+        "tags": ["v2", "admin"],
+        "summary": "Revert Migration",
+        "operationId": "postV2RevertMigration",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "migration_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Migration Id" }
+          },
+          {
+            "name": "re_enable_source_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Re Enable Source Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Revertmigration"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/models": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "Admin List Models",
+        "operationId": "getV2AdminListModels",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "enabled_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Enabled Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelsAdminListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin"],
+        "summary": "Create Model",
+        "operationId": "postV2CreateModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/models/{slug}": {
+      "delete": {
+        "tags": ["v2", "admin"],
+        "summary": "Delete Model",
+        "operationId": "deleteV2DeleteModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          },
+          {
+            "name": "replacement_model_slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Replacement Model Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Deletev2Deletemodel"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "admin"],
+        "summary": "Update Model",
+        "operationId": "patchV2UpdateModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/models/{slug}/toggle": {
+      "post": {
+        "tags": ["v2", "admin"],
+        "summary": "Toggle Model",
+        "operationId": "postV2ToggleModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ToggleLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Togglemodel"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/models/{slug}/usage": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "Get Model Usage",
+        "operationId": "getV2GetModelUsage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Getv2Getmodelusage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/llm/providers": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "Admin List Providers",
+        "operationId": "getV2AdminListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvidersAdminListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/llm/routes": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "List Routes",
+        "operationId": "getV2ListRoutes",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRoutesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "put": {
+        "tags": ["v2", "admin"],
+        "summary": "Set Route",
+        "operationId": "putV2SetRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SetLlmRouteRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SetLlmRouteResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/llm/routes/warnings": {
+      "get": {
+        "tags": ["v2", "admin"],
+        "summary": "List Route Warnings",
+        "operationId": "getV2ListRouteWarnings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/RouteWarning" },
+                  "type": "array",
+                  "title": "Response Getv2Listroutewarnings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/memory/{user_id}/communities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -8059,6 +8701,23 @@
         }
       }
     },
+    "/api/llm/catalog": {
+      "get": {
+        "tags": ["v2", "llm", "public"],
+        "summary": "Get Llm Catalog",
+        "operationId": "getV2GetLlmCatalog",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CatalogPayload" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/mcp/discover-tools": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
@@ -14549,6 +15208,205 @@
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
+      "CatalogCreator": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CatalogCreator"
+      },
+      "CatalogModel": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$",
+            "title": "Slug"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Provider"
+          },
+          "creator": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+              { "type": "null" }
+            ],
+            "title": "Creator"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "CHAT" },
+          "context_window": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Context Window"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Price Tier",
+            "default": 1
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
+          "fallback_model_slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$"
+              },
+              { "type": "null" }
+            ],
+            "title": "Fallback Model Slug"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "default": false
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "default": false
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "default": false
+          },
+          "supports_parallel_tool_calls": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool Calls",
+            "default": false
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities",
+            "default": {}
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": ["slug", "display_name", "provider", "context_window"],
+        "title": "CatalogModel"
+      },
+      "CatalogPayload": {
+        "properties": {
+          "schema_version": { "type": "integer", "title": "Schema Version" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/CatalogProvider" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "creators": {
+            "items": { "$ref": "#/components/schemas/CatalogCreator" },
+            "type": "array",
+            "title": "Creators"
+          },
+          "models": {
+            "items": { "$ref": "#/components/schemas/CatalogModel" },
+            "type": "array",
+            "maxItems": 2000,
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_version",
+          "generated_at",
+          "providers",
+          "creators",
+          "models"
+        ],
+        "title": "CatalogPayload"
+      },
+      "CatalogProvider": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CatalogProvider"
+      },
       "ChangelogEntry": {
         "properties": {
           "version": { "type": "string", "title": "Version" },
@@ -15222,6 +16080,152 @@
         "type": "object",
         "required": ["email"],
         "title": "CreateInvitationRequest"
+      },
+      "CreateLlmCreatorRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CreateLlmCreatorRequest"
+      },
+      "CreateLlmModelRequest": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider_name": { "type": "string", "title": "Provider Name" },
+          "creator_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Id"
+          },
+          "context_window": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Context Window"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Price Tier"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
+          "kind": {
+            "type": "string",
+            "const": "CHAT",
+            "title": "Kind",
+            "default": "CHAT"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["GA", "EMPLOYEES", "ADMINS", "HIDDEN"],
+            "title": "Visibility",
+            "default": "GA"
+          },
+          "min_subscription_tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "NO_TIER",
+                  "BASIC",
+                  "PRO",
+                  "MAX",
+                  "BUSINESS",
+                  "ENTERPRISE"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Min Subscription Tier"
+          },
+          "fallback_model_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fallback Model Slug"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "default": false
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "default": false
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "default": false
+          },
+          "supports_parallel_tool_calls": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool Calls",
+            "default": false
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "costs": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "provider_name",
+          "context_window",
+          "price_tier"
+        ],
+        "title": "CreateLlmModelRequest"
       },
       "CreateOrgRequest": {
         "properties": {
@@ -18288,6 +19292,314 @@
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
+      "LlmCreatorAdminResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "source": { "type": "string", "title": "Source", "default": "SEED" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "display_name"],
+        "title": "LlmCreatorAdminResponse"
+      },
+      "LlmCreatorsAdminListResponse": {
+        "properties": {
+          "creators": {
+            "items": { "$ref": "#/components/schemas/LlmCreatorAdminResponse" },
+            "type": "array",
+            "title": "Creators"
+          }
+        },
+        "type": "object",
+        "required": ["creators"],
+        "title": "LlmCreatorsAdminListResponse"
+      },
+      "LlmMigrationAdminResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "source_model_slug": {
+            "type": "string",
+            "title": "Source Model Slug"
+          },
+          "target_model_slug": {
+            "type": "string",
+            "title": "Target Model Slug"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "node_count": { "type": "integer", "title": "Node Count" },
+          "custom_credit_cost": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Custom Credit Cost"
+          },
+          "is_reverted": { "type": "boolean", "title": "Is Reverted" },
+          "reverted_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reverted At"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_model_slug",
+          "target_model_slug",
+          "node_count",
+          "is_reverted",
+          "created_at"
+        ],
+        "title": "LlmMigrationAdminResponse"
+      },
+      "LlmMigrationsAdminListResponse": {
+        "properties": {
+          "migrations": {
+            "items": {
+              "$ref": "#/components/schemas/LlmMigrationAdminResponse"
+            },
+            "type": "array",
+            "title": "Migrations"
+          }
+        },
+        "type": "object",
+        "required": ["migrations"],
+        "title": "LlmMigrationsAdminListResponse"
+      },
+      "LlmModelAdminResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider_id": { "type": "string", "title": "Provider Id" },
+          "creator_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Id"
+          },
+          "context_window": { "type": "integer", "title": "Context Window" },
+          "max_output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": { "type": "integer", "title": "Price Tier" },
+          "is_enabled": { "type": "boolean", "title": "Is Enabled" },
+          "is_recommended": { "type": "boolean", "title": "Is Recommended" },
+          "kind": { "type": "string", "title": "Kind" },
+          "visibility": { "type": "string", "title": "Visibility" },
+          "min_subscription_tier": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Min Subscription Tier"
+          },
+          "fallback_model_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fallback Model Slug"
+          },
+          "source": { "type": "string", "title": "Source" },
+          "catalog_removed_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Catalog Removed At"
+          },
+          "supports_tools": { "type": "boolean", "title": "Supports Tools" },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output"
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning"
+          },
+          "supports_parallel_tool_calls": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool Calls"
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Updated At"
+          },
+          "creator": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LlmCreatorAdminResponse" },
+              { "type": "null" }
+            ]
+          },
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelCostAdminResponse"
+            },
+            "type": "array",
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "provider_id",
+          "context_window",
+          "price_tier",
+          "is_enabled",
+          "is_recommended",
+          "kind",
+          "visibility",
+          "source",
+          "supports_tools",
+          "supports_json_output",
+          "supports_reasoning",
+          "supports_parallel_tool_calls"
+        ],
+        "title": "LlmModelAdminResponse"
+      },
+      "LlmModelCostAdminResponse": {
+        "properties": {
+          "unit": { "type": "string", "title": "Unit" },
+          "credit_cost": { "type": "number", "title": "Credit Cost" },
+          "credential_provider": {
+            "type": "string",
+            "title": "Credential Provider"
+          },
+          "credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Type"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["unit", "credit_cost", "credential_provider"],
+        "title": "LlmModelCostAdminResponse"
+      },
+      "LlmModelsAdminListResponse": {
+        "properties": {
+          "models": {
+            "items": { "$ref": "#/components/schemas/LlmModelAdminResponse" },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": ["models"],
+        "title": "LlmModelsAdminListResponse"
+      },
+      "LlmProviderAdminResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "source": { "type": "string", "title": "Source", "default": "SEED" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Updated At"
+          },
+          "model_count": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Model Count"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "display_name"],
+        "title": "LlmProviderAdminResponse"
+      },
+      "LlmProvidersAdminListResponse": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/LlmProviderAdminResponse"
+            },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": ["providers"],
+        "title": "LlmProvidersAdminListResponse"
+      },
+      "LlmRouteResponse": {
+        "properties": {
+          "surface": { "type": "string", "title": "Surface" },
+          "mode": { "type": "string", "title": "Mode" },
+          "tier": { "type": "string", "title": "Tier" },
+          "model_slug": { "type": "string", "title": "Model Slug" },
+          "updated_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["surface", "mode", "tier", "model_slug"],
+        "title": "LlmRouteResponse"
+      },
+      "LlmRoutesListResponse": {
+        "properties": {
+          "routes": {
+            "items": { "$ref": "#/components/schemas/LlmRouteResponse" },
+            "type": "array",
+            "title": "Routes"
+          }
+        },
+        "type": "object",
+        "title": "LlmRoutesListResponse"
+      },
       "LogRawMetricRequest": {
         "properties": {
           "metric_name": {
@@ -20861,6 +22173,22 @@
         "required": ["store_listing_version_id", "is_approved", "comments"],
         "title": "ReviewSubmissionRequest"
       },
+      "RouteWarning": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "reason": { "type": "string", "title": "Reason" },
+          "count": { "type": "integer", "title": "Count" },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          },
+          "last_layer": { "type": "string", "title": "Last Layer" }
+        },
+        "type": "object",
+        "required": ["slug", "reason", "count", "last_seen", "last_layer"],
+        "title": "RouteWarning"
+      },
       "RunningExecutionDetail": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -21385,6 +22713,41 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetLlmRouteRequest": {
+        "properties": {
+          "surface": {
+            "type": "string",
+            "title": "Surface",
+            "default": "copilot"
+          },
+          "mode": { "type": "string", "title": "Mode" },
+          "tier": { "type": "string", "title": "Tier" },
+          "model_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model Slug"
+          }
+        },
+        "type": "object",
+        "required": ["mode", "tier"],
+        "title": "SetLlmRouteRequest"
+      },
+      "SetLlmRouteResponse": {
+        "properties": {
+          "route": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LlmRouteResponse" },
+              { "type": "null" }
+            ]
+          },
+          "warnings": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "SetLlmRouteResponse"
       },
       "SetUserTierRequest": {
         "properties": {
@@ -23366,6 +24729,26 @@
         "title": "TodoWriteResponse",
         "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless — the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
       },
+      "ToggleLlmModelRequest": {
+        "properties": {
+          "is_enabled": { "type": "boolean", "title": "Is Enabled" },
+          "migrate_to_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Migrate To Slug"
+          },
+          "migration_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Migration Reason"
+          },
+          "custom_credit_cost": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Custom Credit Cost"
+          }
+        },
+        "type": "object",
+        "required": ["is_enabled"],
+        "title": "ToggleLlmModelRequest"
+      },
       "TokenIntrospectionResult": {
         "properties": {
           "active": { "type": "boolean", "title": "Active" },
@@ -23723,6 +25106,150 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
+      },
+      "UpdateLlmCreatorRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLlmCreatorRequest"
+      },
+      "UpdateLlmModelRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "creator_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Id"
+          },
+          "context_window": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Context Window"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": {
+            "anyOf": [
+              { "type": "integer", "maximum": 3.0, "minimum": 1.0 },
+              { "type": "null" }
+            ],
+            "title": "Price Tier"
+          },
+          "is_enabled": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Enabled"
+          },
+          "is_recommended": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Recommended"
+          },
+          "kind": {
+            "anyOf": [
+              { "type": "string", "const": "CHAT" },
+              { "type": "null" }
+            ],
+            "title": "Kind"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["GA", "EMPLOYEES", "ADMINS", "HIDDEN"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Visibility"
+          },
+          "min_subscription_tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "NO_TIER",
+                  "BASIC",
+                  "PRO",
+                  "MAX",
+                  "BUSINESS",
+                  "ENTERPRISE"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Min Subscription Tier"
+          },
+          "fallback_model_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fallback Model Slug"
+          },
+          "supports_tools": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Tools"
+          },
+          "supports_json_output": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Json Output"
+          },
+          "supports_reasoning": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Reasoning"
+          },
+          "supports_parallel_tool_calls": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Parallel Tool Calls"
+          },
+          "capabilities": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLlmModelRequest"
       },
       "UpdateMemberRequest": {
         "properties": {

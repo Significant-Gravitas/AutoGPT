@@ -10,6 +10,7 @@ import {
   CalculatorIcon,
   Brain,
   RobotIcon,
+  CpuIcon,
 } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -61,6 +62,11 @@ const sidebarLinkGroups = [
         text: "Block Cost Estimates",
         href: "/admin/block-cost-estimates",
         icon: <CalculatorIcon className="h-6 w-6" />,
+      },
+      {
+        text: "LLM Registry",
+        href: "/admin/llms",
+        icon: <CpuIcon className="h-6 w-6" />,
       },
       {
         text: "Memory Inspector",
