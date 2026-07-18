@@ -2194,3 +2194,223 @@ model BotInstall {
   @@unique([platform, platformServerId])
   @@index([platform, revokedAt])
 }
+
+enum LlmCostUnit {
+  RUN
+  TOKENS
+}
+
+// Who last wrote a catalog row. LOCAL rows are admin-owned: the catalog
+// importer never updates or disables them (enforced via `source != LOCAL`
+// guards inside importer UPDATE WHERE clauses).
+enum LlmCatalogSource {
+  SEED // bundled catalog.json import
+  REMOTE // remote catalog sync (self-hosted installs)
+  LOCAL // admin write — importer keeps hands off
+}
+
+enum LlmModelKind {
+  CHAT
+}
+
+// Who can SEE the model in pickers/catalog. Orthogonal to isEnabled:
+// isEnabled=false is the kill switch (never serves, even when routed via
+// LaunchDarkly); visibility=HIDDEN serves when explicitly routed but is
+// never shown — the pre-launch testing state.
+enum LlmModelVisibility {
+  GA
+  EMPLOYEES
+  ADMINS
+  HIDDEN
+}
+
+model LlmProvider {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique
+  displayName String
+  description String?
+
+  source LlmCatalogSource @default(SEED)
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
+model LlmModel {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slug        String  @unique
+  displayName String
+  description String?
+
+  providerId String
+  Provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  // Creator is the organization that created/trained the model (e.g., OpenAI, Meta)
+  // This is distinct from the provider who hosts/serves the model (e.g., OpenRouter)
+  creatorId String?
+  Creator   LlmModelCreator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  kind            LlmModelKind @default(CHAT)
+  contextWindow   Int
+  maxOutputTokens Int?
+  priceTier       Int          @default(1) // 1=cheapest, 2=medium, 3=expensive (DB constraint: 1-3)
+  isEnabled       Boolean      @default(true)
+  isRecommended   Boolean      @default(false)
+
+  visibility          LlmModelVisibility @default(GA)
+  // Null = available on every subscription tier. Enforcement lands with the
+  // registry-driven picker; until then this is admin-surfaced metadata.
+  minSubscriptionTier SubscriptionTier?
+
+  source           LlmCatalogSource @default(SEED)
+  // Set when a non-LOCAL row disappears from the imported catalog (the
+  // importer disables it at the same time); cleared if it reappears.
+  // Distinguishes "catalog removed it" from "admin disabled it".
+  catalogRemovedAt DateTime?
+
+  // Standing replacement pointer: pre-fills the disable-with-replacement
+  // flow, and is the hook for future automatic runtime failover.
+  fallbackModelSlug String?
+  FallbackModel     LlmModel?  @relation("LlmModelFallback", fields: [fallbackModelSlug], references: [slug], onDelete: SetNull, onUpdate: Cascade)
+  FallbackFor       LlmModel[] @relation("LlmModelFallback")
+
+  // Model-specific capabilities
+  // These vary per model even within the same provider (e.g., Hugging Face)
+  // Default to false for safety - partially-seeded rows should not be assumed capable
+  supportsTools             Boolean @default(false)
+  supportsJsonOutput        Boolean @default(false)
+  supportsReasoning         Boolean @default(false)
+  supportsParallelToolCalls Boolean @default(false)
+
+  capabilities Json @default("{}")
+  metadata     Json @default("{}")
+
+  Costs            LlmModelCost[]
+  Routes           LlmModelRoute[]
+  SourceMigrations LlmModelMigration[] @relation("SourceMigrations")
+  TargetMigrations LlmModelMigration[] @relation("TargetMigrations")
+
+  @@index([providerId, isEnabled])
+  @@index([creatorId])
+}
+
+model LlmModelCost {
+  id        String      @id @default(uuid())
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  unit      LlmCostUnit @default(RUN)
+
+  creditCost Int // DB constraint: >= 0
+
+  // Provider identifier (e.g., "openai", "anthropic", "openrouter")
+  // Used to determine which credential system provides the API key.
+  // Allows different pricing for:
+  // - Default provider costs (WHERE credentialId IS NULL)
+  // - User's own API key costs (WHERE credentialId IS NOT NULL)
+  credentialProvider String
+  credentialId       String?
+  credentialType     String?
+  currency           String?
+
+  metadata Json @default("{}")
+
+  llmModelId String
+  Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
+
+  // Note: Unique constraints are implemented as partial indexes in migration SQL:
+  // - One for default costs (WHERE credentialId IS NULL)
+  // - One for credential-specific costs (WHERE credentialId IS NOT NULL)
+  // This allows both provider-level defaults and credential-specific overrides
+}
+
+model LlmModelCreator {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique // e.g., "openai", "anthropic", "meta"
+  displayName String // e.g., "OpenAI", "Anthropic", "Meta"
+  description String?
+  websiteUrl  String?
+  logoUrl     String?
+
+  source LlmCatalogSource @default(SEED)
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
+// One row per (surface, mode, tier) routing cell — e.g. ("copilot",
+// "thinking", "standard") -> model slug. Admin-set config layer: resolution
+// order is LaunchDarkly slug flag -> this table -> env default.
+model LlmModelRoute {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  surface String // e.g. "copilot"
+  mode    String // e.g. "fast" | "thinking"
+  tier    String // e.g. "standard" | "advanced"
+
+  modelSlug String
+  Model     LlmModel @relation(fields: [modelSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([surface, mode, tier])
+}
+
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The original model that was disabled
+  targetModelSlug String // The model workflows were migrated to
+  reason          String? // Why the migration happened (e.g., "Provider outage")
+
+  // FK constraints ensure slugs reference valid models
+  SourceModel LlmModel @relation("SourceMigrations", fields: [sourceModelSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+  TargetModel LlmModel @relation("TargetMigrations", fields: [targetModelSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+
+  // Track affected nodes as JSON array of node IDs
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // Number of nodes migrated (DB constraint: >= 0)
+
+  // Custom pricing override for migrated workflows during the migration
+  // period (e.g., keep the source model's pricing to avoid billing
+  // surprises). Billing integration is deliberately deferred: applied when
+  // DB-driven costs land (Phase B), until then informational.
+  customCreditCost Int? // DB constraint: >= 0 when not null
+
+  // Revert tracking
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  // Note: Partial unique index in migration SQL prevents multiple active migrations per source:
+  // UNIQUE (sourceModelSlug) WHERE isReverted = false
+  @@index([targetModelSlug])
+  @@index([sourceModelSlug, isReverted])
+}
+
+// Singleton observability/state row for the catalog importer + remote sync.
+model LlmCatalogState {
+  id String @id @default("singleton")
+
+  schemaVersion    Int
+  contentHash      String? // sha256 of last successfully imported canonical payload
+  lastImportSource LlmCatalogSource?
+  lastImportedAt   DateTime?
+
+  lastRemoteSyncAt    DateTime? // last attempt
+  lastRemoteSuccessAt DateTime?
+  sourceUrl           String?
+
+  updatedAt DateTime @updatedAt
+}
