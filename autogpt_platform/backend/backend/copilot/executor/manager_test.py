@@ -105,6 +105,9 @@ def test_turn_done_with_pending_switch_dispatches_on_success():
         _maybe_dispatch_engine_switch("sess-1", error_msg=None)
 
     mock_thread.assert_called_once()
+    kwargs = mock_thread.call_args.kwargs
+    assert kwargs["target"] is _dispatch_engine_switch_continuation
+    assert kwargs["args"] == ("sess-1", _SWITCH)
     mock_thread.return_value.start.assert_called_once()
 
 

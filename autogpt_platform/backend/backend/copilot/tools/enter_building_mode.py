@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 class BuildingModeResponse(ToolResponseBase):
+    # Reuses AGENT_BUILDER_GUIDE for all branches (status strings AND the
+    # SDK-less inline guide) so every frontend/history consumer that already
+    # renders guide responses handles this tool uniformly.
     """Response for enter_agent_building_mode."""
 
     type: ResponseType = ResponseType.AGENT_BUILDER_GUIDE
@@ -89,13 +92,12 @@ class EnterAgentBuildingModeTool(BaseTool):
             # iteration boundary and the processor dispatches an SDK
             # continuation turn. The tool call in message history also
             # pins all later turns to SDK (resolve_use_sdk_for_mode).
-            if session_id:
-                engine_switch.request_switch(
-                    session_id,
-                    user_id=user_id,
-                    organization_id=session.organization_id,
-                    team_id=session.team_id,
-                )
+            engine_switch.request_switch(
+                session_id,
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
             return BuildingModeResponse(
                 message="Switching to the agent-building engine…",
                 content=(

@@ -603,7 +603,7 @@ _SWITCH_DISPATCH_ATTEMPTS = 3
 
 
 def _dispatch_engine_switch_continuation(
-    session_id: str, switch: "engine_switch.SwitchRequest"
+    session_id: str, switch: engine_switch.SwitchRequest
 ) -> None:
     """Dispatch the SDK continuation turn after an engine switch.
 
