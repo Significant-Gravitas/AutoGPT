@@ -2563,5 +2563,5 @@ async def stream_chat_completion_baseline(
 
     if engine_switch.is_pending(session_id):
         yield StreamModeChanged(mode="extended_thinking")
-        yield StreamStatus(message="Switching to the agent-building engine…")
+        yield StreamStatus(message="Switching to Thinking mode for agent building…")
     yield StreamFinish()

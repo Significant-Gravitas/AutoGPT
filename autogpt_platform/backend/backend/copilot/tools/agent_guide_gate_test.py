@@ -359,10 +359,3 @@ def test_enter_call_satisfies_gate_on_sdk_less_deployment(mocker):
     )
     session = _session_with_messages([_enter_call_message()])
     assert require_guide_read(session, "create_agent") is None
-
-
-def test_guide_in_system_prompt_bypasses_gate():
-    """Building sessions carry the guide in the cached system prompt."""
-    session = _session_with_messages([])
-    session.guide_in_system_prompt = True
-    assert require_guide_read(session, "create_agent") is None

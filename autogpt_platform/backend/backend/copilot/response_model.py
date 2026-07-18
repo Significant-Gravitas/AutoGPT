@@ -8,7 +8,7 @@ See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 import json
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -346,7 +346,9 @@ class StreamModeChanged(StreamBaseResponse):
     """
 
     type: ResponseType = ResponseType.MODE_CHANGED
-    mode: str = Field(..., description="New effective mode, e.g. extended_thinking")
+    mode: Literal["extended_thinking", "fast"] = Field(
+        ..., description="New effective mode"
+    )
 
     def to_sse(self) -> str:
         """Emit as an AI SDK v5 data part — the client reads the payload

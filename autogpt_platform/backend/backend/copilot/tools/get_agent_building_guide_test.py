@@ -243,7 +243,7 @@ async def test_enter_building_mode_local_degrades_to_guide(mocker):
         MagicMock(transport=MagicMock(supports_sdk=False)),
     )
     mocker.patch(
-        "backend.copilot.tools.enter_building_mode.is_feature_enabled",
+        "backend.copilot.tools.get_agent_building_guide.is_feature_enabled",
         new=mocker.AsyncMock(return_value=True),
     )
     tool = EnterAgentBuildingModeTool()

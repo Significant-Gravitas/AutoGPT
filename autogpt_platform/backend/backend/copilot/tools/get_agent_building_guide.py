@@ -89,16 +89,7 @@ class GetAgentBuildingGuideTool(BaseTool):
                 session_id=session_id,
             )
         try:
-            content = _load_guide()
-            triggers_enabled = (
-                await is_feature_enabled(
-                    Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False
-                )
-                if user_id
-                else False
-            )
-            if not triggers_enabled:
-                content = _strip_h3_section(content, _TRIGGER_AGENTS_HEADING)
+            content = await load_guide_for_user(user_id)
             return AgentBuildingGuideResponse(
                 message="Agent building guide loaded.",
                 content=content,
@@ -134,3 +125,21 @@ def _strip_h3_section(guide: str, heading: str) -> str:
         if not skipping:
             out.append(line)
     return "\n".join(out)
+
+
+async def load_guide_for_user(user_id: str | None) -> str:
+    """Load the guide with per-user feature gating applied.
+
+    Shared by get_agent_building_guide and enter_agent_building_mode (its
+    SDK-less inline fallback) so the trigger-section gating and heading
+    sentinel cannot drift between the two.
+    """
+    content = _load_guide()
+    triggers_enabled = (
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False)
+        if user_id
+        else False
+    )
+    if not triggers_enabled:
+        content = _strip_h3_section(content, _TRIGGER_AGENTS_HEADING)
+    return content

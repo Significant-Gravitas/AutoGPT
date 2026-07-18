@@ -833,6 +833,8 @@ async def _consume_sdk_until_done(
 # Continuation query sent when relaunching an attempt after the
 # building-mode switch — the CLI session already holds the original user
 # message and all partial work, so this only needs to orient the model.
+# Sibling of the baseline engine-switch continuation prompt
+# (engine_switch.CONTINUATION_MESSAGE) — keep the two aligned when rewording.
 _BUILDING_MODE_CONTINUATION = (
     "Building mode is now active — the complete agent-building guide is in "
     "your system prompt (<building_guide>) and survives context compaction. "
