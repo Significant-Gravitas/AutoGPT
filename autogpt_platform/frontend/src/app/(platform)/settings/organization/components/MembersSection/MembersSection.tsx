@@ -4,17 +4,12 @@ import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMember
 import Avatar, { AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
-import { Select } from "@/components/atoms/Select/Select";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
+import { OrgRoleSelect } from "../OrgRoleSelect/OrgRoleSelect";
+import { flagsToRole, roleLabel } from "../OrgRoleSelect/roleAccess";
 import { useMembersSection } from "./useMembersSection";
-
-const ROLE_OPTIONS = [
-  { value: "member", label: "Member" },
-  { value: "admin", label: "Admin" },
-];
 
 interface Props {
   orgId: string;
@@ -37,7 +32,6 @@ export function MembersSection({
     isUpdatingRole,
     isRemoving,
     handleRoleChange,
-    handleBillingManagerChange,
     handleRemoveConfirmed,
   } = useMembersSection({ orgId, onChanged });
 
@@ -50,6 +44,7 @@ export function MembersSection({
         {members.map((member) => {
           const isSelf = member.user_id === currentMember?.user_id;
           const canManage = isAdmin && !member.is_owner && !isSelf;
+          const role = flagsToRole(member);
           return (
             <li
               key={member.user_id}
@@ -70,37 +65,17 @@ export function MembersSection({
                   {member.email}
                 </span>
               </div>
-              {member.is_owner ? <Badge variant="info">Owner</Badge> : null}
-              {!member.is_owner && member.is_admin && !canManage ? (
-                <Badge variant="info">Admin</Badge>
-              ) : null}
-              {member.is_billing_manager && !canManage ? (
-                <Badge variant="info">Billing</Badge>
-              ) : null}
-              {canManage ? (
+              {member.is_owner ? (
+                <Badge variant="info">Owner</Badge>
+              ) : canManage ? (
                 <>
-                  <Select
+                  <OrgRoleSelect
                     id={`role-${member.user_id}`}
-                    label=""
-                    hideLabel
-                    size="small"
-                    wrapperClassName="!mb-0 w-32"
-                    value={member.is_admin ? "admin" : "member"}
-                    onValueChange={(role) => handleRoleChange(member, role)}
-                    options={ROLE_OPTIONS}
+                    ariaLabel={`Role for ${member.name || member.email}`}
+                    value={role}
+                    onChange={(nextRole) => handleRoleChange(member, nextRole)}
                     disabled={isUpdatingRole}
                   />
-                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500">
-                    Billing
-                    <Switch
-                      aria-label={`Billing manager for ${member.name || member.email}`}
-                      checked={member.is_billing_manager}
-                      onCheckedChange={(checked) =>
-                        handleBillingManagerChange(member, checked)
-                      }
-                      disabled={isUpdatingRole}
-                    />
-                  </label>
                   <Button
                     variant="ghost"
                     size="small"
@@ -109,6 +84,8 @@ export function MembersSection({
                     Remove
                   </Button>
                 </>
+              ) : role !== "member" ? (
+                <Badge variant="info">{roleLabel(role)}</Badge>
               ) : null}
             </li>
           );
