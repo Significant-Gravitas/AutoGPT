@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import platform
@@ -52,6 +53,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -158,8 +160,29 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
+    # Load the LLM registry L1 cache and keep it fresh across pods. Failure is
+    # non-fatal: nothing at runtime depends on the registry yet, and an empty
+    # registry degrades to existing hardcoded behavior.
+    try:
+        await backend.data.llm_registry.refresh_llm_registry()
+    except Exception:
+        logger.warning("LLM registry initial refresh failed", exc_info=True)
+    llm_registry_refresh_task = asyncio.create_task(
+        backend.data.llm_registry.subscribe_to_registry_refresh(
+            backend.data.llm_registry.refresh_llm_registry
+        )
+    )
+
     with launch_darkly_context():
         yield
+
+    llm_registry_refresh_task.cancel()
+    try:
+        await llm_registry_refresh_task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.warning("LLM registry refresh task shutdown failed", exc_info=True)
 
     try:
         await shutdown_cloud_storage_handler()
