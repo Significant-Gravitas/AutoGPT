@@ -16,7 +16,8 @@ graceful degradation, no persistence needed.
 """
 
 import threading
-from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 # Dispatched as the continuation turn's message with is_user_message=False,
 # so it persists as an assistant row and renders as AutoPilot narration —
@@ -28,9 +29,10 @@ CONTINUATION_MESSAGE = (
 )
 
 
-@dataclass(frozen=True)
-class SwitchRequest:
+class SwitchRequest(BaseModel):
     """Tenancy context needed to dispatch the continuation turn."""
+
+    model_config = {"frozen": True}
 
     user_id: str | None
     organization_id: str | None = None
