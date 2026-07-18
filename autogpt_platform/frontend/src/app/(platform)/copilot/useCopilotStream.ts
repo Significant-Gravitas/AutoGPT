@@ -24,6 +24,7 @@ import {
   hasActiveBackendStream,
   hasInProgressAssistantParts,
   hasVisibleAssistantContent,
+  resolveModeChangedMode,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
@@ -212,9 +213,8 @@ export function useCopilotStream({
     }
 
     function handleData(dataPart: { type: string; data?: unknown }) {
-      if (dataPart.type !== "data-mode-changed") return;
-      const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
-      if (mode === "extended_thinking" || mode === "fast") {
+      const mode = resolveModeChangedMode(dataPart);
+      if (mode) {
         useCopilotUIStore.getState().setCopilotChatMode(mode);
       }
     }
