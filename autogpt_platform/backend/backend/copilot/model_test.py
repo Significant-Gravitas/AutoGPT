@@ -1081,6 +1081,48 @@ async def test_save_session_to_db_new_rows_persist_tool_calls_without_backfill(
     assert new_msg.tool_calls_pending_save is False
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfill_failure_keeps_flag_set(
+    mocker: MockerFixture,
+) -> None:
+    """When the back-fill UPDATE fails, the dirty flag must stay set so a
+    later save retries — this retention-on-failure is the fix's safety net."""
+    calls = [
+        {
+            "id": "c3",
+            "type": "function",
+            "function": {"name": "web_search", "arguments": "{}"},
+        }
+    ]
+    flushed = ChatMessage(
+        role="assistant",
+        content="Searching...",
+        sequence=7,
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=False)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.tool_calls_pending_save is True
+
+    # A later save retries the back-fill; on success the flag clears.
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+    assert flushed.tool_calls_pending_save is False
+
+
 # ─── _get_session_from_db cap-hit warning ──────────────────────────────
 
 
