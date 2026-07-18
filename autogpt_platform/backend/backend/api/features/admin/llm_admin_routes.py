@@ -18,9 +18,14 @@ from backend.api.features.admin.llm_admin_model import (
     CreateLlmCreatorRequest,
     CreateLlmModelRequest,
     LlmCreatorAdminResponse,
+    LlmCreatorsAdminListResponse,
+    LlmMigrationAdminResponse,
+    LlmMigrationsAdminListResponse,
     LlmModelAdminResponse,
     LlmModelCostAdminResponse,
+    LlmModelsAdminListResponse,
     LlmProviderAdminResponse,
+    LlmProvidersAdminListResponse,
     LlmRouteResponse,
     LlmRoutesListResponse,
     SetLlmRouteRequest,
@@ -88,6 +93,7 @@ def _map_creator(creator: prisma.models.LlmModelCreator) -> LlmCreatorAdminRespo
         description=creator.description,
         website_url=creator.websiteUrl,
         logo_url=creator.logoUrl,
+        source=str(creator.source),
         metadata=dict(creator.metadata or {}),
         created_at=creator.createdAt.isoformat() if creator.createdAt else None,
         updated_at=creator.updatedAt.isoformat() if creator.updatedAt else None,
@@ -102,6 +108,7 @@ def _map_provider(
         name=provider.name,
         display_name=provider.displayName,
         description=provider.description,
+        source=str(provider.source),
         metadata=dict(provider.metadata or {}),
         created_at=provider.createdAt.isoformat() if provider.createdAt else None,
         updated_at=provider.updatedAt.isoformat() if provider.updatedAt else None,
@@ -397,7 +404,7 @@ async def admin_list_models(
     page: int = 1,
     page_size: int = 100,
     enabled_only: bool = False,
-) -> dict:
+) -> LlmModelsAdminListResponse:
     try:
         where = {"isEnabled": True} if enabled_only else {}
         models = await prisma.models.LlmModel.prisma().find_many(
@@ -407,7 +414,7 @@ async def admin_list_models(
             order={"displayName": "asc"},
             include={"Costs": True, "Creator": True},
         )
-        return {"models": [_map_model(m).model_dump() for m in models]}
+        return LlmModelsAdminListResponse(models=[_map_model(m) for m in models])
     except Exception as e:
         logger.exception(f"Failed to list models: {e}")
         raise HTTPException(status_code=500, detail="Failed to list models")
@@ -419,10 +426,14 @@ async def admin_list_models(
 
 
 @router.get("/migrations")
-async def list_migrations(include_reverted: bool = False) -> dict:
+async def list_migrations(
+    include_reverted: bool = False,
+) -> LlmMigrationsAdminListResponse:
     try:
         migrations = await db_write.list_migrations(include_reverted=include_reverted)
-        return {"migrations": migrations}
+        return LlmMigrationsAdminListResponse(
+            migrations=[LlmMigrationAdminResponse(**m) for m in migrations]
+        )
     except Exception as e:
         logger.exception(f"Failed to list migrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to list migrations")
@@ -466,20 +477,18 @@ async def revert_migration(
 
 
 @router.get("/providers")
-async def admin_list_providers() -> dict:
+async def admin_list_providers() -> LlmProvidersAdminListResponse:
     try:
         providers = await prisma.models.LlmProvider.prisma().find_many(
             order={"name": "asc"},
             include={"Models": True},
         )
-        return {
-            "providers": [
-                _map_provider(
-                    p, model_count=len(p.Models) if p.Models else 0
-                ).model_dump()
+        return LlmProvidersAdminListResponse(
+            providers=[
+                _map_provider(p, model_count=len(p.Models) if p.Models else 0)
                 for p in providers
             ]
-        }
+        )
     except Exception as e:
         logger.exception(f"Failed to list providers: {e}")
         raise HTTPException(status_code=500, detail="Failed to list providers")
@@ -491,12 +500,14 @@ async def admin_list_providers() -> dict:
 
 
 @router.get("/creators")
-async def list_creators() -> dict:
+async def list_creators() -> LlmCreatorsAdminListResponse:
     try:
         creators = await prisma.models.LlmModelCreator.prisma().find_many(
             order={"name": "asc"}
         )
-        return {"creators": [_map_creator(c).model_dump() for c in creators]}
+        return LlmCreatorsAdminListResponse(
+            creators=[_map_creator(c) for c in creators]
+        )
     except Exception as e:
         logger.exception(f"Failed to list creators: {e}")
         raise HTTPException(status_code=500, detail="Failed to list creators")

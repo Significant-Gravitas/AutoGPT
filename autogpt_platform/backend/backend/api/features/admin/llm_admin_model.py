@@ -112,6 +112,7 @@ class LlmCreatorAdminResponse(pydantic.BaseModel):
     description: str | None = None
     website_url: str | None = None
     logo_url: str | None = None
+    source: str = "SEED"
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None
@@ -130,6 +131,7 @@ class LlmProviderAdminResponse(pydantic.BaseModel):
     name: str
     display_name: str
     description: str | None = None
+    source: str = "SEED"
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None
@@ -164,3 +166,31 @@ class LlmModelAdminResponse(pydantic.BaseModel):
     updated_at: str | None = None
     creator: LlmCreatorAdminResponse | None = None
     costs: list[LlmModelCostAdminResponse] = pydantic.Field(default_factory=list)
+
+
+class LlmMigrationAdminResponse(pydantic.BaseModel):
+    id: str
+    source_model_slug: str
+    target_model_slug: str
+    reason: str | None = None
+    node_count: int
+    custom_credit_cost: int | None = None
+    is_reverted: bool
+    reverted_at: str | None = None
+    created_at: str
+
+
+class LlmModelsAdminListResponse(pydantic.BaseModel):
+    models: list[LlmModelAdminResponse]
+
+
+class LlmProvidersAdminListResponse(pydantic.BaseModel):
+    providers: list[LlmProviderAdminResponse]
+
+
+class LlmCreatorsAdminListResponse(pydantic.BaseModel):
+    creators: list[LlmCreatorAdminResponse]
+
+
+class LlmMigrationsAdminListResponse(pydantic.BaseModel):
+    migrations: list[LlmMigrationAdminResponse]
