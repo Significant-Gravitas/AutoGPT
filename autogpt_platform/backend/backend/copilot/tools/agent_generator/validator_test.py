@@ -1370,3 +1370,63 @@ class TestAdditionalPropertiesChains:
         )
         assert v.validate_source_output_existence(agent, blocks) is False
         assert any("Available properties" in e and "other" in e for e in v.errors)
+
+
+class TestDeepDeclaredChains:
+    """Arbitrary-depth strict validation through multiple *declared* object
+    levels — each declared level is verified, and a miss names the level."""
+
+    def _agent_and_blocks(self, source_name: str) -> tuple[dict, list[dict]]:
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        blocks = [
+            _make_block(
+                block_id="src-1",
+                output_schema={
+                    "properties": {
+                        "a": {
+                            "type": "object",
+                            "properties": {
+                                "b": {
+                                    "type": "object",
+                                    "properties": {"c": {}},
+                                }
+                            },
+                        }
+                    }
+                },
+            ),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        return agent, blocks
+
+    def test_three_declared_levels_pass(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_c")
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_miss_at_third_declared_level_names_it(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_x")
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("'x'" in e and "'a_#_b'" in e for e in v.errors)
+
+    def test_miss_at_second_declared_level_names_it(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_x_#_c")
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("'x'" in e and "'a'" in e for e in v.errors)
+
+    def test_untyped_leaf_after_declared_levels_accepts_further_descent(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_c_#_anything")
+        assert v.validate_source_output_existence(agent, blocks) is True
