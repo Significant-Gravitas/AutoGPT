@@ -420,6 +420,13 @@ model ChatMessage {
   sequence   Int
   durationMs Int? // Wall-clock milliseconds for this assistant turn
 
+  // Which LLM served this assistant turn, and which routing layer picked it
+  // ("ld" | "db" | "env"). Product-intelligence mirrors these columns to
+  // segment quality judgments by model — model experiments are unmeasurable
+  // without them. Null on user/tool rows and rows predating this column.
+  model         String?
+  routingSource String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
