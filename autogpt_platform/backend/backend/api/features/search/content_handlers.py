@@ -405,10 +405,15 @@ class DocumentationHandler(ContentHandler):
     def content_type(self) -> ContentType:
         return ContentType.DOCUMENTATION
 
-    def _get_docs_root(self) -> Path:
+    def _get_docs_root(self) -> Path | None:
         """Get the documentation root directory (shared with the copilot
-        docs tools so indexed paths and page reads always agree)."""
-        return get_docs_root()
+        docs tools so indexed paths and page reads always agree), or None
+        when this deployment didn't bundle the docs — the indexer degrades
+        to empty results instead of crashing."""
+        try:
+            return get_docs_root()
+        except FileNotFoundError:
+            return None
 
     def _extract_doc_title(self, file_path: Path) -> str:
         """Extract the document title from a markdown file."""
@@ -568,8 +573,8 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
-            logger.warning(f"Documentation root not found: {docs_root}")
+        if docs_root is None:
+            logger.warning("Documentation root not found")
             return []
 
         # Find all .md and .mdx files
@@ -673,7 +678,7 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
+        if docs_root is None:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         # Get all section content IDs
@@ -705,7 +710,7 @@ class DocumentationHandler(ContentHandler):
         # or removed section drops from this set and its embedding gets
         # cleaned up.
         docs_root = self._get_docs_root()
-        if not docs_root.exists():
+        if docs_root is None:
             return set()
         # Filesystem walk is sync; keep it off the event loop.
         return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)

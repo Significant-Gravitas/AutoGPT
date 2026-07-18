@@ -4,17 +4,14 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.util.docs import get_docs_root
+from backend.util.docs import DOCS_BASE_URL, get_docs_root, make_doc_url
 
 from .base import BaseTool
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
-# Public docs site. It serves the raw repo docs verbatim, INCLUDING the .md
-# extension (https://agpt.co/docs/<repo-relative-path>.md returns the page;
-# the extension-less variant 404s for pages outside the site navigation).
-DOCS_BASE_URL = "https://agpt.co/docs"
+__all__ = ["DOCS_BASE_URL", "GetDocPageTool"]
 
 
 class GetDocPageTool(BaseTool):
@@ -56,9 +53,7 @@ class GetDocPageTool(BaseTool):
         return fallback
 
     def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page (extension kept — see
-        DOCS_BASE_URL)."""
-        return f"{DOCS_BASE_URL}/{path}"
+        return make_doc_url(path)
 
     async def _execute(
         self,
@@ -106,20 +101,21 @@ class GetDocPageTool(BaseTool):
             )
         full_path = docs_root / path
 
-        if not full_path.exists():
-            return ErrorResponse(
-                message=f"Documentation page not found: {path}",
-                error="not_found",
-                session_id=session_id,
-            )
-
-        # Ensure the path is within docs root
+        # Containment before existence: a uniform error for out-of-root
+        # paths avoids leaking whether a file exists outside docs_root.
         try:
             full_path.resolve().relative_to(docs_root.resolve())
         except ValueError:
             return ErrorResponse(
                 message="Invalid documentation path.",
                 error="invalid_path",
+                session_id=session_id,
+            )
+
+        if not full_path.exists():
+            return ErrorResponse(
+                message=f"Documentation page not found: {path}",
+                error="not_found",
                 session_id=session_id,
             )
 

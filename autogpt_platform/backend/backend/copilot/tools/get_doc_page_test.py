@@ -60,3 +60,18 @@ async def test_traversal_is_blocked(tool, session):
     )
     assert isinstance(result, ErrorResponse)
     assert result.error == "invalid_path"
+
+
+@pytest.mark.asyncio
+async def test_docs_unavailable_returns_dedicated_error(tool, session, mocker):
+    """A deployment without bundled docs degrades to a clear error instead
+    of a misleading not_found."""
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root",
+        side_effect=FileNotFoundError("no docs"),
+    )
+    result = await tool._execute(
+        user_id=None, session=session, path="platform/getting-started.md"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "docs_unavailable"
