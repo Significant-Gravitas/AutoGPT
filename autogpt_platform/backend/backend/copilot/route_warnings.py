@@ -36,7 +36,7 @@ async def record_route_warning(slug: str, reason: str, layer: str) -> None:
     """Best-effort; never lets observability break routing."""
     try:
         redis = await get_redis_async()
-        raw = await redis.hget(_WARNINGS_KEY, slug)
+        raw = await redis.hget(_WARNINGS_KEY, slug)  # type: ignore[misc]
         count = (json.loads(raw).get("count", 0) if raw else 0) + 1
         entry = {
             "reason": reason,
@@ -56,7 +56,7 @@ async def get_route_warnings() -> list[RouteWarning]:
     """Recent routing refusals, most-hit first. Empty on any Redis trouble."""
     try:
         redis = await get_redis_async()
-        entries = await redis.hgetall(_WARNINGS_KEY)
+        entries = await redis.hgetall(_WARNINGS_KEY)  # type: ignore[misc]
     except Exception:
         logger.warning("Failed to read route warnings", exc_info=True)
         return []
