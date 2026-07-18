@@ -1126,3 +1126,71 @@ class TestNestedChainsThroughUntypedFields:
         v = AgentValidator()
         agent = self._agent("main_result_#_text_#_deeper")
         assert v.validate_source_output_existence(agent, self._blocks()) is False
+
+
+class TestNestedChainEdgeCases:
+    """Regressions from review: empty schemas are present-but-untyped, and
+    Optional[X] unions resolve to X for strict validation."""
+
+    def _agent_with_source(self, source_name: str, output_schema: dict) -> tuple:
+        blocks = [
+            _make_block(block_id="src-1", output_schema=output_schema),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        return _make_agent(nodes=nodes, links=[link]), blocks
+
+    def test_empty_schema_property_is_present_and_untyped(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_with_source(
+            "value_#_child", {"properties": {"value": {}}}
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_optional_declared_object_valid_child_passes(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {
+                "cfg": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"key": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            }
+        }
+        agent, blocks = self._agent_with_source("cfg_#_key", schema)
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_optional_declared_object_invalid_child_fails(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {
+                "cfg": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"key": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            }
+        }
+        agent, blocks = self._agent_with_source("cfg_#_missing", schema)
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("missing" in e for e in v.errors)
+
+    def test_optional_scalar_still_rejects_descent(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {"name": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
+        }
+        agent, blocks = self._agent_with_source("name_#_x", schema)
+        assert v.validate_source_output_existence(agent, blocks) is False

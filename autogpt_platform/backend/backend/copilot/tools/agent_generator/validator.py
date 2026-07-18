@@ -1143,7 +1143,7 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     """
     parts = field_name.split(DICT_SPLIT)
     schema = props.get(parts[0])
-    if not schema:
+    if schema is None:
         return f"Parent property '{parts[0]}' does not exist in the schema"
 
     path = parts[0]
@@ -1152,6 +1152,9 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
             return None
         if _allows_additional_properties(schema):
             return None
+        resolved = _resolve_optional_union(schema)
+        if resolved is not None:
+            schema = resolved
         declared = schema.get("properties")
         if isinstance(declared, dict) and declared:
             if child not in declared:
@@ -1212,3 +1215,22 @@ def _is_scalar_schema(schema: dict[str, Any]) -> bool:
         ]
         return bool(options) and all(_is_scalar_schema(o) for o in options)
     return False
+
+
+def _resolve_optional_union(schema: dict[str, Any]) -> dict[str, Any] | None:
+    """Pick the single non-null branch of an optional-union schema.
+
+    Pydantic emits ``Optional[X]`` as ``anyOf: [X, {type: null}]``. Descending
+    into the X branch keeps declared object properties strictly validated
+    instead of the whole level being treated as untyped (which would accept
+    nonexistent children). Multi-branch unions keep the permissive fallback —
+    they cannot be verified statically.
+    """
+    options = [
+        o
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and o.get("type") != "null"
+    ]
+    if len(options) == 1:
+        return options[0]
+    return None
