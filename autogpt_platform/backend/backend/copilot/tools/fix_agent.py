@@ -4,6 +4,7 @@ import difflib
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from backend.copilot.context import get_workspace_manager
@@ -164,7 +165,7 @@ async def _write_fixed_agent(
     note). On any failure the reference is None and the note explains the
     fallback to inline JSON.
     """
-    if "/" in write_to or "\\" in write_to:
+    if not re.fullmatch(r"[\w][\w.-]*", write_to):
         return None, (
             f" NOTE: write_to must be a plain filename (got {write_to!r}); "
             "returning the fixed JSON inline instead."

@@ -61,9 +61,10 @@ sampling (step 2), not by deliberation.
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-5. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
+5. **Discover blocks**: Call `find_block(query, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
-   and full input/output schemas. The `for_agent_generation=true` flag is
+   and categories; to see a block's full input/output schema, call
+   `run_block` with the block's id and no inputs. The `for_agent_generation=true` flag is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively

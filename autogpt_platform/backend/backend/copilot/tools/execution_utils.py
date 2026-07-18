@@ -247,8 +247,10 @@ def build_run_health_warning(
         )
     if not outputs:
         return (
-            "WARNING: the run COMPLETED but produced no outputs. This usually "
-            "means a broken link or a node that silently produced nothing — "
-            "inspect node_executions before reporting success."
+            "WARNING: the run COMPLETED but produced no outputs. If this "
+            "agent declares AgentOutput blocks, that usually means a broken "
+            "link or a node that silently produced nothing — inspect "
+            "node_executions before reporting success. (Side-effect-only "
+            "agents with no declared outputs legitimately finish this way.)"
         )
     return None

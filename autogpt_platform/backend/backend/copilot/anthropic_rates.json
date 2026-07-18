@@ -649,8 +649,8 @@
       "supports_response_schema": true,
       "supports_tool_choice": true,
       "supports_vision": true,
-      "tool_use_system_prompt_tokens": 346,
-      "supports_xhigh_reasoning_effort": true
+      "supports_xhigh_reasoning_effort": true,
+      "tool_use_system_prompt_tokens": 346
     }
   }
 }

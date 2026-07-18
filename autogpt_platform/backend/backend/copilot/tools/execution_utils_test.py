@@ -95,3 +95,21 @@ def test_build_run_health_warning_flags_empty_outputs():
 
 def test_build_run_health_warning_none_when_healthy():
     assert build_run_health_warning({"result": ["ok"]}, []) is None
+
+
+def test_incomplete_nodes_are_not_flagged_as_failures():
+    """INCOMPLETE nodes are legal in a COMPLETED run — unexecuted branches
+    (e.g. a ConditionBlock's untaken path) finish INCOMPLETE by design, so
+    flagging them would false-positive every conditional agent. Only FAILED
+    nodes indicate a broken run."""
+    from unittest.mock import MagicMock
+
+    from backend.data.execution import ExecutionStatus
+
+    ne = MagicMock()
+    ne.status = ExecutionStatus.INCOMPLETE
+    ne.node_id = "n1"
+    ne.block_id = "block-x"
+    ne.output_data = {}
+
+    assert summarize_node_failures([ne]) == []
