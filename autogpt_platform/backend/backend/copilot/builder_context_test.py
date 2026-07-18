@@ -21,7 +21,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 
 
 def _session(
@@ -366,8 +366,6 @@ async def test_turn_prefix_xml_escaping_in_node_names():
 async def test_system_prompt_suffix_for_building_session():
     """A non-builder session with a prior-turn guide read gets the guide
     (and only the guide) in the system-prompt suffix."""
-    from backend.copilot.model import ChatMessage
-
     session = _session(None)
     session.messages = [
         ChatMessage(
@@ -390,8 +388,6 @@ async def test_system_prompt_suffix_for_building_session():
 
 @pytest.mark.asyncio
 async def test_system_prompt_suffix_empty_without_prior_guide_read():
-    from backend.copilot.model import ChatMessage
-
     session = _session(None)
     session.messages = [
         ChatMessage(
@@ -408,8 +404,6 @@ async def test_system_prompt_suffix_empty_without_prior_guide_read():
 async def test_system_prompt_suffix_for_enter_building_mode_call():
     """The enter_agent_building_mode call (preferred path) also activates
     the building-session suffix."""
-    from backend.copilot.model import ChatMessage
-
     session = _session(None)
     session.messages = [
         ChatMessage(

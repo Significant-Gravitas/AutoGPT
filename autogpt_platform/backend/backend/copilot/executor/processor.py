@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+from typing import Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -300,7 +301,13 @@ class CoPilotProcessor:
                     SubprocessCLITransport,
                 )
 
-                cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+                # _find_bundled_cli is an instance method that never touches
+                # self (pure __file__-based lookup) — safe to call unbound.
+                finder = cast(
+                    Callable[[object], str | None],
+                    SubprocessCLITransport._find_bundled_cli,
+                )
+                cli_path = finder(None)
             if cli_path:
                 result = subprocess.run(
                     [cli_path, "-v"],
@@ -311,9 +318,7 @@ class CoPilotProcessor:
                     logger.info(f"CLI pre-warm done: {cli_path}")
                 else:
                     logger.warning(
-                        "CLI pre-warm failed (rc=%d): %s",
-                        result.returncode,  # type: ignore[reportCallIssue]
-                        cli_path,
+                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
                     )
         except Exception as e:
             logger.debug(f"CLI pre-warm skipped: {e}")
@@ -525,10 +530,9 @@ class CoPilotProcessor:
                     # Lazy imports: pulling these at module level drags the
                     # full tools/model chain into processor import, which
                     # reconfigures logging at import time and breaks caplog
-                    # in tests.  # noqa comments match the codebase's
-                    # established lazy-import pattern.
-                    from backend.copilot.model import get_chat_session  # noqa: PLC0415
-                    from backend.copilot.tools.helpers import (  # noqa: PLC0415
+                    # in tests.
+                    from backend.copilot.model import get_chat_session
+                    from backend.copilot.tools.helpers import (
                         session_entered_building_mode,
                     )
 
@@ -536,7 +540,7 @@ class CoPilotProcessor:
                     if _session is not None and session_entered_building_mode(_session):
                         use_sdk = True
                         log.info(
-                            "Forcing SDK engine: session is in agent " "building mode"
+                            "Forcing SDK engine: session is in agent building mode"
                         )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk

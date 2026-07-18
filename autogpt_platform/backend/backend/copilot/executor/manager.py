@@ -583,6 +583,9 @@ class CoPilotExecutor(AppProcess):
         return self._run_client
 
 
+_SWITCH_DISPATCH_ATTEMPTS = 3
+
+
 def _dispatch_engine_switch_continuation(
     session_id: str, switch: "engine_switch.SwitchRequest"
 ) -> None:
@@ -590,23 +593,32 @@ def _dispatch_engine_switch_continuation(
 
     Runs on its own thread with its own event loop so the thread-cached
     async queue client is created fresh and never reused across loops.
+
+    Best-effort with bounded retry: if all attempts fail, the session is
+    left idle (not stranded) — building mode is derived from persisted
+    message history, so the user's next message still lands on the SDK
+    engine with the guide in the prefix.
     """
-    try:
-        asyncio.run(
-            schedule_turn(
-                session_id=session_id,
-                user_id=switch.user_id,
-                turn_id=str(uuid.uuid4()),
-                message=engine_switch.CONTINUATION_MESSAGE,
-                is_user_message=False,
-                mode="extended_thinking",
-                organization_id=switch.organization_id,
-                team_id=switch.team_id,
+    for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
+        try:
+            asyncio.run(
+                schedule_turn(
+                    session_id=session_id,
+                    user_id=switch.user_id,
+                    turn_id=str(uuid.uuid4()),
+                    message=engine_switch.CONTINUATION_MESSAGE,
+                    is_user_message=False,
+                    mode="extended_thinking",
+                    organization_id=switch.organization_id,
+                    team_id=switch.team_id,
+                )
             )
-        )
-        logger.info(f"Dispatched engine-switch continuation for {session_id}")
-    except Exception as switch_err:
-        logger.error(
-            f"Engine-switch continuation dispatch failed for {session_id}: "
-            f"{switch_err}"
-        )
+            logger.info(f"Dispatched engine-switch continuation for {session_id}")
+            return
+        except Exception as switch_err:
+            logger.error(
+                f"Engine-switch continuation dispatch failed for {session_id} "
+                f"(attempt {attempt}/{_SWITCH_DISPATCH_ATTEMPTS}): {switch_err}"
+            )
+            if attempt < _SWITCH_DISPATCH_ATTEMPTS:
+                time.sleep(attempt)
