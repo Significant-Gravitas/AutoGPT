@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { render, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelAutoOpen } from "../ContextPanelAutoOpen";
+import { useSessionFiles } from "../components/FilesTab/useSessionFiles";
 
 const SESSION = "session-1";
+
+// The auto-open hook renders nothing, so a "the panel stays closed" assertion
+// would pass trivially before the file request resolves. This probe gives the
+// test something to await that proves the files actually arrived.
+function LoadedFilesProbe({ sessionId }: { sessionId: string }) {
+  const { generated } = useSessionFiles(sessionId);
+  return <div data-testid="generated-count">{generated.length}</div>;
+}
 
 function withFiles(): ListFilesResponse {
   return {
@@ -25,6 +34,29 @@ function withFiles(): ListFilesResponse {
     offset: 0,
     has_more: false,
   };
+}
+
+function withToolOutputAndRealFile(): ListFilesResponse {
+  const response = withFiles();
+  response.files.push({
+    id: "bbbbbbbb-0000-0000-0000-000000000002",
+    name: "toolu_01ABCdef.json",
+    path: "/sessions/session-1/toolu_01ABCdef.json",
+    mime_type: "application/json",
+    size_bytes: 512,
+    metadata: {},
+    origin: "generated",
+    created_at: "2026-05-20T12:00:00Z",
+  });
+  return response;
+}
+
+function withOnlyToolOutput(): ListFilesResponse {
+  const response = withToolOutputAndRealFile();
+  response.files = response.files.filter((file) =>
+    file.name.startsWith("toolu_"),
+  );
+  return response;
 }
 
 describe("ContextPanelAutoOpen", () => {
@@ -48,5 +80,34 @@ describe("ContextPanelAutoOpen", () => {
       ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
     );
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+  });
+
+  test("skips a newer internal tool output and opens the real generated file", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(withToolOutputAndRealFile()),
+    );
+    render(<ContextPanelAutoOpen sessionId={SESSION} />);
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
+    );
+  });
+
+  test("leaves the panel closed when the only generated file is an internal tool output", async () => {
+    server.use(getListWorkspaceFilesMockHandler200(withOnlyToolOutput()));
+    render(
+      <>
+        <ContextPanelAutoOpen sessionId={SESSION} />
+        <LoadedFilesProbe sessionId={SESSION} />
+      </>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("generated-count").textContent).toBe("1"),
+    );
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact,
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });

@@ -11,6 +11,19 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
   return item.origin === "uploaded";
 }
 
+// Agent SDK tool results that leak into the workspace. Mirrors the backend
+// classifier (`_SDK_TOOL_RESULT_RE` in backend/copilot/context.py) so both ends
+// agree on what counts as an internal file.
+const SDK_TOOL_RESULT_NAME = /^(?:toolu|mcp)_[\w-]+\.json$/i;
+const SDK_TOOL_RESULT_DIR = /(?:^|\/)tool-(?:results|outputs)\//i;
+
+export function isInternalToolOutput(item: WorkspaceFileItem): boolean {
+  if (isUploadedFile(item)) return false;
+  return (
+    SDK_TOOL_RESULT_NAME.test(item.name) || SDK_TOOL_RESULT_DIR.test(item.path)
+  );
+}
+
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
   return {
     id: item.id,

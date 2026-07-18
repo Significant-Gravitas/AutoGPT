@@ -5,6 +5,7 @@ import {
   fileItemToArtifactRef,
   formatFileSize,
   formatFileTimestamp,
+  isInternalToolOutput,
   isUploadedFile,
 } from "./helpers";
 
@@ -40,6 +41,57 @@ describe("FilesTab helpers", () => {
   });
   test("formatFileTimestamp returns a non-empty string", () => {
     expect(formatFileTimestamp(baseItem.created_at).length).toBeGreaterThan(0);
+  });
+});
+
+describe("isInternalToolOutput", () => {
+  function generated(name: string, path?: string): WorkspaceFileItem {
+    return {
+      ...baseItem,
+      name,
+      path: path ?? `/sessions/s1/${name}`,
+      mime_type: "application/json",
+      metadata: {},
+      origin: "generated",
+    };
+  }
+
+  test("matches SDK tool result files by name", () => {
+    expect(isInternalToolOutput(generated("toolu_01ABCdef.json"))).toBe(true);
+    expect(isInternalToolOutput(generated("mcp_a1b2-c3d4.json"))).toBe(true);
+    expect(isInternalToolOutput(generated("TOOLU_01ABC.JSON"))).toBe(true);
+  });
+
+  test("matches files living under an SDK tool result directory", () => {
+    expect(
+      isInternalToolOutput(
+        generated("summary.json", "/sessions/s1/tool-results/summary.json"),
+      ),
+    ).toBe(true);
+    expect(
+      isInternalToolOutput(
+        generated("summary.json", "/sessions/s1/tool-outputs/summary.json"),
+      ),
+    ).toBe(true);
+  });
+
+  test("leaves user-facing files alone", () => {
+    expect(isInternalToolOutput(generated("report.json"))).toBe(false);
+    expect(isInternalToolOutput(generated("result.csv"))).toBe(false);
+    expect(isInternalToolOutput(generated("toolu_notes.txt"))).toBe(false);
+    expect(isInternalToolOutput(generated("toolusage.json"))).toBe(false);
+    expect(isInternalToolOutput(generated("mcpserver.json"))).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated("notes.json", "/sessions/s1/my-tool-results-archive.json"),
+      ),
+    ).toBe(false);
+  });
+
+  test("never hides files the user uploaded themselves", () => {
+    expect(
+      isInternalToolOutput({ ...baseItem, name: "toolu_01ABCdef.json" }),
+    ).toBe(false);
   });
 });
 
