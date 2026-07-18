@@ -8,6 +8,7 @@ from prisma.enums import ContentType
 from backend.api.features.search.hybrid_search import HybridSearchRow
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
+from backend.util.docs import make_doc_url
 
 from .base import BaseTool
 from .models import (
@@ -19,11 +20,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Public docs site. It serves the raw repo docs verbatim, INCLUDING the .md
-# extension (https://agpt.co/docs/<repo-relative-path>.md returns the page;
-# the extension-less variant 404s for pages outside the site navigation).
-DOCS_BASE_URL = "https://agpt.co/docs"
 
 # Maximum number of results to return
 MAX_RESULTS = 5
@@ -79,9 +75,7 @@ class SearchDocsTool(BaseTool):
         return truncated + "..."
 
     def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page (extension kept — see
-        DOCS_BASE_URL)."""
-        return f"{DOCS_BASE_URL}/{path}"
+        return make_doc_url(path)
 
     async def _execute(
         self,
