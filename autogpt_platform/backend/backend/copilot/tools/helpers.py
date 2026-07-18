@@ -19,6 +19,7 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
@@ -1036,8 +1037,6 @@ def require_guide_read(session: ChatSession, tool_name: str):
     if session_read_building_guide(session):
         return None
     if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
-        from backend.copilot.sdk.env import config as chat_config
-
         if not chat_config.transport.supports_sdk:
             # SDK-less deployment: the enter tool served the guide inline.
             return None
