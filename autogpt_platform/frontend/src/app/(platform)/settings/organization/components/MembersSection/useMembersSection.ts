@@ -9,6 +9,12 @@ import {
 import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
+import {
+  roleLabel,
+  roleToFlags,
+  type OrgRole,
+} from "../OrgRoleSelect/roleAccess";
+
 interface Args {
   orgId: string;
   onChanged: () => void;
@@ -46,40 +52,18 @@ export function useMembersSection({ orgId, onChanged }: Args) {
       },
     });
 
-  async function handleRoleChange(member: OrgMemberResponse, role: string) {
+  async function handleRoleChange(member: OrgMemberResponse, role: OrgRole) {
     try {
       await updateRole({
         orgId,
         uid: member.user_id,
-        data: { is_admin: role === "admin" },
+        data: roleToFlags(role),
       });
     } catch {
-      // onError already surfaced the failure toast; swallow the rejection so
-      // it doesn't escape the event handler unhandled.
       return;
     }
     toast({
-      title: `${member.name || member.email} is now ${role === "admin" ? "an admin" : "a member"}`,
-      variant: "success",
-    });
-    onChanged();
-  }
-
-  async function handleBillingManagerChange(
-    member: OrgMemberResponse,
-    isBillingManager: boolean,
-  ) {
-    await updateRole({
-      orgId,
-      uid: member.user_id,
-      data: { is_billing_manager: isBillingManager },
-    });
-    toast({
-      title: `${member.name || member.email} ${
-        isBillingManager
-          ? "can now manage billing"
-          : "can no longer manage billing"
-      }`,
+      title: `${member.name || member.email} is now ${roleLabel(role)}`,
       variant: "success",
     });
     onChanged();
@@ -107,7 +91,6 @@ export function useMembersSection({ orgId, onChanged }: Args) {
     isUpdatingRole,
     isRemoving,
     handleRoleChange,
-    handleBillingManagerChange,
     handleRemoveConfirmed,
   };
 }
