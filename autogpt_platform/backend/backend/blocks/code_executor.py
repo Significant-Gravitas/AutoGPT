@@ -290,7 +290,15 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
 
     class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
-            title="Main Result", description="The main result from the code execution"
+            title="Main Result",
+            description=(
+                "The main result from the code execution (the script's final "
+                "expression). Its `json` sub-field is ONLY populated when the "
+                "result is a dict — bare lists, strings, and numbers land in "
+                "`text` as a string instead. To pass structured data "
+                "downstream via `main_result_#_json_#_<key>` links, end the "
+                "script with a dict, e.g. `{'items': my_list}`."
+            ),
         )
         results: list[CodeExecutionResult] = SchemaField(
             description="List of results from the code execution"
@@ -534,7 +542,15 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
 
     class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
-            title="Main Result", description="The main result from the code execution"
+            title="Main Result",
+            description=(
+                "The main result from the code execution (the script's final "
+                "expression). Its `json` sub-field is ONLY populated when the "
+                "result is a dict — bare lists, strings, and numbers land in "
+                "`text` as a string instead. To pass structured data "
+                "downstream via `main_result_#_json_#_<key>` links, end the "
+                "script with a dict, e.g. `{'items': my_list}`."
+            ),
         )
         results: list[CodeExecutionResult] = SchemaField(
             description="List of results from the code execution"
