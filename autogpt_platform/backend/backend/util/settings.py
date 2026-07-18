@@ -96,6 +96,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    llm_catalog_rate_limit_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Per-IP request limit per minute for the public /api/llm/catalog endpoint.",
+    )
+    llm_catalog_client_ip_xff_depth: int = Field(
+        default=1,
+        ge=1,
+        description="Which X-Forwarded-For entry (from the end) to trust as the client IP behind the load balancer. 1 = the entry appended by the trusted LB.",
+    )
     ollama_host: str = Field(
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",

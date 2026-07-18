@@ -24,6 +24,9 @@ class SecurityHeadersMiddleware:
         "/api/v1/health",
         "/api/status",
         "/api/blocks",
+        # Public LLM catalog: exact path only — never allowlist a bare
+        # "/api/llm" prefix, or future authed sub-routes become CDN-cacheable.
+        "/api/llm/catalog",
         "/api/v1/blocks",
         # Workspace file previews (user-private; response sets Cache-Control: private)
         "/api/workspace/files/*/preview",
