@@ -14,9 +14,11 @@ import type { InvitationResponse } from "@/app/api/__generated__/models/invitati
 import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
+import { ORG_ROLE_VALUES, roleToFlags } from "../OrgRoleSelect/roleAccess";
+
 const inviteSchema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
-  isAdmin: z.boolean(),
+  role: z.enum(ORG_ROLE_VALUES),
   teamIds: z.array(z.string()),
 });
 
@@ -53,7 +55,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", isAdmin: false, teamIds: [] },
+    defaultValues: { email: "", role: "member", teamIds: [] },
     mode: "onChange",
   });
 
@@ -86,11 +88,13 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     });
 
   async function handleInvite(values: InviteFormValues) {
+    const flags = roleToFlags(values.role);
     await createInvitation({
       orgId,
       data: {
         email: values.email,
-        is_admin: values.isAdmin,
+        is_admin: flags.is_admin,
+        is_billing_manager: flags.is_billing_manager,
         team_ids: values.teamIds,
       },
     });

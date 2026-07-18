@@ -3,7 +3,6 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Form,
@@ -15,6 +14,8 @@ import {
 } from "@/components/molecules/Form/Form";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
+import { OrgRoleSelect } from "../OrgRoleSelect/OrgRoleSelect";
+import { flagsToRole, roleLabel } from "../OrgRoleSelect/roleAccess";
 import { assignedTeamLabels } from "./helpers";
 import { useInvitationsSection } from "./useInvitationsSection";
 
@@ -75,17 +76,17 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
           />
           <FormField
             control={form.control}
-            name="isAdmin"
+            name="role"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <label className="flex h-[2.875rem] items-center gap-2 text-sm text-zinc-600">
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                    Admin
-                  </label>
+                  <OrgRoleSelect
+                    id="invite-role"
+                    ariaLabel="Role"
+                    value={field.value}
+                    onChange={field.onChange}
+                    size="medium"
+                  />
                 </FormControl>
               </FormItem>
             )}
@@ -148,7 +149,11 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                   Expires {new Date(invitation.expires_at).toLocaleDateString()}
                 </span>
               </div>
-              {invitation.is_admin ? <Badge variant="info">Admin</Badge> : null}
+              {flagsToRole(invitation) !== "member" ? (
+                <Badge variant="info">
+                  {roleLabel(flagsToRole(invitation))}
+                </Badge>
+              ) : null}
               <Button
                 variant="ghost"
                 size="small"

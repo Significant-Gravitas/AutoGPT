@@ -116,6 +116,36 @@ const PLAIN_MEMBER = {
   is_admin: false,
 };
 
+const BILLING_MEMBER = {
+  ...PLAIN_MEMBER,
+  id: "m-3",
+  user_id: "user-billing",
+  email: "billy@acme.test",
+  name: "Billy",
+  is_admin: false,
+  is_billing_manager: true,
+};
+
+const ADMIN_MEMBER = {
+  ...PLAIN_MEMBER,
+  id: "m-4",
+  user_id: "user-admin",
+  email: "adam@acme.test",
+  name: "Adam",
+  is_admin: true,
+  is_billing_manager: false,
+};
+
+const ADMIN_BILLING_MEMBER = {
+  ...PLAIN_MEMBER,
+  id: "m-5",
+  user_id: "user-admin-billing",
+  email: "abby@acme.test",
+  name: "Abby",
+  is_admin: true,
+  is_billing_manager: true,
+};
+
 const DEFAULT_TEAM: TeamResponse = {
   id: "team-default",
   name: "General",
@@ -300,6 +330,45 @@ describe("OrganizationSettingsPage", () => {
 
     await waitFor(() => {
       expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("sends the chosen role's flags when inviting", async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    mockTeamOrg();
+    server.use(
+      getPostV2CreateInvitationMockHandler(async (info) => {
+        sentBody = (await info.request.json()) as Record<string, unknown>;
+        return {
+          id: "inv-role",
+          email: "new@acme.test",
+          is_admin: true,
+          is_billing_manager: false,
+          token: "tok-role",
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [],
+        };
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await goToTab("Invitations");
+    await userEvent.type(
+      await screen.findByPlaceholderText("teammate@example.com"),
+      "new@acme.test",
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Role" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Admin" }));
+    await userEvent.click(screen.getByRole("button", { name: "Invite" }));
+
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+    });
+    expect(sentBody).toMatchObject({
+      email: "new@acme.test",
+      is_admin: true,
+      is_billing_manager: false,
     });
   });
 
@@ -611,7 +680,33 @@ describe("OrganizationSettingsPage", () => {
     });
   });
 
-  it("grants billing-manager to a member via an independent toggle (PATCHes is_billing_manager only)", async () => {
+  it("shows each manageable member's current role in the dropdown for every flag pair", async () => {
+    mockTeamOrg({
+      members: [
+        OWNER_MEMBER,
+        PLAIN_MEMBER,
+        BILLING_MEMBER,
+        ADMIN_MEMBER,
+        ADMIN_BILLING_MEMBER,
+      ],
+    });
+    render(<OrganizationSettingsPage />);
+
+    await goToTab("Members");
+    await screen.findByText("Bob");
+
+    const roleFor = (name: string) =>
+      within(screen.getByText(name).closest("li") as HTMLElement).getByRole(
+        "combobox",
+      );
+
+    expect(roleFor("Bob").textContent?.trim()).toBe("Member");
+    expect(roleFor("Billy").textContent?.trim()).toBe("Billing manager");
+    expect(roleFor("Adam").textContent?.trim()).toBe("Admin");
+    expect(roleFor("Abby").textContent?.trim()).toBe("Admin & billing");
+  });
+
+  it("PATCHes both flags (admin false, billing true) when the role becomes billing manager", async () => {
     let sentBody: Record<string, unknown> | undefined;
     mockTeamOrg();
     server.use(
@@ -626,27 +721,72 @@ describe("OrganizationSettingsPage", () => {
     const bobRow = (await screen.findByText("Bob")).closest(
       "li",
     ) as HTMLElement;
-    await userEvent.click(
-      within(bobRow).getByRole("switch", { name: "Billing manager for Bob" }),
+    fireEvent.click(
+      within(bobRow).getByRole("combobox", { name: "Role for Bob" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Billing manager" }),
     );
 
     await waitFor(() => {
       expect(sentBody).toBeDefined();
     });
-    // Independent of the role Select — only the billing flag is sent.
-    expect(sentBody).toEqual({ is_billing_manager: true });
+    // Admin and billing are disjoint: switching to billing manager must clear
+    // admin and set billing, sending both flags in one PATCH.
+    expect(sentBody).toEqual({ is_admin: false, is_billing_manager: true });
     expect(toastSpy).toHaveBeenCalledWith(
       expect.objectContaining({ variant: "success" }),
     );
   });
 
-  it("shows a read-only Billing badge (not a toggle) to a plain member", async () => {
-    // Viewer is a plain member, so no row is manageable: the billing status
-    // renders as a badge rather than an editable switch.
+  it("PATCHes both flags true when the role becomes admin & billing", async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    mockTeamOrg();
+    server.use(
+      getPatchV2UpdateMemberRoleMockHandler(async (info) => {
+        sentBody = (await info.request.json()) as Record<string, unknown>;
+        return { ...PLAIN_MEMBER, is_admin: true, is_billing_manager: true };
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    await goToTab("Members");
+    const bobRow = (await screen.findByText("Bob")).closest(
+      "li",
+    ) as HTMLElement;
+    fireEvent.click(
+      within(bobRow).getByRole("combobox", { name: "Role for Bob" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Admin & billing" }),
+    );
+
+    await waitFor(() => {
+      expect(sentBody).toEqual({ is_admin: true, is_billing_manager: true });
+    });
+  });
+
+  it("shows a static Owner badge and no role dropdown for the org owner", async () => {
+    mockTeamOrg();
+    render(<OrganizationSettingsPage />);
+
+    await goToTab("Members");
+    const section = await screen.findByTestId("org-members-section");
+    const janeRow = (await within(section).findByText(/Jane/)).closest(
+      "li",
+    ) as HTMLElement;
+    expect(within(janeRow).getByText("Owner")).toBeDefined();
+    expect(within(janeRow).queryByRole("combobox")).toBeNull();
+  });
+
+  it("shows a read-only role badge (not a dropdown) to a plain member", async () => {
+    // Viewer is a plain member, so no row is manageable: another member's role
+    // renders as a badge rather than an editable dropdown.
     server.use(
       getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
       getGetV2ListOrganizationMembersMockHandler([
-        { ...OWNER_MEMBER, user_id: "someone-else", is_billing_manager: true },
+        { ...OWNER_MEMBER, user_id: "someone-else" },
+        BILLING_MEMBER,
         { ...PLAIN_MEMBER, user_id: OWNER_USER_ID },
       ]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
@@ -655,11 +795,11 @@ describe("OrganizationSettingsPage", () => {
 
     await goToTab("Members");
     const section = await screen.findByTestId("org-members-section");
-    const janeRow = (await within(section).findByText("Jane")).closest(
+    const billyRow = (await within(section).findByText("Billy")).closest(
       "li",
     ) as HTMLElement;
-    expect(within(janeRow).getByText("Billing")).toBeDefined();
-    expect(within(janeRow).queryByRole("switch")).toBeNull();
+    expect(within(billyRow).getByText("Billing manager")).toBeDefined();
+    expect(within(billyRow).queryByRole("combobox")).toBeNull();
   });
 
   it("defaults to the General tab", async () => {
