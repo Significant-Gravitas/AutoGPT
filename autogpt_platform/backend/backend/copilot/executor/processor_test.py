@@ -698,3 +698,24 @@ class TestBuildingModeForcesSdk:
             new=AsyncMock(return_value=None),
         ):
             assert await _building_mode_forces_sdk("sess-1") is False
+
+    @pytest.mark.asyncio
+    async def test_real_session_with_enter_call_forces_sdk(self):
+        """End-to-end through the real helper: a real ChatSession whose
+        history carries the enter_agent_building_mode call pins the engine."""
+        from backend.copilot.executor.processor import _building_mode_forces_sdk
+        from backend.copilot.model import ChatMessage, ChatSession
+
+        session = ChatSession.new(user_id="user-1", dry_run=False)
+        session.messages = [
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
+            )
+        ]
+        with patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ):
+            assert await _building_mode_forces_sdk(session.session_id) is True

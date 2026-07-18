@@ -208,7 +208,9 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
 
     # The guide is trusted server-side content (read from disk). We do NOT
     # escape it — the LLM needs the raw markdown to make sense of block ids,
-    # code fences, and example JSON.
+    # code fences, and example JSON. INVARIANT: _load_guide()'s source must
+    # stay server-controlled; if it ever becomes user- or store-influenced,
+    # escape or sandbox the content before it enters the system prompt.
     guide_block = (
         f"<building_guide>\n{_BUILDING_GUIDE_PREAMBLE}\n\n{guide}\n</building_guide>"
     )

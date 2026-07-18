@@ -45,8 +45,12 @@ const FINISH_REFETCH_SETTLE_MS = 500;
 // Server-initiated continuation turns (e.g. the engine switch after
 // enter_agent_building_mode) are dispatched via RabbitMQ right after the
 // previous turn completes — one 500ms check can outrun the dispatch, so the
-// post-finish active-stream probe retries a few times before giving up.
-const FINISH_REFETCH_ATTEMPTS = 4;
+// post-finish active-stream probe retries before giving up. Ordinary turns
+// keep a single probe; the extended window only runs when this turn emitted
+// a data-mode-changed part (a continuation is actually pending), and it
+// brackets the backend's dispatch retry ceiling (3 attempts, ~3s backoff).
+const FINISH_REFETCH_ATTEMPTS_DEFAULT = 1;
+const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
 
 /**
  * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
@@ -103,6 +107,7 @@ export function useCopilotStream({
   // mount (= this session), so a boolean is enough; cross-session scoping
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
+  const pendingEngineSwitchRef = useRef(false);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
   // inside SDK callbacks, the state drives UI so a click on the stop button
   // immediately overrides ``isStreaming`` regardless of whether AI SDK has
@@ -159,7 +164,11 @@ export function useCopilotStream({
         return;
       }
 
-      for (let attempt = 0; attempt < FINISH_REFETCH_ATTEMPTS; attempt++) {
+      const attempts = pendingEngineSwitchRef.current
+        ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
+        : FINISH_REFETCH_ATTEMPTS_DEFAULT;
+      pendingEngineSwitchRef.current = false;
+      for (let attempt = 0; attempt < attempts; attempt++) {
         await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
         if (!isMountedRef.current) return;
         const result = await refetchSession();
@@ -215,6 +224,7 @@ export function useCopilotStream({
     function handleData(dataPart: { type: string; data?: unknown }) {
       const mode = resolveModeChangedMode(dataPart);
       if (mode) {
+        pendingEngineSwitchRef.current = true;
         useCopilotUIStore.getState().setCopilotChatMode(mode);
       }
     }

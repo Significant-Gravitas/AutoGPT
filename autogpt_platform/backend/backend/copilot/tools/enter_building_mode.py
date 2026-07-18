@@ -16,10 +16,9 @@ from typing import Any
 from backend.copilot import engine_switch
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
-from .get_agent_building_guide import _load_guide, _strip_h3_section
+from .get_agent_building_guide import load_guide_for_user
 from .models import ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -61,8 +60,8 @@ class EnterAgentBuildingModeTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        session_id = session.session_id if session else None
-        if session is not None and session.guide_in_system_prompt:
+        session_id = session.session_id
+        if session.guide_in_system_prompt:
             return BuildingModeResponse(
                 message="Building mode is already active.",
                 content=(
@@ -71,7 +70,7 @@ class EnterAgentBuildingModeTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        if session is not None and session.sdk_turn_active:
+        if session.sdk_turn_active:
             session.building_mode_requested = True
             return BuildingModeResponse(
                 message="Entering agent building mode…",
@@ -109,16 +108,7 @@ class EnterAgentBuildingModeTool(BaseTool):
             )
         # SDK-less deployment (local LLM): no engine to switch to — degrade
         # to serving the guide inline, exactly like get_agent_building_guide.
-        content = _load_guide()
-        triggers_enabled = (
-            await is_feature_enabled(
-                Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False
-            )
-            if user_id
-            else False
-        )
-        if not triggers_enabled:
-            content = _strip_h3_section(content, "Building Trigger Agents")
+        content = await load_guide_for_user(user_id)
         return BuildingModeResponse(
             message="Agent building guide loaded.",
             content=content,

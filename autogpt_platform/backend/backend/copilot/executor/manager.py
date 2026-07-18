@@ -461,35 +461,7 @@ class CoPilotExecutor(AppProcess):
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
-                # Engine switch (enter_agent_building_mode on a baseline
-                # turn): dispatch the SDK continuation only NOW — the turn
-                # thread has fully finished (fail-close ran, message acked,
-                # cluster lock released, active_tasks cleaned), so neither
-                # the fail-close CAS nor the RMQ same-session duplicate
-                # rejection can kill the new turn.
-                switch = engine_switch.pop_switch(session_id)
-                if switch is not None and error_msg is not None:
-                    # Turn failed — the persisted history (and thus the
-                    # derived building-mode signal) can't be trusted, so no
-                    # continuation fires. Not silent: the session is idle
-                    # and the user's next message re-resolves the engine.
-                    logger.info(
-                        f"Engine-switch continuation for {session_id} not "
-                        f"dispatched — turn ended with error: {error_msg}"
-                    )
-                elif switch is not None:
-                    # Dispatch on a dedicated short-lived thread: the async
-                    # RabbitMQ client is @thread_cached and loop-bound, so
-                    # asyncio.run() on this pool thread would reuse a client
-                    # created under a previous (now-closed) event loop. A
-                    # fresh thread gets a fresh loop AND a fresh thread-
-                    # cached client, so nothing crosses loops.
-                    threading.Thread(
-                        target=_dispatch_engine_switch_continuation,
-                        args=(session_id, switch),
-                        name=f"engine-switch-{session_id[:8]}",
-                        daemon=True,
-                    ).start()
+                _maybe_dispatch_engine_switch(session_id, error_msg)
 
         future.add_done_callback(on_run_done)
 
@@ -590,6 +562,41 @@ class CoPilotExecutor(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_copilot_queue_config())
         return self._run_client
+
+
+def _maybe_dispatch_engine_switch(session_id: str, error_msg: str | None) -> None:
+    """Consume a pending engine switch after the turn fully finished.
+
+    Called from the turn future's done-callback: dispatch the SDK
+    continuation only NOW — the turn thread has fully finished (fail-close
+    ran, message acked, cluster lock released, active_tasks cleaned), so
+    neither the fail-close CAS nor the RMQ same-session duplicate rejection
+    can kill the new turn.
+    """
+    switch = engine_switch.pop_switch(session_id)
+    if switch is None:
+        return
+    if error_msg is not None:
+        # Turn failed — the persisted history (and thus the derived
+        # building-mode signal) can't be trusted, so no continuation fires.
+        # Not silent: the session is idle and the user's next message
+        # re-resolves the engine.
+        logger.info(
+            f"Engine-switch continuation for {session_id} not "
+            f"dispatched — turn ended with error: {error_msg}"
+        )
+        return
+    # Dispatch on a dedicated short-lived thread: the async RabbitMQ client
+    # is @thread_cached and loop-bound, so asyncio.run() on this pool thread
+    # would reuse a client created under a previous (now-closed) event loop.
+    # A fresh thread gets a fresh loop AND a fresh thread-cached client, so
+    # nothing crosses loops.
+    threading.Thread(
+        target=_dispatch_engine_switch_continuation,
+        args=(session_id, switch),
+        name=f"engine-switch-{session_id[:8]}",
+        daemon=True,
+    ).start()
 
 
 _SWITCH_DISPATCH_ATTEMPTS = 3

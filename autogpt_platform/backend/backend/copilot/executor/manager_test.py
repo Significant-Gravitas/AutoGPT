@@ -13,6 +13,7 @@ from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,
     _dispatch_engine_switch_continuation,
+    _maybe_dispatch_engine_switch,
     _persist_switch_failure_marker,
 )
 
@@ -91,3 +92,44 @@ def test_failure_marker_persists_error_row():
     assert session_id == "sess-1"
     assert message.role == "assistant"
     assert "Could not start the agent-building engine" in message.content
+
+
+def test_turn_done_with_pending_switch_dispatches_on_success():
+    with (
+        patch(
+            "backend.copilot.executor.manager.engine_switch.pop_switch",
+            return_value=_SWITCH,
+        ),
+        patch("backend.copilot.executor.manager.threading.Thread") as mock_thread,
+    ):
+        _maybe_dispatch_engine_switch("sess-1", error_msg=None)
+
+    mock_thread.assert_called_once()
+    mock_thread.return_value.start.assert_called_once()
+
+
+def test_turn_done_with_error_skips_dispatch_but_consumes_switch():
+    with (
+        patch(
+            "backend.copilot.executor.manager.engine_switch.pop_switch",
+            return_value=_SWITCH,
+        ) as mock_pop,
+        patch("backend.copilot.executor.manager.threading.Thread") as mock_thread,
+    ):
+        _maybe_dispatch_engine_switch("sess-1", error_msg="boom")
+
+    mock_pop.assert_called_once_with("sess-1")
+    mock_thread.assert_not_called()
+
+
+def test_turn_done_without_switch_is_noop():
+    with (
+        patch(
+            "backend.copilot.executor.manager.engine_switch.pop_switch",
+            return_value=None,
+        ),
+        patch("backend.copilot.executor.manager.threading.Thread") as mock_thread,
+    ):
+        _maybe_dispatch_engine_switch("sess-1", error_msg=None)
+
+    mock_thread.assert_not_called()

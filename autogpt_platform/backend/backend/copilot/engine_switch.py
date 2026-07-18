@@ -26,7 +26,9 @@ from pydantic import BaseModel
 # Dispatched as the continuation turn's message with is_user_message=False,
 # so it persists as an assistant row and renders as AutoPilot narration —
 # phrase it in assistant voice (it doubles as the model's continuation
-# prompt; the guide itself arrives via the system prompt).
+# prompt; the guide itself arrives via the system prompt). Sibling of the
+# SDK in-turn restart prompt (_BUILDING_MODE_CONTINUATION in sdk/service.py)
+# — keep the two aligned when rewording.
 CONTINUATION_MESSAGE = (
     "Building mode is active — the agent-building guide is loaded. "
     "Continuing with the request."
