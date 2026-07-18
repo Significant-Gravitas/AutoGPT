@@ -13,32 +13,49 @@ def make_doc_url(path: str) -> str:
     """Public URL for a documentation page (extension kept — see
     ``DOCS_BASE_URL``). Shared by search_docs and get_doc_page so the URL
     shape can't drift between the two tools."""
-    return f"{DOCS_BASE_URL}/{path}"
+    return f"{DOCS_BASE_URL}/{path.lstrip('/')}"
+
+
+def get_docs_root(start: Path | None = None) -> Path:
+    """Return the ``docs/`` directory shipped with the platform (resolved).
+
+    Raises FileNotFoundError when no matching directory exists in any
+    parent (e.g. a deployment that didn't bundle the docs). See
+    ``_find_docs_root`` for the resolution strategy.
+    """
+    root = _find_docs_root(start)
+    if root is None:
+        raise FileNotFoundError(
+            "docs/ directory not found in any parent of the backend package"
+        )
+    return root
+
+
+def get_docs_root_or_none(start: Path | None = None) -> Path | None:
+    """Like :func:`get_docs_root`, but ``None`` instead of raising — for
+    callers that degrade gracefully on docs-less deployments."""
+    return _find_docs_root(start)
 
 
 @cache
-def get_docs_root(start: Path | None = None) -> Path:
-    """Return the ``docs/`` directory shipped with the platform.
+def _find_docs_root(start: Path | None = None) -> Path | None:
+    """Walk up from *start* (default: this file) to the bundled docs root.
 
-    Walks up from *start* (default: this file) until a directory containing
-    ``docs/`` is found, so one implementation covers both layouts without
-    fragile parent counting: the dev checkout (``<repo>/docs``) and the
-    container image (``/app/docs``, see ``COPY docs /app/docs`` in the
-    backend Dockerfile). ``docs/platform`` is required as a sentinel so an
-    unrelated ``docs`` folder closer to this package (e.g. a future
-    ``backend/docs/``) can't shadow the real documentation root.
+    One implementation covers both layouts without fragile parent counting:
+    the dev checkout (``<repo>/docs``) and the container image
+    (``/app/docs``, see ``COPY docs /app/docs`` in the backend Dockerfile).
+    ``docs/platform`` is required as a sentinel so an unrelated ``docs``
+    folder closer to this package (e.g. a future ``backend/docs/``) can't
+    shadow the real documentation root.
 
-    *start* exists for testability (point the walk at a tmp tree); results
-    are cached per start path.
-
-    Raises FileNotFoundError when no matching directory exists in any
-    parent (e.g. a deployment that didn't bundle the docs).
+    *start* exists for testability (point the walk at a tmp tree). Both the
+    found path (already resolved — derived from resolved parents) and the
+    not-found ``None`` are memoized, so docs-less deployments don't re-walk
+    the filesystem on every call.
     """
     origin = (start or Path(__file__)).resolve()
     for parent in origin.parents:
         candidate = parent / "docs"
         if (candidate / "platform").is_dir():
             return candidate
-    raise FileNotFoundError(
-        "docs/ directory not found in any parent of the backend package"
-    )
+    return None

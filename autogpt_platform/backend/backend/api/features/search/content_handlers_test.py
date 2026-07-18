@@ -629,3 +629,19 @@ async def test_library_agent_handler_stats():
     assert stats["total"] == 10
     assert stats["with_embeddings"] == 4
     assert stats["without_embeddings"] == 6
+
+
+@pytest.mark.asyncio
+async def test_documentation_handler_degrades_without_bundled_docs():
+    """A docs-less deployment must no-op (empty results), not crash the
+    indexer — get_docs_root_or_none returns None and every consumer guards."""
+    handler = DocumentationHandler()
+    with patch(
+        "backend.api.features.search.content_handlers.get_docs_root_or_none",
+        return_value=None,
+    ):
+        assert handler._get_docs_root() is None
+        assert await handler.get_missing_items(batch_size=10) == []
+        assert await handler.get_valid_content_ids() == set()
+        stats = await handler.get_stats()
+    assert stats == {"total": 0, "with_embeddings": 0, "without_embeddings": 0}

@@ -74,9 +74,6 @@ class SearchDocsTool(BaseTool):
 
         return truncated + "..."
 
-    def _make_doc_url(self, path: str) -> str:
-        return make_doc_url(path)
-
     async def _execute(
         self,
         user_id: str | None,
@@ -178,7 +175,7 @@ class SearchDocsTool(BaseTool):
                         section=section_title,
                         snippet=self._create_snippet(searchable_text),
                         score=round(score, 3),
-                        doc_url=self._make_doc_url(doc_path),
+                        doc_url=make_doc_url(doc_path),
                     )
                 )
 
