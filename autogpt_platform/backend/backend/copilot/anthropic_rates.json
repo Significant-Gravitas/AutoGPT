@@ -624,6 +624,7 @@
     },
     "claude-sonnet-5": {
       "cache_creation_input_token_cost": 3.75e-06,
+      "cache_creation_input_token_cost_above_1hr": 6e-06,
       "cache_read_input_token_cost": 3e-07,
       "input_cost_per_token": 3e-06,
       "litellm_provider": "anthropic",

@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, patch
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 
-from .manager import _SWITCH_DISPATCH_ATTEMPTS, _dispatch_engine_switch_continuation
+from .manager import (
+    _SWITCH_DISPATCH_ATTEMPTS,
+    _dispatch_engine_switch_continuation,
+    _persist_switch_failure_marker,
+)
 
 _SWITCH = SwitchRequest(user_id="user-1", organization_id="org-1", team_id=None)
 
@@ -46,7 +50,7 @@ def test_dispatch_retries_until_success():
     assert mock_sleep.call_count == 2
 
 
-def test_dispatch_gives_up_after_bounded_attempts_without_raising():
+def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker():
     with (
         patch(
             "backend.copilot.executor.manager.schedule_turn",
@@ -54,7 +58,36 @@ def test_dispatch_gives_up_after_bounded_attempts_without_raising():
             side_effect=RuntimeError("rmq down"),
         ) as mock_schedule,
         patch("backend.copilot.executor.manager.time.sleep"),
+        patch(
+            "backend.copilot.executor.manager._persist_switch_failure_marker"
+        ) as mock_marker,
     ):
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     assert mock_schedule.await_count == _SWITCH_DISPATCH_ATTEMPTS
+    mock_marker.assert_called_once_with("sess-1")
+
+
+def test_no_failure_marker_on_success():
+    with (
+        patch("backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock),
+        patch(
+            "backend.copilot.executor.manager._persist_switch_failure_marker"
+        ) as mock_marker,
+    ):
+        _dispatch_engine_switch_continuation("sess-1", _SWITCH)
+
+    mock_marker.assert_not_called()
+
+
+def test_failure_marker_persists_error_row():
+    with patch(
+        "backend.copilot.model.append_and_save_message", new_callable=AsyncMock
+    ) as mock_append:
+        _persist_switch_failure_marker("sess-1")
+
+    assert mock_append.await_count == 1
+    session_id, message = mock_append.call_args.args
+    assert session_id == "sess-1"
+    assert message.role == "assistant"
+    assert "Could not start the agent-building engine" in message.content

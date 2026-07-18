@@ -631,3 +631,35 @@ def _dispatch_engine_switch_continuation(
             )
             if attempt < _SWITCH_DISPATCH_ATTEMPTS:
                 time.sleep(attempt)
+    _persist_switch_failure_marker(session_id)
+
+
+def _persist_switch_failure_marker(session_id: str) -> None:
+    """Leave a user-visible error in the session when every dispatch attempt
+    failed — the user was told building continues automatically, so a silent
+    drop would strand them on that promise. Best-effort: building mode
+    itself survives (derived from history), so their next message recovers.
+    """
+    # Lazy imports: manager must stay importable without the model chain.
+    from backend.copilot.constants import COPILOT_ERROR_PREFIX
+    from backend.copilot.model import ChatMessage, append_and_save_message
+
+    try:
+        asyncio.run(
+            append_and_save_message(
+                session_id,
+                ChatMessage(
+                    role="assistant",
+                    content=(
+                        f"{COPILOT_ERROR_PREFIX} Could not start the "
+                        "agent-building engine automatically. Building mode "
+                        "is still active — send a message to continue."
+                    ),
+                ),
+            )
+        )
+    except Exception as marker_err:
+        logger.error(
+            f"Failed to persist engine-switch failure marker for "
+            f"{session_id}: {marker_err}"
+        )
