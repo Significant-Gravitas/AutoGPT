@@ -160,9 +160,18 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
-    # Load the LLM registry L1 cache and keep it fresh across pods. Failure is
-    # non-fatal: nothing at runtime depends on the registry yet, and an empty
-    # registry degrades to existing hardcoded behavior.
+    # Seed/update the LLM registry from the bundled catalog, then load the L1
+    # cache and keep it fresh across pods. Failure is non-fatal: nothing at
+    # runtime depends on the registry yet, and an empty registry degrades to
+    # existing hardcoded behavior. The importer's content-hash fast-path makes
+    # the steady-state boot cost a single SELECT.
+    try:
+        await backend.data.llm_registry.import_bundled_catalog()
+    except Exception:
+        logger.warning(
+            "Bundled LLM catalog import failed; continuing with DB state",
+            exc_info=True,
+        )
     try:
         await backend.data.llm_registry.refresh_llm_registry()
     except Exception:

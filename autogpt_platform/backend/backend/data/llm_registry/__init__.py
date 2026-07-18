@@ -1,5 +1,19 @@
 """LLM Registry - Dynamic model management system."""
 
+from .catalog_model import (
+    CATALOG_SCHEMA_VERSION,
+    CatalogCreator,
+    CatalogModel,
+    CatalogPayload,
+    CatalogProvider,
+)
+from .export import export_catalog
+from .importer import (
+    CatalogSchemaVersionError,
+    ImportResult,
+    import_bundled_catalog,
+    import_catalog,
+)
 from .notifications import (
     publish_registry_refresh_notification,
     subscribe_to_registry_refresh,
@@ -18,6 +32,7 @@ from .registry import (
     get_route,
     get_schema_options,
     refresh_llm_registry,
+    refresh_runtime_caches,
 )
 
 __all__ = [
@@ -26,6 +41,18 @@ __all__ = [
     "RegistryModelCost",
     "RegistryModelCreator",
     "RegistryModelMetadata",
+    # Catalog
+    "CATALOG_SCHEMA_VERSION",
+    "CatalogCreator",
+    "CatalogModel",
+    "CatalogPayload",
+    "CatalogProvider",
+    "CatalogSchemaVersionError",
+    "ImportResult",
+    "export_catalog",
+    "import_bundled_catalog",
+    "import_catalog",
+    "refresh_runtime_caches",
     # Cache management
     "clear_registry_cache",
     "publish_registry_refresh_notification",

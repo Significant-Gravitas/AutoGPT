@@ -10,6 +10,9 @@ from typing import Any, Literal
 import prisma.models
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.llm_registry.notifications import (
+    publish_registry_refresh_notification,
+)
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
@@ -313,3 +316,15 @@ def get_route(surface: str, mode: str, tier: str) -> str | None:
     next routing layer instead of serving a dead model).
     """
     return _routes.get((surface, mode, tier))
+
+
+async def refresh_runtime_caches() -> None:
+    """Single choke point for every registry write path.
+
+    Order matters: clear the shared Redis L2 first (its refresh_ttl_on_get
+    means a hot pod would otherwise serve stale data indefinitely), rebuild
+    this pod's L1, then fan the refresh out to every other pod.
+    """
+    clear_registry_cache()
+    await refresh_llm_registry()
+    await publish_registry_refresh_notification()
