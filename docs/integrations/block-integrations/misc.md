@@ -259,7 +259,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| main_result | The main result from the code execution (the script's final expression). Its `json` sub-field is ONLY populated when the result is a dict — bare lists, strings, and numbers land in `text` as a string instead. To pass structured data downstream via `main_result_#_json_#_<key>` links, end the script with a dict, e.g. `{'items': my_list}`. | Main Result |
+| main_result | The main result from the code execution (the script's final expression). Its `json` sub-field is ONLY populated when the result is a dict/object/map — bare lists, strings, and numbers land in `text` as a string instead. To pass structured data downstream via `main_result_#_json_#_<key>` links, end the script with a key-value structure in the script's language (e.g. `{'items': my_list}` in Python, `({items: myList})` in JavaScript). | Main Result |
 | results | List of results from the code execution | List[CodeExecutionResult] |
 | response | Text output (if any) of the main execution result | str |
 | stdout_logs | Standard output logs from execution | str |
@@ -303,7 +303,7 @@ Use this for multi-step code execution where each step builds on previous result
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| main_result | The main result from the code execution (the script's final expression). Its `json` sub-field is ONLY populated when the result is a dict — bare lists, strings, and numbers land in `text` as a string instead. To pass structured data downstream via `main_result_#_json_#_<key>` links, end the script with a dict, e.g. `{'items': my_list}`. | Main Result |
+| main_result | The main result from the code execution (the script's final expression). Its `json` sub-field is ONLY populated when the result is a dict/object/map — bare lists, strings, and numbers land in `text` as a string instead. To pass structured data downstream via `main_result_#_json_#_<key>` links, end the script with a key-value structure in the script's language (e.g. `{'items': my_list}` in Python, `({items: myList})` in JavaScript). | Main Result |
 | results | List of results from the code execution | List[CodeExecutionResult] |
 | response | Text output (if any) of the main execution result | str |
 | stdout_logs | Standard output logs from execution | str |

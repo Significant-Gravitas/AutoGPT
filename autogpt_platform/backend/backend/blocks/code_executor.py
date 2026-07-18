@@ -294,10 +294,12 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             description=(
                 "The main result from the code execution (the script's final "
                 "expression). Its `json` sub-field is ONLY populated when the "
-                "result is a dict — bare lists, strings, and numbers land in "
-                "`text` as a string instead. To pass structured data "
-                "downstream via `main_result_#_json_#_<key>` links, end the "
-                "script with a dict, e.g. `{'items': my_list}`."
+                "result is a dict/object/map — bare lists, strings, and "
+                "numbers land in `text` as a string instead. To pass "
+                "structured data downstream via `main_result_#_json_#_<key>` "
+                "links, end the script with a key-value structure in the "
+                "script's language (e.g. `{'items': my_list}` in Python, "
+                "`({items: myList})` in JavaScript)."
             ),
         )
         results: list[CodeExecutionResult] = SchemaField(
@@ -546,10 +548,12 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             description=(
                 "The main result from the code execution (the script's final "
                 "expression). Its `json` sub-field is ONLY populated when the "
-                "result is a dict — bare lists, strings, and numbers land in "
-                "`text` as a string instead. To pass structured data "
-                "downstream via `main_result_#_json_#_<key>` links, end the "
-                "script with a dict, e.g. `{'items': my_list}`."
+                "result is a dict/object/map — bare lists, strings, and "
+                "numbers land in `text` as a string instead. To pass "
+                "structured data downstream via `main_result_#_json_#_<key>` "
+                "links, end the script with a key-value structure in the "
+                "script's language (e.g. `{'items': my_list}` in Python, "
+                "`({items: myList})` in JavaScript)."
             ),
         )
         results: list[CodeExecutionResult] = SchemaField(
