@@ -41,6 +41,11 @@ import { useWakeResync } from "./useWakeResync";
  * `active_stream=true`, triggering unnecessary reconnect cycles.
  */
 const FINISH_REFETCH_SETTLE_MS = 500;
+// Server-initiated continuation turns (e.g. the engine switch after
+// enter_agent_building_mode) are dispatched via RabbitMQ right after the
+// previous turn completes — one 500ms check can outrun the dispatch, so the
+// post-finish active-stream probe retries a few times before giving up.
+const FINISH_REFETCH_ATTEMPTS = 4;
 
 /**
  * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
@@ -153,12 +158,15 @@ export function useCopilotStream({
         return;
       }
 
-      await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
-      if (!isMountedRef.current) return;
-      const result = await refetchSession();
-      if (!isMountedRef.current) return;
-      if (hasActiveBackendStream(result)) {
-        handleReconnectRef.current();
+      for (let attempt = 0; attempt < FINISH_REFETCH_ATTEMPTS; attempt++) {
+        await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
+        if (!isMountedRef.current) return;
+        const result = await refetchSession();
+        if (!isMountedRef.current) return;
+        if (hasActiveBackendStream(result)) {
+          handleReconnectRef.current();
+          return;
+        }
       }
     }
 
@@ -203,12 +211,22 @@ export function useCopilotStream({
       });
     }
 
+    function handleData(dataPart: { type: string; data?: unknown }) {
+      if (dataPart.type !== "data-mode-changed") return;
+      const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
+      if (mode === "extended_thinking" || mode === "fast") {
+        useCopilotUIStore.getState().setCopilotChatMode(mode);
+      }
+    }
+
     chatRuntime.onFinish = handleFinish;
     chatRuntime.onError = handleError;
+    chatRuntime.onData = handleData;
 
     return () => {
       if (chatRuntime.onFinish === handleFinish) {
         chatRuntime.onFinish = undefined;
+        chatRuntime.onData = undefined;
       }
       if (chatRuntime.onError === handleError) {
         chatRuntime.onError = undefined;

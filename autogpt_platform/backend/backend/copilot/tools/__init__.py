@@ -205,7 +205,7 @@ def get_available_tools(
 # in-turn system-prompt upgrade that only the SDK service performs — on
 # baseline it would set a flag nobody consumes and strand the model at the
 # guide gate.
-SDK_ONLY_TOOL_NAMES: frozenset[str] = frozenset({"enter_agent_building_mode"})
+SDK_ONLY_TOOL_NAMES: frozenset[str] = frozenset()
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

@@ -155,7 +155,11 @@ class TestResolveUseSdkForMode:
                     )
                     is False
                 )
-        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        # Compare levelno, not levelname: the FancyConsoleFormatter
+        # colorizes record.levelname IN PLACE when a console handler is
+        # installed in the test process, so string comparison breaks
+        # depending on logging-config import order.
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert "extended_thinking" in warnings[0].message
 
