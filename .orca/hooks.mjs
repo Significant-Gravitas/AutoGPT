@@ -7,6 +7,7 @@ import {
   copyFileSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -21,6 +22,14 @@ import { spawnSync } from "node:child_process";
 const mode = process.argv[2];
 const worktree = process.env.ORCA_WORKTREE_PATH ?? process.cwd();
 const root = process.env.ORCA_ROOT_PATH;
+
+const ENV_DIRS = [
+  "",
+  "autogpt_platform",
+  "autogpt_platform/backend",
+  "autogpt_platform/frontend",
+  "autogpt_platform/db/docker",
+];
 
 function run(cmd, cwd) {
   console.log(`$ ${cmd}  (in ${cwd})`);
@@ -55,14 +64,7 @@ function setup() {
   // Symlink gitignored .env files from the primary checkout so edits propagate
   // to every worktree (tracked files like .env.default come with the checkout
   // and must not be linked — that would dirty git status with a typechange).
-  const envDirs = [
-    "",
-    "autogpt_platform",
-    "autogpt_platform/backend",
-    "autogpt_platform/frontend",
-    "autogpt_platform/db/docker",
-  ];
-  for (const dir of envDirs) {
+  for (const dir of ENV_DIRS) {
     const srcDir = join(root, dir);
     if (!existsSync(srcDir)) continue;
     for (const name of readdirSync(srcDir)) {
@@ -116,6 +118,40 @@ function setup() {
   }
 }
 
+// Git-ignored .env files are invisible to git status/diff, so a worktree can
+// look "clean" while carrying local env edits (e.g. the Windows copy fallback,
+// or a deliberately divergent config). Collect any non-symlink ignored .env*
+// whose content differs from the root checkout's copy so archive() backs it up.
+function collectDivergentEnvFiles() {
+  if (!root) return [];
+  const out = [];
+  for (const dir of ENV_DIRS) {
+    const wtDir = join(worktree, dir);
+    if (!existsSync(wtDir)) continue;
+    for (const name of readdirSync(wtDir)) {
+      if (!name.startsWith(".env")) continue;
+      const f = join(wtDir, name);
+      let st;
+      try {
+        st = lstatSync(f);
+      } catch {
+        continue;
+      }
+      if (!st.isFile()) continue; // symlinks already live in the root checkout
+      const rel = dir ? `${dir}/${name}` : name;
+      if (git(["check-ignore", "-q", rel], worktree).status !== 0) continue; // tracked files are covered by git diff
+      let same = false;
+      try {
+        same = readFileSync(f, "utf8") === readFileSync(join(root, dir, name), "utf8");
+      } catch {
+        // missing/unreadable in root -> treat as divergent
+      }
+      if (!same) out.push({ rel, path: f });
+    }
+  }
+  return out;
+}
+
 // Archive hooks are killed after 120s, so this only dumps text — no installs.
 function archive() {
   const status = git(["status", "--porcelain"], worktree);
@@ -127,7 +163,8 @@ function archive() {
     console.log("not a git worktree, nothing to back up");
     return;
   }
-  if (!status.stdout.trim()) {
+  const divergentEnvs = collectDivergentEnvFiles();
+  if (!status.stdout.trim() && divergentEnvs.length === 0) {
     console.log("worktree clean, nothing to back up");
     return;
   }
@@ -156,6 +193,11 @@ function archive() {
       content = `<< unreadable: ${err.message} >>\n`;
     }
     parts.push(`=== UNTRACKED: ${f} ===\n${content}`);
+  }
+  for (const e of divergentEnvs) {
+    parts.push(
+      `=== IGNORED-LOCAL: ${e.rel} (differs from root checkout) ===\n${readFileSync(e.path, "utf8")}`,
+    );
   }
 
   writeFileSync(outPath, parts.filter(Boolean).join("\n"));
