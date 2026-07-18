@@ -11,6 +11,7 @@ from .find_block import (
     COPILOT_EXCLUDED_BLOCK_IDS,
     COPILOT_EXCLUDED_BLOCK_TYPES,
     FindBlockTool,
+    _find_block_ids_by_name,
 )
 from .models import BlockListResponse, NoResultsResponse
 
@@ -866,3 +867,109 @@ class TestFindBlockDirectLookup:
 
         assert isinstance(response, NoResultsResponse)
         assert "run_mcp_tool" in response.message
+
+
+class TestExactNameLookup:
+    """Tests for the exact class-name registry lookup that backstops search."""
+
+    def test_matches_class_name_in_common_spellings(self):
+        registry = {"orch-id": type("OrchestratorBlock", (), {})}
+        with patch(
+            "backend.copilot.tools.find_block.get_blocks", return_value=registry
+        ):
+            assert _find_block_ids_by_name("OrchestratorBlock") == ["orch-id"]
+            assert _find_block_ids_by_name("orchestrator block") == ["orch-id"]
+            assert _find_block_ids_by_name("orchestrator") == ["orch-id"]
+
+    def test_no_match_for_keyword_queries(self):
+        registry = {"orch-id": type("OrchestratorBlock", (), {})}
+        with patch(
+            "backend.copilot.tools.find_block.get_blocks", return_value=registry
+        ):
+            assert _find_block_ids_by_name("send email") == []
+            assert _find_block_ids_by_name("AI orchestrator agent mode") == []
+            assert _find_block_ids_by_name("") == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_exact_name_query_survives_bad_search_ranking(self):
+        """An exact class-name query returns the block even when hybrid
+        search misses it entirely (stale index row / CamelCase lexical gap)."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        # Hybrid search returns only unrelated junk — the real failure mode.
+        search_results = [{"content_id": "junk-id", "score": 0.9}]
+
+        orch_block = make_mock_block("orch-id", "OrchestratorBlock", BlockType.STANDARD)
+        junk_block = make_mock_block("junk-id", "JSONEncoderBlock", BlockType.STANDARD)
+        registry = {
+            "orch-id": type("OrchestratorBlock", (), {}),
+            "junk-id": type("JSONEncoderBlock", (), {}),
+        }
+
+        def mock_get_block(block_id):
+            return {"orch-id": orch_block, "junk-id": junk_block}.get(block_id)
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 1)
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.search", return_value=mock_search_db
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=mock_get_block,
+            ):
+                with patch(
+                    "backend.copilot.tools.find_block.get_blocks",
+                    return_value=registry,
+                ):
+                    tool = FindBlockTool()
+                    response = await tool._execute(
+                        user_id=_TEST_USER_ID,
+                        session=session,
+                        query="OrchestratorBlock",
+                        for_agent_generation=True,
+                    )
+
+        assert isinstance(response, BlockListResponse)
+        assert response.blocks[0].id == "orch-id"
+        assert [b.id for b in response.blocks] == ["orch-id", "junk-id"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_exact_name_match_still_filtered_in_copilot_mode(self):
+        """Exact-name hits go through the same exclusion filter: a graph-only
+        block resolved by name is still hidden without for_agent_generation."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        assert orchestrator_id in COPILOT_EXCLUDED_BLOCK_IDS
+        orch_block = make_mock_block(
+            orchestrator_id, "OrchestratorBlock", BlockType.STANDARD
+        )
+        registry = {orchestrator_id: type("OrchestratorBlock", (), {})}
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(return_value=([], 0))
+
+        with patch(
+            "backend.copilot.tools.find_block.search", return_value=mock_search_db
+        ):
+            with patch(
+                "backend.copilot.tools.find_block.get_block",
+                return_value=orch_block,
+            ):
+                with patch(
+                    "backend.copilot.tools.find_block.get_blocks",
+                    return_value=registry,
+                ):
+                    tool = FindBlockTool()
+                    response = await tool._execute(
+                        user_id=_TEST_USER_ID,
+                        session=session,
+                        query="OrchestratorBlock",
+                        for_agent_generation=False,
+                    )
+
+        assert isinstance(response, NoResultsResponse)

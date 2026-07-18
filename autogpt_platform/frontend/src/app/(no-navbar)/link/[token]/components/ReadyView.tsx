@@ -39,16 +39,20 @@ export function ReadyView({
           {forUser ? (
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
               <li>{contextLabel} will be linked to your AutoGPT account</li>
-              <li>DMs with the bot run as your personal AutoPilot</li>
+              <li>DMs with the bot run as your own private AutoGPT chat</li>
               <li>All usage from those DMs is billed to your account</li>
             </ul>
           ) : (
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
               <li>{contextLabel} will be connected to your AutoGPT account</li>
-              <li>Everyone in the server can chat with AutoPilot</li>
-              <li>Each person gets their own private conversation</li>
+              <li>Anyone in the server can give AutoGPT tasks</li>
               <li>
-                All usage from the server is billed to your AutoGPT account
+                Server conversations are shared — for private 1:1 work, DM the
+                bot and link your own AutoGPT account
+              </li>
+              <li>
+                Uses the tools and integrations connected to your AutoGPT
+                account
               </li>
             </ul>
           )}
@@ -56,8 +60,8 @@ export function ReadyView({
 
         <div className="w-full rounded-xl border border-border bg-muted p-4">
           <Text variant="small" className="text-muted-foreground">
-            Usage from {contextLabel} will be billed to your AutoGPT account.
-            You can unlink at any time from your account settings.
+            Usage from {contextLabel} is billed to your AutoGPT account. You can
+            unlink at any time in Settings → Bots.
           </Text>
         </div>
 
@@ -98,6 +102,6 @@ function buildTitle(args: {
   serverName: string | null;
 }): string {
   if (args.forUser) return `Link your ${args.platform} DMs`;
-  if (args.serverName) return `Set up AutoPilot for ${args.serverName}`;
-  return `Set up AutoPilot for this ${args.platform} server`;
+  if (args.serverName) return `Set up AutoGPT for ${args.serverName}`;
+  return `Set up AutoGPT for this ${args.platform} server`;
 }

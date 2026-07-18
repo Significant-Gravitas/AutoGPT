@@ -10048,6 +10048,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10198,6 +10211,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -14375,11 +14401,12 @@
       },
       "BotCommandUsage": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "command": { "type": "string", "title": "Command" },
           "uses": { "type": "integer", "title": "Uses" }
         },
         "type": "object",
-        "required": ["command", "uses"],
+        "required": ["platform", "command", "uses"],
         "title": "BotCommandUsage"
       },
       "BotGuildInfo": {
@@ -14443,6 +14470,7 @@
       },
       "BotServerActivity": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "server_id": { "type": "string", "title": "Server Id" },
           "name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -14452,7 +14480,7 @@
           "commands": { "type": "integer", "title": "Commands" }
         },
         "type": "object",
-        "required": ["server_id", "name", "messages", "commands"],
+        "required": ["platform", "server_id", "name", "messages", "commands"],
         "title": "BotServerActivity"
       },
       "BotServerCountPoint": {
@@ -14778,6 +14806,23 @@
         "type": "object",
         "required": ["uuid"],
         "title": "CommunitySummary"
+      },
+      "ConfirmLinkRequest": {
+        "properties": {
+          "telegram_auth": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Telegram Auth"
+          }
+        },
+        "type": "object",
+        "title": "ConfirmLinkRequest",
+        "description": "Optional confirm payload. ``telegram_auth`` carries the signed identity\nTelegram appends when the user reached this page via a login_url button —\nwhen present it must verify, and the link token must belong to that same\nTelegram user."
       },
       "ConfirmLinkResponse": {
         "properties": {
@@ -17860,10 +17905,6 @@
             "title": "Is Active",
             "default": true
           },
-          "webhook_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhook Id"
-          },
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
           "created_at": {
@@ -17883,6 +17924,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           },
           "webhook": {
             "anyOf": [
@@ -17930,10 +17975,6 @@
             "type": "boolean",
             "title": "Is Active",
             "default": true
-          },
-          "webhook_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhook Id"
           }
         },
         "type": "object",
@@ -17946,7 +17987,7 @@
           "description"
         ],
         "title": "LibraryAgentPresetCreatable",
-        "description": "Request model used when creating a new preset for a library agent."
+        "description": "Request model used when creating a new preset for a library agent.\n\nA preset's webhook is never caller-specified here; webhook-triggered presets\nare created through ``POST /presets/setup-trigger``, which provisions a\nwebhook owned by the caller server-side."
       },
       "LibraryAgentPresetCreatableFromGraphExecution": {
         "properties": {

@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 
 export function StoppedTaskCard() {
   return (
-    <div className="my-2 flex items-start gap-3 rounded-medium bg-stone-50 p-4">
+    <div className="my-2 flex items-start gap-3 rounded-xl border border-zinc-200/70 bg-white p-4 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-small bg-purple-50">
         <SquareIcon size={16} weight="fill" className="text-purple-500" />
       </div>
