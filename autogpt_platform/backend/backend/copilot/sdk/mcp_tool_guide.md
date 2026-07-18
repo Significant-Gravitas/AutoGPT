@@ -10,9 +10,11 @@
    schemas are omitted to save context.
 2. **Execute** — call again with `server_url`, `tool_name`, and
    `tool_arguments` built from the description and `params` summary. If the
-   tool name or arguments are wrong, the error response includes that tool's
-   full input schema (or the list of valid tool names) — fix the call from
-   that. Never re-run discovery just to see a schema.
+   tool name or arguments are wrong, the error response includes a bounded
+   schema hint for that tool (very large schemas are reduced to their
+   top-level structure and marked truncated) or the list of valid tool
+   names — fix the call from that. Never re-run discovery just to see a
+   schema.
 
 ### Known hosted MCP servers
 

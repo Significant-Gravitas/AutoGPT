@@ -39,8 +39,12 @@ logger = logging.getLogger(__name__)
 
 # Discovery-response size caps: keep multi-tool catalogs small enough that a
 # 20-tool server doesn't consume a meaningful share of the context window.
+# All inputs here are server-controlled, so every dimension is bounded:
+# tool count, description length, and per-tool params-summary length.
 _TOOL_DESCRIPTION_MAX_CHARS = 300
 _ERROR_SCHEMA_MAX_CHARS = 4000
+_DISCOVERY_MAX_TOOLS = 100
+_PARAMS_SUMMARY_MAX_CHARS = 400
 
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
@@ -351,24 +355,34 @@ class RunMCPToolTool(BaseTool):
         # to trigger context compaction on its own. The compact per-tool
         # param summary covers tool selection; the full schema of a single
         # tool is delivered on demand via the execution error path.
+        # Tool count and params-summary length are bounded too — both are
+        # server-controlled and would otherwise be unbounded context cost.
+        dropped_tools = max(0, len(tools) - _DISCOVERY_MAX_TOOLS)
         tool_infos = [
             MCPToolInfo(
                 name=t.name,
                 description=(t.description or "")[:_TOOL_DESCRIPTION_MAX_CHARS],
                 params=_summarize_params(t.input_schema),
             )
-            for t in tools
+            for t in tools[:_DISCOVERY_MAX_TOOLS]
         ]
         host = server_host(server_url)
+        truncation_note = (
+            f" NOTE: {dropped_tools} additional tool(s) were omitted from "
+            "this listing to bound context size."
+            if dropped_tools
+            else ""
+        )
         return MCPToolsDiscoveredResponse(
             message=(
-                f"Discovered {len(tool_infos)} tool(s) on {host}. Full input "
+                f"Discovered {len(tool_infos)} tool(s) on {host}."
+                f"{truncation_note} Full input "
                 "schemas are omitted to save context — `params` lists each "
                 "tool's argument names with required ones marked `*`. Call "
                 "run_mcp_tool again with tool_name and tool_arguments to "
                 "execute one; if the arguments are wrong, the error response "
-                "includes that tool's full schema. Do NOT re-run discovery "
-                "after an argument error."
+                "includes a schema hint for that tool. Do NOT re-run "
+                "discovery after an argument error."
             ),
             server_url=server_url,
             tools=tool_infos,
@@ -457,9 +471,7 @@ class RunMCPToolTool(BaseTool):
             tools = await client.list_tools()
             match = next((t for t in tools if t.name == tool_name), None)
             if match is not None:
-                schema_json = json.dumps(match.input_schema)
-                if len(schema_json) > _ERROR_SCHEMA_MAX_CHARS:
-                    schema_json = schema_json[:_ERROR_SCHEMA_MAX_CHARS] + "…"
+                schema_json = _bounded_schema_hint(match.input_schema)
                 return f" Input schema for '{tool_name}': {schema_json}"
             names = ", ".join(t.name for t in tools[:40])
             return (
@@ -589,6 +601,44 @@ def _summarize_params(schema: dict | None) -> str | None:
         return None
     required = schema.get("required")
     required_names = set(required) if isinstance(required, list) else set()
-    return ", ".join(
+    summary = ", ".join(
         f"{name}*" if name in required_names else name for name in properties
     )
+    if len(summary) > _PARAMS_SUMMARY_MAX_CHARS:
+        summary = summary[:_PARAMS_SUMMARY_MAX_CHARS] + "…"
+    return summary
+
+
+def _bounded_schema_hint(schema: dict | None) -> str:
+    """Serialize *schema* for an error hint, bounded to a parseable size.
+
+    Small schemas pass through verbatim. Oversized ones are reduced
+    structurally — top-level properties keep only their ``type`` and a
+    shortened ``description``, plus the ``required`` list and a
+    ``$truncated`` marker — so the hint stays valid JSON instead of a
+    sliced string.
+    """
+    full = json.dumps(schema)
+    if len(full) <= _ERROR_SCHEMA_MAX_CHARS:
+        return full
+    if not isinstance(schema, dict):
+        return full[:_ERROR_SCHEMA_MAX_CHARS]
+
+    properties = schema.get("properties")
+    reduced_props: dict[str, Any] = {}
+    if isinstance(properties, dict):
+        for name, prop in properties.items():
+            entry: dict[str, Any] = {}
+            if isinstance(prop, dict):
+                if "type" in prop:
+                    entry["type"] = prop["type"]
+                if isinstance(prop.get("description"), str):
+                    entry["description"] = prop["description"][:120]
+            reduced_props[name] = entry
+    reduced = {
+        "type": schema.get("type", "object"),
+        "properties": reduced_props,
+        "required": schema.get("required", []),
+        "$truncated": "nested structure omitted to bound context size",
+    }
+    return json.dumps(reduced)

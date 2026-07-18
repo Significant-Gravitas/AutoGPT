@@ -348,6 +348,16 @@ class StreamModeChanged(StreamBaseResponse):
     type: ResponseType = ResponseType.MODE_CHANGED
     mode: str = Field(..., description="New effective mode, e.g. extended_thinking")
 
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part — the client reads the payload
+        from ``part.data``, so ``mode`` must be nested there rather than
+        serialized as a top-level sibling of ``type``."""
+        data = {
+            "type": self.type.value,
+            "data": {"mode": self.mode},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
 
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.

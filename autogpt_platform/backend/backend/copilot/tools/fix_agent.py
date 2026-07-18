@@ -3,6 +3,7 @@
 import difflib
 import json
 import logging
+import os
 from typing import Any
 
 from backend.copilot.context import get_workspace_manager
@@ -184,7 +185,7 @@ async def _write_fixed_agent(
     except Exception as e:
         logger.warning(f"fix_agent_graph: failed to write {write_to!r}: {e}")
         return None, (
-            f" NOTE: could not write {write_to} ({e}); "
+            f" NOTE: could not write {os.path.basename(write_to)}; "
             "returning the fixed JSON inline instead."
         )
     ref = f"@@agptfile:workspace://{rec.path}"

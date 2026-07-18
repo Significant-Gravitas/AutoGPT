@@ -3,8 +3,10 @@
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.enter_building_mode import BuildingModeResponse
 from backend.copilot.tools.get_agent_building_guide import (
     _TRIGGER_AGENTS_HEADING,
+    AgentBuildingGuideResponse,
     GetAgentBuildingGuideTool,
     _load_guide,
     _strip_h3_section,
@@ -98,8 +100,9 @@ async def test_guide_includes_trigger_section_when_flag_enabled(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id="user-1", session=_make_session())
+    assert isinstance(result, AgentBuildingGuideResponse)
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert "Building Trigger Agents" in result.content  # type: ignore[attr-defined]
+    assert "Building Trigger Agents" in result.content
 
 
 @pytest.mark.asyncio
@@ -110,10 +113,11 @@ async def test_guide_strips_trigger_section_when_flag_disabled(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id="user-1", session=_make_session())
+    assert isinstance(result, AgentBuildingGuideResponse)
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert "Building Trigger Agents" not in result.content  # type: ignore[attr-defined]
+    assert "Building Trigger Agents" not in result.content
     # Pre-trigger content (e.g. block-ID examples) must still be present.
-    assert "AgentExecutorBlock" in result.content  # type: ignore[attr-defined]
+    assert "AgentExecutorBlock" in result.content
 
 
 @pytest.mark.asyncio
@@ -127,7 +131,8 @@ async def test_guide_strips_trigger_section_when_no_user_id(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id=None, session=_make_session())
-    assert "Building Trigger Agents" not in result.content  # type: ignore[attr-defined]
+    assert isinstance(result, AgentBuildingGuideResponse)
+    assert "Building Trigger Agents" not in result.content
     spy.assert_not_called()
 
 
@@ -140,10 +145,11 @@ async def test_guide_stubbed_when_already_in_system_prompt():
     session.guide_in_system_prompt = True
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, AgentBuildingGuideResponse)
 
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert "system prompt" in result.content  # type: ignore[attr-defined]
-    assert len(result.content) < 500  # type: ignore[attr-defined]
+    assert "system prompt" in result.content
+    assert len(result.content) < 500
 
 
 @pytest.mark.asyncio
@@ -156,9 +162,10 @@ async def test_guide_returned_in_full_without_flag(mocker):
     session = _make_session()
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, AgentBuildingGuideResponse)
 
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert len(result.content) > 10_000  # type: ignore[attr-defined]
+    assert len(result.content) > 10_000
 
 
 @pytest.mark.asyncio
@@ -170,9 +177,10 @@ async def test_enter_building_mode_sets_request_flag():
     session.sdk_turn_active = True
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
 
     assert session.building_mode_requested is True
-    assert "upgraded" in result.content  # type: ignore[attr-defined]
+    assert "upgraded" in result.content
 
 
 @pytest.mark.asyncio
@@ -184,9 +192,10 @@ async def test_enter_building_mode_noop_when_already_active():
     session.guide_in_system_prompt = True
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
 
     assert session.building_mode_requested is False
-    assert "already active" in result.content  # type: ignore[attr-defined]
+    assert "already active" in result.content
 
 
 def test_enter_building_mode_available_on_baseline():
@@ -216,9 +225,10 @@ async def test_enter_building_mode_baseline_switch_message(mocker):
     session = _make_session()
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
 
     assert session.building_mode_requested is False
-    assert "switches to the agent-building engine" in result.content  # type: ignore[attr-defined]
+    assert "switches to the agent-building engine" in result.content
 
 
 @pytest.mark.asyncio
@@ -240,8 +250,9 @@ async def test_enter_building_mode_local_degrades_to_guide(mocker):
     session = _make_session()
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
 
-    assert len(result.content) > 10_000  # type: ignore[attr-defined]
+    assert len(result.content) > 10_000
 
 
 @pytest.mark.asyncio
@@ -253,9 +264,10 @@ async def test_enter_building_mode_sdk_turn_requests_restart():
     session.sdk_turn_active = True
 
     result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
 
     assert session.building_mode_requested is True
-    assert "upgraded" in result.content  # type: ignore[attr-defined]
+    assert "upgraded" in result.content
 
 
 @pytest.mark.asyncio

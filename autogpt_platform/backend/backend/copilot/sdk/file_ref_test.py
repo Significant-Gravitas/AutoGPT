@@ -1983,7 +1983,7 @@ async def test_union_object_string_bare_ref_parses_to_dict():
     """A bare ref in a slot typed ["object", "string"] (e.g. agent_json)
     gets structured parsing — a JSON file arrives at the tool as a dict."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(*_args, **_kwargs):
         return '{"nodes": [{"id": "n1"}], "links": []}'
 
     schema = {

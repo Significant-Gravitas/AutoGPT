@@ -213,11 +213,17 @@ def summarize_node_failures(
             continue
         block = get_block(ne.block_id)
         error_values = ne.output_data.get("error") if ne.output_data else None
+        if isinstance(error_values, list):
+            error_str = str(error_values[0]) if error_values else None
+        elif error_values:
+            error_str = str(error_values)
+        else:
+            error_str = None
         failures.append(
             {
                 "node_id": ne.node_id,
                 "block_name": block.name if block else ne.block_id,
-                "error": str(error_values[0])[:500] if error_values else None,
+                "error": error_str[:500] if error_str else None,
             }
         )
     return failures
