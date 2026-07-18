@@ -13,6 +13,7 @@ import {
 import {
   ChatsIcon,
   CreditCardIcon,
+  MegaphoneIcon,
   QuestionIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
@@ -184,6 +185,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <CreditCardIcon className={iconClass} />;
     case IconType.Help:
       return <QuestionIcon className={iconClass} />;
+    case IconType.Changelog:
+      return <MegaphoneIcon className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }
