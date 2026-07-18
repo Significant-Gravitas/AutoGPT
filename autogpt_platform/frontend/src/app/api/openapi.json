@@ -8059,6 +8059,23 @@
         }
       }
     },
+    "/api/llm/catalog": {
+      "get": {
+        "tags": ["v2", "llm", "public"],
+        "summary": "Get Llm Catalog",
+        "operationId": "getV2GetLlmCatalog",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CatalogPayload" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/mcp/discover-tools": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
@@ -14548,6 +14565,205 @@
         "required": ["cancelled"],
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
+      },
+      "CatalogCreator": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CatalogCreator"
+      },
+      "CatalogModel": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$",
+            "title": "Slug"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Provider"
+          },
+          "creator": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+              { "type": "null" }
+            ],
+            "title": "Creator"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "CHAT" },
+          "context_window": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Context Window"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Price Tier",
+            "default": 1
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
+          "fallback_model_slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$"
+              },
+              { "type": "null" }
+            ],
+            "title": "Fallback Model Slug"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "default": false
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "default": false
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "default": false
+          },
+          "supports_parallel_tool_calls": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool Calls",
+            "default": false
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities",
+            "default": {}
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": ["slug", "display_name", "provider", "context_window"],
+        "title": "CatalogModel"
+      },
+      "CatalogPayload": {
+        "properties": {
+          "schema_version": { "type": "integer", "title": "Schema Version" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/CatalogProvider" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "creators": {
+            "items": { "$ref": "#/components/schemas/CatalogCreator" },
+            "type": "array",
+            "title": "Creators"
+          },
+          "models": {
+            "items": { "$ref": "#/components/schemas/CatalogModel" },
+            "type": "array",
+            "maxItems": 2000,
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_version",
+          "generated_at",
+          "providers",
+          "creators",
+          "models"
+        ],
+        "title": "CatalogPayload"
+      },
+      "CatalogProvider": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CatalogProvider"
       },
       "ChangelogEntry": {
         "properties": {
