@@ -1536,10 +1536,29 @@ def _flush_orphan_tool_uses_to_session(
                     role="tool",
                     content=content,
                     tool_call_id=resp.toolCallId,
-                    name=resp.toolName,
+                    name=_resolve_tool_result_name(
+                        session, resp.toolCallId, resp.toolName
+                    ),
                 )
             )
     return safety
+
+
+def _resolve_tool_result_name(
+    session: "ChatSession",
+    tool_call_id: str,
+    tool_name: str | None,
+) -> str | None:
+    """Name for a persisted tool-result row, falling back to the matching
+    assistant ``tool_call`` — a nameless row is unidentifiable in history,
+    which is the exact defect the ``name`` column exists to fix."""
+    if tool_name:
+        return tool_name
+    for msg in reversed(session.messages):
+        for tc in msg.tool_calls or []:
+            if tc.get("id") == tool_call_id:
+                return tc.get("function", {}).get("name")
+    return None
 
 
 @dataclass(frozen=True)
@@ -3116,7 +3135,9 @@ def _dispatch_response(
                 role="tool",
                 content=content,
                 tool_call_id=response.toolCallId,
-                name=response.toolName,
+                name=_resolve_tool_result_name(
+                    ctx.session, response.toolCallId, response.toolName
+                ),
             )
         )
         if not entries_replaced:

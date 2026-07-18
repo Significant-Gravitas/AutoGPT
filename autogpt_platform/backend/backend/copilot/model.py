@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -418,6 +419,10 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
+                if msg.sequence is not None:
+                    # Row already persisted without this call — flag it so
+                    # the next save back-fills toolCalls onto the row.
+                    msg.tool_calls_pending_save = True
                 return
 
         self.messages.append(
@@ -906,13 +911,19 @@ async def _save_session_to_db(
 
     # Back-fill tool_calls onto rows that were flushed before their
     # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
+    # Save-ordering invariant: this only repairs the row if a save runs
+    # AFTER the tool_use blocks arrive. That is guaranteed by the end-of-turn
+    # save (every turn ends with save_chat_session, including the error paths
+    # that append an error marker) — mid-turn flushes merely narrow the
+    # window. On failure the flag stays set so any later save retries.
     dirty = [
         m
         for m in session.messages
         if m.tool_calls_pending_save and m.sequence is not None
     ]
-    for msg in dirty:
-        assert msg.sequence is not None
+
+    async def _backfill(msg: ChatMessage) -> None:
+        assert msg.sequence is not None  # narrowed by the filter above
         updated = await db.update_chat_message_tool_calls(
             session_id=session.session_id,
             sequence=msg.sequence,
@@ -925,6 +936,9 @@ async def _save_session_to_db(
                 f"Failed to back-fill tool_calls for session "
                 f"{session.session_id} seq {msg.sequence} (row not found)"
             )
+
+    if dirty:
+        await asyncio.gather(*(_backfill(m) for m in dirty))
 
 
 async def append_and_save_message(
