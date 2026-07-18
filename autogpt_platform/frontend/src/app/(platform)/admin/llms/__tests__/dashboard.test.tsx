@@ -148,8 +148,8 @@ describe("LlmRegistryDashboard", () => {
 
     const cells = await screen.findAllByText("moonshotai/kimi-k3");
     expect(cells.length).toBeGreaterThanOrEqual(1);
-    // Only thinking.standard is set; the other three cells fall through.
-    expect(screen.getAllByText("— (falls through)").length).toBe(3);
+    // Only thinking.standard is set; the other three editable cells fall through.
+    expect(screen.getAllByText("— falls through —").length).toBe(3);
   });
 
   it("surfaces routing resolution warnings with count and reason", async () => {

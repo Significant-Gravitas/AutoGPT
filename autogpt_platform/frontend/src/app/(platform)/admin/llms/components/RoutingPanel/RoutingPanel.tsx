@@ -1,17 +1,22 @@
+"use client";
+
+import type { LlmModelAdminResponse } from "@/app/api/__generated__/models/llmModelAdminResponse";
 import type { LlmRouteResponse } from "@/app/api/__generated__/models/llmRouteResponse";
 import type { RouteWarning } from "@/app/api/__generated__/models/routeWarning";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { SimpleTable } from "../SimpleTable";
+import { RoutingCellEditor } from "./components/RoutingCellEditor";
 
 interface Props {
   routes: LlmRouteResponse[];
   warnings: RouteWarning[];
+  models: LlmModelAdminResponse[];
 }
 
 const MODES = ["fast", "thinking"] as const;
 const TIERS = ["standard", "advanced"] as const;
 
-export function RoutingPanel({ routes, warnings }: Props) {
+export function RoutingPanel({ routes, warnings, models }: Props) {
   const cellFor = (mode: string, tier: string) =>
     routes.find(
       (r) => r.surface === "copilot" && r.mode === mode && r.tier === tier,
@@ -43,13 +48,12 @@ export function RoutingPanel({ routes, warnings }: Props) {
                   const cell = cellFor(mode, tier);
                   return (
                     <td key={tier} className="px-3 py-2">
-                      {cell ? (
-                        <code className="text-xs">{cell.model_slug}</code>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          — (falls through)
-                        </span>
-                      )}
+                      <RoutingCellEditor
+                        mode={mode}
+                        tier={tier}
+                        currentSlug={cell?.model_slug ?? null}
+                        models={models}
+                      />
                     </td>
                   );
                 })}

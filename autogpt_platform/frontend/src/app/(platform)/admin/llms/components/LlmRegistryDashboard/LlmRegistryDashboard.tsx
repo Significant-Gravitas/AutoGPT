@@ -2,9 +2,12 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { EnabledBadge, SourceBadge, VisibilityBadge } from "../RegistryBadges";
+import { SourceBadge } from "../RegistryBadges";
 import { RoutingPanel } from "../RoutingPanel/RoutingPanel";
 import { SimpleTable } from "../SimpleTable";
+import { CreatorsSection } from "./components/CreatorsSection";
+import { MigrationsSection } from "./components/MigrationsSection";
+import { ModelsSection } from "./components/ModelsSection";
 import { useLlmRegistryDashboard } from "./useLlmRegistryDashboard";
 
 function Section({
@@ -36,10 +39,14 @@ export function LlmRegistryDashboard() {
   const { models, providers, creators, migrations, routes, routeWarnings } =
     useLlmRegistryDashboard();
 
+  const modelList = models.data?.models ?? [];
+  const providerList = providers.data?.providers ?? [];
+  const creatorList = creators.data?.creators ?? [];
+
   return (
     <div className="flex flex-col gap-6">
       <Section title="Copilot Routing">
-        {routes.isLoading || routeWarnings.isLoading ? (
+        {routes.isLoading || routeWarnings.isLoading || models.isLoading ? (
           <SectionLoader />
         ) : routes.isError || routeWarnings.isError ? (
           <ErrorCard
@@ -51,12 +58,13 @@ export function LlmRegistryDashboard() {
           <RoutingPanel
             routes={routes.data?.routes ?? []}
             warnings={routeWarnings.data ?? []}
+            models={modelList}
           />
         )}
       </Section>
 
       <Section title="Models">
-        {models.isLoading ? (
+        {models.isLoading || providers.isLoading || creators.isLoading ? (
           <SectionLoader />
         ) : models.isError ? (
           <ErrorCard
@@ -65,32 +73,10 @@ export function LlmRegistryDashboard() {
             httpError={{ status: 500 }}
           />
         ) : (
-          <SimpleTable
-            columns={[
-              "Slug",
-              "Name",
-              "Creator",
-              "Context",
-              "Tier",
-              "Status",
-              "Visibility",
-              "Source",
-              "Recommended",
-            ]}
-            rows={(models.data?.models ?? []).map((m) => [
-              <code key="slug" className="text-xs">
-                {m.slug}
-              </code>,
-              m.display_name,
-              m.creator?.display_name ?? "—",
-              m.context_window.toLocaleString(),
-              String(m.price_tier),
-              <EnabledBadge key="enabled" enabled={m.is_enabled} />,
-              <VisibilityBadge key="vis" visibility={m.visibility} />,
-              <SourceBadge key="src" source={m.source} />,
-              m.is_recommended ? "★" : "",
-            ])}
-            emptyLabel="No models in the registry yet — the bundled catalog imports on backend startup"
+          <ModelsSection
+            models={modelList}
+            providers={providerList}
+            creators={creatorList}
           />
         )}
       </Section>
@@ -107,7 +93,7 @@ export function LlmRegistryDashboard() {
         ) : (
           <SimpleTable
             columns={["Name", "Display Name", "Models", "Source"]}
-            rows={(providers.data?.providers ?? []).map((p) => [
+            rows={providerList.map((p) => [
               <code key="name" className="text-xs">
                 {p.name}
               </code>,
@@ -129,17 +115,7 @@ export function LlmRegistryDashboard() {
             httpError={{ status: 500 }}
           />
         ) : (
-          <SimpleTable
-            columns={["Name", "Display Name", "Website", "Source"]}
-            rows={(creators.data?.creators ?? []).map((c) => [
-              <code key="name" className="text-xs">
-                {c.name}
-              </code>,
-              c.display_name,
-              c.website_url ?? "—",
-              <SourceBadge key="src" source={c.source ?? "SEED"} />,
-            ])}
-          />
+          <CreatorsSection creators={creatorList} />
         )}
       </Section>
 
@@ -153,22 +129,7 @@ export function LlmRegistryDashboard() {
             httpError={{ status: 500 }}
           />
         ) : (
-          <SimpleTable
-            columns={["From", "To", "Nodes", "Reason", "Reverted", "Created"]}
-            rows={(migrations.data?.migrations ?? []).map((mig) => [
-              <code key="from" className="text-xs">
-                {mig.source_model_slug}
-              </code>,
-              <code key="to" className="text-xs">
-                {mig.target_model_slug}
-              </code>,
-              String(mig.node_count),
-              mig.reason ?? "—",
-              mig.is_reverted ? "yes" : "no",
-              new Date(mig.created_at).toLocaleString(),
-            ])}
-            emptyLabel="No model migrations recorded"
-          />
+          <MigrationsSection migrations={migrations.data?.migrations ?? []} />
         )}
       </Section>
     </div>
