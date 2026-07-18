@@ -388,6 +388,12 @@ class ChatSession(ChatSessionInfo):
     every turn. The guide gate and ``get_agent_building_guide`` consult it to
     skip redundant guide round-trips."""
 
+    sdk_turn_active: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True while the SDK service is running this
+    turn (set at turn start, never persisted). Lets shared tools branch on
+    the execution path — e.g. enter_agent_building_mode restarts in-turn on
+    SDK but degrades gracefully on the baseline path."""
+
     building_mode_requested: bool = Field(default=False, exclude=True)
     """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
     SDK service to restart the in-flight attempt with the agent-building

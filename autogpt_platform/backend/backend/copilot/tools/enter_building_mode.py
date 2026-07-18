@@ -13,9 +13,13 @@ later turns.
 import logging
 from typing import Any
 
+from backend.copilot import engine_switch
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
+from .get_agent_building_guide import _load_guide, _strip_h3_section
 from .models import ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -67,16 +71,56 @@ class EnterAgentBuildingModeTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        if session is not None:
+        if session is not None and session.sdk_turn_active:
             session.building_mode_requested = True
+            return BuildingModeResponse(
+                message="Entering agent building mode…",
+                content=(
+                    "Building mode requested. Your context is being upgraded "
+                    "— the complete agent-building guide will appear in your "
+                    "system prompt as <building_guide> momentarily. Continue "
+                    "with the user's request once it arrives; do NOT call "
+                    "get_agent_building_guide."
+                ),
+                session_id=session_id,
+            )
+        if chat_config.transport.supports_sdk:
+            # Baseline turn on an SDK-capable deployment: register the
+            # switch — the baseline loop ends this turn at the next
+            # iteration boundary and the processor dispatches an SDK
+            # continuation turn. The tool call in message history also
+            # pins all later turns to SDK (resolve_use_sdk_for_mode).
+            if session_id:
+                engine_switch.request_switch(
+                    session_id,
+                    user_id=user_id,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                )
+            return BuildingModeResponse(
+                message="Switching to the agent-building engine…",
+                content=(
+                    "Building mode registered — this turn ends now and the "
+                    "session switches to the agent-building engine, with "
+                    "the building guide loaded. Building continues "
+                    "automatically; do not call any more tools."
+                ),
+                session_id=session_id,
+            )
+        # SDK-less deployment (local LLM): no engine to switch to — degrade
+        # to serving the guide inline, exactly like get_agent_building_guide.
+        content = _load_guide()
+        triggers_enabled = (
+            await is_feature_enabled(
+                Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False
+            )
+            if user_id
+            else False
+        )
+        if not triggers_enabled:
+            content = _strip_h3_section(content, "Building Trigger Agents")
         return BuildingModeResponse(
-            message="Entering agent building mode…",
-            content=(
-                "Building mode requested. Your context is being upgraded — "
-                "the complete agent-building guide will appear in your "
-                "system prompt as <building_guide> momentarily. Continue "
-                "with the user's request once it arrives; do NOT call "
-                "get_agent_building_guide."
-            ),
+            message="Agent building guide loaded.",
+            content=content,
             session_id=session_id,
         )

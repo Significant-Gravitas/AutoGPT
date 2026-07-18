@@ -167,6 +167,7 @@ async def test_enter_building_mode_sets_request_flag():
 
     tool = EnterAgentBuildingModeTool()
     session = _make_session()
+    session.sdk_turn_active = True
 
     result = await tool._execute(user_id="user-1", session=session)
 
@@ -188,12 +189,91 @@ async def test_enter_building_mode_noop_when_already_active():
     assert "already active" in result.content  # type: ignore[attr-defined]
 
 
-def test_enter_building_mode_is_sdk_only():
-    """Baseline tool schemas must not offer enter_agent_building_mode —
-    its prompt-upgrade promise only the SDK service can fulfil."""
-    from backend.copilot.tools import SDK_ONLY_TOOL_NAMES, get_available_tools
+def test_enter_building_mode_available_on_baseline():
+    """enter_agent_building_mode is offered on the baseline path too — it
+    branches per path (SDK restart / engine switch / inline guide on
+    SDK-less deployments)."""
+    from backend.copilot.tools import get_available_tools
 
-    assert "enter_agent_building_mode" in SDK_ONLY_TOOL_NAMES
     names = {t["function"]["name"] for t in get_available_tools()}
-    assert "enter_agent_building_mode" not in names
+    assert "enter_agent_building_mode" in names
     assert "get_agent_building_guide" in names
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_baseline_switch_message(mocker):
+    """Baseline turn + SDK-capable deployment: tool registers the switch and
+    instructs the model to end its turn."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=True)),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert session.building_mode_requested is False
+    assert "switches to the agent-building engine" in result.content  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_local_degrades_to_guide(mocker):
+    """SDK-less deployment: tool serves the full guide inline."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=False)),
+    )
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.is_feature_enabled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert len(result.content) > 10_000  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_sdk_turn_requests_restart():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.sdk_turn_active = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+
+    assert session.building_mode_requested is True
+    assert "upgraded" in result.content  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_baseline_registers_engine_switch(mocker):
+    from unittest.mock import MagicMock
+
+    from backend.copilot import engine_switch
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=True)),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    await tool._execute(user_id="user-1", session=session)
+
+    switch = engine_switch.pop_switch(session.session_id)
+    assert switch is not None and switch.user_id == "user-1"
+    assert engine_switch.pop_switch(session.session_id) is None  # pop-once

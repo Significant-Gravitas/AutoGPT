@@ -17,6 +17,8 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+from backend.copilot import engine_switch
+from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -459,6 +461,36 @@ class CoPilotExecutor(AppProcess):
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
+                # Engine switch (enter_agent_building_mode on a baseline
+                # turn): dispatch the SDK continuation only NOW — the turn
+                # thread has fully finished (fail-close ran, message acked,
+                # cluster lock released, active_tasks cleaned), so neither
+                # the fail-close CAS nor the RMQ same-session duplicate
+                # rejection can kill the new turn.
+                switch = engine_switch.pop_switch(session_id)
+                if switch is not None and error_msg is None:
+                    try:
+                        asyncio.run(
+                            schedule_turn(
+                                session_id=session_id,
+                                user_id=switch.user_id,
+                                turn_id=str(uuid.uuid4()),
+                                message=engine_switch.CONTINUATION_MESSAGE,
+                                is_user_message=False,
+                                mode="extended_thinking",
+                                organization_id=switch.organization_id,
+                                team_id=switch.team_id,
+                            )
+                        )
+                        logger.info(
+                            f"Dispatched engine-switch continuation for "
+                            f"{session_id}"
+                        )
+                    except Exception as switch_err:
+                        logger.error(
+                            f"Engine-switch continuation dispatch failed "
+                            f"for {session_id}: {switch_err}"
+                        )
 
         future.add_done_callback(on_run_done)
 
