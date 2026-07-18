@@ -464,7 +464,11 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
                 }
                 continue
 
-            # Process embeddings concurrently for better performance
+            # Process embeddings concurrently for better performance.
+            # force=True: the handler's get_missing_items() is the source of
+            # truth for what needs (re-)embedding — it may return items whose
+            # row exists but is stale (e.g. a renamed block). Without force,
+            # ensure_content_embedding would skip those as "already embedded".
             embedding_tasks = [
                 ensure_content_embedding(
                     content_type=item.content_type,
@@ -472,6 +476,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
                     searchable_text=item.searchable_text,
                     metadata=item.metadata,
                     user_id=item.user_id,
+                    force=True,
                 )
                 for item in missing_items
             ]
