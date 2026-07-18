@@ -182,7 +182,7 @@ async def _write_fixed_agent(
             metadata={"origin": "agent-created"},
         )
     except Exception as e:
-        logger.warning("fix_agent_graph: failed to write %r: %s", write_to, e)
+        logger.warning(f"fix_agent_graph: failed to write {write_to!r}: {e}")
         return None, (
             f" NOTE: could not write {write_to} ({e}); "
             "returning the fixed JSON inline instead."

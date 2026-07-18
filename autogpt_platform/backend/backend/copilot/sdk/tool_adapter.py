@@ -752,9 +752,8 @@ def _make_truncating_wrapper(
         # the wrapper instead.
         if not args and required_args:
             logger.warning(
-                "[MCP] %s called with empty args (truncated or "
-                "schema-rejected input) — returning guidance",
-                tool_name,
+                f"[MCP] {tool_name} called with empty args (truncated or "
+                f"schema-rejected input) — returning guidance"
             )
             stop_msg = _check_circuit_breaker(tool_name, args)
             _record_tool_failure(tool_name, args)

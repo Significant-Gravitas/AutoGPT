@@ -235,11 +235,8 @@ async def _call_llm_for_simulation(
                     f"simulated output failed schema validation: {schema_problems}"
                 )
                 logger.warning(
-                    "simulate(%s): schema mismatch on attempt %d/%d: %s",
-                    label,
-                    attempt + 1,
-                    _MAX_JSON_RETRIES,
-                    schema_problems,
+                    f"simulate({label}): schema mismatch on attempt "
+                    f"{attempt + 1}/{_MAX_JSON_RETRIES}: {schema_problems}"
                 )
                 messages = messages + [
                     {"role": "assistant", "content": raw},
@@ -300,11 +297,8 @@ async def _call_llm_for_simulation(
         # Schema-conformance retries ran out but we do have parseable output:
         # a structurally imperfect simulation beats failing the whole dry run.
         logger.warning(
-            "simulate(%s): returning schema-non-conformant output after "
-            "%d attempts: %s",
-            label,
-            _MAX_JSON_RETRIES,
-            last_error,
+            f"simulate({label}): returning schema-non-conformant output "
+            f"after {_MAX_JSON_RETRIES} attempts: {last_error}"
         )
         return last_parsed
 
