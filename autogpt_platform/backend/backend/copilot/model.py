@@ -922,10 +922,8 @@ async def _save_session_to_db(
             msg.tool_calls_pending_save = False
         else:
             logger.warning(
-                "Failed to back-fill tool_calls for session %s seq %s "
-                "(row not found)",
-                session.session_id,
-                msg.sequence,
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence} (row not found)"
             )
 
 
