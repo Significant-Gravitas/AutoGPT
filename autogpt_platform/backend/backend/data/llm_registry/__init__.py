@@ -34,6 +34,7 @@ from .registry import (
     refresh_llm_registry,
     refresh_runtime_caches,
 )
+from .sync import llm_catalog_sync_loop, sync_catalog_once
 
 __all__ = [
     # Models
@@ -52,7 +53,9 @@ __all__ = [
     "export_catalog",
     "import_bundled_catalog",
     "import_catalog",
+    "llm_catalog_sync_loop",
     "refresh_runtime_caches",
+    "sync_catalog_once",
     # Cache management
     "clear_registry_cache",
     "publish_registry_refresh_notification",

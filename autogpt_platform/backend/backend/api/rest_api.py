@@ -182,17 +182,22 @@ async def lifespan_context(app: fastapi.FastAPI):
             backend.data.llm_registry.refresh_llm_registry
         )
     )
+    # No-op on cloud (behave_as=CLOUD) — see llm_registry.sync.should_sync.
+    llm_catalog_sync_task = asyncio.create_task(
+        backend.data.llm_registry.llm_catalog_sync_loop()
+    )
 
     with launch_darkly_context():
         yield
 
-    llm_registry_refresh_task.cancel()
-    try:
-        await llm_registry_refresh_task
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        logger.warning("LLM registry refresh task shutdown failed", exc_info=True)
+    for task in (llm_registry_refresh_task, llm_catalog_sync_task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.warning("LLM registry task shutdown failed", exc_info=True)
 
     try:
         await shutdown_cloud_storage_handler()

@@ -96,6 +96,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    llm_catalog_sync_enabled: bool = Field(
+        default=True,
+        description="Fetch the LLM model catalog from llm_catalog_url on startup and periodically. Only active on self-hosted installs (behave_as=LOCAL); cloud deployments never fetch.",
+    )
+    llm_catalog_url: str = Field(
+        default="https://backend.agpt.co/api/llm/catalog",
+        description="URL of the public LLM catalog endpoint to sync the local model registry from.",
+    )
+    llm_catalog_sync_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        description="Hours between periodic remote LLM catalog syncs.",
+    )
     llm_catalog_rate_limit_per_minute: int = Field(
         default=30,
         ge=1,
