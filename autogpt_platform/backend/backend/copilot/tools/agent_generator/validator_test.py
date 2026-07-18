@@ -1126,6 +1126,27 @@ class TestNestedChainsThroughUntypedFields:
         v = AgentValidator()
         agent = self._agent("main_result_#_text_#_deeper")
         assert v.validate_source_output_existence(agent, self._blocks()) is False
+        assert any("no extractable sub-fields" in e for e in v.errors)
+        # _resolve_optional_union unwraps [string, null] to its non-null
+        # branch, so the message names the concrete type — never 'None'.
+        assert any("type 'string'" in e for e in v.errors)
+
+    def test_sink_side_chain_through_untyped_field_passes(self):
+        """The shared walker also guards sink chains — an untyped declared
+        input accepts nested delivery."""
+        v = AgentValidator()
+        link = _make_link(
+            source_id="n1",
+            source_name="response",
+            sink_id="n2",
+            sink_name="input_#_nested_#_deep",
+        )
+        nodes = [
+            _make_node(node_id="n1", block_id="code-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        agent = _make_agent(nodes=nodes, links=[link])
+        assert v.validate_sink_input_existence(agent, self._blocks()) is True
 
 
 class TestNestedChainEdgeCases:
@@ -1194,3 +1215,86 @@ class TestNestedChainEdgeCases:
         }
         agent, blocks = self._agent_with_source("name_#_x", schema)
         assert v.validate_source_output_existence(agent, blocks) is False
+
+
+class TestAdditionalPropertiesChains:
+    """Levels that allow additionalProperties accept the remaining chain —
+    the executor delivers arbitrary keys into such dicts at run time."""
+
+    def _agent_and_blocks(self, output_schema: dict) -> tuple[dict, list[dict]]:
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1",
+            source_name="payload_#_anything_#_deeper",
+            sink_id="n2",
+            sink_name="input",
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        blocks = [
+            _make_block(block_id="src-1", output_schema=output_schema),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        return agent, blocks
+
+    def test_direct_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {"type": "object", "additionalProperties": True}
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_anyof_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {
+                        "anyOf": [
+                            {"type": "object", "additionalProperties": True},
+                            {"type": "null"},
+                        ]
+                    }
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_anyof_items_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {
+                        "anyOf": [
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                },
+                            },
+                            {"type": "null"},
+                        ]
+                    }
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_missing_top_level_property_lists_available(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {"properties": {"other": {"type": "string"}}}
+        )
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("Available properties" in e and "other" in e for e in v.errors)

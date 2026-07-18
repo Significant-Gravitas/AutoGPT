@@ -1144,7 +1144,10 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     parts = field_name.split(DICT_SPLIT)
     schema = props.get(parts[0])
     if schema is None:
-        return f"Parent property '{parts[0]}' does not exist in the schema"
+        return (
+            f"Parent property '{parts[0]}' does not exist. "
+            f"Available properties: {list(props)}"
+        )
 
     path = parts[0]
     for child in parts[1:]:
@@ -1167,8 +1170,8 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
             continue
         if _is_scalar_schema(schema):
             return (
-                f"Parent '{path}' has type '{schema.get('type')}' and has "
-                f"no extractable sub-fields"
+                f"Parent '{path}' has type '{_schema_display_type(schema)}' "
+                f"and has no extractable sub-fields"
             )
         # Untyped / Any / object without declared shape: cannot be verified
         # statically, resolved dynamically at run time.
@@ -1234,3 +1237,22 @@ def _resolve_optional_union(schema: dict[str, Any]) -> dict[str, Any] | None:
     if len(options) == 1:
         return options[0]
     return None
+
+
+def _schema_display_type(schema: dict[str, Any]) -> str:
+    """Human-readable type label for error messages.
+
+    anyOf schemas have no direct ``type`` key — render the union of their
+    branch types (e.g. ``string | null``) instead of the literal ``None``.
+    """
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str):
+        return schema_type
+    options = [
+        o["type"]
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and isinstance(o.get("type"), str)
+    ]
+    if options:
+        return " | ".join(options)
+    return "unknown"
