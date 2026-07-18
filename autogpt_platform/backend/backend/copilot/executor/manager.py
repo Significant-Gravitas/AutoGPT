@@ -469,28 +469,18 @@ class CoPilotExecutor(AppProcess):
                 # rejection can kill the new turn.
                 switch = engine_switch.pop_switch(session_id)
                 if switch is not None and error_msg is None:
-                    try:
-                        asyncio.run(
-                            schedule_turn(
-                                session_id=session_id,
-                                user_id=switch.user_id,
-                                turn_id=str(uuid.uuid4()),
-                                message=engine_switch.CONTINUATION_MESSAGE,
-                                is_user_message=False,
-                                mode="extended_thinking",
-                                organization_id=switch.organization_id,
-                                team_id=switch.team_id,
-                            )
-                        )
-                        logger.info(
-                            f"Dispatched engine-switch continuation for "
-                            f"{session_id}"
-                        )
-                    except Exception as switch_err:
-                        logger.error(
-                            f"Engine-switch continuation dispatch failed "
-                            f"for {session_id}: {switch_err}"
-                        )
+                    # Dispatch on a dedicated short-lived thread: the async
+                    # RabbitMQ client is @thread_cached and loop-bound, so
+                    # asyncio.run() on this pool thread would reuse a client
+                    # created under a previous (now-closed) event loop. A
+                    # fresh thread gets a fresh loop AND a fresh thread-
+                    # cached client, so nothing crosses loops.
+                    threading.Thread(
+                        target=_dispatch_engine_switch_continuation,
+                        args=(session_id, switch),
+                        name=f"engine-switch-{session_id[:8]}",
+                        daemon=True,
+                    ).start()
 
         future.add_done_callback(on_run_done)
 
@@ -591,3 +581,32 @@ class CoPilotExecutor(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_copilot_queue_config())
         return self._run_client
+
+
+def _dispatch_engine_switch_continuation(
+    session_id: str, switch: "engine_switch.SwitchRequest"
+) -> None:
+    """Dispatch the SDK continuation turn after an engine switch.
+
+    Runs on its own thread with its own event loop so the thread-cached
+    async queue client is created fresh and never reused across loops.
+    """
+    try:
+        asyncio.run(
+            schedule_turn(
+                session_id=session_id,
+                user_id=switch.user_id,
+                turn_id=str(uuid.uuid4()),
+                message=engine_switch.CONTINUATION_MESSAGE,
+                is_user_message=False,
+                mode="extended_thinking",
+                organization_id=switch.organization_id,
+                team_id=switch.team_id,
+            )
+        )
+        logger.info(f"Dispatched engine-switch continuation for {session_id}")
+    except Exception as switch_err:
+        logger.error(
+            f"Engine-switch continuation dispatch failed for {session_id}: "
+            f"{switch_err}"
+        )
