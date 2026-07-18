@@ -226,6 +226,8 @@ export function useCopilotStream({
     return () => {
       if (chatRuntime.onFinish === handleFinish) {
         chatRuntime.onFinish = undefined;
+      }
+      if (chatRuntime.onData === handleData) {
         chatRuntime.onData = undefined;
       }
       if (chatRuntime.onError === handleError) {

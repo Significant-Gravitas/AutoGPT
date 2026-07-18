@@ -1036,7 +1036,7 @@ def require_guide_read(session: ChatSession, tool_name: str):
     if session_read_building_guide(session):
         return None
     if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
-        from backend.copilot.sdk.env import config as chat_config  # noqa: PLC0415
+        from backend.copilot.sdk.env import config as chat_config
 
         if not chat_config.transport.supports_sdk:
             # SDK-less deployment: the enter tool served the guide inline.

@@ -327,3 +327,42 @@ def test_guide_in_system_prompt_flag_gate_passes():
     session = _session_with_messages([])
     session.guide_in_system_prompt = True
     assert require_guide_read(session, "create_agent") is None
+
+
+def _enter_call_message() -> ChatMessage:
+    return ChatMessage(
+        role="assistant",
+        content="",
+        tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
+    )
+
+
+def test_pending_switch_tells_model_to_end_turn(mocker):
+    """Baseline turn on an SDK-capable deployment: the enter call registers
+    an engine switch; further build tools must wait for the continuation."""
+    mocker.patch(
+        "backend.copilot.sdk.env.config",
+        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=True)),
+    )
+    session = _session_with_messages([_enter_call_message()])
+    result = require_guide_read(session, "create_agent")
+    assert isinstance(result, ErrorResponse)
+    assert "engine switch is pending" in result.message
+
+
+def test_enter_call_satisfies_gate_on_sdk_less_deployment(mocker):
+    """Without SDK support the enter tool served the guide inline — the
+    gate must pass instead of stranding the model."""
+    mocker.patch(
+        "backend.copilot.sdk.env.config",
+        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=False)),
+    )
+    session = _session_with_messages([_enter_call_message()])
+    assert require_guide_read(session, "create_agent") is None
+
+
+def test_guide_in_system_prompt_bypasses_gate():
+    """Building sessions carry the guide in the cached system prompt."""
+    session = _session_with_messages([])
+    session.guide_in_system_prompt = True
+    assert require_guide_read(session, "create_agent") is None

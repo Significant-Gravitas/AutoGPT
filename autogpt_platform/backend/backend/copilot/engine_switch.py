@@ -9,10 +9,14 @@ active_tasks cleaned) — pops the entry and dispatches a continuation turn
 on the SDK engine. Dispatching any earlier trips the turn-scoped
 fail-close CAS and the RMQ same-session duplicate rejection.
 
-Process-local by design: if the backend restarts between registration and
-dispatch, the continuation is lost, but the session still switches engines
-on the next user message via the processor's derived building-mode check —
-graceful degradation, no persistence needed.
+Process-local by design: registration (baseline service) and consumption
+(manager done-callback) both run inside the same executor process, so the
+dict never needs to cross process boundaries. If the backend restarts
+between registration and dispatch, the continuation is lost, but the
+session still switches engines on the next user message via the
+processor's derived building-mode check — graceful degradation, no
+persistence needed. Entries cannot go stale: every registered turn ends in
+its own done-callback, which pops unconditionally.
 """
 
 import threading

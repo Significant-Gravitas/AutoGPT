@@ -809,14 +809,8 @@ async def _consume_sdk_until_done(
             loop_state.msgs_since_flush = 0
 
         # --- Building-mode switch (enter_agent_building_mode) ---
-        # Restart the attempt with the guide in the system prompt. Wait for
-        # a message boundary with no unresolved tool calls so the CLI
-        # session file is orphan-free and cleanly resumable.
-        if (
-            ctx.session.building_mode_requested
-            and not ctx.session.guide_in_system_prompt
-            and not state.adapter.has_unresolved_tool_calls
-        ):
+        # Restart the attempt with the guide in the system prompt.
+        if _ready_for_building_mode_restart(ctx.session, state.adapter):
             logger.info(
                 f"{ctx.log_prefix} Building mode requested — interrupting "
                 f"for prompt upgrade"
@@ -1535,6 +1529,24 @@ class _InterruptedAttempt:
         events = _flush_orphan_tool_uses_to_session(session, state)
         _append_error_marker(session, display_msg, retryable=retryable)
         return events
+
+
+def _ready_for_building_mode_restart(
+    session: "ChatSession",
+    adapter: "SDKResponseAdapter",
+) -> bool:
+    """True when the attempt may restart for the building-mode prompt upgrade.
+
+    Requires a clean message boundary — no unresolved tool calls — so the
+    CLI session file is orphan-free and cleanly resumable; firing mid-tool-
+    call would strand ``tool_use`` blocks without results. No-op once the
+    guide is already in the system prompt (restart already happened).
+    """
+    return (
+        session.building_mode_requested
+        and not session.guide_in_system_prompt
+        and not adapter.has_unresolved_tool_calls
+    )
 
 
 def _flush_orphan_tool_uses_to_session(
