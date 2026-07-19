@@ -1533,6 +1533,71 @@ class _InterruptedAttempt:
         return events
 
 
+async def _apply_building_mode_restart(
+    *,
+    session: "ChatSession",
+    state: "_RetryState",
+    sdk_options: "ClaudeAgentOptions",
+    base_system_prompt: str,
+    graphiti_supplement: str,
+    use_e2b: bool,
+    session_id: str,
+    message_id: str,
+    log_prefix: str,
+) -> StreamStatus:
+    """Reconfigure *state* to relaunch the attempt with the guide in the
+    system prompt, returning the status event to yield.
+
+    Not an error, not a rollback — everything produced so far stands, so the
+    fresh adapter only carries over the transient-retry flags. Detection
+    cannot re-fire: guide_in_system_prompt flips True on success,
+    building_mode_requested flips False either way.
+    """
+    session.building_mode_requested = False
+    building_suffix = await build_builder_system_prompt_suffix(session)
+    session.guide_in_system_prompt = bool(building_suffix)
+    if not building_suffix:
+        logger.error(
+            f"{log_prefix} Building-mode restart: guide suffix "
+            f"empty — continuing without prompt upgrade"
+        )
+    system_prompt = (
+        base_system_prompt
+        + get_sdk_supplement(use_e2b=use_e2b)
+        + graphiti_supplement
+        + building_suffix
+    )
+    sdk_options_restart = copy(sdk_options)
+    sdk_options_restart.system_prompt = _build_system_prompt_value(
+        system_prompt,
+        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+    )
+    # Resume the CLI session the interrupted run was writing —
+    # spike-verified: --resume accepts a changed append and the
+    # new content is live on the resumed turn.
+    sdk_options_restart.resume = session_id
+    sdk_options_restart.session_id = None
+    state.options = sdk_options_restart
+    state.use_resume = True
+    state.resume_file = session_id
+    state.query_message = _BUILDING_MODE_CONTINUATION
+    # Fresh adapter, same carry-over rules as a transient retry.
+    # NOTE: the transcript builder is NOT restored — its partial
+    # entries are real; the relaunched run's `append_user` adds
+    # the original message once more, which only surfaces in the
+    # rare CLI-file-loss fallback path (cosmetic duplicate).
+    prior_adapter = state.adapter
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        render_reasoning_in_ui=config.render_reasoning_in_ui,
+    )
+    state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
+    if prior_adapter.emitted_real_content_to_wire:
+        state.adapter.prior_attempt_emitted_visible_content = True
+    return StreamStatus(message="Entering building mode — loading the agent guide…")
+
+
 def _ready_for_building_mode_restart(
     session: "ChatSession",
     adapter: "SDKResponseAdapter",
@@ -4791,50 +4856,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # interrupted.capture / snapshot restore here. Detection
                 # cannot re-fire: guide_in_system_prompt flips True on
                 # success, building_mode_requested flips False either way.
-                session.building_mode_requested = False
-                building_suffix = await build_builder_system_prompt_suffix(session)
-                session.guide_in_system_prompt = bool(building_suffix)
-                if not building_suffix:
-                    logger.error(
-                        f"{log_prefix} Building-mode restart: guide suffix "
-                        f"empty — continuing without prompt upgrade"
-                    )
-                system_prompt = (
-                    base_system_prompt
-                    + get_sdk_supplement(use_e2b=use_e2b)
-                    + graphiti_supplement
-                    + building_suffix
-                )
-                sdk_options_restart = copy(sdk_options)
-                sdk_options_restart.system_prompt = _build_system_prompt_value(
-                    system_prompt,
-                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
-                )
-                # Resume the CLI session the interrupted run was writing —
-                # spike-verified: --resume accepts a changed append and the
-                # new content is live on the resumed turn.
-                sdk_options_restart.resume = session_id
-                sdk_options_restart.session_id = None
-                state.options = sdk_options_restart
-                state.use_resume = True
-                state.resume_file = session_id
-                state.query_message = _BUILDING_MODE_CONTINUATION
-                # Fresh adapter, same carry-over rules as a transient retry.
-                # NOTE: the transcript builder is NOT restored — its partial
-                # entries are real; the relaunched run's `append_user` adds
-                # the original message once more, which only surfaces in the
-                # rare CLI-file-loss fallback path (cosmetic duplicate).
-                prior_adapter = state.adapter
-                state.adapter = SDKResponseAdapter(
-                    message_id=message_id,
+                yield await _apply_building_mode_restart(
+                    session=session,
+                    state=state,
+                    sdk_options=sdk_options,
+                    base_system_prompt=base_system_prompt,
+                    graphiti_supplement=graphiti_supplement,
+                    use_e2b=use_e2b,
                     session_id=session_id,
-                    render_reasoning_in_ui=config.render_reasoning_in_ui,
-                )
-                state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
-                if prior_adapter.emitted_real_content_to_wire:
-                    state.adapter.prior_attempt_emitted_visible_content = True
-                yield StreamStatus(
-                    message="Entering building mode — loading the agent guide…"
+                    message_id=message_id,
+                    log_prefix=log_prefix,
                 )
                 continue
             except _HandledStreamError as exc:
