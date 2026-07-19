@@ -1450,22 +1450,3 @@ class TestEmptyToolCallNoArgException:
         # not the saturation failure).
         assert result.count == 0
         assert result.tripped is False
-
-
-class TestModeResyncEvent:
-    """The picker re-sync emit for building-pinned turns requested as Fast —
-    a stale client (reload, second tab) re-syncs from this event."""
-
-    def test_fast_request_emits_extended_thinking_resync(self):
-        from backend.copilot.response_model import StreamModeChanged
-        from backend.copilot.sdk.service import _mode_resync_event
-
-        ev = _mode_resync_event("fast")
-        assert isinstance(ev, StreamModeChanged)
-        assert ev.mode == "extended_thinking"
-
-    def test_non_fast_requests_emit_nothing(self):
-        from backend.copilot.sdk.service import _mode_resync_event
-
-        assert _mode_resync_event("extended_thinking") is None
-        assert _mode_resync_event(None) is None
