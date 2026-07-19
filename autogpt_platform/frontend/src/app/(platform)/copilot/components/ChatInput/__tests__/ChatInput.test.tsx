@@ -233,7 +233,9 @@ describe("ChatInput mode toggle", () => {
     mockCopilotMode = "extended_thinking";
     mockCopilotModePinned = true;
     render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
+    const button = screen.getByLabelText(/mode locked to extended thinking/i);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button);
     expect(mockSetCopilotChatMode).not.toHaveBeenCalled();
     mockCopilotModePinned = false;
   });

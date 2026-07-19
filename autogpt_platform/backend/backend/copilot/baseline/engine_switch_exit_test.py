@@ -35,6 +35,8 @@ def test_loop_exit_predicate_matches_registry_state():
     pending after register, cleared after pop."""
     assert engine_switch.is_pending("sess-exit-2") is False
     _register("sess-exit-2")
-    assert engine_switch.is_pending("sess-exit-2") is True
-    engine_switch.pop_switch("sess-exit-2")
+    try:
+        assert engine_switch.is_pending("sess-exit-2") is True
+    finally:
+        engine_switch.pop_switch("sess-exit-2")
     assert engine_switch.is_pending("sess-exit-2") is False
