@@ -94,16 +94,16 @@ class GetDocPageTool(BaseTool):
                 error="docs_unavailable",
                 session_id=session_id,
             )
-        full_path = docs_root / path
-
         # Containment before existence: a uniform error for out-of-root
         # paths avoids leaking whether a file exists outside docs_root.
         try:
             # resolve() both sides: get_docs_root guarantees a resolved root,
             # but the guard stays self-contained rather than coupling a
             # security boundary to another module's invariant (idempotent,
-            # one metadata syscall).
-            full_path.resolve().relative_to(docs_root.resolve())
+            # one metadata syscall). All later access goes through the
+            # resolved path so the validated path is the one read.
+            full_path = (docs_root / path).resolve()
+            full_path.relative_to(docs_root.resolve())
         except ValueError:
             return ErrorResponse(
                 message="Invalid documentation path.",
