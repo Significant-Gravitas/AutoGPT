@@ -924,11 +924,19 @@ async def _save_session_to_db(
 
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above
-        updated = await db.update_chat_message_tool_calls(
-            session_id=session.session_id,
-            sequence=msg.sequence,
-            tool_calls=msg.tool_calls or [],
-        )
+        try:
+            updated = await db.update_chat_message_tool_calls(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                tool_calls=msg.tool_calls or [],
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+
         if updated:
             msg.tool_calls_pending_save = False
         else:
