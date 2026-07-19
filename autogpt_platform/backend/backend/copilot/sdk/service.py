@@ -1558,6 +1558,10 @@ def _resolve_tool_result_name(
         for tc in msg.tool_calls or []:
             if tc.get("id") == tool_call_id:
                 return tc.get("function", {}).get("name")
+    logger.warning(
+        f"Persisting nameless tool-result row for session {session.session_id}: "
+        f"no name provided and no matching tool_call {tool_call_id} in history"
+    )
     return None
 
 

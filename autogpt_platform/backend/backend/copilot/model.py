@@ -113,7 +113,14 @@ class ChatMessage(BaseModel):
     save path only inserts ``sequence is None`` rows, so late-attached
     tool_calls would otherwise never reach the DB and the tool activity
     becomes invisible in session history. ``_save_session_to_db`` back-fills
-    rows flagged here and clears the flag."""
+    rows flagged here and clears the flag.
+
+    In-memory only (``exclude=True``) by necessity, not oversight: the flag
+    marks tool_calls content that exists ONLY in this process — if the
+    worker dies before a back-fill succeeds, the content is gone with it,
+    so a persisted flag would have nothing left to back-fill from. Residual
+    window: a back-fill failure on the turn's final save is retried on any
+    later save of the session, but not across a worker restart."""
 
     def mark_tool_calls_dirty(self) -> None:
         """Flag this row for a toolCalls back-fill if it was already
