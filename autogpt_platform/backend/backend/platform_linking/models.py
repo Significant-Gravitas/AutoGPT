@@ -1,10 +1,22 @@
 """Pydantic models for platform_linking requests and responses."""
 
+import base64
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer
+
+# File content that survives the JSON service RPC. Raw bytes stay bytes
+# in-process, but the wire format is base64 — plain ``bytes`` fields are
+# strict-UTF-8-decoded by JSON serialization, which fails on binary content.
+# Matches how the platform encodes file bytes in JSON elsewhere (the
+# ``data:<mime>;base64,`` URIs from ``store_media_file``).
+Base64EncodedBytes = Annotated[
+    bytes,
+    BeforeValidator(lambda v: base64.b64decode(v) if isinstance(v, str) else v),
+    PlainSerializer(lambda v: base64.b64encode(v).decode("ascii"), when_used="json"),
+]
 
 # Hard cap on the assembled bot prompt. The chat bots build a prompt from the
 # user's message plus channel history / referenced conversations, which on a
@@ -139,7 +151,7 @@ class WorkspaceUploadRequest(BaseModel):
     platform_user_id: str = Field(min_length=1, max_length=255)
     filename: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(min_length=1, max_length=255)
-    content: bytes
+    content: Base64EncodedBytes
     # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
     # file during the turn, same as a web upload. Resolved by the caller before
     # uploading (see ``ensure_chat_session``).
@@ -297,7 +309,7 @@ class WorkspaceArtifact(BaseModel):
     filename: str
     mime_type: str
     size_bytes: int
-    content: bytes
+    content: Base64EncodedBytes
 
 
 class BotEventInput(BaseModel):

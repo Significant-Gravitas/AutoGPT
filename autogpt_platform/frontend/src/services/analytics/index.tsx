@@ -7,6 +7,7 @@
 
 import type { GAParams } from "@/types/google";
 import { consent } from "@/services/consent/cookies";
+import { usePathname } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useState } from "react";
 import { environment } from "../environment";
@@ -38,8 +39,15 @@ export function SetupAnalytics(props: SetupProps) {
     setHasAnalyticsConsent(consent.hasConsentFor("analytics"));
   }, []);
 
+  // The public tour hides the cookie banner, so DataFast loads there without
+  // the consent gate — otherwise tour funnel events would never fire for
+  // first-touch visitors.
+  const pathname = usePathname();
+  const isPublicTourPage = pathname?.startsWith("/tour") ?? false;
+
   // Datafa.st journey analytics only on production AND with consent
-  const dataFastEnabled = isProductionDomain && hasAnalyticsConsent;
+  const dataFastEnabled =
+    isProductionDomain && (hasAnalyticsConsent || isPublicTourPage);
   // We collect analytics too for open source developers running the platform locally
   // BUT only with consent
   const googleAnalyticsEnabled =

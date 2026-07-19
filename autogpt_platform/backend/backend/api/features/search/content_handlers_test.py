@@ -225,6 +225,53 @@ async def test_block_handler_get_missing_items_splits_camelcase():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_block_handler_reembeds_stale_searchable_text():
+    """Blocks whose stored searchableText no longer matches their current
+    definition (e.g. renamed blocks) are returned for re-embedding, while
+    up-to-date blocks are skipped."""
+    handler = BlockHandler()
+
+    blocks = {
+        "renamed-block": _make_block_class(
+            name="OrchestratorBlock", description="Orchestrates tools"
+        ),
+        "fresh-block": _make_block_class(
+            name="CalculatorBlock", description="Performs calculations"
+        ),
+    }
+
+    with patch(
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ):
+        # First pass with nothing embedded to learn the current text
+        with patch(
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
+            return_value=[],
+        ):
+            baseline = await handler.get_missing_items(batch_size=10)
+        current_text = {item.content_id: item.searchable_text for item in baseline}
+        assert set(current_text) == {"renamed-block", "fresh-block"}
+
+        # Second pass: one row is stale (pre-rename text), one is current
+        with patch(
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
+            return_value=[
+                {
+                    "contentId": "renamed-block",
+                    "searchableText": "Smart Decision Maker Block Uses AI to decide",
+                },
+                {
+                    "contentId": "fresh-block",
+                    "searchableText": current_text["fresh-block"],
+                },
+            ],
+        ):
+            items = await handler.get_missing_items(batch_size=10)
+
+    assert [item.content_id for item in items] == ["renamed-block"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_handler_get_missing_items_batch_size_zero():
     """batch_size=0 returns an empty list; the DB is still queried to find missing IDs."""
     handler = BlockHandler()

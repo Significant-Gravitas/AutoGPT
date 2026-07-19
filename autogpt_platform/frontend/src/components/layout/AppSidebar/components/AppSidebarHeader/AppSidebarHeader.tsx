@@ -16,7 +16,7 @@ export function AppSidebarHeader() {
   const isCollapsed = state === "collapsed";
 
   return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
+    <SidebarHeader className="mb-2.5 flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
       <Link
         href="/copilot"
         aria-label="AutoGPT"
@@ -28,7 +28,7 @@ export function AppSidebarHeader() {
         {isCollapsed ? (
           <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
         ) : (
-          <AutoGPTLogo className="h-7 w-auto" />
+          <AutoGPTLogo className="ml-2.5 mt-2 h-10 w-auto" />
         )}
       </Link>
 

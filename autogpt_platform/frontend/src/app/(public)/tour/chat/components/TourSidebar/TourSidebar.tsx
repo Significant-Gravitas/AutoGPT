@@ -1,6 +1,5 @@
 "use client";
 
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import {
   getSidebarItemVariants,
   sidebarContainerVariants,
@@ -22,8 +21,10 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
+  CheckIcon,
   FlowArrowIcon,
   FolderIcon,
   type Icon,
@@ -35,8 +36,9 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { tourScenarios } from "../../script/tourScenarios";
+import { getNextTourScenario, tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
+import { useTourScenarioSelection } from "../../useTourScenarioSelection";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
 import { TourUpsellCard } from "./components/TourUpsellCard";
 
@@ -69,17 +71,22 @@ function DisabledMenuItem({
 function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
   const router = useRouter();
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
-  const setActiveScenario = useTourStore((s) => s.setActiveScenario);
-  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
+  const watchedScenarioIds = useTourStore((s) => s.watchedScenarioIds);
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const isNudgeVisible = useTourStore((s) => s.isNudgeVisible);
+  const selectTourScenario = useTourScenarioSelection();
+
+  // While the visitor idles on a finished demo, the scenario the nudge chip
+  // points at pulses in the sidebar too.
+  const nudgeScenarioId =
+    variant === "tour" && isDemoComplete && isNudgeVisible
+      ? getNextTourScenario(activeScenarioId, watchedScenarioIds).id
+      : null;
 
   function selectScenario(id: string) {
-    // Close (not just clear) the panel: a completed demo leaves
-    // artifactPanel.isOpen=true, which keeps the chat column dimmed at
-    // opacity-50 behind it. persist:false keeps the tour from leaking
-    // panel state into the real /copilot, same as TourCopilot's cleanup.
-    closeArtifactPanel({ persist: false });
-    setActiveScenario(id);
-    if (variant === "marketplace") router.push("/tour/chat");
+    selectTourScenario(id);
+    if (variant === "marketplace")
+      router.push("/tour/chat?utm_source=platform_marketplace");
   }
 
   return (
@@ -90,10 +97,20 @@ function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
             isActive={variant === "tour" && scenario.id === activeScenarioId}
             tooltip={scenario.label}
             onClick={() => selectScenario(scenario.id)}
-            className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200"
+            className={cn(
+              "font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200",
+              scenario.id === nudgeScenarioId &&
+                "animate-pulse bg-violet-50 outline-dashed outline-1 outline-violet-400",
+            )}
           >
             <scenario.icon className="size-4 shrink-0" />
             <span className="truncate">{scenario.label}</span>
+            {variant === "tour" && watchedScenarioIds.includes(scenario.id) && (
+              <span className="ml-auto flex shrink-0 items-center gap-0.5 text-xs text-emerald-600">
+                <CheckIcon className="size-3" weight="bold" />
+                watched
+              </span>
+            )}
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
@@ -113,6 +130,9 @@ interface Props {
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  // Once the demo finishes, the end card in the chat carries the upsell —
+  // the sidebar card hides until a new scenario resets the demo.
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
 
   return (
     <Sidebar
@@ -210,9 +230,11 @@ export function TourSidebar({ variant = "tour" }: Props) {
         </motion.div>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
-        <TourUpsellCard />
-      </SidebarFooter>
+      {!isDemoComplete && (
+        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+          <TourUpsellCard />
+        </SidebarFooter>
+      )}
 
       <SidebarRail />
     </Sidebar>
