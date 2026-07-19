@@ -64,11 +64,17 @@ async def test_missing_page_returns_not_found(tool, session):
 
 
 @pytest.mark.asyncio
-@requires_docs_bundle
-async def test_traversal_is_blocked(tool, session):
-    result = await tool._execute(
-        user_id=None, session=session, path="../backend/pyproject.toml"
+async def test_traversal_is_blocked(tool, session, tmp_path, mocker):
+    """Unconditional (mocked tmp docs root, no bundle needed): a ../ path
+    targeting a real out-of-root file is rejected before existence leaks."""
+    docs = tmp_path / "docs"
+    (docs / "platform").mkdir(parents=True)
+    (tmp_path / "secret.toml").write_text("nope")
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        return_value=docs.resolve(),
     )
+    result = await tool._execute(user_id=None, session=session, path="../secret.toml")
     assert isinstance(result, ErrorResponse)
     assert result.error == "invalid_path"
 
