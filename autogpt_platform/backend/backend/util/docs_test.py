@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.util.docs import (
+    DOCS_BASE_URL,
     _find_docs_root,
     get_docs_root,
     get_docs_root_or_none,
@@ -76,8 +77,6 @@ def test_make_doc_url_strips_extension_and_leading_slash():
 def test_docs_base_url_pins_live_host():
     """Guards against a silent revert to the dead docs.agpt.co host — the
     shape tests are all relative to this constant."""
-    from backend.util.docs import DOCS_BASE_URL
-
     assert DOCS_BASE_URL == "https://agpt.co/docs"
 
 
