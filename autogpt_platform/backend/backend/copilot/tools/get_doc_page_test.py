@@ -64,6 +64,7 @@ async def test_missing_page_returns_not_found(tool, session):
 
 
 @pytest.mark.asyncio
+@requires_docs_bundle
 async def test_traversal_is_blocked(tool, session):
     result = await tool._execute(
         user_id=None, session=session, path="../backend/pyproject.toml"
