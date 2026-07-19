@@ -468,8 +468,8 @@ importers:
         version: 4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.10.0)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0)(msw@2.11.6(@types/node@24.10.0)(typescript@5.9.3))(terser@5.44.1)(yaml@2.8.2)
     optionalDependencies:
       '@autogpt/icons':
-        specifier: ^0.2.0
-        version: 0.2.0(react@18.3.1)
+        specifier: ^0.3.0
+        version: 0.3.0(react@18.3.1)
 
 packages:
 
@@ -558,8 +558,8 @@ packages:
   '@asyncapi/specs@6.10.0':
     resolution: {integrity: sha512-vB5oKLsdrLUORIZ5BXortZTlVyGWWMC1Nud/0LtgxQ3Yn2738HigAD6EVqScvpPsDUI/bcLVsYEXN4dtXQHVng==}
 
-  '@autogpt/icons@0.2.0':
-    resolution: {integrity: sha512-Pak+p30kAu3SR9DmJq+UReqRwwfbcU1GdFllM1RihHJD+1RswzkgWQqBXYE2/0iyCL7C58A6b6jmTX7QHnIDFg==}
+  '@autogpt/icons@0.3.0':
+    resolution: {integrity: sha512-xg4WtTcV89CXx64Gm250E96gFWPzmgGKqldnSG7/AUHsJbf/gIxv8863VDzsPxZ5IBVUbJCysBdnbW4/7XZR9A==}
     peerDependencies:
       react: '>=18'
 
@@ -9278,7 +9278,7 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
 
-  '@autogpt/icons@0.2.0(react@18.3.1)':
+  '@autogpt/icons@0.3.0(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optional: true
