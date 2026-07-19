@@ -351,9 +351,7 @@ class StreamModeChanged(StreamBaseResponse):
     )
 
     def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part — the client reads the payload
-        from ``part.data``, so ``mode`` must be nested there rather than
-        serialized as a top-level sibling of ``type``."""
+        """Emit as an AI SDK v5 data part."""
         data = {
             "type": self.type.value,
             "data": {"mode": self.mode},

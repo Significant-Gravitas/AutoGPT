@@ -21,7 +21,7 @@ its own done-callback, which pops unconditionally.
 
 import threading
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # Dispatched as the continuation turn's message with is_user_message=False,
 # so it persists as an assistant row and renders as AutoPilot narration —
@@ -38,9 +38,9 @@ CONTINUATION_MESSAGE = (
 class SwitchRequest(BaseModel):
     """Tenancy context needed to dispatch the continuation turn."""
 
-    model_config = {"frozen": True}
+    model_config = ConfigDict(frozen=True)
 
-    user_id: str | None
+    user_id: str
     organization_id: str | None = None
     team_id: str | None = None
 
@@ -52,7 +52,7 @@ _pending: dict[str, SwitchRequest] = {}
 def request_switch(
     session_id: str,
     *,
-    user_id: str | None,
+    user_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> None:
