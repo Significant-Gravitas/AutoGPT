@@ -47,6 +47,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 beforeEach(() => {
   resetCopilotChatRegistry();
   useCopilotUIStore.getState().setCopilotChatMode("fast");
+  useCopilotUIStore.getState().clearCopilotModePin();
 });
 
 afterEach(() => {
@@ -84,6 +85,9 @@ describe("AutoPilot streaming — server-initiated engine switch", () => {
       },
       { timeout: 5000 },
     );
+    // Session-scoped pin: the toggle locks, and the user's persisted
+    // default must NOT have been rewritten by the server-forced switch.
+    expect(useCopilotUIStore.getState().copilotModePinned).toBe(true);
   });
 
   it("keeps the selected mode on streams without a mode change", async () => {
@@ -107,5 +111,6 @@ describe("AutoPilot streaming — server-initiated engine switch", () => {
     await waitFor(() => {
       expect(useCopilotUIStore.getState().copilotChatMode).toBe("fast");
     });
+    expect(useCopilotUIStore.getState().copilotModePinned).toBe(false);
   });
 });

@@ -177,6 +177,9 @@ interface CopilotUIState {
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
   setCopilotChatMode: (mode: CopilotMode) => void;
+  copilotModePinned: boolean;
+  applyServerModeChange: (mode: CopilotMode) => void;
+  clearCopilotModePin: () => void;
 
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
@@ -483,6 +486,13 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setCopilotChatMode: (mode) => {
     storage.set(Key.COPILOT_MODE, mode);
     set({ copilotChatMode: mode });
+  },
+  copilotModePinned: false,
+  applyServerModeChange: (mode) => {
+    set({ copilotChatMode: mode, copilotModePinned: true });
+  },
+  clearCopilotModePin: () => {
+    set({ copilotModePinned: false });
   },
 
   copilotLlmModel: (() => {
