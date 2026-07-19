@@ -4,7 +4,7 @@ import pytest
 
 from backend.copilot.tools.get_doc_page import GetDocPageTool
 from backend.copilot.tools.models import DocPageResponse, ErrorResponse
-from backend.util.docs import DOCS_BASE_URL, get_docs_root
+from backend.util.docs import DOCS_BASE_URL, get_docs_root, get_docs_root_or_none
 
 from ._test_data import make_session
 
@@ -21,6 +21,13 @@ def session():
     return make_session(_TEST_USER_ID)
 
 
+requires_docs_bundle = pytest.mark.skipif(
+    get_docs_root_or_none() is None,
+    reason="integration: needs the repo/image docs bundle on disk",
+)
+
+
+@requires_docs_bundle
 def test_docs_root_resolves_to_bundled_docs():
     """Regression: the old parent-chain arithmetic resolved OUTSIDE the repo
     (two levels too far), making every page read 404 in dev and cloud."""
@@ -31,6 +38,7 @@ def test_docs_root_resolves_to_bundled_docs():
 
 
 @pytest.mark.asyncio
+@requires_docs_bundle
 async def test_fetches_real_doc_page(tool, session):
     """Any indexed-style relative path under docs/ must be readable."""
     root = get_docs_root()
@@ -48,6 +56,7 @@ async def test_fetches_real_doc_page(tool, session):
 
 
 @pytest.mark.asyncio
+@requires_docs_bundle
 async def test_missing_page_returns_not_found(tool, session):
     result = await tool._execute(user_id=None, session=session, path="no/such/page.md")
     assert isinstance(result, ErrorResponse)
