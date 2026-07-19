@@ -96,7 +96,7 @@ export function ChatInput({
       toast({
         title: "Mode is locked while building an agent",
         description:
-          "This session switched to Extended Thinking for agent building and stays there until the build is done.",
+          "This session switched to Extended Thinking for agent building; the backend keeps building sessions on that engine.",
       });
       return;
     }
