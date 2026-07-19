@@ -889,7 +889,7 @@ async def test_update_chat_message_tool_calls_success():
 
 @pytest.mark.asyncio
 async def test_update_chat_message_tool_calls_not_found():
-    """Returns False (so the caller's dirty flag stays set) when no row matches."""
+    """Returns False (so the caller's pending-save flag stays set) when no row matches."""
     with (
         patch.object(PrismaChatMessage, "prisma") as mock_prisma,
         patch("backend.copilot.db.logger") as mock_logger,

@@ -1010,7 +1010,7 @@ async def test_save_session_to_db_backfills_late_tool_calls(
     mocker: MockerFixture,
 ) -> None:
     """An assistant row flushed before its tool_use blocks arrived gets its
-    toolCalls back-filled on the next save, and the dirty flag cleared."""
+    toolCalls back-filled on the next save, and the pending-save flag cleared."""
     calls = [
         {
             "id": "c1",
@@ -1085,7 +1085,7 @@ async def test_save_session_to_db_new_rows_persist_tool_calls_without_backfill(
 async def test_save_session_to_db_backfill_failure_keeps_flag_set(
     mocker: MockerFixture,
 ) -> None:
-    """When the back-fill UPDATE fails, the dirty flag must stay set so a
+    """When the back-fill UPDATE fails, the pending-save flag must stay set so a
     later save retries — this retention-on-failure is the fix's safety net."""
     calls = [
         {
@@ -1473,7 +1473,7 @@ def test_chat_session_new_carries_org_team():
 
 def test_add_tool_call_to_sequenced_row_flags_backfill():
     """Attaching a tool_call to an already-persisted assistant row must set
-    the dirty flag so the next save back-fills toolCalls (baseline path)."""
+    the pending-save flag so the next save back-fills toolCalls (baseline path)."""
     session = _make_session_with_messages(
         ChatMessage(role="assistant", content="working...", sequence=42)
     )
@@ -1495,7 +1495,7 @@ def test_add_tool_call_to_sequenced_row_flags_backfill():
 async def test_backfill_exception_keeps_flag_and_save_survives(
     mocker: MockerFixture,
 ) -> None:
-    """A raising back-fill must not fail the save, and the dirty flag stays
+    """A raising back-fill must not fail the save, and the pending-save flag stays
     set so a later save retries — the retry safety net for the crash case."""
     flushed = ChatMessage(
         role="assistant",
@@ -1531,7 +1531,7 @@ async def test_backfill_exception_keeps_flag_and_save_survives(
 async def test_backfill_partial_failure_clears_only_successes(
     mocker: MockerFixture,
 ) -> None:
-    """Three dirty rows fan out concurrently; one raises, one reports
+    """Three pending rows fan out concurrently; one raises, one reports
     not-found — only the successful row's flag clears."""
 
     def _msg(seq: int) -> ChatMessage:
