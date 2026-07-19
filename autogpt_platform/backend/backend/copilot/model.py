@@ -122,7 +122,7 @@ class ChatMessage(BaseModel):
     window: a back-fill failure on the turn's final save is retried on any
     later save of the session, but not across a worker restart."""
 
-    def mark_tool_calls_dirty(self) -> None:
+    def mark_tool_calls_pending_save(self) -> None:
         """Flag this row for a toolCalls back-fill if it was already
         persisted (has a sequence). The single invariant behind the
         mid-turn-flush fix: any site that mutates ``tool_calls`` on a
@@ -457,7 +457,7 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
-                msg.mark_tool_calls_dirty()
+                msg.mark_tool_calls_pending_save()
                 return
 
         self.messages.append(
@@ -951,7 +951,7 @@ async def _save_session_to_db(
     # save (every turn ends with save_chat_session, including the error paths
     # that append an error marker) — mid-turn flushes merely narrow the
     # window. On failure the flag stays set so any later save retries.
-    dirty = [
+    pending = [
         m
         for m in session.messages
         if m.tool_calls_pending_save and m.sequence is not None
@@ -980,8 +980,8 @@ async def _save_session_to_db(
                 f"{session.session_id} seq {msg.sequence} (row not found)"
             )
 
-    if dirty:
-        await asyncio.gather(*(_backfill(m) for m in dirty))
+    if pending:
+        await asyncio.gather(*(_backfill(m) for m in pending))
 
 
 async def append_and_save_message(

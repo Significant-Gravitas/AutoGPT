@@ -3217,7 +3217,7 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
-        acc.assistant_response.mark_tool_calls_dirty()
+        acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
