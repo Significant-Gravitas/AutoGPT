@@ -1489,3 +1489,87 @@ def test_add_tool_call_to_sequenced_row_flags_backfill():
         {"id": "c2", "type": "function", "function": {"name": "f", "arguments": "{}"}}
     )
     assert fresh.messages[-1].tool_calls_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_backfill_exception_keeps_flag_and_save_survives(
+    mocker: MockerFixture,
+) -> None:
+    """A raising back-fill must not fail the save, and the dirty flag stays
+    set so a later save retries — the retry safety net for the crash case."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="working...",
+        sequence=7,
+        tool_calls=[
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "f", "arguments": "{}"},
+            }
+        ],
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.tool_calls_pending_save is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_backfill_partial_failure_clears_only_successes(
+    mocker: MockerFixture,
+) -> None:
+    """Three dirty rows fan out concurrently; one raises, one reports
+    not-found — only the successful row's flag clears."""
+
+    def _msg(seq: int) -> ChatMessage:
+        return ChatMessage(
+            role="assistant",
+            content=f"m{seq}",
+            sequence=seq,
+            tool_calls=[
+                {
+                    "id": f"c{seq}",
+                    "type": "function",
+                    "function": {"name": "f", "arguments": "{}"},
+                }
+            ],
+            tool_calls_pending_save=True,
+        )
+
+    m1, m2, m3 = _msg(1), _msg(2), _msg(3)
+    session = _make_session_with_messages(m1, m2, m3)
+
+    async def _by_sequence(session_id: str, sequence: int, tool_calls):
+        if sequence == 1:
+            return True
+        if sequence == 2:
+            raise RuntimeError("db down")
+        return False
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=4)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(side_effect=_by_sequence)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=4, skip_existence_check=True
+    )
+
+    assert m1.tool_calls_pending_save is False
+    assert m2.tool_calls_pending_save is True
+    assert m3.tool_calls_pending_save is True
+    assert mock_db.update_chat_message_tool_calls.await_count == 3
