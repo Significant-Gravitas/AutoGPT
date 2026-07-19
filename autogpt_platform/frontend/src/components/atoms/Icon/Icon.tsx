@@ -1,5 +1,6 @@
 import type { IconWeight } from "@phosphor-icons/react";
 import { getAutoGPTIcon } from "./agptIcons";
+import { areAutoGPTIconsAvailable } from "./helpers";
 import { iconRegistry, type IconName } from "./registry";
 
 interface Props {
@@ -12,10 +13,10 @@ interface Props {
   "aria-label"?: string;
 }
 
-// Renders a semantic icon from the AutoGPT icon set when the optional
-// `@autogpt/icons` package is installed, otherwise falls back to the matching
-// Phosphor icon. Feature code should use this instead of importing icon
-// libraries directly.
+// Renders a semantic icon. When the optional `@autogpt/icons` package is
+// installed, the entire app renders AutoGPT icons; otherwise every icon falls
+// back to Phosphor. The two sets are never mixed (see areAutoGPTIconsAvailable).
+// Feature code should use this instead of importing icon libraries directly.
 export function Icon({
   name,
   size = 24,
@@ -27,16 +28,20 @@ export function Icon({
   const entry = iconRegistry[name];
   const label = ariaLabel ?? name;
 
-  const AutoGPTIcon = getAutoGPTIcon(entry.autogpt);
-  if (AutoGPTIcon) {
-    return (
-      <AutoGPTIcon
-        size={size}
-        color={color}
-        className={className}
-        ariaLabel={label}
-      />
-    );
+  if (areAutoGPTIconsAvailable()) {
+    // Guaranteed defined once the availability check passes; the guard only
+    // narrows the type for TypeScript.
+    const AutoGPTIcon = getAutoGPTIcon(entry.autogpt);
+    if (AutoGPTIcon) {
+      return (
+        <AutoGPTIcon
+          size={size}
+          color={color}
+          className={className}
+          ariaLabel={label}
+        />
+      );
+    }
   }
 
   const PhosphorIcon = entry.phosphor;
