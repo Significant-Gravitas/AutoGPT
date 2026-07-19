@@ -802,33 +802,17 @@ async def update_chat_message_tool_calls(
     Returns:
         True if a message was updated, False otherwise.
     """
-    try:
-        result = await PrismaChatMessage.prisma().update_many(
-            where={"sessionId": session_id, "sequence": sequence},
-            data={"toolCalls": SafeJson(tool_calls)},
-        )
-        if result == 0:
-            logger.warning(
-                f"No message found to update tool_calls for session "
-                f"{session_id}, sequence {sequence}"
-            )
-            return False
-        if result > 1:
-            # Structurally impossible under the @@unique([sessionId, sequence])
-            # constraint — if it ever fires, data is corrupted; fail loudly
-            # instead of clearing the caller's dirty flag.
-            logger.error(
-                f"update_chat_message_tool_calls touched {result} rows "
-                f"for session {session_id}, sequence {sequence} — expected 1"
-            )
-            return False
-        return True
-    except Exception as e:
-        logger.error(
-            f"Failed to update tool_calls for session {session_id}, "
-            f"sequence {sequence}: {e}"
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"toolCalls": SafeJson(tool_calls)},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update tool_calls for session "
+            f"{session_id}, sequence {sequence}"
         )
         return False
+    return True
 
 
 async def set_turn_duration(session_id: str, duration_ms: int) -> None:
