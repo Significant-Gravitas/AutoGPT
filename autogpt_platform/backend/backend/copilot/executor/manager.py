@@ -626,6 +626,12 @@ def _dispatch_engine_switch_continuation(
     message history, so the user's next message still lands on the SDK
     engine with the guide in the prefix.
     """
+    if not asyncio.run(_switch_scope_is_valid(session_id, switch)):
+        logger.error(
+            f"Engine-switch continuation for {session_id} refused — switch "
+            f"scope does not match the session owner"
+        )
+        return
     for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
         try:
             asyncio.run(
@@ -650,6 +656,19 @@ def _dispatch_engine_switch_continuation(
             if attempt < _SWITCH_DISPATCH_ATTEMPTS:
                 time.sleep(attempt)
     _persist_switch_failure_marker(session_id)
+
+
+async def _switch_scope_is_valid(
+    session_id: str, switch: engine_switch.SwitchRequest
+) -> bool:
+    """Re-validate the captured tenancy against the session owner at
+    dispatch time, so authorization doesn't depend on every future
+    registration site staying correct."""
+    # Lazy import: manager must stay importable without the model chain.
+    from backend.copilot.model import get_chat_session
+
+    session = await get_chat_session(session_id)
+    return session is not None and session.user_id == switch.user_id
 
 
 def _persist_switch_failure_marker(session_id: str) -> None:
