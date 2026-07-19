@@ -466,6 +466,10 @@ importers:
       vitest:
         specifier: 4.0.17
         version: 4.0.17(@opentelemetry/api@1.9.0)(@types/node@24.10.0)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0)(msw@2.11.6(@types/node@24.10.0)(typescript@5.9.3))(terser@5.44.1)(yaml@2.8.2)
+    optionalDependencies:
+      '@autogpt/icons':
+        specifier: ^0.2.0
+        version: 0.2.0(react@18.3.1)
 
 packages:
 
@@ -553,6 +557,11 @@ packages:
 
   '@asyncapi/specs@6.10.0':
     resolution: {integrity: sha512-vB5oKLsdrLUORIZ5BXortZTlVyGWWMC1Nud/0LtgxQ3Yn2738HigAD6EVqScvpPsDUI/bcLVsYEXN4dtXQHVng==}
+
+  '@autogpt/icons@0.2.0':
+    resolution: {integrity: sha512-Pak+p30kAu3SR9DmJq+UReqRwwfbcU1GdFllM1RihHJD+1RswzkgWQqBXYE2/0iyCL7C58A6b6jmTX7QHnIDFg==}
+    peerDependencies:
+      react: '>=18'
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
@@ -9268,6 +9277,11 @@ snapshots:
   '@asyncapi/specs@6.10.0':
     dependencies:
       '@types/json-schema': 7.0.15
+
+  '@autogpt/icons@0.2.0(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optional: true
 
   '@babel/code-frame@7.27.1':
     dependencies:

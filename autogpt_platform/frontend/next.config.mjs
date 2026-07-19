@@ -1,8 +1,28 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
 // Defaults to true so Vercel/local builds are unaffected.
 const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
+
+// `@autogpt/icons` is an optional (private) dependency. Self-hosters without
+// access to it simply won't have it installed, in which case the design-system
+// `Icon` component falls back to Phosphor icons. When the package is absent we
+// alias its import specifier to a local empty stub so the build never fails on
+// a missing module. Detect it via its always-exported package.json (the package
+// is ESM-only and has no CJS entry, so resolving the root would throw even when
+// installed).
+const require = createRequire(import.meta.url);
+const AUTOGPT_ICONS_STUB_RELATIVE =
+  "./src/components/atoms/Icon/agptIconsStub.ts";
+let hasAutoGPTIcons = true;
+try {
+  require.resolve("@autogpt/icons/package.json");
+} catch {
+  hasAutoGPTIcons = false;
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -24,10 +44,32 @@ const nextConfig = {
     // Limit parallel webpack workers to reduce peak memory during builds.
     cpus: 2,
   },
+  // Turbopack (`next dev --turbo`, test builds) equivalent of the webpack alias
+  // below: point `@autogpt/icons` at the local stub when it isn't installed.
+  ...(hasAutoGPTIcons
+    ? {}
+    : {
+        turbopack: {
+          resolveAlias: {
+            "@autogpt/icons": AUTOGPT_ICONS_STUB_RELATIVE,
+          },
+        },
+      }),
   // Work around cssnano "Invalid array length" bug in Next.js's bundled
   // cssnano-simple comment parser when processing very large CSS chunks.
   // CSS is still bundled correctly; gzip handles most of the size savings anyway.
   webpack: (config, { dev }) => {
+    // Alias the optional `@autogpt/icons` package to a local stub when it isn't
+    // installed, so `next build` (webpack) never fails on the missing import.
+    if (!hasAutoGPTIcons) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@autogpt/icons": path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "src/components/atoms/Icon/agptIconsStub.ts",
+        ),
+      };
+    }
     if (!dev) {
       // Next.js adds CssMinimizerPlugin internally (after user config), so we
       // can't filter it from config.plugins. Instead, intercept the webpack
