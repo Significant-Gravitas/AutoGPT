@@ -68,6 +68,7 @@ LLMProviderName = Literal[
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
+    ProviderName.MINIMAX,
     ProviderName.V0,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
@@ -105,6 +106,12 @@ class ModelMetadata(NamedTuple):
     provider_name: str
     creator_name: str
     price_tier: Literal[1, 2, 3]
+    input_modalities: tuple[str, ...] = ("text",)
+    thinking: tuple[str, ...] = ()
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+    cache_read_price_per_million: float | None = None
+    cache_write_price_per_million: float | None = None
 
 
 class LlmModelMeta(EnumMeta):
@@ -154,6 +161,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
+    # MiniMax models
+    MINIMAX_M3 = "MiniMax-M3"
+    MINIMAX_M2_7 = "MiniMax-M2.7"
     # Anthropic models
     CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
@@ -251,6 +261,12 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
                 "provider_name": metadata.provider_name,
                 "name": model_name,
                 "price_tier": metadata.price_tier,
+                "input_modalities": metadata.input_modalities,
+                "thinking": metadata.thinking,
+                "input_price_per_million": metadata.input_price_per_million,
+                "output_price_per_million": metadata.output_price_per_million,
+                "cache_read_price_per_million": metadata.cache_read_price_per_million,
+                "cache_write_price_per_million": metadata.cache_write_price_per_million,
             }
         json_schema["llm_model"] = True
         json_schema["llm_model_metadata"] = llm_model_metadata
@@ -292,6 +308,36 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
 
 
 MODEL_METADATA = {
+    # https://platform.minimax.io/docs/guides/models-intro
+    LlmModel.MINIMAX_M3: ModelMetadata(
+        "minimax",
+        1_000_000,
+        None,
+        "MiniMax M3",
+        "MiniMax",
+        "MiniMax",
+        2,
+        ("text", "image", "video"),
+        ("adaptive", "disabled"),
+        0.6,
+        2.4,
+        0.12,
+    ),
+    LlmModel.MINIMAX_M2_7: ModelMetadata(
+        "minimax",
+        204_800,
+        None,
+        "MiniMax M2.7",
+        "MiniMax",
+        "MiniMax",
+        1,
+        ("text",),
+        ("always_on",),
+        0.3,
+        1.2,
+        0.06,
+        0.375,
+    ),
     # https://platform.openai.com/docs/models
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
     LlmModel.O3_MINI: ModelMetadata(

@@ -1048,9 +1048,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -1079,9 +1079,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -1109,9 +1109,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
@@ -1171,6 +1171,34 @@ class TestLlmModelMissing:
         assert (
             llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
         )
+
+
+class TestMiniMaxModelMetadata:
+    def test_m3_metadata(self):
+        metadata = llm.LlmModel.MINIMAX_M3.metadata
+        assert metadata.provider == "minimax"
+        assert metadata.context_window == 1_000_000
+        assert metadata.input_modalities == ("text", "image", "video")
+        assert metadata.thinking == ("adaptive", "disabled")
+        assert (
+            metadata.input_price_per_million,
+            metadata.output_price_per_million,
+        ) == (0.6, 2.4)
+        assert metadata.cache_read_price_per_million == 0.12
+
+    def test_m2_7_metadata(self):
+        metadata = llm.LlmModel.MINIMAX_M2_7.metadata
+        assert metadata.context_window == 204_800
+        assert metadata.input_modalities == ("text",)
+        assert metadata.thinking == ("always_on",)
+        assert (
+            metadata.input_price_per_million,
+            metadata.output_price_per_million,
+        ) == (0.3, 1.2)
+        assert (
+            metadata.cache_read_price_per_million,
+            metadata.cache_write_price_per_million,
+        ) == (0.06, 0.375)
 
 
 class TestExtractOpenRouterCost:
@@ -1345,9 +1373,9 @@ class TestAnthropicCacheControl:
         an_tools = captured_kwargs.get("tools")
         assert isinstance(an_tools, list)
         assert len(an_tools) == 2
-        assert (
-            an_tools[0].get("cache_control") is None
-        ), "Only last tool gets cache_control"
+        assert an_tools[0].get("cache_control") is None, (
+            "Only last tool gets cache_control"
+        )
         assert an_tools[-1].get("cache_control") == {"type": "ephemeral"}
 
     @pytest.mark.asyncio
@@ -1383,9 +1411,9 @@ class TestAnthropicCacheControl:
         import anthropic
 
         tools_arg = captured_kwargs.get("tools")
-        assert (
-            tools_arg is anthropic.NOT_GIVEN
-        ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        assert tools_arg is anthropic.NOT_GIVEN, (
+            "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_system_prompt_omits_system_key(self):
@@ -1417,9 +1445,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        )
 
     @pytest.mark.asyncio
     async def test_whitespace_only_system_prompt_omits_system_key(self):
@@ -1455,9 +1483,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        )
 
 
 class TestLLMRequestTimeout:
@@ -1546,9 +1574,9 @@ class TestLLMRequestTimeout:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count["n"] == 1
-        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        assert call_count["n"] == 1, (
+            f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        )
 
 
 class TestLlmModelMissingHandler:

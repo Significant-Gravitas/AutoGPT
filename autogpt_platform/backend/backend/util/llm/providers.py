@@ -89,7 +89,13 @@ ProviderLiteral = Literal[
     "llama_api",
     "aiml_api",
     "v0",
+    "minimax",
 ]
+
+MINIMAX_OPENAI_BASE_URL = "https://api.minimax.io/v1"
+MINIMAX_ANTHROPIC_BASE_URL = "https://api.minimax.io/anthropic"
+MINIMAX_CN_OPENAI_BASE_URL = "https://api.minimaxi.com/v1"
+MINIMAX_CN_ANTHROPIC_BASE_URL = "https://api.minimaxi.com/anthropic"
 
 ExecutionMode = Literal["sync", "batch", "flex"]
 
@@ -298,6 +304,22 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             service_tier=service_tier,
+        )
+
+    if provider == "minimax":
+        return await _call_openai_compat(
+            base_url=MINIMAX_OPENAI_BASE_URL,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            service_tier=service_tier,
+            include_openrouter_extras=False,
         )
     if provider == "anthropic":
         return await _call_anthropic_messages(
@@ -1251,8 +1273,7 @@ async def poll_batch(
     """
     if provider != "anthropic":
         raise NotImplementedError(
-            f"poll_batch only supports provider='anthropic' today; "
-            f"got {provider!r}."
+            f"poll_batch only supports provider='anthropic' today; got {provider!r}."
         )
     client = anthropic.AsyncAnthropic(api_key=api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)
