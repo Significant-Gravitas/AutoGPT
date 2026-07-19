@@ -115,6 +115,16 @@ class ChatMessage(BaseModel):
     becomes invisible in session history. ``_save_session_to_db`` back-fills
     rows flagged here and clears the flag."""
 
+    def mark_tool_calls_dirty(self) -> None:
+        """Flag this row for a toolCalls back-fill if it was already
+        persisted (has a sequence). The single invariant behind the
+        mid-turn-flush fix: any site that mutates ``tool_calls`` on a
+        possibly-sequenced message must call this — encapsulated here so a
+        future third mutation site can't silently reintroduce the
+        dropped-tool-calls bug."""
+        if self.sequence is not None:
+            self.tool_calls_pending_save = True
+
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
     # (file_ids / mode / model / permissions / context / arrival_at)
@@ -440,10 +450,7 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
-                if msg.sequence is not None:
-                    # Row already persisted without this call — flag it so
-                    # the next save back-fills toolCalls onto the row.
-                    msg.tool_calls_pending_save = True
+                msg.mark_tool_calls_dirty()
                 return
 
         self.messages.append(
@@ -945,11 +952,19 @@ async def _save_session_to_db(
 
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above
-        updated = await db.update_chat_message_tool_calls(
-            session_id=session.session_id,
-            sequence=msg.sequence,
-            tool_calls=msg.tool_calls or [],
-        )
+        try:
+            updated = await db.update_chat_message_tool_calls(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                tool_calls=msg.tool_calls or [],
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+
         if updated:
             msg.tool_calls_pending_save = False
         else:
