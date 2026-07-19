@@ -1,17 +1,16 @@
 """GetDocPageTool - Fetch full content of a documentation page."""
 
+import asyncio
 import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.util.docs import DOCS_BASE_URL, get_docs_root, make_doc_url
+from backend.util.docs import get_docs_root_or_none, make_doc_url
 
 from .base import BaseTool
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
-
-__all__ = ["DOCS_BASE_URL", "GetDocPageTool"]
 
 
 class GetDocPageTool(BaseTool):
@@ -52,9 +51,6 @@ class GetDocPageTool(BaseTool):
                 return line[2:].strip()
         return fallback
 
-    def _make_doc_url(self, path: str) -> str:
-        return make_doc_url(path)
-
     async def _execute(
         self,
         user_id: str | None,
@@ -91,9 +87,8 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
-        try:
-            docs_root = get_docs_root()
-        except FileNotFoundError:
+        docs_root = get_docs_root_or_none()
+        if docs_root is None:
             return ErrorResponse(
                 message="Documentation is not available in this deployment.",
                 error="docs_unavailable",
@@ -104,7 +99,8 @@ class GetDocPageTool(BaseTool):
         # Containment before existence: a uniform error for out-of-root
         # paths avoids leaking whether a file exists outside docs_root.
         try:
-            full_path.resolve().relative_to(docs_root.resolve())
+            # docs_root is already resolved (see _find_docs_root).
+            full_path.resolve().relative_to(docs_root)
         except ValueError:
             return ErrorResponse(
                 message="Invalid documentation path.",
@@ -120,7 +116,7 @@ class GetDocPageTool(BaseTool):
             )
 
         try:
-            content = full_path.read_text(encoding="utf-8")
+            content = await asyncio.to_thread(full_path.read_text, encoding="utf-8")
             title = self._extract_title(content, path)
 
             return DocPageResponse(
@@ -128,7 +124,7 @@ class GetDocPageTool(BaseTool):
                 title=title,
                 path=path,
                 content=content,
-                doc_url=self._make_doc_url(path),
+                doc_url=make_doc_url(path),
                 session_id=session_id,
             )
 

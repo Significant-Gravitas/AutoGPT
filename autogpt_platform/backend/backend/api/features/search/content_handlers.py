@@ -20,7 +20,7 @@ from prisma.enums import ContentType
 from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
-from backend.util.docs import get_docs_root
+from backend.util.docs import get_docs_root_or_none
 from backend.util.text import split_camelcase
 
 if TYPE_CHECKING:
@@ -410,10 +410,7 @@ class DocumentationHandler(ContentHandler):
         docs tools so indexed paths and page reads always agree), or None
         when this deployment didn't bundle the docs — the indexer degrades
         to empty results instead of crashing."""
-        try:
-            return get_docs_root()
-        except FileNotFoundError:
-            return None
+        return get_docs_root_or_none()
 
     def _extract_doc_title(self, file_path: Path) -> str:
         """Extract the document title from a markdown file."""

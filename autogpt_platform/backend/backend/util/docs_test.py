@@ -4,14 +4,19 @@ from pathlib import Path
 
 import pytest
 
-from backend.util.docs import get_docs_root
+from backend.util.docs import (
+    _find_docs_root,
+    get_docs_root,
+    get_docs_root_or_none,
+    make_doc_url,
+)
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    get_docs_root.cache_clear()
+    _find_docs_root.cache_clear()
     yield
-    get_docs_root.cache_clear()
+    _find_docs_root.cache_clear()
 
 
 def _make_docs_tree(root: Path) -> Path:
@@ -46,3 +51,22 @@ def test_missing_docs_raises(tmp_path: Path):
     start.touch()
     with pytest.raises(FileNotFoundError):
         get_docs_root(start)
+
+
+def test_or_none_returns_none_and_memoizes(tmp_path: Path):
+    start = tmp_path / "app" / "backend" / "util" / "docs.py"
+    start.parent.mkdir(parents=True)
+    start.touch()
+    assert get_docs_root_or_none(start) is None
+    # Negative result is cached — a second call must not re-walk.
+    assert _find_docs_root.cache_info().hits >= 0
+    assert get_docs_root_or_none(start) is None
+    assert _find_docs_root.cache_info().hits >= 1
+
+
+def test_make_doc_url_strips_extension_and_leading_slash():
+    """agpt.co serves rendered pages extension-less; the .md variant is a
+    soft-404 (HTTP 200 + "Page Not Found" body)."""
+    assert make_doc_url("a/b.md").endswith("/docs/a/b")
+    assert make_doc_url("a/b.mdx").endswith("/docs/a/b")
+    assert make_doc_url("/a/b.md") == make_doc_url("a/b.md")

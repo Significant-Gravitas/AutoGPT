@@ -2,9 +2,9 @@
 
 import pytest
 
-from backend.copilot.tools.get_doc_page import DOCS_BASE_URL, GetDocPageTool
+from backend.copilot.tools.get_doc_page import GetDocPageTool
 from backend.copilot.tools.models import DocPageResponse, ErrorResponse
-from backend.util.docs import get_docs_root
+from backend.util.docs import DOCS_BASE_URL, get_docs_root
 
 from ._test_data import make_session
 
@@ -42,8 +42,9 @@ async def test_fetches_real_doc_page(tool, session):
     assert isinstance(result, DocPageResponse)
     assert result.content
     assert result.path == rel_path
-    # The docs site serves raw repo paths verbatim, extension included.
-    assert result.doc_url == f"{DOCS_BASE_URL}/{rel_path}"
+    # The docs site serves rendered pages at the extension-less path;
+    # the .md variant is a soft-404 (HTTP 200 + "Page Not Found" body).
+    assert result.doc_url == f"{DOCS_BASE_URL}/{rel_path.removesuffix('.md')}"
 
 
 @pytest.mark.asyncio
@@ -67,8 +68,8 @@ async def test_docs_unavailable_returns_dedicated_error(tool, session, mocker):
     """A deployment without bundled docs degrades to a clear error instead
     of a misleading not_found."""
     mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root",
-        side_effect=FileNotFoundError("no docs"),
+        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        return_value=None,
     )
     result = await tool._execute(
         user_id=None, session=session, path="platform/getting-started.md"
