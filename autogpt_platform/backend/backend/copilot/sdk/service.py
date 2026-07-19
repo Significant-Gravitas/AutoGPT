@@ -101,6 +101,7 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -4206,6 +4207,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+
+        if mode == "fast":
+            # The request asked for Fast but this turn runs on the SDK
+            # engine (building-mode pin or engine-switch continuation).
+            # Tell stale pickers — a client that missed the original
+            # data-mode-changed (reload, second tab) re-syncs here.
+            yield StreamModeChanged(mode="extended_thinking")
 
         set_execution_context(
             user_id,
