@@ -225,7 +225,11 @@ export function useCopilotStream({
       const mode = resolveModeChangedMode(dataPart);
       if (mode) {
         pendingEngineSwitchRef.current = true;
-        useCopilotUIStore.getState().setCopilotChatMode(mode);
+        // Server-forced switch: session-scoped UI state only — must not
+        // persist to localStorage and rewrite the user's global default.
+        // The pin locks the toggle for the rest of this session (the
+        // backend overrides a manual flip anyway).
+        useCopilotUIStore.getState().applyServerModeChange(mode);
       }
     }
 
@@ -239,6 +243,7 @@ export function useCopilotStream({
       }
       if (chatRuntime.onData === handleData) {
         chatRuntime.onData = undefined;
+        useCopilotUIStore.getState().clearCopilotModePin();
       }
       if (chatRuntime.onError === handleError) {
         chatRuntime.onError = undefined;
