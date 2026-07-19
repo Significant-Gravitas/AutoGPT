@@ -576,6 +576,17 @@ def _maybe_dispatch_engine_switch(session_id: str, error_msg: str | None) -> Non
     switch = engine_switch.pop_switch(session_id)
     if switch is None:
         return
+    if switch.user_id is None:
+        # Defense-in-depth: a switch is only registered from an
+        # authenticated session's own turn, so user_id is always set on the
+        # switch path (the SDK-less branch serves the guide inline and
+        # never registers). Never dispatch a server-initiated turn without
+        # a user scope.
+        logger.error(
+            f"Engine-switch continuation for {session_id} dropped — "
+            f"switch carries no user_id"
+        )
+        return
     if error_msg is not None:
         # Turn failed — the persisted history (and thus the derived
         # building-mode signal) can't be trusted, so no continuation fires.
