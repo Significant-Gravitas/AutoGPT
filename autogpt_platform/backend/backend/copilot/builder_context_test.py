@@ -383,7 +383,7 @@ async def test_system_prompt_suffix_for_building_session():
     assert "<building_guide>" in result
     assert "# Guide body" in result
     assert "<builder_session>" not in result
-    assert "do NOT call" in result.lower() or "Do NOT call" in result
+    assert "do not call" in result.lower()
 
 
 @pytest.mark.asyncio
