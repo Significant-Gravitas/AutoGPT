@@ -1,4 +1,4 @@
-import { CircleNotch as CircleNotchIcon } from "@phosphor-icons/react";
+import { CircleNotch as CircleNotchIcon } from "@/components/atoms/Icon/phosphor";
 
 import { cn } from "@/lib/utils";
 

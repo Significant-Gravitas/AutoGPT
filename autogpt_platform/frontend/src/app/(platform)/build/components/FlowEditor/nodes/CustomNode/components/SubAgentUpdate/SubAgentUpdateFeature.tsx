@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowUpIcon, WarningIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, WarningIcon } from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,

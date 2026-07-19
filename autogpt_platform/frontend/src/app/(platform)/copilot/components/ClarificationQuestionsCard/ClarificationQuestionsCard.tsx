@@ -5,7 +5,10 @@ import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { ChatTeardropDotsIcon, CheckCircleIcon } from "@phosphor-icons/react";
+import {
+  ChatTeardropDotsIcon,
+  CheckCircleIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { useEffect, useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 

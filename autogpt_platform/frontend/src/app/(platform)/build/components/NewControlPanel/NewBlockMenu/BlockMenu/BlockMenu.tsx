@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LegoIcon } from "@phosphor-icons/react";
+import { LegoIcon } from "@/components/atoms/Icon/phosphor";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 

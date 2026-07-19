@@ -6,7 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EyeIcon, Play, TrashIcon } from "@phosphor-icons/react";
+import { EyeIcon, Play, TrashIcon } from "@/components/atoms/Icon/phosphor";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { useSelectedScheduleActions } from "./useSelectedScheduleActions";

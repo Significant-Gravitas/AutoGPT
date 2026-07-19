@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { type Icon as PhosphorIcon } from "@/components/atoms/Icon/phosphor";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Confetti } from "@/components/molecules/Confetti/Confetti";

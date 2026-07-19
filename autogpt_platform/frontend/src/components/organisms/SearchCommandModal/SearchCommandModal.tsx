@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, XIcon } from "@/components/atoms/Icon/phosphor";
 import * as RXDialog from "@radix-ui/react-dialog";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import {

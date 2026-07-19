@@ -7,7 +7,7 @@ import {
   SlidersHorizontalIcon,
   UserIcon,
   type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 
 export interface SettingsNavItem {
   label: string;

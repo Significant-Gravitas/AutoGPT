@@ -1,5 +1,9 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { CheckIcon, CircleIcon, PauseCircleIcon } from "@phosphor-icons/react";
+import {
+  CheckIcon,
+  CircleIcon,
+  PauseCircleIcon,
+} from "@/components/atoms/Icon/phosphor";
 import type { DisplayStatus } from "../../helpers";
 
 interface Props {

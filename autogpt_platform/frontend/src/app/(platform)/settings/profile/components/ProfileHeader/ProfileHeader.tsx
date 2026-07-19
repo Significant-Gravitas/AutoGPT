@@ -2,8 +2,12 @@
 
 import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { CameraIcon, PencilSimpleIcon, UserIcon } from "@phosphor-icons/react";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import {
+  CameraIcon,
+  PencilSimpleIcon,
+  UserIcon,
+} from "@/components/atoms/Icon/phosphor";
+import { CircleNotchIcon } from "@/components/atoms/Icon/phosphor";
 
 import {
   Avatar,

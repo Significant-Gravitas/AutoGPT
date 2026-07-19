@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FolderIcon, FolderColor } from "./FolderIcon";
 import { useState } from "react";
-import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon, TrashIcon } from "@/components/atoms/Icon/phosphor";
 import type { AgentStatus } from "../../types";
 import { StatusBadge } from "../StatusBadge/StatusBadge";
 

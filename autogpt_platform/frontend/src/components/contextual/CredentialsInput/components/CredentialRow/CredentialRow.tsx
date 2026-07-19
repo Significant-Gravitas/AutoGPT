@@ -6,7 +6,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, DotsThreeVertical } from "@phosphor-icons/react";
+import {
+  CaretDownIcon,
+  DotsThreeVertical,
+} from "@/components/atoms/Icon/phosphor";
 import { useEffect, useRef, useState } from "react";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {

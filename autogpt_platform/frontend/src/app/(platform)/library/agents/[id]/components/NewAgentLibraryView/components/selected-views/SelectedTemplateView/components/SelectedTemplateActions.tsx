@@ -12,7 +12,11 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { FloppyDiskIcon, PlayIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  FloppyDiskIcon,
+  PlayIcon,
+  TrashIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";

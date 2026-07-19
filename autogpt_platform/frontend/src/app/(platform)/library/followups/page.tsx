@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/atoms/Icon/phosphor";
 import { SchedulesPanel } from "@/components/contextual/SchedulesPanel/SchedulesPanel";
 
 export default function FollowupsPage() {

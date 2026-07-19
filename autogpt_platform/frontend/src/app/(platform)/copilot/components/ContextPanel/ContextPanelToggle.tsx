@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { FolderIcon } from "@phosphor-icons/react";
+import { FolderIcon } from "@/components/atoms/Icon/phosphor";
 import { useCopilotUIStore } from "../../store";
 
 export function ContextPanelToggle() {

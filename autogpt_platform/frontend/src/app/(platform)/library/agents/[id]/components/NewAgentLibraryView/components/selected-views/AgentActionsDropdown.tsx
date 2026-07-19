@@ -27,7 +27,7 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
-import { DotsThreeIcon } from "@phosphor-icons/react";
+import { DotsThreeIcon } from "@/components/atoms/Icon/phosphor";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

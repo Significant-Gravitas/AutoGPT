@@ -15,7 +15,7 @@ import {
   PaperclipIcon,
   PlugsConnectedIcon,
   PlusIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { useComposerPlusMenu } from "./useComposerPlusMenu";
 
 interface Props {

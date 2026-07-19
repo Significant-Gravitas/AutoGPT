@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { SidebarSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 
 export function AppSidebarHeader() {

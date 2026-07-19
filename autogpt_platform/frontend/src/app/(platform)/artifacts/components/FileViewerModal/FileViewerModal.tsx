@@ -7,7 +7,11 @@ import type { ArtifactRef } from "@/app/(platform)/copilot/store";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CodeIcon, DownloadSimpleIcon, EyeIcon } from "@phosphor-icons/react";
+import {
+  CodeIcon,
+  DownloadSimpleIcon,
+  EyeIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { useState } from "react";
 import { downloadFileBlob, getFileDownloadUrl } from "../ArtifactsList/helpers";
 

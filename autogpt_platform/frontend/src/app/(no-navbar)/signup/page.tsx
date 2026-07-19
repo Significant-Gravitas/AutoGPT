@@ -22,7 +22,7 @@ import { environment } from "@/services/environment";
 import {
   PlayCircleIcon,
   WarningOctagonIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/Icon/phosphor";
 import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";

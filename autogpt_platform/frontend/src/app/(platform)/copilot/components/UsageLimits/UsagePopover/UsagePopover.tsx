@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { ChartBarIcon } from "@phosphor-icons/react";
+import { ChartBarIcon } from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";

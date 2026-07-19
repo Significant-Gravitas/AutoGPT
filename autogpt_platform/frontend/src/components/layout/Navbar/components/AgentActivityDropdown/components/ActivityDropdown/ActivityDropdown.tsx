@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Bell, MagnifyingGlass, X } from "@/components/atoms/Icon/phosphor";
 import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";

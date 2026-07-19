@@ -2,7 +2,7 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { LightningIcon } from "@phosphor-icons/react";
+import { LightningIcon } from "@/components/atoms/Icon/phosphor";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";

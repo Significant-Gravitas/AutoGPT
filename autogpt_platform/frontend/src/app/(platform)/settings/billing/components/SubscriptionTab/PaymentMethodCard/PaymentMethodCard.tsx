@@ -1,6 +1,9 @@
 "use client";
 
-import { ArrowSquareOutIcon, CreditCardIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  CreditCardIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";

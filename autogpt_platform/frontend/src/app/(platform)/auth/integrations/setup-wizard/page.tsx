@@ -12,7 +12,7 @@ import type {
   CredentialsMetaInput,
   CredentialsType,
 } from "@/lib/autogpt-server-api";
-import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
+import { CheckIcon, CircleIcon } from "@/components/atoms/Icon/phosphor";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";

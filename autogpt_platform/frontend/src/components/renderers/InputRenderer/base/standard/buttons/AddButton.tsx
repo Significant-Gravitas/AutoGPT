@@ -1,7 +1,7 @@
 import { IconButtonProps, TranslatableString } from "@rjsf/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/Icon/phosphor";
 
 export default function AddButton({
   registry,

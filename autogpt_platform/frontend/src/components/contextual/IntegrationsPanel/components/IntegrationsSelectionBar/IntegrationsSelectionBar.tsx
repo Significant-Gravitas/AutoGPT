@@ -1,6 +1,6 @@
 "use client";
 
-import { TrashIcon } from "@phosphor-icons/react";
+import { TrashIcon } from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 

@@ -10,7 +10,7 @@ import {
   CheckCircleIcon,
   CubeIcon,
   PlusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import type { TourPlan, TourPlanStep } from "../../script/types";
 
 const STEP_STAGGER_MS = 200;

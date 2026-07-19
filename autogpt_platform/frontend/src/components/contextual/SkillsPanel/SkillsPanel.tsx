@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/Icon/phosphor";
 import { NEW_SKILL_PROMPT } from "../guidedPrompts";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";

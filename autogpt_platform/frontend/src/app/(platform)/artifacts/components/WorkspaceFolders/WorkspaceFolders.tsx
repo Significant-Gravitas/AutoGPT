@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FolderSimplePlusIcon } from "@phosphor-icons/react";
+import { FolderSimplePlusIcon } from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";

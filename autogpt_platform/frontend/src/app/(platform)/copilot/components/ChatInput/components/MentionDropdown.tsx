@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   CircleNotch as CircleNotchIcon,
   WarningCircle as WarningCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import type { MutableRefObject } from "react";
 
 interface Props {

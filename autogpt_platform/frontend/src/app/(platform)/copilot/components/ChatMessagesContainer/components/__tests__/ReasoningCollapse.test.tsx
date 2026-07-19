@@ -8,7 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReasoningCollapse } from "../ReasoningCollapse";
 
-vi.mock("@phosphor-icons/react", () => ({
+vi.mock("@/components/atoms/Icon/phosphor", () => ({
   LightbulbIcon: ({ className }: { className?: string }) => (
     <span data-testid="reasoning-bulb-icon" className={className} />
   ),

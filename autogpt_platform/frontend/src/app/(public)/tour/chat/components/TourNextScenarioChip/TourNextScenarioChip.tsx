@@ -1,6 +1,6 @@
 "use client";
 
-import { PlayIcon } from "@phosphor-icons/react";
+import { PlayIcon } from "@/components/atoms/Icon/phosphor";
 import { TOUR_NEXT_SCENARIO_SECONDS } from "../../constants";
 import { getNextTourScenario } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";

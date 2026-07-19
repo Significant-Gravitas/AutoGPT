@@ -12,7 +12,7 @@ import {
   DownloadSimpleIcon,
   FolderIcon,
   XIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";

@@ -1,6 +1,6 @@
 "use client";
 
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon } from "@/components/atoms/Icon/phosphor";
 
 interface Props {
   value: string;

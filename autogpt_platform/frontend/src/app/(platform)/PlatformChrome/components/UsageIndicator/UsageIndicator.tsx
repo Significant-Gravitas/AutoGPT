@@ -1,7 +1,7 @@
 "use client";
 
 import { UsagePopover } from "@/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover";
-import { GaugeIcon } from "@phosphor-icons/react";
+import { GaugeIcon } from "@/components/atoms/Icon/phosphor";
 import { useUsageIndicator } from "./useUsageIndicator";
 
 export function UsageIndicator() {

@@ -8,7 +8,7 @@ import {
   FoldersIcon,
   TrashIcon,
   WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import {
   File as TreeFile,
   Folder as TreeFolder,

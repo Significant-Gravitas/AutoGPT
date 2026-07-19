@@ -1,6 +1,6 @@
 "use client";
 
-import { PlugsConnectedIcon } from "@phosphor-icons/react";
+import { PlugsConnectedIcon } from "@/components/atoms/Icon/phosphor";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";

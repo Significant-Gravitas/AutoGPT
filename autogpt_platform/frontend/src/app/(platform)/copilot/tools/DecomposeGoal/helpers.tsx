@@ -8,7 +8,7 @@ import {
   SpinnerGapIcon,
   WarningDiamondIcon,
   XCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 

@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Clock } from "@phosphor-icons/react";
+import { Clock } from "@/components/atoms/Icon/phosphor";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";

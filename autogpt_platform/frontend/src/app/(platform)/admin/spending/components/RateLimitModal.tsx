@@ -15,7 +15,7 @@ import {
   getV2GetUserRateLimit,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { Gauge } from "@phosphor-icons/react";
+import { Gauge } from "@/components/atoms/Icon/phosphor";
 import { RateLimitDisplay } from "../../rate-limits/components/RateLimitDisplay";
 
 export function RateLimitModal({

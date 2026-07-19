@@ -10,7 +10,7 @@ import {
   WarningIcon,
   SpinnerIcon,
   MinusCircleIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";

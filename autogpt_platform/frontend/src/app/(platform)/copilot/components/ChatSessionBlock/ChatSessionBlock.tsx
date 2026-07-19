@@ -7,7 +7,7 @@ import {
   CircleNotchIcon,
   HourglassIcon,
   PushPinIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import type { ReactNode } from "react";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
 

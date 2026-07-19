@@ -10,7 +10,7 @@ import {
   FileText,
   Image,
   Table,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 
 const PROXY_BASE = "/api/proxy/api/workspace/files";
 

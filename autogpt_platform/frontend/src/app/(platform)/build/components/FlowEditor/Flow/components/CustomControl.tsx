@@ -11,7 +11,7 @@ import {
   FrameCornersIcon,
   MinusIcon,
   PlusIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/Icon/phosphor";
 import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";

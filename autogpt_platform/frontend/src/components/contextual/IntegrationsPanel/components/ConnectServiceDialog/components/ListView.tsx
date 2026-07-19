@@ -1,6 +1,9 @@
 "use client";
 
-import { MagnifyingGlassIcon, PlugIcon } from "@phosphor-icons/react";
+import {
+  MagnifyingGlassIcon,
+  PlugIcon,
+} from "@/components/atoms/Icon/phosphor";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { HeartIcon } from "@phosphor-icons/react";
+import { HeartIcon } from "@/components/atoms/Icon/phosphor";
 import type { MouseEvent } from "react";
 import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";

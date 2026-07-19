@@ -11,7 +11,7 @@ import {
   CalendarDotsIcon,
   MoonIcon,
   EyeIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import NextLink from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";

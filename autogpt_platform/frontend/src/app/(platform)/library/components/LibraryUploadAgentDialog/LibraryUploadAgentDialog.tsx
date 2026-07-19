@@ -11,7 +11,7 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/molecules/Form/Form";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
+import { UploadSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import { z } from "zod";
 import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
 

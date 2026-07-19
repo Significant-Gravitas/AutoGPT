@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon } from "@phosphor-icons/react";
+import { CheckIcon } from "@/components/atoms/Icon/phosphor";
 
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";

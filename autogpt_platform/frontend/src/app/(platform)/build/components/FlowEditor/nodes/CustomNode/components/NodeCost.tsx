@@ -2,7 +2,7 @@ import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { BlockCostType } from "@/app/api/__generated__/models/blockCostType";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { CoinIcon } from "@phosphor-icons/react";
+import { CoinIcon } from "@/components/atoms/Icon/phosphor";
 import { isCostFilterMatch } from "../../../../helper";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Flask } from "@phosphor-icons/react";
+import { Flask } from "@/components/atoms/Icon/phosphor";
 import {
   Tooltip,
   TooltipContent,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon } from "@/components/atoms/Icon/phosphor";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

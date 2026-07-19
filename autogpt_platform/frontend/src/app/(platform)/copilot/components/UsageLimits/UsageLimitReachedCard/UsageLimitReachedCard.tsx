@@ -3,7 +3,7 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { WarningIcon } from "@phosphor-icons/react";
+import { WarningIcon } from "@/components/atoms/Icon/phosphor";
 import {
   formatTierLabel,
   isUsageExhausted,

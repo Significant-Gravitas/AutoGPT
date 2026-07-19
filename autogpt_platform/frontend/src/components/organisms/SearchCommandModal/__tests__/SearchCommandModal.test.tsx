@@ -1,4 +1,4 @@
-import { BookOpenIcon, ChatCircleIcon } from "@phosphor-icons/react";
+import { BookOpenIcon, ChatCircleIcon } from "@/components/atoms/Icon/phosphor";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";

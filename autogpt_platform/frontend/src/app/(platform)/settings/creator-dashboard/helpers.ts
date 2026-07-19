@@ -4,7 +4,7 @@ import {
   ProhibitIcon,
   WarningCircleIcon,
   type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";

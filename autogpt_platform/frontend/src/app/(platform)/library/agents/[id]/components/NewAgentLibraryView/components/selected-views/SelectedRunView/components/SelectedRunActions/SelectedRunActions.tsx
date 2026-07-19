@@ -8,7 +8,7 @@ import {
   CardsThreeIcon,
   EyeIcon,
   StopIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";

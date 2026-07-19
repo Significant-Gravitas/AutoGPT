@@ -32,7 +32,7 @@ import {
   SparkleIcon,
   SquaresFourIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

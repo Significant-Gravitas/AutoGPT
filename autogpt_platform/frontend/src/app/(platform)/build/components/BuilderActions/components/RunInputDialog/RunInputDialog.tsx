@@ -3,7 +3,7 @@ import { RJSFSchema } from "@rjsf/utils";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, PlayIcon } from "@phosphor-icons/react";
+import { ClockIcon, PlayIcon } from "@/components/atoms/Icon/phosphor";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";

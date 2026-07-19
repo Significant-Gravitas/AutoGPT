@@ -1,4 +1,4 @@
-import { CircleIcon } from "@phosphor-icons/react";
+import { CircleIcon } from "@/components/atoms/Icon/phosphor";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";

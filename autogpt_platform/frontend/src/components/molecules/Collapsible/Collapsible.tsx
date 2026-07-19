@@ -7,7 +7,7 @@ import {
   CollapsibleTrigger as BaseCollapsibleTrigger,
   CollapsibleContent as BaseCollapsibleContent,
 } from "@/components/__legacy__/ui/collapsible";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@/components/atoms/Icon/phosphor";
 
 interface Props {
   trigger: React.ReactNode;

@@ -2,7 +2,7 @@ import { FilterChip } from "../FilterChip";
 import { cn } from "@/lib/utils";
 import { CategoryKey } from "../BlockMenuFilters/types";
 import { AnimatePresence, motion } from "framer-motion";
-import { XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/__legacy__/ui/separator";

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
+import { UploadSimple } from "@/components/atoms/Icon/phosphor";
 import { useRef, useState } from "react";
 
 interface Props {

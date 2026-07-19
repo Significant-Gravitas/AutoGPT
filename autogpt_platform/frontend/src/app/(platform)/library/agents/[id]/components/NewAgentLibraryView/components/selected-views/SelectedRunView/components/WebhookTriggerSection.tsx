@@ -4,7 +4,7 @@ import { GraphTriggerInfo } from "@/app/api/__generated__/models/graphTriggerInf
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CopyIcon } from "@phosphor-icons/react";
+import { CopyIcon } from "@/components/atoms/Icon/phosphor";
 import { RunDetailCard } from "../../RunDetailCard/RunDetailCard";
 
 interface Props {

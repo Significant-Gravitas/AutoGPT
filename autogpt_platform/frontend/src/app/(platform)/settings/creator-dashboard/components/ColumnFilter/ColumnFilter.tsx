@@ -1,6 +1,6 @@
 "use client";
 
-import { FunnelIcon } from "@phosphor-icons/react";
+import { FunnelIcon } from "@/components/atoms/Icon/phosphor";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";

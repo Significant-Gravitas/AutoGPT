@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CheckIcon, PlayIcon } from "@phosphor-icons/react";
+import { CheckIcon, PlayIcon } from "@/components/atoms/Icon/phosphor";
 import {
   buildTourPricingUrl,
   TOUR_DEMO_CLAIM_SECONDS,

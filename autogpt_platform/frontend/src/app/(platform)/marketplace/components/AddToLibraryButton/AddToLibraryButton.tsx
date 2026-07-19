@@ -13,7 +13,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { analytics } from "@/services/analytics";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/Icon/phosphor";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";

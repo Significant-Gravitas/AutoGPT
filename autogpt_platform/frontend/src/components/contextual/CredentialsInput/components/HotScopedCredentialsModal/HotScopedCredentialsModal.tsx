@@ -18,7 +18,7 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { getHostFromUrl } from "@/lib/utils/url";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { PlusIcon, TrashIcon } from "@/components/atoms/Icon/phosphor";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   addHeaderPairToList,

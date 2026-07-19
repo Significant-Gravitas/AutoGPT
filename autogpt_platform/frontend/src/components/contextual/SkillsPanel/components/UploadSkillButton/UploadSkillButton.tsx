@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
+import { UploadSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import { useUploadSkillButton } from "./useUploadSkillButton";
 
 interface Props {

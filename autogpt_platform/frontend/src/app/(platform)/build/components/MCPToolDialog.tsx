@@ -28,7 +28,7 @@ import {
   postV2InitiateOauthLoginForAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown } from "@/components/atoms/Icon/phosphor";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 

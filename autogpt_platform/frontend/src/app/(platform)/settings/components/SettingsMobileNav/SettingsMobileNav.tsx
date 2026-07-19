@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@/components/atoms/Icon/phosphor";
 import {
   Popover,
   PopoverContent,

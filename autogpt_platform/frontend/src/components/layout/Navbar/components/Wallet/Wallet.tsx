@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { WalletIcon } from "@phosphor-icons/react";
+import { WalletIcon } from "@/components/atoms/Icon/phosphor";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";

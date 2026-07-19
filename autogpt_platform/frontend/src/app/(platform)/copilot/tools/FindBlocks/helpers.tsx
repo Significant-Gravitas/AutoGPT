@@ -1,6 +1,6 @@
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { CubeIcon, PackageIcon } from "@phosphor-icons/react";
+import { CubeIcon, PackageIcon } from "@/components/atoms/Icon/phosphor";
 import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
 
 export function parseOutput(output: unknown): BlockListResponse | null {

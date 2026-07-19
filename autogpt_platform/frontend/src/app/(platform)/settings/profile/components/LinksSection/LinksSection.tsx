@@ -1,7 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { LinkSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  LinkSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@/components/atoms/Icon/phosphor";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

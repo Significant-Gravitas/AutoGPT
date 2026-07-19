@@ -10,7 +10,7 @@ import type { VariantProps } from "class-variance-authority";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
-import { TrashIcon } from "@phosphor-icons/react";
+import { TrashIcon } from "@/components/atoms/Icon/phosphor";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 

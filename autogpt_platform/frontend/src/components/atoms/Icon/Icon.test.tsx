@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./agptIcons", () => ({
   getAutoGPTIcon: vi.fn(),
@@ -7,6 +7,7 @@ vi.mock("./agptIcons", () => ({
 
 import { Icon } from "./Icon";
 import { getAutoGPTIcon, type AutoGPTIconProps } from "./agptIcons";
+import { resetAutoGPTIconsAvailabilityCache } from "./helpers";
 
 const mockedGetAutoGPTIcon = vi.mocked(getAutoGPTIcon);
 
@@ -15,6 +16,10 @@ function AgptIcon({ ariaLabel }: AutoGPTIconProps) {
 }
 
 describe("Icon", () => {
+  beforeEach(() => {
+    resetAutoGPTIconsAvailabilityCache();
+  });
+
   it("renders AutoGPT icons when every registry icon resolves", () => {
     mockedGetAutoGPTIcon.mockReturnValue(AgptIcon);
 

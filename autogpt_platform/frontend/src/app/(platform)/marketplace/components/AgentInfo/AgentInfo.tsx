@@ -14,7 +14,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@/components/atoms/Icon/phosphor";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useAgentInfo } from "./useAgentInfo";

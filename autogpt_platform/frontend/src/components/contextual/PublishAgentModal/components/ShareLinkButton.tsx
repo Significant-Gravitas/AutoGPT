@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, LinkIcon } from "@phosphor-icons/react";
+import { CheckIcon, LinkIcon } from "@/components/atoms/Icon/phosphor";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";

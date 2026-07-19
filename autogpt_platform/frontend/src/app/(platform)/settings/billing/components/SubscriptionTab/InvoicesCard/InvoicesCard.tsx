@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { DownloadSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Badge } from "@/components/atoms/Badge/Badge";

@@ -3,8 +3,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import type { Icon } from "@phosphor-icons/react";
-import { CheckIcon, LinkSimpleIcon } from "@phosphor-icons/react";
+import type { Icon } from "@/components/atoms/Icon/phosphor";
+import { CheckIcon, LinkSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import { useTourChatHeader } from "./useTourChatHeader";
 
 interface Props {

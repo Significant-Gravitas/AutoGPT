@@ -7,7 +7,7 @@ import {
   ArticleIcon,
   FileMagnifyingGlassIcon,
   FileTextIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { ToolUIPart } from "ai";
 
 export interface SearchDocsInput {

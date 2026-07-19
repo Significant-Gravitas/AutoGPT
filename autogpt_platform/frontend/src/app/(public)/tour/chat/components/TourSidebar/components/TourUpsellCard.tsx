@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { GithubLogoIcon, SparkleIcon } from "@phosphor-icons/react";
+import { GithubLogoIcon, SparkleIcon } from "@/components/atoms/Icon/phosphor";
 import { buildTourPricingUrl, TOUR_GITHUB_URL } from "../../../constants";
 import { trackTourCtaClick } from "../../../tracking";
 

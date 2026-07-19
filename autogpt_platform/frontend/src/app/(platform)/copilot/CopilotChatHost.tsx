@@ -1,6 +1,6 @@
 "use client";
 
-import { Flask } from "@phosphor-icons/react";
+import { Flask } from "@/components/atoms/Icon/phosphor";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";

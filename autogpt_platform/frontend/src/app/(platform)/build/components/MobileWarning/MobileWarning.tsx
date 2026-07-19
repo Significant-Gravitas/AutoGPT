@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { DeviceMobileIcon } from "@phosphor-icons/react";
+import { DeviceMobileIcon } from "@/components/atoms/Icon/phosphor";
 import { useMobileWarning } from "./useMobileWarning";
 
 export function MobileWarning() {

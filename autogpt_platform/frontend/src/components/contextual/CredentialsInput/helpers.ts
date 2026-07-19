@@ -1,4 +1,9 @@
-import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
+import {
+  GlobeSimple,
+  KeyIcon,
+  Lock,
+  Password,
+} from "@/components/atoms/Icon/phosphor";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,

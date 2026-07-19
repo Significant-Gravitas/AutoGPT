@@ -10,7 +10,7 @@ import {
   GithubLogoIcon,
   TwitterLogoIcon,
   Icon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,

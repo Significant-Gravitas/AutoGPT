@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { isMacPlatform } from "@/lib/platform";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/atoms/Icon/phosphor";
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useMemo } from "react";
 import { ControlPanelButton } from "../../ControlPanelButton";

@@ -2,7 +2,7 @@ import {
   HammerIcon,
   LightningIcon,
   ShieldCheckIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/Icon/phosphor";
 import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarketingPanel";
 
 export function SignupMarketingPanel() {

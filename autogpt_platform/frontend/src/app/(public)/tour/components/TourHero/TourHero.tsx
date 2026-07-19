@@ -1,7 +1,7 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRightIcon, SparkleIcon } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRightIcon, SparkleIcon } from "@/components/atoms/Icon/phosphor";
 import { TourBackground } from "./TourBackground";
 
 export function TourHero() {

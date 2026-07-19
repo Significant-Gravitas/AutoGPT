@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PlusIcon, StorefrontIcon } from "@phosphor-icons/react";
+import { PlusIcon, StorefrontIcon } from "@/components/atoms/Icon/phosphor";
 import { motion, useReducedMotion } from "framer-motion";
 
 const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;

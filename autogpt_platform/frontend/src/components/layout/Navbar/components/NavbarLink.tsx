@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import {
   Laptop as LaptopIcon,
   ListChecksIcon,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";

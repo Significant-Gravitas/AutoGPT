@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
-import { PlayCircleIcon, SignOutIcon } from "@phosphor-icons/react";
+import { PlayCircleIcon, SignOutIcon } from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";

@@ -5,7 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@/components/atoms/Icon/phosphor";
 import { useState } from "react";
 import { SpendByAgentList } from "./components/SpendByAgentList";
 import { TopRunsList } from "./components/TopRunsList";

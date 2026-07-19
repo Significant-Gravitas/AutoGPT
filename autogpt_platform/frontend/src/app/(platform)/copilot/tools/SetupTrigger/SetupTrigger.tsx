@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopyIcon } from "@/components/atoms/Icon/phosphor";
 import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";

@@ -4,7 +4,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
+import {
+  ArrowUUpLeftIcon,
+  ArrowUUpRightIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { useHistoryStore } from "../../stores/historyStore";
 import { ControlPanelButton } from "./ControlPanelButton";
 

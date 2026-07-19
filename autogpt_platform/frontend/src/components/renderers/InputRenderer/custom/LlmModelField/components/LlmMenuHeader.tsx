@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon } from "@/components/atoms/Icon/phosphor";
 import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {

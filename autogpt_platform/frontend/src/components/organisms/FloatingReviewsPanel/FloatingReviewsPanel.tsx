@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, XIcon } from "@phosphor-icons/react";
+import { ClockIcon, XIcon } from "@/components/atoms/Icon/phosphor";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";

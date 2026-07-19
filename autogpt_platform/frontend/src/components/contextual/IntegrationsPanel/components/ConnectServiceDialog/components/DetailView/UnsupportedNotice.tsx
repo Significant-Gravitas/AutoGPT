@@ -1,6 +1,6 @@
 "use client";
 
-import { PlugIcon } from "@phosphor-icons/react";
+import { PlugIcon } from "@/components/atoms/Icon/phosphor";
 
 import { Text } from "@/components/atoms/Text/Text";
 

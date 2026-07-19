@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Cpu } from "@phosphor-icons/react";
+import { Cpu } from "@/components/atoms/Icon/phosphor";
 import {
   Tooltip,
   TooltipContent,

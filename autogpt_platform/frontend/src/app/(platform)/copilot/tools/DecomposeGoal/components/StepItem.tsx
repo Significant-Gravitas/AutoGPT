@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { CubeIcon } from "@phosphor-icons/react";
+import { CubeIcon } from "@/components/atoms/Icon/phosphor";
 import { StepStatusIcon } from "../helpers";
 
 interface Props {

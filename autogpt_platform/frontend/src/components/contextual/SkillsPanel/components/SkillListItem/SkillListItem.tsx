@@ -10,7 +10,7 @@ import {
   DownloadSimpleIcon,
   EyeIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";

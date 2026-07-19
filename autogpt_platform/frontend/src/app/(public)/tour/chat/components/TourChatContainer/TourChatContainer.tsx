@@ -1,6 +1,6 @@
 "use client";
 
-import { LightningIcon } from "@phosphor-icons/react";
+import { LightningIcon } from "@/components/atoms/Icon/phosphor";
 import { useTourStore } from "../../tourStore";
 import type { useTourCopilot } from "../../useTourCopilot";
 import { TourEndCard } from "../TourEndCard/TourEndCard";

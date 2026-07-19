@@ -19,7 +19,7 @@ import {
   CaretLeft,
   CaretRight,
   Copy,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import React, { useState } from "react";
 import {
   Table,

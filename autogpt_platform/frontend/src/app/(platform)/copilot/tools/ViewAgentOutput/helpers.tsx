@@ -2,7 +2,7 @@ import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOu
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { EyeIcon, MonitorIcon } from "@phosphor-icons/react";
+import { EyeIcon, MonitorIcon } from "@/components/atoms/Icon/phosphor";
 import type { ToolUIPart } from "ai";
 
 export interface ViewAgentOutputInput {

@@ -17,7 +17,7 @@ import { providerIcons } from "@/components/renderers/InputRenderer/custom/Crede
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
+import { KeyIcon } from "@/components/atoms/Icon/phosphor";
 import { Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";

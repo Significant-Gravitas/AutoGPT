@@ -12,7 +12,7 @@ import {
   LightningIcon,
   ListChecksIcon,
   SpinnerGapIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { useState } from "react";
 import type { SuggestionTheme } from "../../helpers";
 

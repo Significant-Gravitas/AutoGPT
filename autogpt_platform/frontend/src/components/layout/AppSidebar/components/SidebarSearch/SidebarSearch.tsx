@@ -2,7 +2,7 @@
 
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon } from "@/components/atoms/Icon/phosphor";
 
 export function SidebarSearch() {
   const openSearch = useGlobalSearchStore((state) => state.openSearch);

@@ -2,7 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
+import { Check } from "@/components/atoms/Icon/phosphor";
 
 interface Props {
   icon: React.ReactNode;

@@ -1,4 +1,4 @@
-import { DownloadSimple, FileText } from "@phosphor-icons/react";
+import { DownloadSimple, FileText } from "@/components/atoms/Icon/phosphor";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,

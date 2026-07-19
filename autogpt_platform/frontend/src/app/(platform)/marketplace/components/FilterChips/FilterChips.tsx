@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/atoms/Icon/phosphor";
 import { useFilterChips } from "./useFilterChips";
 
 interface FilterChipsProps {

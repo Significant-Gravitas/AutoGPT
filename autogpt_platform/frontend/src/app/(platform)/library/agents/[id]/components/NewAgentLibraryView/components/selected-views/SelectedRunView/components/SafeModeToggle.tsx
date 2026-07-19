@@ -3,7 +3,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Graph } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
-import { ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react";
+import { ShieldCheckIcon, ShieldIcon } from "@/components/atoms/Icon/phosphor";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
 import {
   Tooltip,

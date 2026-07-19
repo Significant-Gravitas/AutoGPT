@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/atoms/Button/Button";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/atoms/Icon/phosphor";
 
 export interface AdminUserSearchProps {
   /** Current search query value (controlled). Falls back to internal state if omitted. */

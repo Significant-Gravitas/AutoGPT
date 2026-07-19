@@ -1,5 +1,8 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRightIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  EnvelopeSimpleIcon,
+} from "@/components/atoms/Icon/phosphor";
 import type { TourArtifact } from "../../script/types";
 
 interface Props {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CopyIcon } from "@phosphor-icons/react";
+import { CopyIcon } from "@/components/atoms/Icon/phosphor";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

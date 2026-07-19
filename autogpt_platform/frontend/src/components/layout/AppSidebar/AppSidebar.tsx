@@ -24,7 +24,7 @@ import {
   SparkleIcon,
   SquaresFourIcon,
   StorefrontIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";

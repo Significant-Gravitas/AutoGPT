@@ -1,5 +1,5 @@
 import React from "react";
-import { InfoIcon, WarningIcon } from "@phosphor-icons/react";
+import { InfoIcon, WarningIcon } from "@/components/atoms/Icon/phosphor";
 import {
   Tooltip,
   TooltipContent,

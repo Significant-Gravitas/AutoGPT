@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { BookOpenIcon } from "@phosphor-icons/react";
+import { BookOpenIcon } from "@/components/atoms/Icon/phosphor";
 
 export function EmptySkills() {
   return (

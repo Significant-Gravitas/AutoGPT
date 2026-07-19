@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FolderIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  FolderIcon,
+  PencilSimpleIcon,
+  TrashIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { FILE_DRAG_MIME } from "./drag";

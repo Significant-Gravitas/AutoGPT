@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
-import { ShieldCheckIcon } from "@phosphor-icons/react";
+import { ShieldCheckIcon } from "@/components/atoms/Icon/phosphor";
 import { useCallback, useEffect, useState } from "react";
 
 interface Props {

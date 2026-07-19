@@ -11,7 +11,7 @@ import {
   FileIcon,
   StorefrontIcon,
   TreeStructureIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import Image from "next/image";
 import type { ComponentType } from "react";
 import {

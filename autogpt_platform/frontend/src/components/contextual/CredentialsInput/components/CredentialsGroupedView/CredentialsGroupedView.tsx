@@ -10,7 +10,7 @@ import {
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { SlidersHorizontalIcon } from "@phosphor-icons/react";
+import { SlidersHorizontalIcon } from "@/components/atoms/Icon/phosphor";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import {
   areSystemCredentialProvidersLoading,

@@ -1,7 +1,10 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { EnvelopeSimpleIcon, PhoneIcon } from "@phosphor-icons/react";
+import {
+  EnvelopeSimpleIcon,
+  PhoneIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { getFilePreviewUrl } from "../helpers";
 
 // Whole file (kind is gated < 110KB) via the preview endpoint, which sets

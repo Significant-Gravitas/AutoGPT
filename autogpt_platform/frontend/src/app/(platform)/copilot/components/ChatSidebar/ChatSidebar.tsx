@@ -38,7 +38,7 @@ import {
   PushPinSlashIcon,
   ShareNetworkIcon,
   TrashIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";

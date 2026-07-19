@@ -3,7 +3,7 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { SidebarSimpleIcon } from "@/components/atoms/Icon/phosphor";
 import Link from "next/link";
 
 // Mirror of AppSidebarHeader, with the logo pointing back at the tour

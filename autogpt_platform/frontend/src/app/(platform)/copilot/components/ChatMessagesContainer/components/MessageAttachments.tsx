@@ -1,7 +1,7 @@
 import {
   FileText as FileTextIcon,
   DownloadSimple as DownloadIcon,
-} from "@phosphor-icons/react";
+} from "@/components/atoms/Icon/phosphor";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { FileUIPart } from "ai";
 import {

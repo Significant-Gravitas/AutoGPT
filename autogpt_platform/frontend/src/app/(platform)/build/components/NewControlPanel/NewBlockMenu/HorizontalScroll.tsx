@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+} from "@/components/atoms/Icon/phosphor";
 import { cn } from "@/lib/utils";
 
 interface HorizontalScrollAreaProps {

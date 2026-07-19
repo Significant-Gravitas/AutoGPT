@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRightIcon, HouseIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, HouseIcon } from "@/components/atoms/Icon/phosphor";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
