@@ -57,6 +57,31 @@ async def test_fetches_real_doc_page(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_happy_path_hermetic(tool, session, tmp_path, mocker):
+    """Unconditional (mocked tmp docs root, no bundle needed): a valid
+    in-root path returns a DocPageResponse with content, title, and a
+    canonicalized doc_url — locks the repaired resolution regression in
+    even on docs-less environments."""
+    docs = tmp_path / "docs"
+    (docs / "platform").mkdir(parents=True)
+    (docs / "platform" / "getting_started.md").write_text("# Getting Started\n\nHello.")
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root",
+        return_value=docs.resolve(),
+    )
+
+    result = await tool._execute(
+        user_id=None, session=session, path="platform/getting_started.md"
+    )
+
+    assert isinstance(result, DocPageResponse)
+    assert result.title == "Getting Started"
+    assert result.content == "# Getting Started\n\nHello."
+    assert result.path == "platform/getting_started.md"
+    assert result.doc_url == f"{DOCS_BASE_URL}/platform/getting-started"
+
+
+@pytest.mark.asyncio
 @requires_docs_bundle
 async def test_missing_page_returns_not_found(tool, session):
     result = await tool._execute(user_id=None, session=session, path="no/such/page.md")
