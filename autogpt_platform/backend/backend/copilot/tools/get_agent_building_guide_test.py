@@ -283,9 +283,15 @@ async def test_enter_building_mode_baseline_registers_engine_switch(mocker):
     )
     tool = EnterAgentBuildingModeTool()
     session = _make_session()
+    session.organization_id = "org-9"
+    session.team_id = "team-9"
 
     await tool._execute(user_id="user-1", session=session)
 
     switch = engine_switch.pop_switch(session.session_id)
     assert switch is not None and switch.user_id == "user-1"
+    # Full tenancy tuple must be captured — a dropped org/team would break
+    # continuations for org users and only surface as a dispatch refusal.
+    assert switch.organization_id == "org-9"
+    assert switch.team_id == "team-9"
     assert engine_switch.pop_switch(session.session_id) is None  # pop-once
