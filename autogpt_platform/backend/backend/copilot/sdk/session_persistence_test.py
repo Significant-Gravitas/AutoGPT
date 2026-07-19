@@ -694,6 +694,23 @@ class TestLateToolCallPersistence:
         assert tool_rows[0].name is None
         assert any("nameless tool-result" in r.message for r in caplog.records)
 
+    def test_resolve_tool_result_name_matched_but_nameless_call_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A matching tool_call whose function dict carries no name must not
+        bypass the nameless warning."""
+        session = _make_session()
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"id": "c1", "type": "function", "function": {}}],
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _resolve_tool_result_name(session, "c1", None) is None
+        assert any("has no function name" in r.message for r in caplog.records)
+
     def test_resolve_tool_result_name_no_match_returns_none(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
