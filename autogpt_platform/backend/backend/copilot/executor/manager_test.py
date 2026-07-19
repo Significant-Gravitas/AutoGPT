@@ -136,3 +136,19 @@ def test_turn_done_without_switch_is_noop():
         _maybe_dispatch_engine_switch("sess-1", error_msg=None)
 
     mock_thread.assert_not_called()
+
+
+def test_turn_done_drops_switch_without_user_scope():
+    """Defense-in-depth: a server-initiated continuation must never run
+    without a user scope."""
+    userless = SwitchRequest(user_id=None)
+    with (
+        patch(
+            "backend.copilot.executor.manager.engine_switch.pop_switch",
+            return_value=userless,
+        ),
+        patch("backend.copilot.executor.manager.threading.Thread") as mock_thread,
+    ):
+        _maybe_dispatch_engine_switch("sess-1", error_msg=None)
+
+    mock_thread.assert_not_called()
