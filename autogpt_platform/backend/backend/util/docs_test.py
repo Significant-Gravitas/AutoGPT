@@ -96,3 +96,9 @@ def test_sentinel_rejects_platform_file(tmp_path: Path):
     start.touch()
     with pytest.raises(FileNotFoundError):
         get_docs_root(start)
+
+
+def test_make_doc_url_canonicalizes_underscores():
+    """The site's edge worker rewrites _ to - (cloudflare_worker.js);
+    verified live: platform/new-blocks renders, platform/new_blocks 404s."""
+    assert make_doc_url("platform/new_blocks.md").endswith("/docs/platform/new-blocks")

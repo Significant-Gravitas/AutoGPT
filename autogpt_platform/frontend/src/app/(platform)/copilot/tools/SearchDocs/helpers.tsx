@@ -209,7 +209,12 @@ export function AccordionIcon({ toolType }: { toolType: DocsToolType }) {
 
 export function toDocsUrl(path: string): string {
   // Mirrors backend.util.docs.make_doc_url: extension-less rendered-page
-  // path on agpt.co (the .md variant is a soft-404; docs.agpt.co is dead).
-  const clean = path.replace(/^\/+/, "").replace(/\.mdx?$/, "");
+  // path on agpt.co with underscores canonicalized to hyphens (the site's
+  // edge worker rewrites _ to -; the .md variant is a soft-404 and
+  // docs.agpt.co is dead).
+  const clean = path
+    .replace(/^\/+/, "")
+    .replace(/\.mdx?$/, "")
+    .replace(/_/g, "-");
   return `https://agpt.co/docs/${clean}`;
 }
