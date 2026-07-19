@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import backend.copilot.tools.search_docs as search_docs_module
 from backend.copilot.tools.search_docs import SearchDocsTool
 from backend.util.docs import DOCS_BASE_URL, make_doc_url
 
@@ -18,10 +17,6 @@ from backend.util.docs import DOCS_BASE_URL, make_doc_url
 def test_doc_url_strips_md_extension():
     url = make_doc_url("platform/block-sdk-guide.md")
     assert url == f"{DOCS_BASE_URL}/platform/block-sdk-guide"
-
-
-def test_search_docs_uses_shared_url_helper():
-    assert search_docs_module.make_doc_url is make_doc_url
 
 
 @pytest.mark.asyncio

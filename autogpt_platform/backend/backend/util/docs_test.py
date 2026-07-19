@@ -58,10 +58,11 @@ def test_or_none_returns_none_and_memoizes(tmp_path: Path):
     start.parent.mkdir(parents=True)
     start.touch()
     assert get_docs_root_or_none(start) is None
-    # Negative result is cached — a second call must not re-walk.
-    assert _find_docs_root.cache_info().hits >= 0
+    assert _find_docs_root.cache_info().misses == 1
+    # Negative result is cached — a second identical call must not re-walk.
     assert get_docs_root_or_none(start) is None
-    assert _find_docs_root.cache_info().hits >= 1
+    assert _find_docs_root.cache_info().hits == 1
+    assert _find_docs_root.cache_info().misses == 1
 
 
 def test_make_doc_url_strips_extension_and_leading_slash():
@@ -70,3 +71,28 @@ def test_make_doc_url_strips_extension_and_leading_slash():
     assert make_doc_url("a/b.md").endswith("/docs/a/b")
     assert make_doc_url("a/b.mdx").endswith("/docs/a/b")
     assert make_doc_url("/a/b.md") == make_doc_url("a/b.md")
+
+
+def test_docs_base_url_pins_live_host():
+    """Guards against a silent revert to the dead docs.agpt.co host — the
+    shape tests are all relative to this constant."""
+    from backend.util.docs import DOCS_BASE_URL
+
+    assert DOCS_BASE_URL == "https://agpt.co/docs"
+
+
+def test_make_doc_url_passthrough_without_extension():
+    assert make_doc_url("a/b").endswith("/docs/a/b")
+
+
+def test_sentinel_rejects_platform_file(tmp_path: Path):
+    """docs/platform must be a DIRECTORY — a stray file must not satisfy
+    the sentinel."""
+    fake = tmp_path / "docs"
+    fake.mkdir()
+    (fake / "platform").touch()
+    start = tmp_path / "app" / "backend" / "util" / "docs.py"
+    start.parent.mkdir(parents=True)
+    start.touch()
+    with pytest.raises(FileNotFoundError):
+        get_docs_root(start)
