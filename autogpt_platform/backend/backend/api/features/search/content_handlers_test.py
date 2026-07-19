@@ -634,7 +634,7 @@ async def test_library_agent_handler_stats():
 @pytest.mark.asyncio
 async def test_documentation_handler_degrades_without_bundled_docs():
     """A docs-less deployment must no-op (empty results), not crash the
-    indexer — get_docs_root_or_none returns None and every consumer guards."""
+    indexer — get_docs_root returns None and every consumer guards."""
     handler = DocumentationHandler()
     with patch(
         "backend.api.features.search.content_handlers.get_docs_root",
