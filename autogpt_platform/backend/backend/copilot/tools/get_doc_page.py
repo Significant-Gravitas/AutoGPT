@@ -99,8 +99,11 @@ class GetDocPageTool(BaseTool):
         # Containment before existence: a uniform error for out-of-root
         # paths avoids leaking whether a file exists outside docs_root.
         try:
-            # docs_root is already resolved (guaranteed by get_docs_root).
-            full_path.resolve().relative_to(docs_root)
+            # resolve() both sides: get_docs_root guarantees a resolved root,
+            # but the guard stays self-contained rather than coupling a
+            # security boundary to another module's invariant (idempotent,
+            # one metadata syscall).
+            full_path.resolve().relative_to(docs_root.resolve())
         except ValueError:
             return ErrorResponse(
                 message="Invalid documentation path.",
