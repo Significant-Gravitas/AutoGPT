@@ -197,6 +197,11 @@ class NodeFailureSummary(TypedDict):
     error: str | None
 
 
+# Per-node error detail cap: enough to identify the failure, small enough
+# that a many-failure run can't flood the tool response.
+_NODE_ERROR_MAX_CHARS = 500
+
+
 def summarize_node_failures(
     node_executions: Sequence[NodeExecutionResult],
 ) -> list[NodeFailureSummary]:
@@ -223,7 +228,7 @@ def summarize_node_failures(
             {
                 "node_id": ne.node_id,
                 "block_name": block.name if block else ne.block_id,
-                "error": error_str[:500] if error_str else None,
+                "error": error_str[:_NODE_ERROR_MAX_CHARS] if error_str else None,
             }
         )
     return failures

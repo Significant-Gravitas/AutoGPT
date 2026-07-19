@@ -113,3 +113,27 @@ def test_incomplete_nodes_are_not_flagged_as_failures():
     ne.output_data = {}
 
     assert summarize_node_failures([ne]) == []
+
+
+def test_many_failures_capped_detail_but_full_count():
+    """The warning lists at most 5 failure details but counts all of them."""
+    from unittest.mock import MagicMock
+
+    from backend.data.execution import ExecutionStatus
+
+    nodes = []
+    for i in range(8):
+        ne = MagicMock()
+        ne.status = ExecutionStatus.FAILED
+        ne.node_id = f"n{i}"
+        ne.block_id = f"block-{i}"
+        ne.output_data = {"error": [f"boom {i}"]}
+        nodes.append(ne)
+
+    failures = summarize_node_failures(nodes)
+    assert len(failures) == 8
+
+    warning = build_run_health_warning({"out": ["x"]}, failures)
+    assert warning is not None
+    assert "8 node(s) FAILED" in warning
+    assert warning.count("boom") == 5
