@@ -576,17 +576,6 @@ def _maybe_dispatch_engine_switch(session_id: str, error_msg: str | None) -> Non
     switch = engine_switch.pop_switch(session_id)
     if switch is None:
         return
-    if switch.user_id is None:
-        # Defense-in-depth: a switch is only registered from an
-        # authenticated session's own turn, so user_id is always set on the
-        # switch path (the SDK-less branch serves the guide inline and
-        # never registers). Never dispatch a server-initiated turn without
-        # a user scope.
-        logger.error(
-            f"Engine-switch continuation for {session_id} dropped — "
-            f"switch carries no user_id"
-        )
-        return
     if error_msg is not None:
         # Turn failed — the persisted history (and thus the derived
         # building-mode signal) can't be trusted, so no continuation fires.
@@ -621,17 +610,12 @@ def _dispatch_engine_switch_continuation(
     Runs on its own thread with its own event loop so the thread-cached
     async queue client is created fresh and never reused across loops.
 
-    Best-effort with bounded retry: if all attempts fail, the session is
-    left idle (not stranded) — building mode is derived from persisted
-    message history, so the user's next message still lands on the SDK
-    engine with the guide in the prefix.
+    Best-effort with bounded retry (transient queue/redis blips): if all
+    attempts fail, the session is left idle (not stranded) with a
+    user-visible marker — building mode is derived from persisted message
+    history, so the user's next message still lands on the SDK engine with
+    the guide in the prefix.
     """
-    if not asyncio.run(_switch_scope_is_valid(session_id, switch)):
-        logger.error(
-            f"Engine-switch continuation for {session_id} refused — switch "
-            f"scope does not match the session owner"
-        )
-        return
     for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
         try:
             asyncio.run(
@@ -656,24 +640,6 @@ def _dispatch_engine_switch_continuation(
             if attempt < _SWITCH_DISPATCH_ATTEMPTS:
                 time.sleep(attempt)
     _persist_switch_failure_marker(session_id)
-
-
-async def _switch_scope_is_valid(
-    session_id: str, switch: engine_switch.SwitchRequest
-) -> bool:
-    """Re-validate the captured tenancy against the session owner at
-    dispatch time, so authorization doesn't depend on every future
-    registration site staying correct."""
-    # Lazy import: manager must stay importable without the model chain.
-    from backend.copilot.model import get_chat_session
-
-    session = await get_chat_session(session_id)
-    return (
-        session is not None
-        and session.user_id == switch.user_id
-        and session.organization_id == switch.organization_id
-        and session.team_id == switch.team_id
-    )
 
 
 def _persist_switch_failure_marker(session_id: str) -> None:
