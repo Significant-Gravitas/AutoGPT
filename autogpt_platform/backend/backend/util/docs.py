@@ -11,15 +11,17 @@ DOCS_BASE_URL = "https://agpt.co/docs"
 
 
 def make_doc_url(path: str) -> str:
-    """Public URL for a documentation page (extension stripped — see
-    ``DOCS_BASE_URL``). Shared by search_docs and get_doc_page so the URL
-    shape can't drift between the two tools."""
+    """Public URL for a documentation page (extension stripped, underscores
+    canonicalized to hyphens — the site's edge worker rewrites ``_`` to
+    ``-``, see ``autogpt_platform/cloudflare_worker.js``). Shared by
+    search_docs and get_doc_page so the URL shape can't drift between the
+    two tools."""
     clean = path.lstrip("/")
     for ext in (".md", ".mdx"):
         if clean.endswith(ext):
             clean = clean[: -len(ext)]
             break
-    return f"{DOCS_BASE_URL}/{clean}"
+    return f"{DOCS_BASE_URL}/{clean.replace('_', '-')}"
 
 
 def get_docs_root(start: Path | None = None) -> Path:

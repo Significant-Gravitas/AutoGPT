@@ -86,3 +86,40 @@ async def test_docs_unavailable_returns_dedicated_error(tool, session, mocker):
     )
     assert isinstance(result, ErrorResponse)
     assert result.error == "docs_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_symlink_escape_blocked_by_containment(tool, session, tmp_path, mocker):
+    """A path with no ../ that resolves OUTSIDE docs_root via an in-tree
+    symlink must hit the containment check (the string guard can't see it)."""
+    docs = tmp_path / "docs"
+    (docs / "platform").mkdir(parents=True)
+    outside = tmp_path / "secret.txt"
+    outside.write_text("nope")
+    (docs / "platform" / "leak.md").symlink_to(outside)
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        return_value=docs.resolve(),
+    )
+    result = await tool._execute(user_id=None, session=session, path="platform/leak.md")
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_path"
+
+
+@pytest.mark.asyncio
+async def test_directory_path_returns_read_failed(tool, session, tmp_path, mocker):
+    docs = tmp_path / "docs"
+    (docs / "platform").mkdir(parents=True)
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        return_value=docs.resolve(),
+    )
+    result = await tool._execute(user_id=None, session=session, path="platform")
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "read_failed"
+
+
+@pytest.mark.asyncio
+async def test_empty_path_rejected(tool, session):
+    result = await tool._execute(user_id=None, session=session, path="  ")
+    assert isinstance(result, ErrorResponse)
