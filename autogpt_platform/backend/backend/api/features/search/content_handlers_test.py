@@ -637,7 +637,7 @@ async def test_documentation_handler_degrades_without_bundled_docs():
     indexer — get_docs_root_or_none returns None and every consumer guards."""
     handler = DocumentationHandler()
     with patch(
-        "backend.api.features.search.content_handlers.get_docs_root_or_none",
+        "backend.api.features.search.content_handlers.get_docs_root",
         return_value=None,
     ):
         assert handler._get_docs_root() is None

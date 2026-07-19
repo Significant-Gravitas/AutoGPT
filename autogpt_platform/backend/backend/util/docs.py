@@ -24,30 +24,10 @@ def make_doc_url(path: str) -> str:
     return f"{DOCS_BASE_URL}/{clean.replace('_', '-')}"
 
 
-def get_docs_root(start: Path | None = None) -> Path:
-    """Return the ``docs/`` directory shipped with the platform (resolved).
-
-    Raises FileNotFoundError when no matching directory exists in any
-    parent (e.g. a deployment that didn't bundle the docs). See
-    ``_find_docs_root`` for the resolution strategy.
-    """
-    root = _find_docs_root(start)
-    if root is None:
-        raise FileNotFoundError(
-            "docs/ directory not found in any parent of the backend package"
-        )
-    return root
-
-
-def get_docs_root_or_none(start: Path | None = None) -> Path | None:
-    """Like :func:`get_docs_root`, but ``None`` instead of raising — for
-    callers that degrade gracefully on docs-less deployments."""
-    return _find_docs_root(start)
-
-
 @cache
-def _find_docs_root(start: Path | None = None) -> Path | None:
-    """Walk up from *start* (default: this file) to the bundled docs root.
+def get_docs_root(start: Path | None = None) -> Path | None:
+    """Walk up from *start* (default: this file) to the bundled docs root,
+    or ``None`` when this deployment didn't bundle the docs.
 
     One implementation covers both layouts without fragile parent counting:
     the dev checkout (``<repo>/docs``) and the container image
