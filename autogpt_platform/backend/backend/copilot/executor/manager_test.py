@@ -6,7 +6,7 @@ engine-switch flow (see ``backend.copilot.engine_switch``). These tests
 pin its retry/give-up contract.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 
@@ -20,10 +20,22 @@ from .manager import (
 _SWITCH = SwitchRequest(user_id="user-1", organization_id="org-1", team_id=None)
 
 
+def _owner_patch():
+    owner = MagicMock()
+    owner.user_id = _SWITCH.user_id
+    return patch(
+        "backend.copilot.model.get_chat_session",
+        new=AsyncMock(return_value=owner),
+    )
+
+
 def test_dispatch_succeeds_first_try():
-    with patch(
-        "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
-    ) as mock_schedule:
+    with (
+        _owner_patch(),
+        patch(
+            "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
+        ) as mock_schedule,
+    ):
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     assert mock_schedule.await_count == 1
@@ -38,6 +50,7 @@ def test_dispatch_succeeds_first_try():
 
 def test_dispatch_retries_until_success():
     with (
+        _owner_patch(),
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
@@ -53,6 +66,7 @@ def test_dispatch_retries_until_success():
 
 def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker():
     with (
+        _owner_patch(),
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
@@ -71,6 +85,7 @@ def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker():
 
 def test_no_failure_marker_on_success():
     with (
+        _owner_patch(),
         patch("backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock),
         patch(
             "backend.copilot.executor.manager._persist_switch_failure_marker"
@@ -152,3 +167,39 @@ def test_turn_done_drops_switch_without_user_scope():
         _maybe_dispatch_engine_switch("sess-1", error_msg=None)
 
     mock_thread.assert_not_called()
+
+
+def test_dispatch_refused_on_scope_mismatch():
+    """Dispatch-time re-validation: a switch whose user doesn't own the
+    session must never produce a server-initiated turn."""
+    other_owner = MagicMock()
+    other_owner.user_id = "someone-else"
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=other_owner),
+        ),
+        patch(
+            "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
+        ) as mock_schedule,
+    ):
+        _dispatch_engine_switch_continuation("sess-1", _SWITCH)
+
+    mock_schedule.assert_not_awaited()
+
+
+def test_dispatch_proceeds_when_scope_matches():
+    owner = MagicMock()
+    owner.user_id = _SWITCH.user_id
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=owner),
+        ),
+        patch(
+            "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
+        ) as mock_schedule,
+    ):
+        _dispatch_engine_switch_continuation("sess-1", _SWITCH)
+
+    assert mock_schedule.await_count == 1
