@@ -883,7 +883,8 @@ async def test_update_chat_message_tool_calls_success():
     assert result is True
     where = mock_prisma.return_value.update.call_args.kwargs["where"]
     assert where == {"sessionId_sequence": {"sessionId": "sess-1", "sequence": 7}}
-    assert "toolCalls" in mock_prisma.return_value.update.call_args.kwargs["data"]
+    payload = mock_prisma.return_value.update.call_args.kwargs["data"]["toolCalls"]
+    assert payload.data == _TOOL_CALLS
 
 
 @pytest.mark.asyncio
