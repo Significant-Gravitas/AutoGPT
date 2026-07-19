@@ -23,6 +23,8 @@ _SWITCH = SwitchRequest(user_id="user-1", organization_id="org-1", team_id=None)
 def _owner_patch():
     owner = MagicMock()
     owner.user_id = _SWITCH.user_id
+    owner.organization_id = _SWITCH.organization_id
+    owner.team_id = _SWITCH.team_id
     return patch(
         "backend.copilot.model.get_chat_session",
         new=AsyncMock(return_value=owner),
@@ -189,13 +191,8 @@ def test_dispatch_refused_on_scope_mismatch():
 
 
 def test_dispatch_proceeds_when_scope_matches():
-    owner = MagicMock()
-    owner.user_id = _SWITCH.user_id
     with (
-        patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=owner),
-        ),
+        _owner_patch(),
         patch(
             "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
         ) as mock_schedule,
@@ -203,3 +200,24 @@ def test_dispatch_proceeds_when_scope_matches():
         _dispatch_engine_switch_continuation("sess-1", _SWITCH)
 
     assert mock_schedule.await_count == 1
+
+
+def test_dispatch_refused_on_stale_org_scope():
+    """The full tenancy tuple must match — a changed org/team association
+    between registration and dispatch refuses the stale-scoped turn."""
+    moved = MagicMock()
+    moved.user_id = _SWITCH.user_id
+    moved.organization_id = "different-org"
+    moved.team_id = _SWITCH.team_id
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=moved),
+        ),
+        patch(
+            "backend.copilot.executor.manager.schedule_turn", new_callable=AsyncMock
+        ) as mock_schedule,
+    ):
+        _dispatch_engine_switch_continuation("sess-1", _SWITCH)
+
+    mock_schedule.assert_not_awaited()

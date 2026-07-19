@@ -668,7 +668,12 @@ async def _switch_scope_is_valid(
     from backend.copilot.model import get_chat_session
 
     session = await get_chat_session(session_id)
-    return session is not None and session.user_id == switch.user_id
+    return (
+        session is not None
+        and session.user_id == switch.user_id
+        and session.organization_id == switch.organization_id
+        and session.team_id == switch.team_id
+    )
 
 
 def _persist_switch_failure_marker(session_id: str) -> None:
