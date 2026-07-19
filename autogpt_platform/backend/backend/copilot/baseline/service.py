@@ -2561,7 +2561,21 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
-    if engine_switch.is_pending(session_id):
-        yield StreamModeChanged(mode="extended_thinking")
-        yield StreamStatus(message="Switching to Thinking mode for agent building…")
+    for event in _engine_switch_finish_events(session_id):
+        yield event
     yield StreamFinish()
+
+
+def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
+    """Terminal events for a turn that registered an engine switch.
+
+    Emitted right before StreamFinish so the frontend flips its mode picker
+    (StreamModeChanged) and narrates the handoff (StreamStatus) exactly once,
+    at the turn boundary where the baseline loop stopped.
+    """
+    if not engine_switch.is_pending(session_id):
+        return []
+    return [
+        StreamModeChanged(mode="extended_thinking"),
+        StreamStatus(message="Switching to Thinking mode for agent building…"),
+    ]
