@@ -326,6 +326,7 @@ export function ChatInput({
               <ModeToggleButton
                 mode={copilotChatMode}
                 onToggle={handleToggleMode}
+                pinned={copilotModePinned}
               />
             )}
             {showModeToggle && !isStreaming && (

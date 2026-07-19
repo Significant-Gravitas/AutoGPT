@@ -4209,12 +4209,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast":
-            # The request asked for Fast but this turn runs on the SDK
-            # engine (building-mode pin or engine-switch continuation).
-            # Tell stale pickers — a client that missed the original
-            # data-mode-changed (reload, second tab) re-syncs here.
-            yield StreamModeChanged(mode="extended_thinking")
+        resync = _mode_resync_event(mode)
+        if resync is not None:
+            yield resync
 
         set_execution_context(
             user_id,
@@ -5567,3 +5564,13 @@ async def _fetch_graphiti_context(
 
     ctx = await fetch_warm_context(user_id, message or "") or ""
     return True, ctx
+
+
+def _mode_resync_event(mode: str | None) -> StreamModeChanged | None:
+    """Picker re-sync for a turn that *requested* Fast but runs on the SDK
+    engine (building-mode pin or engine-switch continuation): a client that
+    missed the original ``data-mode-changed`` (reload, second tab) re-syncs
+    from this event, emitted right after ``StreamStart``."""
+    if mode == "fast":
+        return StreamModeChanged(mode="extended_thinking")
+    return None

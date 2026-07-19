@@ -10,7 +10,6 @@ itself, persisted in message history, is the durable mode signal for all
 later turns.
 """
 
-import logging
 from typing import Any
 
 from backend.copilot import engine_switch
@@ -20,8 +19,6 @@ from backend.copilot.sdk.env import config as chat_config
 from .base import BaseTool
 from .get_agent_building_guide import load_guide_for_user
 from .models import ResponseType, ToolResponseBase
-
-logger = logging.getLogger(__name__)
 
 
 class BuildingModeResponse(ToolResponseBase):
