@@ -50,10 +50,11 @@ describe("transcribe route", () => {
       "http://funasr.local:8000/v1/audio/transcriptions",
       expect.objectContaining({
         method: "POST",
-        headers: {},
       }),
     );
     const fetchInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(fetchInit.headers).toBeInstanceOf(Headers);
+    expect((fetchInit.headers as Headers).has("Authorization")).toBe(false);
     const upstreamBody = fetchInit.body as FormData;
     expect(upstreamBody.get("model")).toBe("iic/SenseVoiceSmall");
     const file = upstreamBody.get("file") as File;
@@ -74,9 +75,10 @@ describe("transcribe route", () => {
     await POST(makeAudioRequest());
 
     const fetchInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(fetchInit.headers).toEqual({
-      Authorization: "Bearer self-hosted-token",
-    });
+    expect(fetchInit.headers).toBeInstanceOf(Headers);
+    expect((fetchInit.headers as Headers).get("Authorization")).toBe(
+      "Bearer self-hosted-token",
+    );
   });
 
   it("uses the OpenAI API key for the default transcription endpoint", async () => {
@@ -94,10 +96,12 @@ describe("transcribe route", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.openai.com/v1/audio/transcriptions",
       expect.objectContaining({
-        headers: {
-          Authorization: "Bearer openai-token",
-        },
+        headers: expect.any(Headers),
       }),
+    );
+    const fetchInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((fetchInit.headers as Headers).get("Authorization")).toBe(
+      "Bearer openai-token",
     );
   });
 
@@ -115,7 +119,8 @@ describe("transcribe route", () => {
     await POST(makeAudioRequest());
 
     const fetchInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(fetchInit.headers).toEqual({});
+    expect(fetchInit.headers).toBeInstanceOf(Headers);
+    expect((fetchInit.headers as Headers).has("Authorization")).toBe(false);
   });
 
   it("returns upstream transcription API error messages", async () => {

@@ -79,9 +79,10 @@ export async function POST(request: NextRequest) {
     const whisperFormData = new FormData();
     whisperFormData.append("file", audioFile, `recording.${ext}`);
     whisperFormData.append("model", getTranscriptionModel());
-    const headers: HeadersInit = apiKey
-      ? { Authorization: `Bearer ${apiKey}` }
-      : {};
+    const headers = new Headers();
+    if (apiKey) {
+      headers.set("Authorization", `Bearer ${apiKey}`);
+    }
 
     const response = await fetch(getTranscriptionApiUrl(), {
       method: "POST",
