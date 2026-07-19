@@ -1475,7 +1475,7 @@ def test_add_tool_call_to_sequenced_row_flags_backfill():
     """Attaching a tool_call to an already-persisted assistant row must set
     the dirty flag so the next save back-fills toolCalls (baseline path)."""
     session = _make_session_with_messages(
-        ChatMessage(role="assistant", content="working...", sequence=5)
+        ChatMessage(role="assistant", content="working...", sequence=42)
     )
     session.add_tool_call_to_current_turn(
         {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
