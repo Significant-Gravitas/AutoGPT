@@ -52,7 +52,8 @@ async def test_fetches_real_doc_page(tool, session):
     assert result.path == rel_path
     # The docs site serves rendered pages at the extension-less path;
     # the .md variant is a soft-404 (HTTP 200 + "Page Not Found" body).
-    assert result.doc_url == f"{DOCS_BASE_URL}/{rel_path.removesuffix('.md')}"
+    expected_slug = rel_path.removesuffix(".md").replace("_", "-")
+    assert result.doc_url == f"{DOCS_BASE_URL}/{expected_slug}"
 
 
 @pytest.mark.asyncio
@@ -129,3 +130,4 @@ async def test_directory_path_returns_read_failed(tool, session, tmp_path, mocke
 async def test_empty_path_rejected(tool, session):
     result = await tool._execute(user_id=None, session=session, path="  ")
     assert isinstance(result, ErrorResponse)
+    assert "path" in result.message.lower()
