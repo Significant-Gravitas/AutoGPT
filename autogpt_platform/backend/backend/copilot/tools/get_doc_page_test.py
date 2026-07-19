@@ -42,8 +42,9 @@ async def test_fetches_real_doc_page(tool, session):
     assert isinstance(result, DocPageResponse)
     assert result.content
     assert result.path == rel_path
-    # The docs site serves raw repo paths verbatim, extension included.
-    assert result.doc_url == f"{DOCS_BASE_URL}/{rel_path}"
+    # The docs site serves rendered pages at the extension-less path;
+    # the .md variant is a soft-404 (HTTP 200 + "Page Not Found" body).
+    assert result.doc_url == f"{DOCS_BASE_URL}/{rel_path.removesuffix('.md')}"
 
 
 @pytest.mark.asyncio

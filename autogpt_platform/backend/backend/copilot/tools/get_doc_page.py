@@ -1,5 +1,6 @@
 """GetDocPageTool - Fetch full content of a documentation page."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -115,7 +116,7 @@ class GetDocPageTool(BaseTool):
             )
 
         try:
-            content = full_path.read_text(encoding="utf-8")
+            content = await asyncio.to_thread(full_path.read_text, encoding="utf-8")
             title = self._extract_title(content, path)
 
             return DocPageResponse(

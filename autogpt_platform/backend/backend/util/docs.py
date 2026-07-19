@@ -3,17 +3,23 @@
 from functools import cache
 from pathlib import Path
 
-# Public docs site. It serves the raw repo docs verbatim, INCLUDING the .md
-# extension (https://agpt.co/docs/<repo-relative-path>.md returns the page;
-# the extension-less variant 404s for pages outside the site navigation).
+# Public docs site. It serves rendered pages at the EXTENSION-LESS repo path
+# (https://agpt.co/docs/<repo-relative-path-without-.md>); the .md variant
+# returns a soft-404 ("Page Not Found" with HTTP 200), so status-code checks
+# alone cannot validate these URLs — grep the body when re-verifying.
 DOCS_BASE_URL = "https://agpt.co/docs"
 
 
 def make_doc_url(path: str) -> str:
-    """Public URL for a documentation page (extension kept — see
+    """Public URL for a documentation page (extension stripped — see
     ``DOCS_BASE_URL``). Shared by search_docs and get_doc_page so the URL
     shape can't drift between the two tools."""
-    return f"{DOCS_BASE_URL}/{path.lstrip('/')}"
+    clean = path.lstrip("/")
+    for ext in (".md", ".mdx"):
+        if clean.endswith(ext):
+            clean = clean[: -len(ext)]
+            break
+    return f"{DOCS_BASE_URL}/{clean}"
 
 
 def get_docs_root(start: Path | None = None) -> Path:
@@ -57,5 +63,7 @@ def _find_docs_root(start: Path | None = None) -> Path | None:
     for parent in origin.parents:
         candidate = parent / "docs"
         if (candidate / "platform").is_dir():
-            return candidate
+            # Final resolve: robustness if docs/ itself is a symlink, so the
+            # containment check in get_doc_page compares real paths.
+            return candidate.resolve()
     return None

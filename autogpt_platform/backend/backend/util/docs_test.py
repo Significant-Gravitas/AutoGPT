@@ -64,6 +64,9 @@ def test_or_none_returns_none_and_memoizes(tmp_path: Path):
     assert _find_docs_root.cache_info().hits >= 1
 
 
-def test_make_doc_url_keeps_extension_and_strips_leading_slash():
-    assert make_doc_url("a/b.md").endswith("/docs/a/b.md")
+def test_make_doc_url_strips_extension_and_leading_slash():
+    """agpt.co serves rendered pages extension-less; the .md variant is a
+    soft-404 (HTTP 200 + "Page Not Found" body)."""
+    assert make_doc_url("a/b.md").endswith("/docs/a/b")
+    assert make_doc_url("a/b.mdx").endswith("/docs/a/b")
     assert make_doc_url("/a/b.md") == make_doc_url("a/b.md")
