@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.util.docs import get_docs_root_or_none, make_doc_url
+from backend.util.docs import get_docs_root, make_doc_url
 
 from .base import BaseTool
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
@@ -87,7 +87,7 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
-        docs_root = get_docs_root_or_none()
+        docs_root = get_docs_root()
         if docs_root is None:
             return ErrorResponse(
                 message="Documentation is not available in this deployment.",
@@ -99,7 +99,7 @@ class GetDocPageTool(BaseTool):
         # Containment before existence: a uniform error for out-of-root
         # paths avoids leaking whether a file exists outside docs_root.
         try:
-            # docs_root is already resolved (see _find_docs_root).
+            # docs_root is already resolved (guaranteed by get_docs_root).
             full_path.resolve().relative_to(docs_root)
         except ValueError:
             return ErrorResponse(

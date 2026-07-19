@@ -4,7 +4,7 @@ import pytest
 
 from backend.copilot.tools.get_doc_page import GetDocPageTool
 from backend.copilot.tools.models import DocPageResponse, ErrorResponse
-from backend.util.docs import DOCS_BASE_URL, get_docs_root, get_docs_root_or_none
+from backend.util.docs import DOCS_BASE_URL, get_docs_root
 
 from ._test_data import make_session
 
@@ -22,7 +22,7 @@ def session():
 
 
 requires_docs_bundle = pytest.mark.skipif(
-    get_docs_root_or_none() is None,
+    get_docs_root() is None,
     reason="integration: needs the repo/image docs bundle on disk",
 )
 
@@ -72,7 +72,7 @@ async def test_traversal_is_blocked(tool, session, tmp_path, mocker):
     (docs / "platform").mkdir(parents=True)
     (tmp_path / "secret.toml").write_text("nope")
     mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        "backend.copilot.tools.get_doc_page.get_docs_root",
         return_value=docs.resolve(),
     )
     result = await tool._execute(user_id=None, session=session, path="../secret.toml")
@@ -85,7 +85,7 @@ async def test_docs_unavailable_returns_dedicated_error(tool, session, mocker):
     """A deployment without bundled docs degrades to a clear error instead
     of a misleading not_found."""
     mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        "backend.copilot.tools.get_doc_page.get_docs_root",
         return_value=None,
     )
     result = await tool._execute(
@@ -105,7 +105,7 @@ async def test_symlink_escape_blocked_by_containment(tool, session, tmp_path, mo
     outside.write_text("nope")
     (docs / "platform" / "leak.md").symlink_to(outside)
     mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        "backend.copilot.tools.get_doc_page.get_docs_root",
         return_value=docs.resolve(),
     )
     result = await tool._execute(user_id=None, session=session, path="platform/leak.md")
@@ -118,7 +118,7 @@ async def test_directory_path_returns_read_failed(tool, session, tmp_path, mocke
     docs = tmp_path / "docs"
     (docs / "platform").mkdir(parents=True)
     mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root_or_none",
+        "backend.copilot.tools.get_doc_page.get_docs_root",
         return_value=docs.resolve(),
     )
     result = await tool._execute(user_id=None, session=session, path="platform")

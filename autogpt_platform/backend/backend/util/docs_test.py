@@ -4,20 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from backend.util.docs import (
-    DOCS_BASE_URL,
-    _find_docs_root,
-    get_docs_root,
-    get_docs_root_or_none,
-    make_doc_url,
-)
+from backend.util.docs import DOCS_BASE_URL, get_docs_root, make_doc_url
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    _find_docs_root.cache_clear()
+    get_docs_root.cache_clear()
     yield
-    _find_docs_root.cache_clear()
+    get_docs_root.cache_clear()
 
 
 def _make_docs_tree(root: Path) -> Path:
@@ -46,24 +40,23 @@ def test_sentinel_skips_shadowing_docs_dir(tmp_path: Path):
     assert get_docs_root(start) == real_docs
 
 
-def test_missing_docs_raises(tmp_path: Path):
+def test_missing_docs_returns_none(tmp_path: Path):
     start = tmp_path / "app" / "backend" / "util" / "docs.py"
     start.parent.mkdir(parents=True)
     start.touch()
-    with pytest.raises(FileNotFoundError):
-        get_docs_root(start)
+    assert get_docs_root(start) is None
 
 
-def test_or_none_returns_none_and_memoizes(tmp_path: Path):
+def test_negative_result_memoized(tmp_path: Path):
     start = tmp_path / "app" / "backend" / "util" / "docs.py"
     start.parent.mkdir(parents=True)
     start.touch()
-    assert get_docs_root_or_none(start) is None
-    assert _find_docs_root.cache_info().misses == 1
+    assert get_docs_root(start) is None
+    assert get_docs_root.cache_info().misses == 1
     # Negative result is cached — a second identical call must not re-walk.
-    assert get_docs_root_or_none(start) is None
-    assert _find_docs_root.cache_info().hits == 1
-    assert _find_docs_root.cache_info().misses == 1
+    assert get_docs_root(start) is None
+    assert get_docs_root.cache_info().hits == 1
+    assert get_docs_root.cache_info().misses == 1
 
 
 def test_make_doc_url_strips_extension_and_leading_slash():
@@ -93,8 +86,7 @@ def test_sentinel_rejects_platform_file(tmp_path: Path):
     start = tmp_path / "app" / "backend" / "util" / "docs.py"
     start.parent.mkdir(parents=True)
     start.touch()
-    with pytest.raises(FileNotFoundError):
-        get_docs_root(start)
+    assert get_docs_root(start) is None
 
 
 def test_make_doc_url_canonicalizes_underscores():
