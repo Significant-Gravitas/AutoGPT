@@ -75,6 +75,9 @@ def test_docs_base_url_pins_live_host():
 
 def test_make_doc_url_passthrough_without_extension():
     assert make_doc_url("a/b").endswith("/docs/a/b")
+    # Dots inside names are not extensions — only .md/.mdx strip.
+    assert make_doc_url("platform/v1.2").endswith("/docs/platform/v1.2")
+    assert make_doc_url("platform/v1.2-guide.md").endswith("/docs/platform/v1.2-guide")
 
 
 def test_sentinel_rejects_platform_file(tmp_path: Path):
