@@ -1469,3 +1469,23 @@ def test_chat_session_new_carries_org_team():
     tenantless = ChatSession.new("u1", dry_run=False)
     assert tenantless.organization_id is None
     assert tenantless.team_id is None
+
+
+def test_add_tool_call_to_sequenced_row_flags_backfill():
+    """Attaching a tool_call to an already-persisted assistant row must set
+    the dirty flag so the next save back-fills toolCalls (baseline path)."""
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="working...", sequence=42)
+    )
+    session.add_tool_call_to_current_turn(
+        {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    )
+    assert session.messages[-1].tool_calls_pending_save is True
+
+    fresh = _make_session_with_messages(
+        ChatMessage(role="assistant", content="working...")
+    )
+    fresh.add_tool_call_to_current_turn(
+        {"id": "c2", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    )
+    assert fresh.messages[-1].tool_calls_pending_save is False

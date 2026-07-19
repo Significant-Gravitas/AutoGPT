@@ -3093,10 +3093,7 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
-        if acc.assistant_response.sequence is not None:
-            # Row already flushed to the DB without this call — flag it so
-            # the next save back-fills toolCalls instead of skipping the row.
-            acc.assistant_response.tool_calls_pending_save = True
+        acc.assistant_response.mark_tool_calls_dirty()
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
