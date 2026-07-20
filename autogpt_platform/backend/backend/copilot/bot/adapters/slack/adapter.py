@@ -40,11 +40,10 @@ from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
-from backend.data.bot_installs import (
-    get_bot_install,
-    is_install_revoked,
-    revoke_bot_install,
-)
+
+# Accessor, not direct Prisma: the outbound half also runs in the Prisma-less
+# copilot-bot bridge pod, which must go through the DatabaseManager.
+from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
 from . import commands, config, oauth, signing
@@ -147,13 +146,19 @@ class SlackAdapter(WebhookAdapter):
             ):
                 return client
             self._evict(team_id)
-        install = await get_bot_install(Platform.SLACK, team_id) if team_id else None
+        install = (
+            await bot_installs_db().get_bot_install(Platform.SLACK, team_id)
+            if team_id
+            else None
+        )
         if install is None:
             # A workspace that explicitly uninstalled / revoked us gets NOTHING —
             # the static token belongs to the app's own workspace and must never
             # be used on a revoked one's behalf. Fallback is only for
             # never-installed refs (single-workspace mode, raw proactive refs).
-            if team_id and await is_install_revoked(Platform.SLACK, team_id):
+            if team_id and await bot_installs_db().is_install_revoked(
+                Platform.SLACK, team_id
+            ):
                 return None
             token = config.get_bot_token()
         else:
@@ -212,7 +217,7 @@ class SlackAdapter(WebhookAdapter):
         if event.get("type") in _UNINSTALL_EVENTS:
             if team_id:
                 self._evict(team_id)
-                await revoke_bot_install(Platform.SLACK, team_id)
+                await bot_installs_db().revoke_bot_install(Platform.SLACK, team_id)
             return
         if self._on_message_callback is None:
             return
