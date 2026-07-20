@@ -1,12 +1,29 @@
 """Helpers for injecting user-provided variables into sandboxed code.
 
-Strategy: serialize the variables to JSON and pass them through an environment
-variable (the data channel), then prepend a small *constant* snippet that
-deserializes that env var into named variables inside the sandbox. No user data
-ever enters the code string, so there is no code-injection surface -- the same
-principle as parameterized SQL queries.
+Strategy: serialize the variables to JSON, base64-encode that JSON text, and
+pass the result through an environment variable (the data channel), then
+prepend a small *constant* snippet that base64-decodes and deserializes that
+env var into named variables inside the sandbox. No user data ever enters the
+code string, so there is no code-injection surface -- the same principle as
+parameterized SQL queries.
+
+The base64 step (rather than passing the JSON text directly) exists because
+the env var crosses a request boundary into E2B's sandbox before it's read
+back out: it travels as a string value nested inside a JSON request body, and
+by the time a real astral character (e.g. an emoji) comes back out through
+that path, `json.dumps`'s default `ensure_ascii=True` escaping can end up
+re-interpreted as literal `\\uXXXX` Python/JS source escapes rather than JSON
+escapes. Python and JS source parsers don't recombine adjacent surrogate
+escapes into one supplementary character the way a JSON parser does, so a
+perfectly valid, well-formed emoji can come out the other side as two lone
+surrogate codepoints and crash on encode -- this is a real, reproduced
+failure mode, not a hypothetical (see PR discussion). Base64 text is pure
+ASCII with no backslashes or unicode escapes for any downstream text-handling
+layer to misinterpret, so it closes the whole bug class rather than special-
+casing individual malformed inputs.
 """
 
+import base64
 import json
 import keyword
 from enum import Enum
@@ -36,11 +53,13 @@ class UnsupportedLanguageError(ValueError):
 
 # Constant prefixes. They reference only the env var (data), never user values.
 _PYTHON_PREFIX = (
-    "import json as _agpt_json, os as _agpt_os\n"
-    f'globals().update(_agpt_json.loads(_agpt_os.environ["{VARIABLES_ENV_KEY}"]))\n'
+    "import base64 as _agpt_b64, json as _agpt_json, os as _agpt_os\n"
+    "globals().update(_agpt_json.loads(_agpt_b64.b64decode("
+    f'_agpt_os.environ["{VARIABLES_ENV_KEY}"]).decode("utf-8")))\n'
 )
 _JAVASCRIPT_PREFIX = (
-    f"Object.assign(globalThis, JSON.parse(process.env.{VARIABLES_ENV_KEY}));\n"
+    "Object.assign(globalThis, JSON.parse(Buffer.from("
+    f"process.env.{VARIABLES_ENV_KEY}, 'base64').toString('utf-8')));\n"
 )
 
 _PREFIX_BY_LANGUAGE = {
@@ -77,21 +96,22 @@ def build_variable_injection(
     variables = _sanitize_surrogates(variables)
 
     try:
-        serialized = json.dumps(variables)
+        serialized = json.dumps(variables, ensure_ascii=False)
     except (TypeError, ValueError) as e:
         bad_keys = [k for k, v in variables.items() if not _is_json_serializable(v)]
         raise ValueError(
             f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
         ) from e
 
-    if len(serialized.encode("utf-8")) > MAX_VARIABLES_PAYLOAD_BYTES:
+    serialized_bytes = serialized.encode("utf-8")
+    if len(serialized_bytes) > MAX_VARIABLES_PAYLOAD_BYTES:
         raise ValueError(
             "Variables payload is too large "
             f"(max {MAX_VARIABLES_PAYLOAD_BYTES // 1024} KB). "
             "Pass large data through a file or upstream block instead."
         )
 
-    envs = {VARIABLES_ENV_KEY: serialized}
+    envs = {VARIABLES_ENV_KEY: base64.b64encode(serialized_bytes).decode("ascii")}
     return envs, prefix
 
 
