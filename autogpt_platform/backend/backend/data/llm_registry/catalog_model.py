@@ -27,6 +27,11 @@ _NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,99}$"
 _SLUG_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$"
 
 
+SubscriptionTierName = Literal[
+    "NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
+]
+
+
 class CatalogProvider(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -86,9 +91,7 @@ class CatalogModel(BaseModel):
     visibility: Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"] = "GA"
     # Null = available on every subscription tier. Enforcement lands with
     # the registry-driven picker (Phase B).
-    min_subscription_tier: (
-        Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"] | None
-    ) = None
+    min_subscription_tier: SubscriptionTierName | None = None
     # Standing replacement pointer: pre-fills the retirement CLI's
     # replacement and is the hook for future runtime failover.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)
