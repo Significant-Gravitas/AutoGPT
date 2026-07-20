@@ -369,6 +369,12 @@ class TestRegistryGating:
             "cell/model": make("cell/model"),
         }
         reg._routes = {}
+        # Cell tests exercise the cloud path — the test env's default
+        # behave_as is LOCAL, which (correctly) skips cells entirely.
+        import backend.copilot.model_router as router_mod
+        from backend.util.settings import BehaveAs
+
+        mocker.patch.object(router_mod.settings.config, "behave_as", BehaveAs.CLOUD)
         self.record = mocker.patch(
             "backend.copilot.model_router.record_route_warning", new=AsyncMock()
         )
@@ -534,13 +540,19 @@ class TestRegistryGating:
         from backend.copilot.model_normalize import normalize_model_for_transport
         from backend.data.llm_registry import get_catalog
 
+        # Cells ship empty (claiming one is an explicit catalog PR), so this
+        # governs any real cells that exist PLUS the canonical spellings the
+        # runbook tells operators to use — the transport property must hold
+        # before anyone claims a cell.
         cells = [
             slug
             for modes in get_catalog().routing.values()
             for tiers in modes.values()
             for slug in tiers.values()
+        ] + [
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-opus-4.7",
         ]
-        assert cells, "catalog must define routing cells"
 
         def cfg_for(transport: str) -> ChatConfig:
             cfg = ChatConfig()
@@ -625,3 +637,30 @@ class TestExecutorCatalogLoad:
             "this process, and without the load every routing cell and "
             "serve-time gate silently no-ops"
         )
+
+
+class TestSelfHostedSkipsCells:
+    """Cells are cloud deployment config: behave_as != CLOUD ignores them."""
+
+    @pytest.mark.asyncio
+    async def test_self_hosted_cloud_transport_resolves_env_not_cell(self, mocker):
+        import backend.data.llm_registry.registry as reg
+        from backend.copilot.model_router import resolve_model_route
+
+        old_models, old_routes = reg._dynamic_models, reg._routes
+        # behave_as defaults to LOCAL in the test env — that IS the case
+        # under test; no patch needed. Transport stays cloud (openrouter).
+        reg._routes = {("copilot", "fast", "standard"): "anthropic/claude-sonnet-4.6"}
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+        cfg = _make_config()
+        try:
+            resolved = await resolve_model_route(
+                "fast", "standard", "user-1", config=cfg
+            )
+        finally:
+            reg._dynamic_models, reg._routes = old_models, old_routes
+
+        assert resolved == (cfg.fast_standard_model, "env")
