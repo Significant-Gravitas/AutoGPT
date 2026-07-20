@@ -132,6 +132,12 @@ class ChatMessage(BaseModel):
         if self.sequence is not None:
             self.tool_calls_pending_save = True
 
+    # Which LLM served this assistant turn and which routing layer picked it
+    # ("ld" | "db" | "env"). Product-intelligence mirrors these to segment
+    # quality judgments by model. None on user/tool rows.
+    model: str | None = None
+    routing_source: str | None = None
+
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
     # (file_ids / mode / model / permissions / context / arrival_at)
@@ -158,6 +164,8 @@ class ChatMessage(BaseModel):
             created_at=prisma_message.createdAt,
             session_id=prisma_message.sessionId,
             metadata=_parse_json_field(prisma_message.metadata),
+            model=prisma_message.model,
+            routing_source=prisma_message.routingSource,
         )
 
 
@@ -922,6 +930,8 @@ async def _save_session_to_db(
                     "refusal": msg.refusal,
                     "tool_calls": msg.tool_calls,
                     "function_call": msg.function_call,
+                    "model": msg.model,
+                    "routing_source": msg.routing_source,
                 }
             )
         logger.info(

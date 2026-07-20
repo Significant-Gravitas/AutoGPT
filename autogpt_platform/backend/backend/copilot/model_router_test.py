@@ -314,3 +314,219 @@ class TestResolveModel:
             await resolve_model("thinking", "advanced", "u", config=cfg)
 
         assert calls == ["copilot-model-routing"] * 4
+
+
+class TestRegistryGating:
+    """LD → registry cell → env resolution with serve-time slug validation."""
+
+    @pytest.fixture(autouse=True)
+    def registry_state(self, mocker):
+        import backend.data.llm_registry.registry as reg
+        from backend.data.llm_registry.registry import (
+            RegistryModel,
+            RegistryModelMetadata,
+        )
+
+        def make(slug, *, enabled=True, visibility="GA"):
+            return RegistryModel(
+                slug=slug,
+                display_name=slug,
+                metadata=RegistryModelMetadata(
+                    provider="open_router",
+                    context_window=100000,
+                    max_output_tokens=8192,
+                    display_name=slug,
+                    provider_name="OpenRouter",
+                    creator_name="Test",
+                    price_tier=2,
+                ),
+                provider_display_name="OpenRouter",
+                is_enabled=enabled,
+                visibility=visibility,
+            )
+
+        self.reg = reg
+        self.make = make
+        old_models, old_routes = reg._dynamic_models, reg._routes
+        reg._dynamic_models = {
+            "known/model": make("known/model"),
+            "disabled/model": make("disabled/model", enabled=False),
+            "hidden/model": make("hidden/model", visibility="HIDDEN"),
+            "cell/model": make("cell/model"),
+        }
+        reg._routes = {}
+        self.record = mocker.patch(
+            "backend.copilot.model_router.record_route_warning", new=AsyncMock()
+        )
+        mocker.patch("backend.copilot.model_router.sentry_sdk.capture_message")
+        yield
+        reg._dynamic_models, reg._routes = old_models, old_routes
+
+    def _ld(self, mocker, slug):
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value={"fast": {"standard": slug}}),
+        )
+
+    @pytest.mark.asyncio
+    async def test_known_ld_slug_serves_with_ld_source(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "known/model")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("known/model", "ld")
+
+    @pytest.mark.asyncio
+    async def test_unknown_ld_slug_refused_and_falls_through(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "typo/model")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved.source == "env"
+        self.record.assert_called_once()
+        assert self.record.call_args.args[0] == "typo/model"
+
+    @pytest.mark.asyncio
+    async def test_disabled_ld_slug_refused_kill_switch(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "disabled/model")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved.source == "env"
+        self.record.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hidden_ld_slug_serves(self, mocker):
+        """HIDDEN = registered + routable, just not shown in pickers."""
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "hidden/model")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("hidden/model", "ld")
+        self.record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_db_cell_used_when_no_ld(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("cell/model", "db")
+
+    @pytest.mark.asyncio
+    async def test_ld_beats_db_cell(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "known/model")
+        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("known/model", "ld")
+
+    @pytest.mark.asyncio
+    async def test_stale_db_cell_refused_falls_to_env(self, mocker):
+        from backend.copilot.model_router import resolve_model_route
+
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+        self.reg._routes = {("copilot", "fast", "standard"): "disabled/model"}
+        cfg = _make_config()
+        resolved = await resolve_model_route("fast", "standard", "user-1", config=cfg)
+        assert resolved == (cfg.fast_standard_model, "env")
+        assert self.record.call_args.args[2] == "db"
+
+    @pytest.mark.asyncio
+    async def test_no_user_skips_ld_but_uses_db_cell(self):
+        from backend.copilot.model_router import resolve_model_route
+
+        self.reg._routes = {("copilot", "fast", "standard"): "cell/model"}
+        resolved = await resolve_model_route(
+            "fast", "standard", None, config=_make_config()
+        )
+        assert resolved == ("cell/model", "db")
+
+    @pytest.mark.asyncio
+    async def test_empty_registry_gates_nothing(self, mocker):
+        """Dormant-registry installs keep exact pre-registry behavior."""
+        from backend.copilot.model_router import resolve_model_route
+
+        self.reg._dynamic_models = {}
+        self._ld(mocker, "totally/unregistered")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("totally/unregistered", "ld")
+        self.record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ld_openrouter_spelling_matches_bare_catalog_slug(self, mocker):
+        """LD sends anthropic/claude-opus-4.6-style slugs; the catalog holds
+        bare dashed enum slugs. The gate must match the model, not the
+        spelling."""
+        from backend.copilot.model_router import resolve_model_route
+
+        self.reg._dynamic_models["claude-opus-4-6"] = self.make("claude-opus-4-6")
+        self._ld(mocker, "anthropic/claude-opus-4.6")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("anthropic/claude-opus-4.6", "ld")
+        self.record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bare_claude_cell_is_vendor_prefixed_for_transport(self, mocker):
+        """Catalog cells hold bare canonical slugs; the resolver returns the
+        vendor-prefixed form so OpenRouter transports don't 404 (direct
+        transports strip it right back)."""
+        from backend.copilot.model_router import resolve_model_route
+
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+        self.reg._dynamic_models["claude-sonnet-4-6"] = self.make("claude-sonnet-4-6")
+        self.reg._routes = {("copilot", "fast", "standard"): "claude-sonnet-4-6"}
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("anthropic/claude-sonnet-4-6", "db")
+
+    def test_catalog_cell_values_normalize_on_every_transport(self, monkeypatch):
+        """The real catalog routing cells must survive transport
+        normalization both as stored (bare) and as resolved (prefixed)."""
+        from backend.copilot.model_normalize import normalize_model_for_transport
+        from backend.data.llm_registry import CATALOG
+
+        cells = [
+            slug
+            for modes in CATALOG.routing.values()
+            for tiers in modes.values()
+            for slug in tiers.values()
+        ]
+        assert cells, "catalog must define routing cells"
+        for slug in cells:
+            prefixed = (
+                f"anthropic/{slug}"
+                if "/" not in slug and slug.startswith("claude-")
+                else slug
+            )
+            for use_openrouter in (True, False):
+                monkeypatch.setenv("CHAT_USE_OPENROUTER", str(use_openrouter).lower())
+                normalize_model_for_transport(prefixed)  # must not raise

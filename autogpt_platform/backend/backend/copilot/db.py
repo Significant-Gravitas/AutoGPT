@@ -525,6 +525,11 @@ async def add_chat_messages_batch(
                     if msg.get("duration_ms") is not None:
                         data["durationMs"] = msg["duration_ms"]
 
+                    if msg.get("model") is not None:
+                        data["model"] = msg["model"]
+                    if msg.get("routing_source") is not None:
+                        data["routingSource"] = msg["routing_source"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
