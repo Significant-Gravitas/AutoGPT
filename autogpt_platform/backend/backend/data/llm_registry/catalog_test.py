@@ -70,15 +70,10 @@ def test_routing_cells_reference_enabled_models():
                 assert model.is_enabled, f"{cell}: model {slug} is disabled"
 
 
-def test_copilot_routing_matrix_is_fully_specified():
-    copilot = CATALOG.routing.get("copilot", {})
-    for mode in ("fast", "thinking"):
-        for tier in ("standard", "advanced"):
-            assert copilot.get(mode, {}).get(tier), (
-                f"copilot routing cell ({mode}, {tier}) is unset — the file is "
-                "the config layer between LD and env defaults; leaving a cell "
-                "empty silently shifts control to env vars"
-            )
+# NOTE: there is deliberately no "matrix fully specified" guard. Cells ship
+# empty and get claimed one at a time — an unset cell means env vars keep
+# that (mode, tier), which is the intended rollout-safe default. Cells that
+# DO exist are governed by the reference and spelling tests above/below.
 
 
 def test_cost_drift_tripwire_run_credits():

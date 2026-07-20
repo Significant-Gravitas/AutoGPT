@@ -48,8 +48,10 @@ import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.route_warnings import record_route_warning
 from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
@@ -210,12 +212,18 @@ async def resolve_model_route(
         if ld_slug and await _registry_refuses(ld_slug, "ld") is None:
             return ResolvedModel(ld_slug, "ld")
 
-    # Catalog cells hold CLOUD slugs, and the local transport (Ollama/vLLM)
-    # passes slugs through verbatim with no ValueError — a cell would
-    # override the operator's CHAT_*_MODEL config with a model their backend
-    # doesn't serve and 404 at request time. Local deployments resolve
-    # LD → env only, exactly as before the catalog existed.
-    if config.baseline_provider == "local":
+    # Routing cells are OUR CLOUD's deployment config that happens to travel
+    # in the shipped catalog file — they are not defaults for everyone:
+    # - self-hosted installs (behave_as != CLOUD) keep env authority; a cell
+    #   we set for prod must not override an operator's CHAT_*_MODEL on
+    #   their next upgrade (they have no LD to escape through)
+    # - local transports (Ollama/vLLM) pass slugs through verbatim with no
+    #   ValueError — a cloud-slug cell would 404 at request time
+    # Both resolve LD → env only, exactly as before the catalog existed.
+    if (
+        settings.config.behave_as != BehaveAs.CLOUD
+        or config.baseline_provider == "local"
+    ):
         return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
 
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
