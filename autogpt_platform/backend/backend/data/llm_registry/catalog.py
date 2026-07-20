@@ -1116,16 +1116,11 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
         ],
-        routing={
-            "copilot": {
-                "fast": {
-                    "standard": "anthropic/claude-sonnet-4.6",
-                    "advanced": "anthropic/claude-opus-4.7",
-                },
-                "thinking": {
-                    "standard": "anthropic/claude-sonnet-4.6",
-                    "advanced": "anthropic/claude-opus-4.7",
-                },
-            },
-        },
+        # Routing cells deliberately ship EMPTY. Setting a cell is the
+        # explicit act of moving that (mode, tier)'s control from env vars
+        # into the catalog — shipping populated defaults would silently
+        # shadow the CHAT_*_MODEL env config of any deployment whose env
+        # differs from code defaults, and would flip models during LD
+        # outages. Cells apply on cloud deployments (behave_as=CLOUD) only.
+        routing={},
     )

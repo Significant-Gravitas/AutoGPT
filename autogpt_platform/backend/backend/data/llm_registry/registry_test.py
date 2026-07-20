@@ -177,5 +177,7 @@ def test_real_catalog_loads():
 
     assert len(get_all_models()) > 50
     assert get_default_model_slug() is not None
-    assert get_route("copilot", "thinking", "standard") is not None
+    # Cells ship empty (env stays authoritative until a cell is claimed) —
+    # populated-cell behavior is covered by the seeded-payload tests above.
+    assert get_route("copilot", "thinking", "standard") is None
     assert len(get_schema_options()) > 50
