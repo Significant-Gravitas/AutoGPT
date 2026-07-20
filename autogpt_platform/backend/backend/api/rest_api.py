@@ -52,6 +52,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -157,6 +158,14 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
+
+    # Load the LLM catalog file into the in-process registry view. Fail-soft:
+    # an empty registry degrades every consumer (copilot routing gates, the
+    # public catalog endpoint) to pre-catalog behavior.
+    try:
+        backend.data.llm_registry.load_catalog()
+    except Exception:
+        logger.warning("LLM catalog load failed; registry is empty", exc_info=True)
 
     with launch_darkly_context():
         yield
