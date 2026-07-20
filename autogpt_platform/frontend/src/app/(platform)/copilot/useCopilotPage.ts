@@ -39,8 +39,10 @@ function hasAssistantTail(messages: UIMessage[]) {
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
 
-  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotChatMode, copilotLlmModel, isDryRun, newChatExecutionTarget } =
+    useCopilotUIStore();
 
   const {
     sessionId,
@@ -57,8 +59,15 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun });
+  } = useChatSession({
+    dryRun: isDryRun,
+    executionTarget:
+      isLocalPCEnabled || newChatExecutionTarget.kind === "local"
+        ? newChatExecutionTarget
+        : undefined,
+  });
 
   const {
     messages: currentMessages,
@@ -260,6 +269,7 @@ export function useCopilotPage() {
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
   };
 }

@@ -531,6 +531,48 @@ def _get_cloud_sandbox_supplement() -> str:
     )
 
 
+@cache
+def get_local_pc_sdk_supplement() -> str:
+    """Return static safety and storage context for the Local PC executor."""
+    return f"""
+
+## Tool notes
+
+### Local PC execution — critical safety boundary
+- `bash_exec` runs on the user's **real local machine**, not in a cloud or
+  network-isolated sandbox. It has the same operating-system permissions as the
+  Local PC executor process.
+- The working directory is `<local-pc-allowed-root>` in this static prompt; the
+  exact path, operating system, and architecture are supplied per turn in
+  `<env_context>`.
+- SDK file tools are jailed to the advertised working directory. **The shell is
+  not limited by that file jail** and can read, modify, launch, or
+  delete anything the local user account can access.
+- Changes persist on the user's machine and may be irreversible. Treat package
+  installs, application launches, process control, credential access, and
+  destructive shell commands as operations on the user's actual computer.
+- Do not assume Linux, internet access, installed programs, or authenticated
+  CLIs. Detect the advertised platform and verify local capabilities before use.
+
+### Two storage systems
+1. **Local PC** (`<local-pc-allowed-root>`):
+   - Shared by SDK file tools and `bash_exec`
+   - Real, persistent user-owned files; they are not automatically uploaded
+2. **Persistent workspace** (cloud storage):
+   - Separate from the Local PC and available through workspace tools
+   - Upload local data only when the user's task requires cloud persistence
+
+### Moving files between storages
+- **Local PC → Persistent workspace**: `write_workspace_file(filename="output.json", source_path="<local-pc-allowed-root>/output.json")`
+- **Persistent workspace → Local PC**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="<local-pc-allowed-root>/data.json")`
+
+### SDK tool-result files
+When tool outputs are large, the SDK may save the full output under
+`~/.claude/projects/.../tool-results/` (or `tool-outputs/`). Use `Read` for
+those SDK-owned result paths.
+{SHARED_TOOL_NOTES}{_USER_FOLLOW_UP_NOTE}"""
+
+
 _USER_FOLLOW_UP_NOTE = """
 # `<user_follow_up>` blocks in tool output
 

@@ -33,6 +33,7 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.local_executor.routes as local_executor_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.orgs.invitation_routes
@@ -498,10 +499,14 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
+app.include_router(
+    local_executor_routes.router,
+    tags=["experimental", "local-executor"],
+)
+
 # Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
 # No-op when no webhook platform is configured; errors surface at startup.
 register_webhook_adapters(app, _webhook_bot_backend)
-
 app.mount("/external-api", external_api)
 
 
@@ -544,8 +549,7 @@ class AgentServer(backend.util.service.AppProcess):
             http="httptools",
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
+            ws="websockets-sansio",
         )
 
     @staticmethod

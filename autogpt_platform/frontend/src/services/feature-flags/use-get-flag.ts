@@ -14,6 +14,8 @@ export enum Flag {
   CHAT_MODE_OPTION = "chat-mode-option",
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
+  LOCAL_PC_EXECUTOR = "local-pc-executor",
+  WORKFLOW_RECORDING = "workflow-recording",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
@@ -52,6 +54,8 @@ const defaultFlags = {
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: true,
+  [Flag.LOCAL_PC_EXECUTOR]: false,
+  [Flag.WORKFLOW_RECORDING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
@@ -104,6 +108,10 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
     case Flag.AGENT_BRIEFING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
+    case Flag.LOCAL_PC_EXECUTOR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR;
+    case Flag.WORKFLOW_RECORDING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:

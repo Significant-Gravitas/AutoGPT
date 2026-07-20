@@ -4296,6 +4296,358 @@
         }
       }
     },
+    "/api/copilot/executors": {
+      "get": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "List Local Executors",
+        "description": "List this user's currently connected persistent Local PC executors.",
+        "operationId": "getExperimentalListLocalExecutors",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutorsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/executors/{machine_id}/directories": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "List Local Executor Directories",
+        "description": "Browse directories through an owner-scoped persistent machine channel.",
+        "operationId": "postExperimentalListLocalExecutorDirectories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "machine_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "title": "Machine Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DirectoryListRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor": {
+      "get": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Get Session Executor",
+        "description": "Return executor metadata only when the caller owns the session.",
+        "operationId": "getExperimentalGetSessionExecutor",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutorStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/consent": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Set Session Computer Use Consent",
+        "description": "Persist the authenticated owner's explicit per-session decision.",
+        "operationId": "postExperimentalSetSessionComputerUseConsent",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputerUseConsentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerUseConsentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/start": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Start Session Recording",
+        "description": "Request native shim consent, then start recording without exposing its token.",
+        "operationId": "postExperimentalStartSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecordingStartRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingStartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/stop": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Stop Session Recording",
+        "description": "Stop and fetch the redacted recording for user review.",
+        "operationId": "postExperimentalStopSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecordingStopRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingStopResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/{recording_id}/review": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Review Session Recording",
+        "description": "Apply the owner's removals and redactions to shim-owned recording data.",
+        "operationId": "postExperimentalReviewSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "recording_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordingReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingReviewApplied"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/credits": {
       "get": {
         "tags": ["v1", "credits"],
@@ -8476,6 +8828,43 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/oauth/authorize/deny": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Deny Authorization",
+        "operationId": "postOauthDenyAuthorization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DenyAuthorizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthorizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/introspect": {
       "post": {
         "tags": ["oauth"],
@@ -8518,7 +8907,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Revoke",
-        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nNote: Revoking a refresh token does NOT revoke associated access tokens.\nRevoking an access token does NOT revoke the associated refresh token.",
+        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nRevoking a refresh token revokes its rotation family and associated access\ntokens. Revoking an access token does not revoke its refresh-token family.",
         "operationId": "postOauthRevoke",
         "requestBody": {
           "content": {
@@ -8531,7 +8920,15 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": { "type": "string" },
+                  "type": "object",
+                  "title": "Response Postoauthrevoke"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -8548,17 +8945,146 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
-        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, code_verifier\n   - client_secret is required only for confidential clients\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id\n   - client_secret is required only for confidential clients\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
         "operationId": "postOauthToken",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/TokenRequestByCode" },
-                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      }
+                    },
+                    "type": "object",
+                    "required": ["grant_type", "refresh_token", "client_id"],
+                    "title": "TokenRequestByRefreshToken"
+                  }
                 ],
-                "title": "Request"
+                "discriminator": { "propertyName": "grant_type" }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      }
+                    },
+                    "type": "object",
+                    "required": ["grant_type", "refresh_token", "client_id"],
+                    "title": "TokenRequestByRefreshToken"
+                  }
+                ],
+                "discriminator": { "propertyName": "grant_type" }
               }
             }
           },
@@ -8570,14 +9096,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/TokenResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -13618,8 +14136,11 @@
           },
           "code_challenge": {
             "type": "string",
+            "maxLength": 128,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9\\-._~]+$",
             "title": "Code Challenge",
-            "description": "PKCE code challenge (required)"
+            "description": "RFC 7636 PKCE code challenge (required)"
           },
           "code_challenge_method": {
             "type": "string",
@@ -14220,13 +14741,13 @@
             "description": "Client identifier"
           },
           "client_secret": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Client Secret",
             "description": "Client secret"
           }
         },
         "type": "object",
-        "required": ["token", "client_id", "client_secret"],
+        "required": ["token", "client_id"],
         "title": "Body_postOauthRevoke"
       },
       "Body_postOauthUploadAppLogo": {
@@ -14582,31 +15103,6 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
-      "ChatSessionMetadata": {
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "title": "Dry Run",
-            "default": false
-          },
-          "builder_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Builder Graph Id"
-          },
-          "source_platform": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Source Platform"
-          },
-          "kind": { "type": "string", "title": "Kind", "default": "normal" },
-          "dream_pass_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dream Pass Id"
-          }
-        },
-        "type": "object",
-        "title": "ChatSessionMetadata",
-        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
-      },
       "ChatShareStateResponse": {
         "properties": {
           "is_shared": {
@@ -14678,6 +15174,18 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CloudExecutionTargetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "cloud",
+            "title": "Kind",
+            "default": "cloud"
+          }
+        },
+        "type": "object",
+        "title": "CloudExecutionTargetRequest"
       },
       "CoPilotUsagePublic": {
         "properties": {
@@ -14806,6 +15314,55 @@
         "type": "object",
         "required": ["uuid"],
         "title": "CommunitySummary"
+      },
+      "ComputerUseConsentRequest": {
+        "properties": {
+          "approved": { "type": "boolean", "title": "Approved" },
+          "expected_machine_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Expected Machine Id"
+          },
+          "expected_features_coarse": {
+            "anyOf": [
+              {
+                "items": { "type": "string", "maxLength": 128, "minLength": 1 },
+                "type": "array",
+                "maxItems": 128
+              },
+              { "type": "null" }
+            ],
+            "title": "Expected Features Coarse"
+          },
+          "expected_features": {
+            "anyOf": [
+              {
+                "items": { "type": "string", "maxLength": 128, "minLength": 1 },
+                "type": "array",
+                "maxItems": 128
+              },
+              { "type": "null" }
+            ],
+            "title": "Expected Features"
+          }
+        },
+        "type": "object",
+        "required": ["approved"],
+        "title": "ComputerUseConsentRequest"
+      },
+      "ComputerUseConsentResponse": {
+        "properties": {
+          "computer_use_consent": {
+            "type": "string",
+            "enum": ["pending", "approved", "denied"],
+            "title": "Computer Use Consent"
+          }
+        },
+        "type": "object",
+        "required": ["computer_use_consent"],
+        "title": "ComputerUseConsentResponse"
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -15260,6 +15817,20 @@
               { "type": "null" }
             ],
             "title": "Builder Graph Id"
+          },
+          "execution_target": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/CloudExecutionTargetRequest" },
+              { "$ref": "#/components/schemas/LocalExecutionTargetRequest" }
+            ],
+            "title": "Execution Target",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "cloud": "#/components/schemas/CloudExecutionTargetRequest",
+                "local": "#/components/schemas/LocalExecutionTargetRequest"
+              }
+            }
           }
         },
         "additionalProperties": false,
@@ -15276,8 +15847,12 @@
             "title": "User Id"
           },
           "metadata": {
-            "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "$ref": "#/components/schemas/PublicChatSessionMetadata",
+            "default": {
+              "dry_run": false,
+              "execution_target": { "kind": "cloud" },
+              "kind": "normal"
+            }
           }
         },
         "type": "object",
@@ -15626,6 +16201,126 @@
         "required": ["edge_uuid", "reason", "new_status"],
         "title": "DemotionSummary",
         "description": "One line per demoted RELATES_TO edge."
+      },
+      "DenyAuthorizeRequest": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "title": "Redirect Uri",
+            "description": "Redirect URI"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "Anti-CSRF token from client"
+          }
+        },
+        "type": "object",
+        "required": ["client_id", "redirect_uri", "state"],
+        "title": "DenyAuthorizeRequest",
+        "description": "OAuth 2.0 authorization denial request."
+      },
+      "DirectoryEntry": {
+        "properties": {
+          "directory_ref": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Directory Ref"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 32767,
+            "minLength": 1,
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": ["directory_ref", "name", "path"],
+        "title": "DirectoryEntry"
+      },
+      "DirectoryListRequest": {
+        "properties": {
+          "expected_connection_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Expected Connection Id"
+          },
+          "browse_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Browse Id"
+          },
+          "directory_ref": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Directory Ref"
+          },
+          "cursor": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Cursor"
+          }
+        },
+        "type": "object",
+        "required": ["expected_connection_id"],
+        "title": "DirectoryListRequest"
+      },
+      "DirectoryListResponse": {
+        "properties": {
+          "connection_id": { "type": "string", "title": "Connection Id" },
+          "browse_id": { "type": "string", "title": "Browse Id" },
+          "current": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DirectoryEntry" },
+              { "type": "null" }
+            ]
+          },
+          "parent_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Ref"
+          },
+          "entries": {
+            "items": { "$ref": "#/components/schemas/DirectoryEntry" },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Entries"
+          },
+          "next_cursor": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Next Cursor"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "expires_at": { "type": "number", "title": "Expires At" }
+        },
+        "type": "object",
+        "required": ["connection_id", "browse_id", "entries", "expires_at"],
+        "title": "DirectoryListResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -16406,6 +17101,116 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "ExecutorMachine": {
+        "properties": {
+          "machine_id": { "type": "string", "title": "Machine Id" },
+          "connection_id": { "type": "string", "title": "Connection Id" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "platform": { "type": "string", "title": "Platform" },
+          "arch": { "type": "string", "title": "Arch" },
+          "shim_version": { "type": "string", "title": "Shim Version" },
+          "capabilities": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Capabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine_id",
+          "connection_id",
+          "display_name",
+          "platform",
+          "arch",
+          "shim_version",
+          "capabilities"
+        ],
+        "title": "ExecutorMachine"
+      },
+      "ExecutorStatus": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["shim", "none"],
+            "title": "Kind"
+          },
+          "computer_use_consent": {
+            "type": "string",
+            "enum": ["pending", "approved", "denied"],
+            "title": "Computer Use Consent"
+          },
+          "platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform"
+          },
+          "arch": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Arch"
+          },
+          "allowed_root": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Allowed Root"
+          },
+          "machine_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Machine Id"
+          },
+          "shim_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Shim Version"
+          },
+          "capabilities": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Capabilities"
+          },
+          "computer_use_features": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Computer Use Features"
+          },
+          "computer_use_features_coarse": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Computer Use Features Coarse"
+          },
+          "recording_channels": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Recording Channels"
+          },
+          "recording_routes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Recording Routes"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "computer_use_consent"],
+        "title": "ExecutorStatus"
+      },
+      "ExecutorsResponse": {
+        "properties": {
+          "executors": {
+            "items": { "$ref": "#/components/schemas/ExecutorMachine" },
+            "type": "array",
+            "title": "Executors"
+          }
+        },
+        "type": "object",
+        "required": ["executors"],
+        "title": "ExecutorsResponse"
       },
       "FactListResponse": {
         "properties": {
@@ -18288,6 +19093,49 @@
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
+      "LocalExecutionTargetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "local",
+            "title": "Kind",
+            "default": "local"
+          },
+          "machine_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "title": "Machine Id"
+          },
+          "expected_connection_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Expected Connection Id"
+          },
+          "browse_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Browse Id"
+          },
+          "directory_ref": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Directory Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine_id",
+          "expected_connection_id",
+          "browse_id",
+          "directory_ref"
+        ],
+        "title": "LocalExecutionTargetRequest"
+      },
       "LogRawMetricRequest": {
         "properties": {
           "metric_name": {
@@ -19134,6 +19982,11 @@
           },
           "owner_id": { "type": "string", "title": "Owner Id" },
           "is_active": { "type": "boolean", "title": "Is Active" },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -20376,6 +21229,68 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "PublicChatSessionMetadata": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "execution_target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicCloudExecutionTargetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/PublicLocalExecutionTargetMetadata"
+              }
+            ],
+            "title": "Execution Target",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "cloud": "#/components/schemas/PublicCloudExecutionTargetMetadata",
+                "local": "#/components/schemas/PublicLocalExecutionTargetMetadata"
+              }
+            }
+          },
+          "builder_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "normal" },
+          "dream_pass_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Pass Id"
+          }
+        },
+        "type": "object",
+        "title": "PublicChatSessionMetadata",
+        "description": "Browser-safe projection of session metadata.\n\nThe durable Local PC root grant stays server-side because it authorizes a\nhost to restore access to the selected directory after reconnect."
+      },
+      "PublicCloudExecutionTargetMetadata": {
+        "properties": {
+          "kind": { "type": "string", "const": "cloud", "title": "Kind" }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "PublicCloudExecutionTargetMetadata"
+      },
+      "PublicLocalExecutionTargetMetadata": {
+        "properties": {
+          "kind": { "type": "string", "const": "local", "title": "Kind" },
+          "machine_id": { "type": "string", "title": "Machine Id" },
+          "allowed_root": { "type": "string", "title": "Allowed Root" },
+          "revision": { "type": "integer", "title": "Revision" }
+        },
+        "type": "object",
+        "required": ["kind", "machine_id", "allowed_root", "revision"],
+        "title": "PublicLocalExecutionTargetMetadata"
+      },
       "PushSubscribeRequest": {
         "properties": {
           "endpoint": {
@@ -20618,6 +21533,123 @@
         "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
+      "RecordingReviewApplied": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "RecordingReviewApplied",
+        "description": "Authoritative shim acknowledgement after applying user review edits."
+      },
+      "RecordingReviewRequest": {
+        "properties": {
+          "removed_step_seqs": {
+            "items": { "type": "integer", "minimum": 0.0 },
+            "type": "array",
+            "title": "Removed Step Seqs"
+          },
+          "redacted_step_seqs": {
+            "items": { "type": "integer", "minimum": 0.0 },
+            "type": "array",
+            "title": "Redacted Step Seqs"
+          }
+        },
+        "type": "object",
+        "title": "RecordingReviewRequest"
+      },
+      "RecordingStartRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["copilot", "demonstration"],
+            "title": "Mode",
+            "default": "copilot"
+          },
+          "interpretation_route": {
+            "type": "string",
+            "enum": ["extract_then_cloud", "local_vlm", "screenshots_to_cloud"],
+            "title": "Interpretation Route",
+            "default": "extract_then_cloud"
+          },
+          "channels": {
+            "items": {
+              "type": "string",
+              "enum": ["floor", "browser", "desktop_ax"]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "title": "RecordingStartRequest"
+      },
+      "RecordingStartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "RecordingStartResponse"
+      },
+      "RecordingStopRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Recording Id"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "RecordingStopRequest"
+      },
+      "RecordingStopResponse": {
+        "properties": {
+          "summary": { "$ref": "#/components/schemas/RecordingSummary" },
+          "recording": { "$ref": "#/components/schemas/WorkflowRecording" }
+        },
+        "type": "object",
+        "required": ["summary", "recording"],
+        "title": "RecordingStopResponse"
+      },
+      "RecordingSummary": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          },
+          "enrichment_coverage": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Enrichment Coverage"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "RecordingSummary",
+        "description": "RECORDING_SUMMARY payload after STOP_RECORDING (§6)."
       },
       "RefundRequest": {
         "properties": {
@@ -21336,8 +22368,12 @@
             "default": 0
           },
           "metadata": {
-            "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "$ref": "#/components/schemas/PublicChatSessionMetadata",
+            "default": {
+              "dry_run": false,
+              "execution_target": { "kind": "cloud" },
+              "kind": "normal"
+            }
           }
         },
         "type": "object",
@@ -21673,6 +22709,51 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StepEnrichment": {
+        "properties": {
+          "kind": { "type": "string", "title": "Kind", "default": "none" },
+          "selectors": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Selectors"
+          },
+          "ax_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ax Path"
+          },
+          "role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Role"
+          },
+          "label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Label"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "title": "StepEnrichment",
+        "description": "The additive enrichment block on a TrajectoryStep (§1).\n\n``kind`` is ``dom`` | ``ax`` | ``none``; the floor is always present\nregardless. ``selectors`` are browser-DOM only, most-stable-first (§7)."
+      },
+      "StepValue": {
+        "properties": {
+          "raw": { "title": "Raw" },
+          "type": { "type": "string", "title": "Type", "default": "text" },
+          "is_parameter": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Parameter"
+          }
+        },
+        "type": "object",
+        "title": "StepValue",
+        "description": "The value block on a TrajectoryStep (§1).\n\n``raw`` is the demonstration value — handled per interpretation route.\n``is_parameter`` is ``None`` until inferred AND confirmed during\ngeneralization (§8); a None here means \"not yet decided\", which is\nwhy a single-row recording can't auto-save (§8)."
       },
       "StopExecutionRequest": {
         "properties": {
@@ -23427,62 +24508,6 @@
         "title": "TokenRateDisplay",
         "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
-      "TokenRequestByCode": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "authorization_code",
-            "title": "Grant Type"
-          },
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "Authorization code"
-          },
-          "redirect_uri": {
-            "type": "string",
-            "title": "Redirect Uri",
-            "description": "Redirect URI (must match authorization request)"
-          },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" },
-          "code_verifier": {
-            "type": "string",
-            "title": "Code Verifier",
-            "description": "PKCE code verifier"
-          }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "code",
-          "redirect_uri",
-          "client_id",
-          "client_secret",
-          "code_verifier"
-        ],
-        "title": "TokenRequestByCode"
-      },
-      "TokenRequestByRefreshToken": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "refresh_token",
-            "title": "Grant Type"
-          },
-          "refresh_token": { "type": "string", "title": "Refresh Token" },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "refresh_token",
-          "client_id",
-          "client_secret"
-        ],
-        "title": "TokenRequestByRefreshToken"
-      },
       "TokenResponse": {
         "properties": {
           "token_type": {
@@ -23519,6 +24544,57 @@
         ],
         "title": "TokenResponse",
         "description": "OAuth 2.0 token response"
+      },
+      "TrajectoryStep": {
+        "properties": {
+          "seq": { "type": "integer", "title": "Seq", "default": 0 },
+          "ts": { "type": "number", "title": "Ts", "default": 0.0 },
+          "actor": { "type": "string", "title": "Actor", "default": "human" },
+          "action": { "type": "string", "title": "Action", "default": "" },
+          "screenshot_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Screenshot Ref"
+          },
+          "cursor": {
+            "anyOf": [
+              { "items": { "type": "integer" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Cursor"
+          },
+          "active_app": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Active App"
+          },
+          "active_window": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Active Window"
+          },
+          "enrichment": { "$ref": "#/components/schemas/StepEnrichment" },
+          "value": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/StepValue" },
+              { "type": "null" }
+            ]
+          },
+          "narration": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narration"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome",
+            "default": "unknown"
+          },
+          "redacted": {
+            "type": "boolean",
+            "title": "Redacted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrajectoryStep",
+        "description": "One ordered step in a recording (§1 TrajectoryStep)."
       },
       "TransactionHistory": {
         "properties": {
@@ -25012,6 +26088,44 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkflowRecording": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "version": { "type": "string", "title": "Version", "default": "1.0" },
+          "created_at": {
+            "type": "number",
+            "title": "Created At",
+            "default": 0.0
+          },
+          "machine_id": {
+            "type": "string",
+            "title": "Machine Id",
+            "default": ""
+          },
+          "interpretation_route": {
+            "type": "string",
+            "title": "Interpretation Route",
+            "default": "extract_then_cloud"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/TrajectoryStep" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "redaction_applied": {
+            "type": "boolean",
+            "title": "Redaction Applied",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "WorkflowRecording",
+        "description": "A full recording as returned by RECORDING_DATA / RECORDING_FETCH (§1)."
       },
       "WorkspaceFile": {
         "properties": {
