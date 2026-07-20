@@ -544,3 +544,36 @@ class TestRegistryGating:
             for use_openrouter in (True, False):
                 monkeypatch.setenv("CHAT_USE_OPENROUTER", str(use_openrouter).lower())
                 normalize_model_for_transport(prefixed)  # must not raise
+
+
+class TestLocalTransportSkipsCells:
+    """Catalog cells hold cloud slugs; local transports must ignore them."""
+
+    @pytest.mark.asyncio
+    async def test_local_transport_resolves_env_not_cell(self, mocker):
+        from unittest.mock import PropertyMock
+
+        import backend.data.llm_registry.registry as reg
+        from backend.copilot.model_router import resolve_model_route
+
+        old_routes = reg._routes
+        reg._routes = {("copilot", "fast", "standard"): "claude-sonnet-4-6"}
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+        cfg = _make_config()
+        mocker.patch.object(
+            type(cfg),
+            "baseline_provider",
+            new_callable=PropertyMock,
+            return_value="local",
+        )
+        try:
+            resolved = await resolve_model_route(
+                "fast", "standard", "user-1", config=cfg
+            )
+        finally:
+            reg._routes = old_routes
+
+        assert resolved == (cfg.fast_standard_model, "env")
