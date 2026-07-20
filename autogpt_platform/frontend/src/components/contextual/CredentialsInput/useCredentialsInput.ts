@@ -297,14 +297,15 @@ export function useCredentialsInput({
         provider,
       });
     } catch (error) {
-      // If the flow threw before openOAuthPopup took ownership of the window,
-      // close the dangling about:blank tab ourselves (after handoff the
-      // helper closes it on abort, so this guard is a no-op then).
+      // Close the dangling about:blank window only while this flow still
+      // owns it — i.e. the error occurred before openOAuthPopup adopted the
+      // window. After handoff the ref is nulled and the helper closes the
+      // window itself on abort, so it's no longer ours to close.
       if (preOpenedWindowRef.current === preOpenedWindow) {
         preOpenedWindowRef.current = null;
-      }
-      if (preOpenedWindow && !preOpenedWindow.closed) {
-        preOpenedWindow.close();
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
       }
       // A superseded flow must not surface its errors over the newer flow.
       if (flowId !== oauthFlowIdRef.current) return;
