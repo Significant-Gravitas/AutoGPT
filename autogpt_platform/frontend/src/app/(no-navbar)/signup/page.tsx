@@ -19,7 +19,11 @@ import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
+import {
+  PlayCircleIcon,
+  WarningOctagonIcon,
+} from "@phosphor-icons/react/dist/ssr";
+import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { SignupMarketingPanel } from "./components/SignupMarketingPanel";
@@ -204,6 +208,24 @@ export default function SignupPage() {
           behaveAs={environment.getBehaveAs()}
         />
       </Form>
+
+      <div className="mt-6 flex w-full justify-center">
+        <NextLink
+          href="/tour/chat?utm_source=platform_signup"
+          className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
+        >
+          <PlayCircleIcon
+            className="size-5 shrink-0 text-violet-600"
+            weight="fill"
+          />
+          <span>
+            Want to see it first?{" "}
+            <span className="font-semibold text-violet-700">
+              Watch the demo
+            </span>
+          </span>
+        </NextLink>
+      </div>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
         <Text variant="body-medium" className="!text-slate-500">

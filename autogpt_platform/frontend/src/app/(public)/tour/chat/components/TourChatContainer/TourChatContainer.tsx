@@ -1,8 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { LightningIcon } from "@phosphor-icons/react";
+import { useTourStore } from "../../tourStore";
 import type { useTourCopilot } from "../../useTourCopilot";
+import { TourEndCard } from "../TourEndCard/TourEndCard";
 import { TourMessageList } from "../TourMessageList/TourMessageList";
 import { TourPromptBar } from "../TourPromptBar/TourPromptBar";
 
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export function TourChatContainer({ chat }: Props) {
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
       {/* Tour-only card styling. These descendant selectors target the shared
@@ -21,31 +24,25 @@ export function TourChatContainer({ chat }: Props) {
         <TourMessageList
           messages={chat.messages}
           isStreaming={chat.isStreaming}
+          footer={isDemoComplete ? <TourEndCard /> : null}
         />
-        <div
-          className={cn(
-            "relative px-3 pb-2 pt-2",
-            // The upsell renders as a fixed bottom banner once the demo is
-            // exhausted — pad so the hint line isn't hidden underneath it.
-            chat.isExhausted && "pb-24",
-          )}
-        >
-          <TourPromptBar
-            key={chat.turnIndex}
-            prompt={chat.currentUserPrompt}
-            isStreaming={chat.isStreaming}
-            isExhausted={chat.isExhausted}
-            onSend={() =>
-              chat.currentUserPrompt && chat.onSend(chat.currentUserPrompt)
-            }
-            onReplay={chat.reset}
-          />
-          <p className="mt-2 flex items-center justify-center gap-1 text-sm text-zinc-400">
-            <LightningIcon className="size-3.5 shrink-0" weight="fill" />
-            Simulated demo — pick a scenario above to watch Autopilot build a
-            different agent
-          </p>
-        </div>
+        {!isDemoComplete && (
+          <div className="relative px-3 pb-2 pt-2">
+            <TourPromptBar
+              key={`${chat.turnIndex}:${chat.currentUserPrompt ?? ""}`}
+              prompt={chat.currentUserPrompt}
+              isStreaming={chat.isStreaming}
+              onSend={() =>
+                chat.currentUserPrompt && chat.onSend(chat.currentUserPrompt)
+              }
+            />
+            <p className="mt-2 flex items-center justify-center gap-1 text-sm text-zinc-400">
+              <LightningIcon className="size-3.5 shrink-0" weight="fill" />
+              Simulated demo — pick a scenario above to watch Autopilot build a
+              different agent
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

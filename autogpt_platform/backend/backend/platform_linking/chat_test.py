@@ -31,6 +31,16 @@ def _request(**overrides) -> BotChatRequest:
 
 class TestStartChatTurn:
     @pytest.fixture(autouse=True)
+    def _mock_org_lookup(self):
+        # Bot-originated chats resolve the owner's default org/team so the
+        # ChatSession is created with tenancy context. Tests don't seed
+        # OrgMember rows, so stub the lookup to return None tuples.
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=(None, None))
+        with patch("backend.platform_linking.chat.orgs_db", return_value=orgs):
+            yield
+
+    @pytest.fixture(autouse=True)
     def _allow_turn(self):
         # The paywall/rate-limit gate is covered in TestEvaluateTurnGate; here
         # default it to "allow" so these tests don't reach DB/Redis for it.
@@ -425,10 +435,19 @@ class TestEnsureChatSession:
 
     @pytest.mark.asyncio
     async def test_creates_session_when_none_cached(self):
+        # Creating a bot session resolves the owner's default org/team and
+        # threads that tenancy into create_chat_session, so mock the lookup and
+        # assert the org/team params are passed through.
         db = MagicMock()
         db.find_user_link_owner = AsyncMock(return_value="owner-1")
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.orgs_db",
+                return_value=MagicMock(
+                    get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+                ),
+            ),
             patch(
                 "backend.platform_linking.chat.create_chat_session",
                 new=AsyncMock(return_value=MagicMock(session_id="fresh")),
@@ -437,7 +456,10 @@ class TestEnsureChatSession:
             result = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
 
         assert result.session_id == "fresh"
-        assert mock_create.await_args.kwargs["source_platform"] == "discord"
+        create_kwargs = mock_create.await_args.kwargs
+        assert create_kwargs["source_platform"] == "discord"
+        assert create_kwargs["organization_id"] == "org-1"
+        assert create_kwargs["team_id"] == "team-1"
 
     @pytest.mark.asyncio
     async def test_denied_user_gets_denial_and_no_session(self):

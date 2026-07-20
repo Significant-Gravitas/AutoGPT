@@ -22,8 +22,15 @@ from prisma.types import (
 )
 
 from backend.data.db import prisma
-from backend.data.model import User, UserIntegrations, UserMetadata
+from backend.data.model import (
+    CREDENTIALS_ADAPTER,
+    Credentials,
+    User,
+    UserIntegrations,
+    UserMetadata,
+)
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.org_migration import ensure_personal_org
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError
@@ -72,6 +79,14 @@ async def get_or_create_user(user_data: dict) -> User:
                 user.id,
                 exc_info=True,
             )
+
+        # Ensure every user owns a personal org + default team. Unlike the
+        # Profile above this is NOT best-effort: without an org, every
+        # org-scoped endpoint (save graph, chat, ...) fails with "No
+        # organization context available", so a failure here must fail the
+        # request loudly instead of returning a bricked account. Idempotent and
+        # race-safe (see ensure_personal_org).
+        await ensure_personal_org(user.id)
 
         return User.from_db(user)
     except Exception as e:
@@ -267,6 +282,99 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
     )
     # Invalidate cache for this user
     get_user_by_id.cache_delete(user_id)
+
+
+async def get_user_credentials(user_id: str) -> list[Credentials]:
+    """Read the user's credentials from the IntegrationCredential table.
+
+    Source of truth post blob→table migration (the UserIntegrations blob
+    is retained only as a rollback artifact). Returns USER-scoped active
+    rows; TEAM/ORG-scoped credentials are resolved separately via
+    ``backend.integrations.scoped_credentials``.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
+        order={"createdAt": "asc"},
+    )
+    cryptor = JSONCryptor()
+    credentials: list[Credentials] = []
+    for row in rows:
+        try:
+            credentials.append(
+                CREDENTIALS_ADAPTER.validate_python(
+                    cryptor.decrypt(row.encryptedPayload)
+                )
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {user_id}; skipping",
+                exc_info=True,
+            )
+    return credentials
+
+
+async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
+    """Full-list replace of the user's USER-scoped credential rows.
+
+    Mirrors the old blob replace semantics the credential store is built
+    around: rows missing from ``credentials`` are revoked (soft delete),
+    new ids are created, existing ids get their payload refreshed
+    (OAuth token rotation runs through here constantly).
+    """
+    cryptor = JSONCryptor()
+    existing_rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "ownerId": user_id},
+    )
+    existing_by_id = {row.id: row for row in existing_rows}
+    incoming_ids = {c.id for c in credentials}
+
+    org_id: str | None = None
+    for cred in credentials:
+        row = existing_by_id.get(cred.id)
+        encrypted = cryptor.encrypt(cred.model_dump())
+        if row is not None:
+            await prisma.integrationcredential.update(
+                where={"id": cred.id},
+                data={
+                    "encryptedPayload": encrypted,
+                    "displayName": cred.title or cred.provider,
+                    "status": "active",
+                },
+            )
+            continue
+        if org_id is None:
+            org_row = await prisma.organization.find_first(
+                where={
+                    "isPersonal": True,
+                    "Members": {"some": {"userId": user_id, "isOwner": True}},
+                }
+            )
+            if org_row is None:
+                raise DatabaseError(
+                    f"Cannot store credentials for user {user_id}: "
+                    "personal org not bootstrapped"
+                )
+            org_id = org_row.id
+        await prisma.integrationcredential.create(
+            data={
+                "id": cred.id,
+                "organizationId": org_id,
+                "ownerType": "USER",
+                "ownerId": user_id,
+                "provider": cred.provider,
+                "credentialType": cred.type,
+                "displayName": cred.title or cred.provider,
+                "encryptedPayload": encrypted,
+                "createdByUserId": user_id,
+            }
+        )
+
+    for row in existing_rows:
+        if row.id not in incoming_ids and row.status == "active":
+            await prisma.integrationcredential.update(
+                where={"id": row.id},
+                data={"status": "revoked"},
+            )
 
 
 async def migrate_and_encrypt_user_integrations():

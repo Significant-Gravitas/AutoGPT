@@ -22,7 +22,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.data.db_accessors import platform_linking_db, workspace_db
+from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -241,8 +241,13 @@ async def _resolve_or_create_session(
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
     if session is None:
+        org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
         session = await create_chat_session(
-            owner_user_id, dry_run=False, source_platform=source_platform
+            owner_user_id,
+            dry_run=False,
+            organization_id=org_id,
+            team_id=team_id,
+            source_platform=source_platform,
         )
     return session
 
@@ -345,12 +350,15 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         turn_id=turn_id,
     )
 
+    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
     await enqueue_copilot_turn(
         session_id=session_id,
         user_id=owner_user_id,
         message=request.message,
         turn_id=turn_id,
         is_user_message=True,
+        organization_id=org_id,
+        team_id=team_id,
         file_ids=request.file_ids or None,
     )
 
