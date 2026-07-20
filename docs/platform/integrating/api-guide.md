@@ -66,6 +66,14 @@ curl -H "X-API-Key: YOUR_API_KEY" \
   https://backend.agpt.co/external-api/v1/blocks
 ```
 
+### Public endpoints
+
+Some endpoints require no authentication. The LLM catalog serves the platform's current model list (model facts only — names, providers, capabilities, context windows; no pricing or routing config) and is per-IP rate-limited:
+
+```bash
+curl https://backend.agpt.co/api/llm/catalog
+```
+
 ### Using OAuth
 
 1. Register an OAuth application (contact platform administrator)

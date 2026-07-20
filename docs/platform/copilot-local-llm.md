@@ -49,6 +49,16 @@ arrives — there is no 500. The frontend toggle should already be hidden
 because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
 self-hosted deployments.
 
+Note that `CHAT_*_MODEL` env vars are the *bottom* layer of AutoPilot's
+model resolution, not the only one. Each `(mode, tier)` cell resolves:
+per-user LaunchDarkly `copilot-model-routing` override → the LLM
+catalog's routing cell (`backend/data/llm_registry/catalog.py`) →
+`CHAT_*_MODEL` env default. Slugs unknown to the catalog or disabled in
+it are refused at serve time and fall through to the next layer. If
+models resolve unexpectedly on a local deployment, check the catalog's
+routing cells before the env vars — they sit above them. See
+[Managing LLM Models](contributing/managing-llm-models.md).
+
 ## Required environment variables
 
 In `autogpt_platform/backend/.env`:
