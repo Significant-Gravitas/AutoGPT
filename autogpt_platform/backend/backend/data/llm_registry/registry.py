@@ -19,7 +19,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.llm_registry.catalog import get_catalog
-from backend.data.llm_registry.catalog_model import CatalogModelCost, CatalogPayload
+from backend.data.llm_registry.catalog_model import (
+    CatalogModelCost,
+    CatalogPayload,
+    SubscriptionTierName,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +78,7 @@ class RegistryModel(BaseModel):
     # controls who SEES the model — HIDDEN still serves when explicitly routed.
     kind: str = "CHAT"
     visibility: str = "GA"
-    min_subscription_tier: str | None = None
+    min_subscription_tier: SubscriptionTierName | None = None
     fallback_model_slug: str | None = None
 
     supports_tools: bool = False
