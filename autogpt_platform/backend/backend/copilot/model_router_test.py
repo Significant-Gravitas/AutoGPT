@@ -5,8 +5,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import backend.data.llm_registry.registry as reg
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_router import _config_default, resolve_model
+
+
+@pytest.fixture(autouse=True)
+def _empty_catalog_by_default():
+    """These tests assert the resolver's ungated (pre-catalog) behavior, which
+    requires an EMPTY registry — but other test modules (registry_test) load
+    the real catalog into the module globals and legitimately leave it there.
+    Snapshot, clear, restore, so suite order can never change outcomes.
+    TestRegistryGating's own fixture layers its populated state on top."""
+    old = (reg._dynamic_models, reg._schema_options, reg._routes)
+    reg._dynamic_models, reg._schema_options, reg._routes = {}, [], {}
+    yield
+    reg._dynamic_models, reg._schema_options, reg._routes = old
 
 
 def _make_config() -> ChatConfig:
