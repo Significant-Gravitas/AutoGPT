@@ -15,8 +15,13 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 // is ESM-only and has no CJS entry, so resolving the root would throw even when
 // installed).
 const require = createRequire(import.meta.url);
-const AUTOGPT_ICONS_STUB_RELATIVE =
-  "./src/components/atoms/Icon/agptIconsStub.ts";
+// Absolute path to the local stub, resolved once so the webpack and Turbopack
+// aliases below stay consistent and don't depend on the build's working
+// directory (a relative alias can fail to resolve under Turbopack).
+const AUTOGPT_ICONS_STUB_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "src/components/atoms/Icon/agptIconsStub.ts",
+);
 let hasAutoGPTIcons = true;
 try {
   require.resolve("@autogpt/icons/package.json");
@@ -51,7 +56,7 @@ const nextConfig = {
     : {
         turbopack: {
           resolveAlias: {
-            "@autogpt/icons": AUTOGPT_ICONS_STUB_RELATIVE,
+            "@autogpt/icons": AUTOGPT_ICONS_STUB_PATH,
           },
         },
       }),
@@ -64,10 +69,7 @@ const nextConfig = {
     if (!hasAutoGPTIcons) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        "@autogpt/icons": path.resolve(
-          path.dirname(fileURLToPath(import.meta.url)),
-          "src/components/atoms/Icon/agptIconsStub.ts",
-        ),
+        "@autogpt/icons": AUTOGPT_ICONS_STUB_PATH,
       };
     }
     if (!dev) {

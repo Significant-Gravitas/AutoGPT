@@ -17,12 +17,18 @@ export function createIcon(
       const AutoGPTIcon = getAutoGPTIcon(autogptExport);
       if (AutoGPTIcon) {
         // `weight`/`mirrored` are Phosphor-only; the AutoGPT set has a fixed
-        // stroke style, so drop them before spreading onto its <svg>.
-        const { weight: _weight, mirrored: _mirrored, ...rest } = props;
+        // stroke style, so drop them before spreading onto its <svg>. Pull out
+        // `aria-label` too — it's re-applied below via the `ariaLabel` prop, and
+        // spreading it as well would set the attribute twice.
+        const {
+          weight: _weight,
+          mirrored: _mirrored,
+          "aria-label": label,
+          ...rest
+        } = props;
         // Phosphor and AutoGPT icons take the same runtime SVG props; the cast
         // reconciles Phosphor's `size: string | number` with AutoGPT's numeric.
         const autogptProps = rest as unknown as AutoGPTIconProps;
-        const label = props["aria-label"];
         if (typeof label === "string") {
           return <AutoGPTIcon {...autogptProps} ariaLabel={label} />;
         }
