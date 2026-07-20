@@ -220,13 +220,10 @@ async def resolve_model_route(
 
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
     if cell_slug and await _registry_refuses(cell_slug, "db") is None:
-        # Catalog cells hold bare canonical Claude slugs; the OpenRouter
-        # transport needs the vendor prefix (a bare ``claude-*`` would 404
-        # there) and the direct-Anthropic transport strips it right back in
-        # ``normalize_model_for_transport``. Prefix here so one cell value
-        # works on every transport.
-        if "/" not in cell_slug and cell_slug.startswith("claude-"):
-            cell_slug = f"anthropic/{cell_slug}"
+        # Cells carry TRANSPORT-READY spellings (e.g. the vendor-prefixed
+        # dot form ``anthropic/claude-sonnet-4.6`` OpenRouter serves) and are
+        # returned verbatim; the catalog guard tests enforce the convention,
+        # and the slug-tolerant gate above maps them to catalog identity.
         return ResolvedModel(cell_slug, "db")
 
     return ResolvedModel(_config_default(config, mode, tier).strip(), "env")

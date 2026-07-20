@@ -70,13 +70,13 @@ def _schema_format(query_template: str) -> LiteralString:
     return cast(LiteralString, query_template.format(schema_prefix=schema_prefix))
 
 
-def _node_model_value(slug: str) -> str:
-    """Model value as stored in AgentNode.constantInput for a catalog slug.
-
-    Catalog slugs may be provider-prefixed (``openai/gpt-4o``); the LLM block
-    stores only the model-name part (``gpt-4o``).
-    """
-    return slug.split("/", 1)[-1] if "/" in slug else slug
+# AgentNode.constantInput stores FULL enum values — mixed bare and
+# provider-prefixed forms (``claude-opus-4-7``, ``moonshotai/kimi-k2.5``),
+# exactly the catalog slugs; graph.migrate_llm_models compares against
+# ``LlmModel.value`` unmodified. Node values therefore map to catalog slugs
+# by IDENTITY — stripping the provider prefix (as an earlier revision did)
+# both misses prefixed models and writes out-of-enum values that the
+# startup migration would stomp to the global fallback.
 
 
 def _validate_replacement(slug: str) -> None:
@@ -99,7 +99,7 @@ async def count_model_usage(slug: str) -> int:
         FROM {schema_prefix}"AgentNode"
         WHERE "constantInput"::jsonb->>'model' = $1
         """,
-        _node_model_value(slug),
+        slug,
     )
     return int(result[0]["count"]) if result else 0
 
@@ -162,9 +162,7 @@ async def retire_model(
 
     try:
         async with transaction() as tx:
-            migrated_node_ids = await _migrate_nodes_in_tx(
-                tx, _node_model_value(slug), _node_model_value(replacement_slug)
-            )
+            migrated_node_ids = await _migrate_nodes_in_tx(tx, slug, replacement_slug)
             migration_id: str | None = None
             if migrated_node_ids:
                 record = await tx.llmmodelmigration.create(
@@ -227,9 +225,9 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
                 AND "constantInput"::jsonb->>'model' = $3
                 """
             ),
-            _node_model_value(migration.sourceModelSlug),
+            migration.sourceModelSlug,
             json.dumps(migrated_node_ids),
-            _node_model_value(migration.targetModelSlug),
+            migration.targetModelSlug,
         )
         nodes_reverted = result if isinstance(result, int) else 0
         await tx.llmmodelmigration.update(
@@ -292,6 +290,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 async def _run_cli(args: argparse.Namespace) -> int:
+    # One action per invocation — a retire positional combined with
+    # --usage/--revert/--list would silently ignore the positional.
+    modes = [bool(args.slug), bool(args.usage), bool(args.revert), args.list]
+    if sum(modes) != 1:
+        print(
+            "Pick exactly one action: <slug> --replacement …, --usage, "
+            "--revert, or --list",
+            file=sys.stderr,
+        )
+        return 2
+
     await backend.data.db.connect()
     load_catalog()
 

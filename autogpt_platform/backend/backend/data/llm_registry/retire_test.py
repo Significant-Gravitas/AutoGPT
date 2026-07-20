@@ -94,7 +94,8 @@ async def _node_model(node_id: str) -> str:
 
 
 def _node_value(slug: str) -> str:
-    return slug.split("/", 1)[-1] if "/" in slug else slug
+    """AgentNodes store FULL enum values — identity with catalog slugs."""
+    return slug
 
 
 async def test_usage_counts_seeded_nodes(retirement_env):
@@ -188,3 +189,21 @@ async def test_retire_with_no_referencing_nodes_records_nothing(retirement_env):
     assert result.nodes_migrated == 0
     assert result.migration_id is None
     assert await prisma.models.LlmModelMigration.prisma().count() == 0
+
+
+async def test_prefixed_model_nodes_are_found_and_rewritten(retirement_env):
+    """Provider-prefixed enum values (e.g. moonshotai/kimi-k2.5) are stored
+    verbatim on nodes; an earlier revision stripped the prefix and silently
+    no-opped on exactly these models."""
+    source = "moonshotai/kimi-k2.5"
+    replacement = "moonshotai/kimi-k2.6"
+    node_id = await _seed_node(retirement_env, source)
+
+    assert await count_model_usage(source) == 1
+    result = await retire_model(source, replacement, reason="prefix regression")
+    assert result.nodes_migrated == 1
+    assert await _node_model(node_id) == replacement
+
+    revert = await revert_model_migration(result.migration_id)
+    assert revert.nodes_reverted == 1
+    assert await _node_model(node_id) == source
