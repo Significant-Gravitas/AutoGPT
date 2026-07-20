@@ -49,6 +49,27 @@ export const tourScenarios: TourScenario[] = [
 
 export const DEFAULT_SCENARIO_ID = "competitor-watch";
 
+/** The scenario the end-of-demo nudge points at: the next unwatched one in
+ * sidebar order (wrapping around), or simply the next one once all are
+ * watched — "Watch another scenario" should always lead somewhere. */
+export function getNextTourScenario(
+  activeScenarioId: string,
+  watchedScenarioIds: string[],
+): TourScenario {
+  const activeIndex = tourScenarios.findIndex(
+    (scenario) => scenario.id === activeScenarioId,
+  );
+  const others = [
+    ...tourScenarios.slice(activeIndex + 1),
+    ...tourScenarios.slice(0, Math.max(activeIndex, 0)),
+  ];
+  return (
+    others.find((scenario) => !watchedScenarioIds.includes(scenario.id)) ??
+    others[0] ??
+    tourScenarios[0]
+  );
+}
+
 export function getTourScenario(id: string): TourScenario {
   return (
     tourScenarios.find((scenario) => scenario.id === id) ??
