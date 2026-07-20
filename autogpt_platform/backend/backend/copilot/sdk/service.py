@@ -1670,7 +1670,18 @@ def _resolve_tool_result_name(
     for msg in reversed(session.messages):
         for tc in msg.tool_calls or []:
             if tc.get("id") == tool_call_id:
-                return tc.get("function", {}).get("name")
+                if name := tc.get("function", {}).get("name"):
+                    return name
+                logger.warning(
+                    f"Persisting nameless tool-result row for session "
+                    f"{session.session_id}: matching tool_call "
+                    f"{tool_call_id} has no function name"
+                )
+                return None
+    logger.warning(
+        f"Persisting nameless tool-result row for session {session.session_id}: "
+        f"no name provided and no matching tool_call {tool_call_id} in history"
+    )
     return None
 
 
@@ -3206,7 +3217,7 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
-        acc.assistant_response.mark_tool_calls_dirty()
+        acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True

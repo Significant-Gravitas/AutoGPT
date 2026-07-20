@@ -883,12 +883,13 @@ async def test_update_chat_message_tool_calls_success():
     assert result is True
     where = mock_prisma.return_value.update.call_args.kwargs["where"]
     assert where == {"sessionId_sequence": {"sessionId": "sess-1", "sequence": 7}}
-    assert "toolCalls" in mock_prisma.return_value.update.call_args.kwargs["data"]
+    payload = mock_prisma.return_value.update.call_args.kwargs["data"]["toolCalls"]
+    assert payload.data == _TOOL_CALLS
 
 
 @pytest.mark.asyncio
 async def test_update_chat_message_tool_calls_not_found():
-    """Returns False (so the caller's dirty flag stays set) when no row matches."""
+    """Returns False (so the caller's pending-save flag stays set) when no row matches."""
     with (
         patch.object(PrismaChatMessage, "prisma") as mock_prisma,
         patch("backend.copilot.db.logger") as mock_logger,

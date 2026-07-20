@@ -16,8 +16,11 @@ state allows correct content accumulation by _dispatch_response.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
+
+import pytest
 
 from backend.copilot.constants import (
     STOPPED_BY_USER_MARKER,
@@ -34,6 +37,7 @@ from backend.copilot.response_model import (
 from backend.copilot.sdk.service import (
     _dispatch_response,
     _intermediate_flush_blocked,
+    _resolve_tool_result_name,
     _StreamAccumulator,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
@@ -656,3 +660,70 @@ class TestLateToolCallPersistence:
         assert len(tool_rows) == 1
         assert tool_rows[0].name == "find_block"
         assert tool_rows[0].tool_call_id == "c1"
+
+    def test_nameless_tool_result_resolves_name_from_matching_call(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+        acc.assistant_response.tool_calls = [
+            {"id": "c1", "type": "function", "function": {"name": "run_agent"}}
+        ]
+
+        ev = StreamToolOutputAvailable(toolCallId="c1", toolName=None, output="done")
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name == "run_agent"
+
+    def test_nameless_tool_result_with_no_matching_call_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No adapter name AND no matching tool_call in history: the row is
+        persisted nameless (nothing to resolve from), but loudly."""
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolOutputAvailable(toolCallId="ghost", toolName=None, output="?")
+        with caplog.at_level(logging.WARNING):
+            _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name is None
+        assert any("nameless tool-result" in r.message for r in caplog.records)
+
+    def test_resolve_tool_result_name_matched_but_nameless_call_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A matching tool_call whose function dict carries no name must not
+        bypass the nameless warning."""
+        session = _make_session()
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"id": "c1", "type": "function", "function": {}}],
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _resolve_tool_result_name(session, "c1", None) is None
+        assert any("has no function name" in r.message for r in caplog.records)
+
+    def test_resolve_tool_result_name_no_match_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        session = _make_session()
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {"id": "other", "type": "function", "function": {"name": "x"}}
+                ],
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _resolve_tool_result_name(session, "missing", None) is None
+        assert any("nameless tool-result" in r.message for r in caplog.records)

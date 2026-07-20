@@ -800,7 +800,11 @@ async def update_chat_message_tool_calls(
     ``update_message_content_by_sequence``.
 
     Returns:
-        True if a message was updated, False otherwise.
+        True if a message was updated, False if no row matched.
+
+    Raises:
+        Propagates Prisma/connection errors — the caller (the back-fill
+        loop in ``_save_session_to_db``) owns the retry policy.
     """
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},

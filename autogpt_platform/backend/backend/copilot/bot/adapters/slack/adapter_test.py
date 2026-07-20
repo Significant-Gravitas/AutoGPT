@@ -228,10 +228,11 @@ class TestUninstall:
     async def test_uninstall_event_revokes_and_evicts(self, adapter):
         adapter._clients["T5"] = MagicMock()
         adapter._bot_user_ids["T5"] = "UBOT"
+        revoke = AsyncMock()
         with patch(
-            "backend.copilot.bot.adapters.slack.adapter.revoke_bot_install",
-            new=AsyncMock(),
-        ) as revoke:
+            "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+            return_value=MagicMock(revoke_bot_install=revoke),
+        ):
             await adapter._dispatch_event({"type": "app_uninstalled"}, "T5")
         revoke.assert_awaited_once()
         assert "T5" not in adapter._clients
@@ -301,11 +302,12 @@ class TestPerWorkspaceClient:
         install = BotInstallCredentials(
             team_id="T1", bot_token="xoxb-abc", bot_user_id="UBOT"
         )
+        lookup = AsyncMock(return_value=install)
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
-                new=AsyncMock(return_value=install),
-            ) as lookup,
+                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                return_value=MagicMock(get_bot_install=lookup),
+            ),
             patch(
                 "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
             ) as web_client,
@@ -322,12 +324,11 @@ class TestPerWorkspaceClient:
         a = SlackAdapter(MagicMock())
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.is_install_revoked",
-                new=AsyncMock(return_value=False),
+                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                return_value=MagicMock(
+                    get_bot_install=AsyncMock(return_value=None),
+                    is_install_revoked=AsyncMock(return_value=False),
+                ),
             ),
             patch(
                 "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
@@ -349,8 +350,8 @@ class TestPerWorkspaceClient:
         install = BotInstallCredentials(team_id="T1", bot_token="xoxb-new")
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
-                new=AsyncMock(return_value=install),
+                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                return_value=MagicMock(get_bot_install=AsyncMock(return_value=install)),
             ),
             patch(
                 "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
@@ -367,12 +368,11 @@ class TestPerWorkspaceClient:
         a = SlackAdapter(MagicMock())
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.is_install_revoked",
-                new=AsyncMock(return_value=True),
+                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                return_value=MagicMock(
+                    get_bot_install=AsyncMock(return_value=None),
+                    is_install_revoked=AsyncMock(return_value=True),
+                ),
             ),
             patch(
                 "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
@@ -389,8 +389,8 @@ class TestPerWorkspaceClient:
         lookup = AsyncMock(return_value=None)
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.get_bot_install",
-                new=lookup,
+                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                return_value=MagicMock(get_bot_install=lookup),
             ),
             patch(
                 "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
