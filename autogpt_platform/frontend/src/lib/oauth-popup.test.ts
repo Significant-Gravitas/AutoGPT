@@ -275,6 +275,31 @@ describe("preOpenedWindow option", () => {
     expect(popupBlocked).toBe(false);
     expect(fallbackBlocked).toBe(false);
 
+    // After adoption the helper owns the window: aborting must close it —
+    // callers no longer close an adopted window themselves.
+    cleanup.abort();
+    expect(preOpened.close).toHaveBeenCalled();
+  });
+
+  test("already-closed preOpenedWindow goes to the new-tab fallback", () => {
+    const openSpy = setupPopup(makePopupStub());
+    const preOpened = makePopupStub();
+    preOpened.closed = true;
+
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-pre-closed",
+        preOpenedWindow: preOpened as unknown as Window,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(false);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
+
     cleanup.abort();
   });
 

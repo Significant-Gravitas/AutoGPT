@@ -24,11 +24,14 @@ vi.mock("@/lib/oauth-popup", () => ({
   OAUTH_ERROR_WINDOW_CLOSED: "Sign-in window was closed",
   OAUTH_ERROR_FLOW_CANCELED: "OAuth flow was canceled",
   OAUTH_ERROR_FLOW_TIMED_OUT: "OAuth flow timed out",
+  OAUTH_ERROR_POPUP_BLOCKED:
+    "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.",
 }));
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
 }));
 
+import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
@@ -43,6 +46,7 @@ const mockOpenOAuthPopup = openOAuthPopup as unknown as ReturnType<
 const mockPreOpenOAuthPopup = preOpenOAuthPopup as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockToast = toast as unknown as ReturnType<typeof vi.fn>;
 
 const baseSchema: BlockIOCredentialsSubSchema = {
   credentials_provider: ["google"],
@@ -142,6 +146,90 @@ describe("CredentialsInput – OAuth flow", () => {
         undefined,
       );
     });
+  });
+
+  it("pre-opens the window before the oAuthLogin await and passes it to openOAuthPopup", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const callOrder: string[] = [];
+    mockPreOpenOAuthPopup.mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow;
+    });
+
+    const oAuthLoginMock = vi.fn().mockImplementation(async () => {
+      callOrder.push("initiate");
+      return {
+        login_url: "https://accounts.google.com/o/oauth2/auth",
+        state_token: "state-xyz",
+      };
+    });
+    mockUseBackendAPI.mockReturnValue(
+      makeBackendAPI({ oAuthLogin: oAuthLoginMock }),
+    );
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "code-2", state: "state-xyz" }),
+      cleanup: { abort: vi.fn() },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+    await waitFor(() => expect(mockOpenOAuthPopup).toHaveBeenCalled());
+
+    // The window must be opened synchronously, before the login-URL request —
+    // after an await iOS Safari blocks every window.open().
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(mockOpenOAuthPopup).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/auth",
+      expect.objectContaining({
+        stateToken: "state-xyz",
+        preOpenedWindow: fakeWindow,
+        useCrossOriginListeners: true,
+      }),
+    );
+  });
+
+  it("shows the blocked-popup toast and modal copy when the popup is blocked", async () => {
+    mockPreOpenOAuthPopup.mockReturnValue(null);
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: new Promise(() => {}), // flow stays in flight
+      cleanup: { abort: vi.fn() },
+      popupBlocked: true,
+      fallbackBlocked: false,
+    });
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Popup blocked" }),
+      ),
+    );
+    // The waiting modal must direct the user to the fallback tab instead of
+    // to a popup that doesn't exist.
+    expect(await screen.findByText(/blocked the sign-in popup/i)).toBeDefined();
   });
 
   it("closes the pre-opened window and skips adoption when unmounted mid-initiation", async () => {
