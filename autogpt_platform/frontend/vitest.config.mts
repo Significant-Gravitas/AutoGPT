@@ -15,7 +15,10 @@ const autogptIconsStub = fileURLToPath(
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   resolve: {
+    // The /solid entry must come first: Vite alias keys are prefix matches, so
+    // the bare key would otherwise rewrite the subpath to "<stub>.ts/solid".
     alias: {
+      "@autogpt/icons/solid": autogptIconsStub,
       "@autogpt/icons": autogptIconsStub,
     },
   },

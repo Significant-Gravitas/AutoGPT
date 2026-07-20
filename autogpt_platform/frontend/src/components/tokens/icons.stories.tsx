@@ -228,7 +228,7 @@ export function AllVariants() {
                 </Text>
                 <div className="space-y-2 text-blue-700">
                   <Text variant="body">
-                    • Import from @phosphor-icons/react
+                    • Import from @/components/atoms/Icon/phosphor
                   </Text>
                   <Text variant="body">
                     • Always match size and weight from Figma designs

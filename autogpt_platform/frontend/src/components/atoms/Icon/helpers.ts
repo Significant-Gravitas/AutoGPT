@@ -1,15 +1,18 @@
 import { getAutoGPTIcon } from "./agptIcons";
+import { iconFillMap } from "./iconFillMap";
 import { iconMap } from "./iconMap";
 import { iconRegistry } from "./registry";
 
 let cached: boolean | undefined;
 
 // Every AutoGPT export the app can render: the Phosphor compat mappings
-// (`iconMap`, used by createIcon) plus the semantic `Icon` atom's registry.
-// Both must resolve, or the availability check would pass while an unmapped
-// registry icon silently falls back to Phosphor — mixing the two sets.
+// (`iconMap`, used by createIcon), the solid weight="fill" variants
+// (`iconFillMap`), and the semantic `Icon` atom's registry. All must resolve,
+// or the availability check would pass while an unmapped icon silently falls
+// back to Phosphor — mixing the two sets.
 const requiredAutoGPTIcons = [
   ...Object.values(iconMap),
+  ...Object.values(iconFillMap),
   ...Object.values(iconRegistry).map((entry) => entry.autogpt),
 ];
 

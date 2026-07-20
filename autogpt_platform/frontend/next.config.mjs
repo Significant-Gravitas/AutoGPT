@@ -50,13 +50,15 @@ const nextConfig = {
     cpus: 2,
   },
   // Turbopack (`next dev --turbo`, test builds) equivalent of the webpack alias
-  // below: point `@autogpt/icons` at the local stub when it isn't installed.
+  // below: point `@autogpt/icons` (and its /solid entry) at the local stub
+  // when it isn't installed.
   ...(hasAutoGPTIcons
     ? {}
     : {
         turbopack: {
           resolveAlias: {
             "@autogpt/icons": AUTOGPT_ICONS_STUB_PATH,
+            "@autogpt/icons/solid": AUTOGPT_ICONS_STUB_PATH,
           },
         },
       }),
@@ -66,10 +68,13 @@ const nextConfig = {
   webpack: (config, { dev }) => {
     // Alias the optional `@autogpt/icons` package to a local stub when it isn't
     // installed, so `next build` (webpack) never fails on the missing import.
+    // `$` = exact match: a prefix alias would also rewrite the
+    // `@autogpt/icons/solid` subpath by appending "/solid" to the stub path.
     if (!hasAutoGPTIcons) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        "@autogpt/icons": AUTOGPT_ICONS_STUB_PATH,
+        "@autogpt/icons$": AUTOGPT_ICONS_STUB_PATH,
+        "@autogpt/icons/solid$": AUTOGPT_ICONS_STUB_PATH,
       };
     }
     if (!dev) {
