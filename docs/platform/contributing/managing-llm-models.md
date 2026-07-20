@@ -40,24 +40,26 @@ Each `CatalogModel` entry:
 > `LlmModel` enum in `backend/blocks/llm.py` remains the runtime source for
 > block model selection until the catalog-driven switch lands.
 
-`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination:
+`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination. **Cells ship empty**: an unset cell means the `CHAT_*_MODEL` env vars keep that combination, and *claiming* a cell is the explicit act of moving its control into the catalog:
 
 ```python
+# Claiming thinking.standard — env vars keep the other three cells:
 routing={
     "copilot": {
-        "fast":     {"standard": "anthropic/claude-sonnet-4.6", "advanced": "anthropic/claude-opus-4.7"},
-        "thinking": {"standard": "anthropic/claude-sonnet-4.6", "advanced": "anthropic/claude-opus-4.7"},
+        "thinking": {"standard": "anthropic/claude-sonnet-4.6"},
     },
 }
 ```
 
 Cell values must be **transport-ready slugs** — the exact spelling the
-serving transport accepts (OpenRouter's vendor-prefixed dot forms for
-cloud models, as above). The catalog's integrity tests enforce this
-convention. Cells apply on cloud/OpenRouter and direct-Anthropic
-transports; **local transports (`CHAT_USE_LOCAL=true`) skip them** and
-resolve LaunchDarkly → env, since cells hold cloud slugs a local
-backend doesn't serve.
+serving transport accepts (OpenRouter's vendor-prefixed dot forms, as
+above). The catalog's integrity tests enforce this convention.
+
+**Cells apply only on the managed cloud deployment** (`BEHAVE_AS=cloud`).
+Self-hosted installs — cloud transport or local — always resolve
+LaunchDarkly → env: a cell set for the cloud platform travels in the
+shipped file but never overrides a self-hosted operator's
+`CHAT_*_MODEL` configuration.
 
 ## Updating the catalog
 
@@ -68,7 +70,9 @@ backend doesn't serve.
 Two lanes:
 
 - **Ordinary changes** (new models, metadata, visibility promotions) target `dev` and ride the normal release train.
-- **Incident-speed changes** (kills, routing swaps) may use a `hotfix/*` branch targeting `master` — the base-branch check permits this — so the change deploys with CD immediately after merge. Reverting is `git revert` on the same lane.
+- **Incident-speed changes** (kills, routing swaps) may use a `hotfix/*` branch targeting `master` — the base-branch check permits this — so the change deploys with CD immediately after merge. Reverting is `git revert` on the same lane. **Immediately merge `master` back to `dev` after a catalog hotfix**: until the back-merge lands, the next release train would silently revert your change (an emergency kill un-killing itself is the worst version of this).
+
+Two things the file's public nature implies: a `HIDDEN` model is hidden from pickers and the public catalog endpoint, **not from anyone reading this repository** — genuinely embargoed models cannot ride this mechanism before announcement. And a model that exists only in the catalog (not yet in the `LlmModel` enum) must **omit its `cost` field** — the cost-drift tripwire requires catalog costs to mirror the billing dicts exactly until the catalog becomes the billing source.
 
 ## How AutoPilot picks a model
 

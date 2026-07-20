@@ -49,19 +49,18 @@ arrives — there is no 500. The frontend toggle should already be hidden
 because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
 self-hosted deployments.
 
-On cloud/OpenRouter deployments, `CHAT_*_MODEL` env vars are the
-*bottom* layer of model resolution: each `(mode, tier)` cell resolves
-per-user LaunchDarkly `copilot-model-routing` override → the LLM
-catalog's routing cell (`backend/data/llm_registry/catalog.py`) →
-`CHAT_*_MODEL` env default, with slugs unknown to the catalog or
-disabled in it refused at serve time.
+On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
+vars are the *bottom* layer of model resolution: LaunchDarkly per-user
+override → the LLM catalog's routing cell
+(`backend/data/llm_registry/catalog.py`) → env default, with slugs
+unknown to the catalog or disabled in it refused at serve time.
 
-**Local deployments are the exception**: when the transport is local
-(`CHAT_USE_LOCAL=true`), the catalog's routing cells are skipped
-entirely — they hold cloud model slugs your local backend doesn't
-serve — so resolution is LaunchDarkly → `CHAT_*_MODEL`, exactly the
-pre-catalog behavior. Your env vars stay authoritative for local
-models. See [Managing LLM Models](contributing/managing-llm-models.md).
+**On self-hosted installs — any transport — the catalog's routing cells
+are skipped entirely**: they are the cloud deployment's config traveling
+in the shipped file, and they never override your `CHAT_*_MODEL`
+configuration. Resolution here is LaunchDarkly → `CHAT_*_MODEL`, exactly
+the pre-catalog behavior; your env vars stay authoritative. See
+[Managing LLM Models](contributing/managing-llm-models.md).
 
 ## Required environment variables
 
