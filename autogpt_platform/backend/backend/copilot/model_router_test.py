@@ -505,10 +505,9 @@ class TestRegistryGating:
         self.record.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_bare_claude_cell_is_vendor_prefixed_for_transport(self, mocker):
-        """Catalog cells hold bare canonical slugs; the resolver returns the
-        vendor-prefixed form so OpenRouter transports don't 404 (direct
-        transports strip it right back)."""
+    async def test_cell_value_is_returned_verbatim(self, mocker):
+        """Cells carry transport-ready spellings and are returned untouched;
+        the slug-tolerant gate maps them to catalog identity."""
         from backend.copilot.model_router import resolve_model_route
 
         mocker.patch(
@@ -516,34 +515,50 @@ class TestRegistryGating:
             new=AsyncMock(return_value=None),
         )
         self.reg._dynamic_models["claude-sonnet-4-6"] = self.make("claude-sonnet-4-6")
-        self.reg._routes = {("copilot", "fast", "standard"): "claude-sonnet-4-6"}
+        self.reg._routes = {
+            ("copilot", "fast", "standard"): "anthropic/claude-sonnet-4.6"
+        }
         resolved = await resolve_model_route(
             "fast", "standard", "user-1", config=_make_config()
         )
-        assert resolved == ("anthropic/claude-sonnet-4-6", "db")
+        assert resolved == ("anthropic/claude-sonnet-4.6", "db")
 
-    def test_catalog_cell_values_normalize_on_every_transport(self, monkeypatch):
-        """The real catalog routing cells must survive transport
-        normalization both as stored (bare) and as resolved (prefixed)."""
+    def test_catalog_cell_values_normalize_on_every_transport(self, mocker):
+        """The REAL catalog routing cells must be transport-ready: OpenRouter
+        sends them verbatim (so they must be genuine OR slugs — the dot
+        forms), and the direct-Anthropic family strips the vendor prefix and
+        dedots without raising."""
+        from unittest.mock import PropertyMock
+
+        from backend.copilot.config import ChatConfig
         from backend.copilot.model_normalize import normalize_model_for_transport
-        from backend.data.llm_registry import CATALOG
+        from backend.data.llm_registry import get_catalog
 
         cells = [
             slug
-            for modes in CATALOG.routing.values()
+            for modes in get_catalog().routing.values()
             for tiers in modes.values()
             for slug in tiers.values()
         ]
         assert cells, "catalog must define routing cells"
-        for slug in cells:
-            prefixed = (
-                f"anthropic/{slug}"
-                if "/" not in slug and slug.startswith("claude-")
-                else slug
+
+        def cfg_for(transport: str) -> ChatConfig:
+            cfg = ChatConfig()
+            mocker.patch.object(
+                type(cfg),
+                "effective_transport",
+                new_callable=PropertyMock,
+                return_value=transport,
             )
-            for use_openrouter in (True, False):
-                monkeypatch.setenv("CHAT_USE_OPENROUTER", str(use_openrouter).lower())
-                normalize_model_for_transport(prefixed)  # must not raise
+            return cfg
+
+        for slug in cells:
+            # OpenRouter passes cells through verbatim — the cell IS the wire slug.
+            assert normalize_model_for_transport(slug, cfg_for("openrouter")) == slug
+            # Direct-Anthropic strips the vendor prefix and dedots.
+            direct = normalize_model_for_transport(slug, cfg_for("subscription"))
+            assert "/" not in direct and "." not in direct
+            assert direct.startswith("claude-")
 
 
 class TestLocalTransportSkipsCells:
@@ -577,3 +592,36 @@ class TestLocalTransportSkipsCells:
             reg._routes = old_routes
 
         assert resolved == (cfg.fast_standard_model, "env")
+
+
+class TestExecutorCatalogLoad:
+    """The copilot executor process must load the catalog (turns run there,
+    not in the rest API process — an unloaded registry no-ops all routing)."""
+
+    def test_failsoft_loader_calls_load_catalog(self, mocker):
+        from backend.copilot.executor import manager
+
+        load = mocker.patch.object(manager.backend.data.llm_registry, "load_catalog")
+        manager._load_catalog_failsoft()
+        load.assert_called_once()
+
+    def test_failsoft_loader_swallows_errors(self, mocker):
+        from backend.copilot.executor import manager
+
+        mocker.patch.object(
+            manager.backend.data.llm_registry,
+            "load_catalog",
+            side_effect=RuntimeError("bad catalog"),
+        )
+        manager._load_catalog_failsoft()  # must not raise
+
+    def test_executor_run_invokes_the_loader(self):
+        import inspect
+
+        from backend.copilot.executor.manager import CoPilotExecutor
+
+        assert "_load_catalog_failsoft" in inspect.getsource(CoPilotExecutor.run), (
+            "CoPilotExecutor.run must load the LLM catalog — turns execute in "
+            "this process, and without the load every routing cell and "
+            "serve-time gate silently no-ops"
+        )
