@@ -18,7 +18,7 @@ Each `CatalogModel` entry:
 
 | Field | Meaning |
 | --- | --- |
-| `slug` | Canonical model identifier (e.g. `claude-sonnet-4-6`, `openai/gpt-5.2`). Referenced by routing cells and fallbacks. |
+| `slug` | Canonical model identifier (e.g. `claude-sonnet-4-6`, `gpt-5.2-2025-12-11`, `moonshotai/kimi-k2.5`). Referenced by routing cells and fallbacks. |
 | `display_name` | Human-readable name shown in UIs. |
 | `provider` | Who serves the model (must match a `CatalogProvider.name`). Determines which credential/API key is used. |
 | `creator` | Who trained the model (display metadata; must match a `CatalogCreator.name`). |
@@ -45,11 +45,19 @@ Each `CatalogModel` entry:
 ```python
 routing={
     "copilot": {
-        "fast":     {"standard": "claude-sonnet-4-6", "advanced": "claude-opus-4-7"},
-        "thinking": {"standard": "claude-sonnet-4-6", "advanced": "claude-opus-4-7"},
+        "fast":     {"standard": "anthropic/claude-sonnet-4.6", "advanced": "anthropic/claude-opus-4.7"},
+        "thinking": {"standard": "anthropic/claude-sonnet-4.6", "advanced": "anthropic/claude-opus-4.7"},
     },
 }
 ```
+
+Cell values must be **transport-ready slugs** — the exact spelling the
+serving transport accepts (OpenRouter's vendor-prefixed dot forms for
+cloud models, as above). The catalog's integrity tests enforce this
+convention. Cells apply on cloud/OpenRouter and direct-Anthropic
+transports; **local transports (`CHAT_USE_LOCAL=true`) skip them** and
+resolve LaunchDarkly → env, since cells hold cloud slugs a local
+backend doesn't serve.
 
 ## Updating the catalog
 
@@ -70,7 +78,7 @@ Each `(mode, tier)` cell resolves through three layers, top wins:
 2. **Catalog routing cell** — the PR-authored default above.
 3. **`CHAT_*_MODEL` environment variables** — the bootstrap floor (see `.env.default`).
 
-The catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged, reported to Sentry, and recorded for inspection — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Every persisted assistant message is stamped with the model that served it and which layer picked it, which is what allows product-intelligence to compare model quality.
+The catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged, reported to Sentry, and recorded for inspection — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain.
 
 ## Rolling out a new model
 
