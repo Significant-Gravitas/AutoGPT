@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.llm_registry.catalog import CATALOG
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogModelCost, CatalogPayload
 
 logger = logging.getLogger(__name__)
@@ -161,13 +161,15 @@ def _build_schema_options(models: dict[str, RegistryModel]) -> list[dict[str, st
     ]
 
 
-def load_catalog(payload: CatalogPayload = CATALOG) -> None:
+def load_catalog(payload: CatalogPayload | None = None) -> None:
     """Build the L1 structures from the catalog file. Called at startup.
 
     Raises on an inconsistent payload — the caller owns fail-soft (an empty
     registry degrades every consumer to pre-catalog behavior).
     """
     global _dynamic_models, _schema_options, _routes
+    if payload is None:
+        payload = get_catalog()
     models = _build_models(payload)
     routes = {
         (surface, mode, tier): slug
