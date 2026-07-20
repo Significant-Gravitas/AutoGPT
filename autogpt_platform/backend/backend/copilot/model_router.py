@@ -210,6 +210,14 @@ async def resolve_model_route(
         if ld_slug and await _registry_refuses(ld_slug, "ld") is None:
             return ResolvedModel(ld_slug, "ld")
 
+    # Catalog cells hold CLOUD slugs, and the local transport (Ollama/vLLM)
+    # passes slugs through verbatim with no ValueError — a cell would
+    # override the operator's CHAT_*_MODEL config with a model their backend
+    # doesn't serve and 404 at request time. Local deployments resolve
+    # LD → env only, exactly as before the catalog existed.
+    if config.baseline_provider == "local":
+        return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
+
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
     if cell_slug and await _registry_refuses(cell_slug, "db") is None:
         # Catalog cells hold bare canonical Claude slugs; the OpenRouter
