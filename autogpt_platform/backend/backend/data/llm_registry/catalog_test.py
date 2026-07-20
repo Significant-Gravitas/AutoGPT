@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from backend.blocks.llm import LlmModel
 from backend.data.block_cost_config import MODEL_COST, TOKEN_COST
-from backend.data.llm_registry.catalog import CATALOG
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
+
+CATALOG = get_catalog()
 
 
 def test_catalog_declares_current_schema_version():
@@ -45,14 +47,27 @@ def test_fallback_references_resolve():
             assert m.fallback_model_slug != m.slug, f"{m.slug}: fallback is itself"
 
 
+def _resolve_cell(by_slug: dict, value: str):
+    """Slug-tolerant cell resolution mirroring the router's gate: exact,
+    vendor-stripped, and dots-to-dashes forms (cells carry transport
+    spellings, not canonical slugs — see the spelling-convention test)."""
+    candidates = {value, value.split("/", 1)[-1]}
+    candidates |= {c.replace(".", "-") for c in set(candidates)}
+    for c in candidates:
+        if c in by_slug:
+            return by_slug[c]
+    return None
+
+
 def test_routing_cells_reference_enabled_models():
     by_slug = {m.slug: m for m in CATALOG.models}
     for surface, modes in CATALOG.routing.items():
         for mode, tiers in modes.items():
             for tier, slug in tiers.items():
                 cell = f"routing[{surface}][{mode}][{tier}]"
-                assert slug in by_slug, f"{cell}: unknown model {slug}"
-                assert by_slug[slug].is_enabled, f"{cell}: model {slug} is disabled"
+                model = _resolve_cell(by_slug, slug)
+                assert model is not None, f"{cell}: unknown model {slug}"
+                assert model.is_enabled, f"{cell}: model {slug} is disabled"
 
 
 def test_copilot_routing_matrix_is_fully_specified():
@@ -118,3 +133,37 @@ def test_cost_drift_tripwire_reverse_direction():
             assert (
                 model.slug in priced_slugs
             ), f"{model.slug} has run_credits but no MODEL_COST entry"
+
+
+def test_routing_cells_use_transport_ready_spellings():
+    """Routing cells are sent to providers (nearly) verbatim, so they must use
+    the spelling the transport expects — NOT the catalog's canonical slug.
+
+    Convention: Anthropic cells use the vendor-prefixed DOT form
+    (``anthropic/claude-sonnet-4.6``) — the form OpenRouter serves and the
+    direct-Anthropic normalizer accepts. Bare ``claude-*`` 404s on OpenRouter;
+    dash-form ``anthropic/claude-*-4-6`` exists on no transport. Cells still
+    gate against the catalog via the resolver's slug-tolerant lookup.
+    """
+    slugs = {m.slug for m in CATALOG.models}
+
+    def tolerant_match(value: str) -> bool:
+        candidates = {value, value.split("/", 1)[-1]}
+        candidates |= {c.replace(".", "-") for c in set(candidates)}
+        return any(c in slugs for c in candidates)
+
+    for surface, modes in CATALOG.routing.items():
+        for mode, tiers in modes.items():
+            for tier, cell in tiers.items():
+                where = f"routing[{surface}][{mode}][{tier}] = {cell!r}"
+                assert tolerant_match(cell), f"{where} matches no catalog model"
+                assert not cell.startswith("claude-"), (
+                    f"{where}: bare claude-* cells 404 on OpenRouter — use "
+                    "the vendor-prefixed dot form (anthropic/claude-…4.6)"
+                )
+                if cell.startswith("anthropic/"):
+                    tail = cell.split("/", 1)[1]
+                    assert "." in tail, (
+                        f"{where}: dash-form anthropic/ cells exist on no "
+                        "transport — use the dot form (anthropic/claude-…4.6)"
+                    )

@@ -146,3 +146,34 @@ def test_catalog_never_exposes_costs_or_routing():
 
     assert body["routing"] == {}
     assert all(m["cost"] is None for m in body["models"])
+
+
+def test_min_subscription_tier_round_trips():
+    reg._dynamic_models["openai/gpt-tiered"] = _model(
+        "openai/gpt-tiered", min_subscription_tier="PRO"
+    )
+
+    body = client.get("/api/llm/catalog").json()
+
+    by_slug = {m["slug"]: m for m in body["models"]}
+    assert by_slug["openai/gpt-tiered"]["min_subscription_tier"] == "PRO"
+
+
+def test_fallback_refs_to_excluded_models_are_nulled():
+    reg._dynamic_models["openai/gpt-a2"] = _model(
+        "openai/gpt-a2", fallback_model_slug="openai/gpt-secret"
+    )
+    reg._dynamic_models["openai/gpt-secret"] = _model(
+        "openai/gpt-secret", visibility="HIDDEN"
+    )
+    reg._dynamic_models["openai/gpt-b2"] = _model(
+        "openai/gpt-b2", fallback_model_slug="openai/gpt-a2"
+    )
+
+    body = client.get("/api/llm/catalog").json()
+
+    by_slug = {m["slug"]: m for m in body["models"]}
+    assert "openai/gpt-secret" not in by_slug
+    # Ref to the excluded HIDDEN model is nulled; ref to an included one survives.
+    assert by_slug["openai/gpt-a2"]["fallback_model_slug"] is None
+    assert by_slug["openai/gpt-b2"]["fallback_model_slug"] == "openai/gpt-a2"

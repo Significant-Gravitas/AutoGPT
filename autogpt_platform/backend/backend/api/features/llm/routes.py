@@ -45,6 +45,7 @@ def _build_catalog_payload() -> CatalogPayload:
     providers: dict[str, CatalogProvider] = {}
     creators: dict[str, CatalogCreator] = {}
     catalog_models: list[CatalogModel] = []
+    included_slugs = {m.slug for m in models}
     for m in models:
         providers.setdefault(
             m.metadata.provider,
@@ -77,7 +78,14 @@ def _build_catalog_payload() -> CatalogPayload:
                 price_tier=m.metadata.price_tier,
                 is_enabled=m.is_enabled,
                 is_recommended=m.is_recommended,
-                fallback_model_slug=m.fallback_model_slug,
+                min_subscription_tier=m.min_subscription_tier,
+                # Nulled when the fallback references a model excluded from
+                # this payload (non-GA) — no dangling refs for consumers.
+                fallback_model_slug=(
+                    m.fallback_model_slug
+                    if m.fallback_model_slug in included_slugs
+                    else None
+                ),
                 supports_tools=m.supports_tools,
                 supports_json_output=m.supports_json_output,
                 supports_reasoning=m.supports_reasoning,
@@ -100,9 +108,7 @@ def _build_catalog_payload() -> CatalogPayload:
 
 
 @router.get("/catalog", response_model=CatalogPayload)
-async def get_llm_catalog(
-    request: fastapi.Request, response: fastapi.Response
-) -> fastapi.responses.Response:
+async def get_llm_catalog(request: fastapi.Request) -> fastapi.responses.Response:
     ip = get_client_ip(request)
     if not await check_catalog_rate_limit(ip):
         return fastapi.responses.JSONResponse(
@@ -115,7 +121,6 @@ async def get_llm_catalog(
         )
 
     payload = _build_catalog_payload()
-    response.headers["Cache-Control"] = _CACHE_CONTROL_OK
     return fastapi.responses.JSONResponse(
         content=payload.model_dump(mode="json"),
         headers={"Cache-Control": _CACHE_CONTROL_OK},

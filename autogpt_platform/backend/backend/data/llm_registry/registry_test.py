@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from backend.data.llm_registry.catalog import CATALOG
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import (
     CATALOG_SCHEMA_VERSION,
     CatalogCreator,
@@ -26,6 +26,8 @@ from backend.data.llm_registry.registry import (
     get_schema_options,
     load_catalog,
 )
+
+CATALOG = get_catalog()
 
 
 def _payload(models: list[CatalogModel], routing=None) -> CatalogPayload:

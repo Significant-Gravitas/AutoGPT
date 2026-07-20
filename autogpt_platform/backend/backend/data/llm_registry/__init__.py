@@ -5,7 +5,7 @@ credit costs, and routing cells; ``load_catalog()`` builds the in-process
 view every consumer reads through.
 """
 
-from .catalog import CATALOG
+from .catalog import get_catalog
 from .catalog_model import (
     CATALOG_SCHEMA_VERSION,
     CatalogCreator,
@@ -30,7 +30,7 @@ from .registry import (
 
 __all__ = [
     # Catalog
-    "CATALOG",
+    "get_catalog",
     "CATALOG_SCHEMA_VERSION",
     "CatalogCreator",
     "CatalogModel",
