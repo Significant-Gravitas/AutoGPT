@@ -194,7 +194,6 @@ export function useHydrateOnStreamEnd({
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
-    if (isFinishProbing) return;
 
     const deduped = deduplicateMessages(hydratedMessages);
     const needsZombieRecovery =
@@ -228,6 +227,15 @@ export function useHydrateOnStreamEnd({
       });
     }
 
+    // Hold ALL message replacement while the post-finish probe decides
+    // whether a continuation turn is starting — replacing now would swap
+    // every message id and remount the list mid-conversation. This gate is
+    // deliberately wider than the `hasActiveStream` one below (which only
+    // holds the force-hydrate): it also holds the length-gated top-up. The
+    // interrupted toast above is NOT held — an interrupted turn must surface
+    // immediately, not after the probe loop finishes.
+    if (isFinishProbing) return;
+
     if (needsForceHydrateRef.current) {
       if (isStaleForceHydrateSnapshot) {
         // Still the pre-turn snapshot — wait for the refetch.
@@ -235,9 +243,10 @@ export function useHydrateOnStreamEnd({
       }
       // The fresh session data shows the backend still has a live stream
       // (continuation turn dispatching, or a resume about to start). The
-      // resume flow will pick it up; replacing messages now would only
-      // remount the list mid-conversation. The replace lands once the
-      // backend goes idle.
+      // resume effect in `useCopilotStream` reconnects while the backend
+      // reports an active stream, and a merely-stale flag clears on the next
+      // session refetch — either way this effect re-fires and the replace
+      // lands once the backend goes idle, so no timeout fallback is needed.
       if (hasActiveStream) return;
       setMessages((prev) =>
         preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
