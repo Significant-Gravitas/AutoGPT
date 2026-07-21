@@ -140,11 +140,7 @@ def _platform_param() -> dict[str, Any]:
     return {
         "type": "string",
         "enum": list(SUPPORTED_PLATFORMS),
-        "description": (
-            "Chat platform to post to: 'discord' (default), 'slack', or "
-            "'telegram'. On Telegram, 'channel' must be the numeric chat ID "
-            "of a linked group (names can't be listed there)."
-        ),
+        "description": "Chat platform to post to; defaults to 'discord'.",
     }
 
 
@@ -166,15 +162,14 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (Discord, Slack, or Telegram) for "
-            "the user. target='channel' (default) posts to a server channel; "
-            "target='dm' sends to the user's own DMs with the bot (no channel "
-            "needed). mode='message' sends a message; mode='thread' opens a "
-            "new thread (needs thread_name; channels only). 'channel' is a "
-            "name (#standup) or numeric ID — on Telegram it must be a linked "
-            "group's numeric chat ID. Pair with schedule_followup for "
-            "recurring posts. On Discord or Slack, if the channel can't be "
-            "resolved, call list_chat_platform_channels first."
+            "Post to a linked chat platform (Discord, Slack, or Telegram). "
+            "target='dm' sends to the user's own DMs with the bot. "
+            "mode='thread' opens a thread (needs thread_name; "
+            "channels only). 'channel' is a name (#standup) or numeric ID — "
+            "on Telegram, a linked group's numeric chat ID. Pair with "
+            "schedule_followup for recurring posts; call "
+            "list_chat_platform_channels if a Discord/Slack channel won't "
+            "resolve."
         )
 
     @property
@@ -196,8 +191,8 @@ class PostToChatPlatformTool(BaseTool):
                     "enum": ["channel", "dm"],
                     "description": (
                         "'channel' (default) posts to a server channel; 'dm' "
-                        "sends to the user's own direct messages with the bot "
-                        "(requires their DM link — no channel needed)."
+                        "goes to the user's own DMs with the bot (needs their "
+                        "DM link, no channel)."
                     ),
                 },
                 "channel": {
@@ -360,12 +355,11 @@ class ListChatPlatformChannelsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List server channels the bot can post to on a linked chat "
-            "platform (Discord or Slack). Use to resolve a channel name to an "
-            "ID or pick one before post_to_chat_platform. Telegram can't list "
-            "channels — post there with a linked group's numeric chat ID. The "
-            "user's own DMs never appear here — reach them directly with "
-            "post_to_chat_platform target='dm'."
+            "List server channels the bot can post to on Discord or Slack — "
+            "use to resolve a channel name to an ID before "
+            "post_to_chat_platform. Telegram can't list channels (use a "
+            "linked group's numeric chat ID). The user's own DMs never "
+            "appear here — use target='dm' instead."
         )
 
     @property
