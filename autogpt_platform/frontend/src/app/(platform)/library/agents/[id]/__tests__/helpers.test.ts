@@ -138,6 +138,15 @@ describe("deriveSelectedTriggerKind", () => {
     expect(
       deriveSelectedTriggerKind({ ...unresolved, anyListFailed: true }),
     ).toBe("error");
+    // A hint outranks a failed list: the hinted view can still render and
+    // fetch its own data even when the other list errored.
+    expect(
+      deriveSelectedTriggerKind({
+        ...unresolved,
+        anyListFailed: true,
+        triggerKindHint: "webhook-trigger",
+      }),
+    ).toBe("webhook-trigger");
   });
 
   test("falls back to the preset detail view when the presets page is incomplete", () => {

@@ -2,7 +2,13 @@ import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/p
 import { okData } from "@/app/api/helpers";
 import { retryUnlessClientError } from "../helpers";
 
-const PRESETS_PAGE_SIZE = 100;
+/**
+ * Single-page cap on the presets fetch. Beyond it, membership-based routing
+ * degrades gracefully: `presetsComplete` turns false and unknown IDs fall
+ * back to the by-ID preset fetch. Deemed acceptable — >100 presets on one
+ * agent is an edge case; the escape hatch is unpaginating the endpoint.
+ */
+export const PRESETS_PAGE_SIZE = 100;
 
 /**
  * The agent's presets (webhook triggers + templates). Shared by the sidebar

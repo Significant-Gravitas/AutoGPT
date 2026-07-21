@@ -27,6 +27,7 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
+import { PRESETS_PAGE_SIZE } from "../components/NewAgentLibraryView/hooks/useAgentPresetsQuery";
 
 const PARENT_ID = "parent-agent-id";
 const PARENT_GRAPH_ID = "parent-graph-id";
@@ -164,9 +165,9 @@ function singlePresetListHandler(
     presets: [preset],
     pagination: {
       total_items: totalItems,
-      total_pages: Math.ceil(totalItems / 100),
+      total_pages: Math.ceil(totalItems / PRESETS_PAGE_SIZE),
       current_page: 1,
-      page_size: 100,
+      page_size: PRESETS_PAGE_SIZE,
     },
   });
 }
@@ -794,6 +795,35 @@ describe("Library agent view — trigger agents", () => {
 
     await screen.findByText("Trigger not found");
     expect(screen.queryByText(/when retrieving triggers/i)).toBeNull();
+  });
+
+  test("templates-tab preset failure still surfaces the page-level error", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        () =>
+          new HttpResponse(
+            JSON.stringify({ detail: "Preset #gone-template not found" }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      ),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=templates&activeItem=gone-template",
+    );
+
+    // On the Templates tab the shared preset query's error must still
+    // surface — the tab guard only suppresses it elsewhere.
+    await screen.findByText(/when retrieving agent/i);
   });
 
   test("shows the loading skeleton while the feature flag is still resolving", async () => {

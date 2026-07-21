@@ -51,6 +51,9 @@ export function useNewAgentLibraryView() {
 
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
+  // Unlike presets, this list needs no completeness guard: the endpoint is
+  // unpaginated (backend list_trigger_agents does an unbounded find_many),
+  // so membership in it is authoritative.
   const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
     query: {
       enabled: triggerAgentsEnabled && !!agentId,
