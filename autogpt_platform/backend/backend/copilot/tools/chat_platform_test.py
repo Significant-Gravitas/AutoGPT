@@ -9,6 +9,7 @@ from backend.copilot.bot.outbound import DeliveryResult
 from backend.copilot.tools.chat_platform import (
     ListChatPlatformChannelsTool,
     PostToChatPlatformTool,
+    _any_chat_platform_configured,
 )
 from backend.copilot.tools.models import (
     ChatPlatformChannelListResponse,
@@ -227,3 +228,117 @@ async def test_list_channels_requires_auth(session):
     )
     assert isinstance(result, ErrorResponse)
     assert result.error == "auth_required"
+
+
+# ── Multi-platform (Slack / Telegram) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform_name", ["slack", "telegram"])
+async def test_post_routes_slack_and_telegram(session, platform_name):
+    bridge = _bridge()
+    bridge.send_message_to_channel.return_value = DeliveryResult(
+        ok=True, kind="message", channel_id="chan-1", ref_id="1"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER,
+            session=session,
+            platform=platform_name,
+            channel="-100555" if platform_name == "telegram" else "#standup",
+            content="hi",
+        )
+    assert isinstance(result, ChatPlatformPostedResponse)
+    assert result.platform == platform_name
+    forwarded = bridge.send_message_to_channel.await_args.kwargs["platform"]
+    assert forwarded.value == platform_name.upper()
+
+
+@pytest.mark.asyncio
+async def test_post_telegram_channel_not_found_adds_targeting_hint(session):
+    # Telegram can't list channels, so a failed name lookup must steer the
+    # model toward numeric chat IDs instead of list_chat_platform_channels.
+    bridge = _bridge()
+    bridge.send_message_to_channel.return_value = DeliveryResult(
+        ok=False, kind="message", error="channel_not_found"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER,
+            session=session,
+            platform="telegram",
+            channel="general",
+            content="hi",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "numeric chat ID" in result.message
+    assert "list_chat_platform_channels" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_list_channels_telegram_empty_explains_no_listing(session):
+    bridge = _bridge()
+    bridge.list_channels.return_value = []
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await ListChatPlatformChannelsTool()._execute(
+            user_id=_USER, session=session, platform="telegram"
+        )
+    assert isinstance(result, ChatPlatformChannelListResponse)
+    assert result.count == 0
+    assert "numeric chat ID" in result.message
+
+
+def _secrets(**overrides) -> MagicMock:
+    secrets = MagicMock()
+    secrets.autopilot_bot_discord_token = ""
+    secrets.autopilot_bot_slack_token = ""
+    secrets.autopilot_bot_slack_signing_secret = ""
+    secrets.autopilot_bot_slack_client_id = ""
+    secrets.autopilot_bot_slack_client_secret = ""
+    secrets.autopilot_bot_telegram_token = ""
+    secrets.autopilot_bot_telegram_webhook_secret = ""
+    for key, value in overrides.items():
+        setattr(secrets, key, value)
+    return secrets
+
+
+@pytest.mark.parametrize(
+    "overrides,expected",
+    [
+        ({}, False),
+        ({"autopilot_bot_discord_token": "d-token"}, True),
+        # Slack mirrors the webhook mount gate: signing secret + creds.
+        ({"autopilot_bot_slack_signing_secret": "s"}, False),
+        (
+            {
+                "autopilot_bot_slack_signing_secret": "s",
+                "autopilot_bot_slack_token": "xoxb",
+            },
+            True,
+        ),
+        (
+            {
+                "autopilot_bot_slack_signing_secret": "s",
+                "autopilot_bot_slack_client_id": "id",
+                "autopilot_bot_slack_client_secret": "sec",
+            },
+            True,
+        ),
+        # Telegram needs token + webhook secret, like its mount gate.
+        ({"autopilot_bot_telegram_token": "123:abc"}, False),
+        (
+            {
+                "autopilot_bot_telegram_token": "123:abc",
+                "autopilot_bot_telegram_webhook_secret": "hex",
+            },
+            True,
+        ),
+    ],
+)
+def test_configured_gate_mirrors_adapter_gates(overrides, expected):
+    _any_chat_platform_configured.cache_clear()
+    settings = MagicMock()
+    settings.secrets = _secrets(**overrides)
+    with patch(f"{_PATH}.Settings", return_value=settings):
+        assert _any_chat_platform_configured() is expected
+    _any_chat_platform_configured.cache_clear()

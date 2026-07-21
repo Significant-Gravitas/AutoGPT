@@ -588,6 +588,7 @@ export function ChatMessagesContainer({
               from={message.role}
               key={message.id}
               data-message-id={message.id}
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
               <MessageContent
                 className={
@@ -703,7 +704,10 @@ export function ChatMessagesContainer({
           </div>
         )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
+          <Message
+            from="assistant"
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+          >
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>
