@@ -106,7 +106,12 @@ from backend.integrations.credentials_store import (
 
 def _model_cost_from_catalog() -> dict[LlmModel, int]:
     """Flat credits-per-run tiers, read from the catalog — the single
-    source of truth for model pricing."""
+    source of truth for model pricing.
+
+    Deliberately does NOT filter on ``is_enabled``: the kill switch stops
+    a model from being SERVED to new work, but stored graphs that still
+    reference it keep executing — and an execution that happens must be
+    billed. Filtering here would make killed-model usage free."""
     members = {m.value: m for m in LlmModel}
     costs: dict[LlmModel, int] = {}
     for model in get_catalog().models:

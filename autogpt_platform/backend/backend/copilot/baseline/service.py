@@ -425,7 +425,7 @@ class _BaselineStreamState:
     """
 
     model: str = ""
-    # Which routing layer picked ``model`` ("ld" | "db" | "env") — stamped
+    # Which routing layer picked ``model`` ("ld" | "catalog" | "env") — stamped
     # onto persisted assistant messages for product-intelligence segmentation.
     routing_source: str = "env"
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``

@@ -1485,3 +1485,66 @@ class TestEmptyToolCallNoArgException:
         # not the saturation failure).
         assert result.count == 0
         assert result.tripped is False
+
+
+# ---------------------------------------------------------------------------
+# _stamp_turn_messages — turn-bounded model/routing_source stamping
+# ---------------------------------------------------------------------------
+
+
+class TestStampTurnMessages:
+    """The SDK path stamps at persist time; the stamp must be bounded to
+    the turn (never back-stamping pre-feature NULL history) and must not
+    overwrite already-stamped rows."""
+
+    def _messages(self):
+        from backend.copilot.model import ChatMessage
+
+        return [
+            ChatMessage(role="assistant", content="old", sequence=0),
+            ChatMessage(role="user", content="q", sequence=1),
+            ChatMessage(role="assistant", content="new", sequence=2),
+        ]
+
+    def test_stamps_only_this_turns_assistant_rows(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs, start_index=1, model="claude-sonnet-4-6", routing_source="env"
+        )
+        assert msgs[0].model is None  # pre-turn history untouched
+        assert msgs[1].model is None  # user rows untouched
+        assert msgs[2].model == "claude-sonnet-4-6"
+        assert msgs[2].routing_source == "env"
+
+    def test_never_overwrites_an_existing_stamp(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        msgs[2].model = "already/stamped"
+        msgs[2].routing_source = "ld"
+        _stamp_turn_messages(
+            msgs, start_index=0, model="claude-sonnet-4-6", routing_source="env"
+        )
+        assert msgs[2].model == "already/stamped"
+        assert msgs[2].routing_source == "ld"
+
+
+class TestChatMessageStampRoundTrip:
+    """model/routing_source survive the ChatMessage serialization cycle the
+    persistence layer uses."""
+
+    def test_round_trip(self):
+        from backend.copilot.model import ChatMessage
+
+        msg = ChatMessage(
+            role="assistant",
+            content="x",
+            sequence=3,
+            model="claude-sonnet-4-6",
+            routing_source="catalog",
+        )
+        restored = ChatMessage.model_validate(msg.model_dump())
+        assert restored.model == "claude-sonnet-4-6"
+        assert restored.routing_source == "catalog"

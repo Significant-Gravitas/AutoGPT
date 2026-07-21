@@ -58,7 +58,7 @@ settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
-RoutingSource = Literal["ld", "db", "env"]
+RoutingSource = Literal["ld", "catalog", "env"]
 
 ROUTE_SURFACE_COPILOT = "copilot"
 
@@ -261,24 +261,27 @@ async def resolve_model_route(
     if not gated:
         return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
 
+    async def _env_floor() -> ResolvedModel:
+        # The env default is the LAST layer — refusing it would leave
+        # nothing to serve, so it is served even if the catalog disables
+        # it. But a kill switch pointing at the env floor is an incident
+        # the operator must hear about: log + Sentry (deduped) and serve.
+        env_slug = _config_default(config, mode, tier).strip()
+        if await _registry_refuses(env_slug, "env") is not None:
+            logger.error(
+                "[model_router] env default %r is refused by the catalog "
+                "but served anyway (last-resort floor) — change the "
+                "CHAT_*_MODEL default or the routing cell",
+                env_slug,
+            )
+        return ResolvedModel(env_slug, "env")
+
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
-    if cell_slug and await _registry_refuses(cell_slug, "db") is None:
+    if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:
         # Cells carry TRANSPORT-READY spellings (e.g. the vendor-prefixed
         # dot form ``anthropic/claude-sonnet-4.6`` OpenRouter serves) and are
         # returned verbatim; the catalog guard tests enforce the convention,
         # and the slug-tolerant gate above maps them to catalog identity.
-        return ResolvedModel(cell_slug, "db")
+        return ResolvedModel(cell_slug, "catalog")
 
-    return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
-
-
-async def resolve_model(
-    mode: ModelMode,
-    tier: ModelTier,
-    user_id: str | None,
-    *,
-    config: ChatConfig,
-) -> str:
-    """Back-compat wrapper for callers that only need the model id."""
-    resolved = await resolve_model_route(mode, tier, user_id, config=config)
-    return resolved.model
+    return await _env_floor()

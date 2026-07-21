@@ -7,7 +7,13 @@ import pytest
 
 import backend.data.llm_registry.registry as reg
 from backend.copilot.config import ChatConfig
-from backend.copilot.model_router import _config_default, resolve_model
+from backend.copilot.model_router import _config_default, resolve_model_route
+
+
+async def resolve_model(mode, tier, user_id, *, config):
+    """Test-local stand-in for the deleted back-compat wrapper: these tests
+    assert on resolution VALUES; the routing source is covered elsewhere."""
+    return (await resolve_model_route(mode, tier, user_id, config=config)).model
 
 
 @pytest.fixture(autouse=True)
@@ -367,6 +373,11 @@ class TestRegistryGating:
             "disabled/model": make("disabled/model", enabled=False),
             "hidden/model": make("hidden/model", visibility="HIDDEN"),
             "cell/model": make("cell/model"),
+            # The env-floor defaults resolve through the gate too (served
+            # regardless, but logged) — register them so refusal
+            # assertions only count the layer under test.
+            "claude-sonnet-4-6": make("claude-sonnet-4-6"),
+            "claude-opus-4-7": make("claude-opus-4-7"),
         }
         reg._routes = {}
         # Cell tests exercise the cloud path — the test env's default
@@ -475,7 +486,7 @@ class TestRegistryGating:
         resolved = await resolve_model_route(
             "fast", "standard", "user-1", config=_make_config()
         )
-        assert resolved == ("cell/model", "db")
+        assert resolved == ("cell/model", "catalog")
 
     @pytest.mark.asyncio
     async def test_ld_beats_db_cell(self, mocker):
@@ -500,7 +511,7 @@ class TestRegistryGating:
         cfg = _make_config()
         resolved = await resolve_model_route("fast", "standard", "user-1", config=cfg)
         assert resolved == (cfg.fast_standard_model, "env")
-        assert "refused db slug" in self.sentry.call_args.args[0]
+        assert "refused catalog slug" in self.sentry.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_no_user_skips_ld_but_uses_db_cell(self):
@@ -510,7 +521,7 @@ class TestRegistryGating:
         resolved = await resolve_model_route(
             "fast", "standard", None, config=_make_config()
         )
-        assert resolved == ("cell/model", "db")
+        assert resolved == ("cell/model", "catalog")
 
     @pytest.mark.asyncio
     async def test_empty_registry_gates_nothing(self, mocker):
@@ -557,7 +568,7 @@ class TestRegistryGating:
         resolved = await resolve_model_route(
             "fast", "standard", "user-1", config=_make_config()
         )
-        assert resolved == ("anthropic/claude-sonnet-4.6", "db")
+        assert resolved == ("anthropic/claude-sonnet-4.6", "catalog")
 
     def test_catalog_cell_values_normalize_on_every_transport(self, mocker):
         """The REAL catalog routing cells must be transport-ready: OpenRouter

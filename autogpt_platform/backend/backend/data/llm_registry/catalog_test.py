@@ -116,6 +116,13 @@ def test_metadata_matches_pre_catalog_snapshot():
         assert MODEL_METADATA[LlmModel(slug)]._asdict() == fields, slug
 
 
+def test_exactly_one_enabled_recommended_model():
+    """DEFAULT_LLM_MODEL derives from is_recommended in catalog order — a
+    second recommended entry would silently shift the platform default."""
+    recommended = [m.slug for m in CATALOG.models if m.is_recommended and m.is_enabled]
+    assert len(recommended) == 1, recommended
+
+
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
     and per-1M token rates — must match its authored catalog entry."""

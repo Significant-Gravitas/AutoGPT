@@ -1941,6 +1941,28 @@ def _resolve_sdk_model() -> str | None:
     return _normalize_model_name(config.thinking_standard_model)
 
 
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    model: str | None,
+    routing_source: RoutingSource,
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+    """
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source
+
+
 async def _resolve_thinking_model_for_user(
     tier: "CopilotLlmModel",
     user_id: str | None,
@@ -5322,14 +5344,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
-            # Stamp this turn's assistant messages with the model that
-            # served them and which routing layer picked it — the SDK
-            # adapters build messages far from the resolution context, so
-            # the stamp lands here, bounded to the turn's own rows.
-            for _msg in session.messages[pre_turn_message_count:]:
-                if _msg.role == "assistant" and _msg.model is None:
-                    _msg.model = effective_model
-                    _msg.routing_source = routing_source
+            _stamp_turn_messages(
+                session.messages,
+                start_index=pre_turn_message_count,
+                model=effective_model,
+                routing_source=routing_source,
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
