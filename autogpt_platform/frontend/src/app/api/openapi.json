@@ -15889,6 +15889,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Session Id"
           },
+          "ingestion_drained": {
+            "type": "boolean",
+            "title": "Ingestion Drained",
+            "default": true
+          },
           "operations": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
