@@ -12,12 +12,14 @@ from typing import Any
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
-from backend.executor.utils import make_node_credentials_input_map
+from backend.executor.utils import (
+    make_node_credentials_input_map,
+    validate_and_construct_node_execution_input,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import InvalidInputError, NotFoundError
-from backend.util.json import validate_with_jsonschema
 
 from . import db
 from . import model as models
@@ -80,8 +82,6 @@ async def setup_triggered_preset(
         )
 
     constant_inputs = constant_inputs or {}
-    if error := validate_with_jsonschema(graph.input_schema, constant_inputs):
-        raise InvalidInputError(f"Invalid graph inputs: {error}")
 
     trigger_config_with_credentials = {
         **trigger_config,
@@ -92,6 +92,22 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+
+    # Validate the preset's inputs the same way the executor will — regular
+    # inputs as graph inputs, trigger config as the trigger node's mask — so an
+    # invalid preset is rejected before any webhook is registered.
+    try:
+        await validate_and_construct_node_execution_input(
+            graph_id=graph.id,
+            user_id=user_id,
+            graph_inputs=constant_inputs,
+            graph_version=graph.version,
+            graph_credentials_inputs=agent_credentials,
+            nodes_input_masks={trigger_node.id: trigger_config_with_credentials},
+            dry_run=True,
+        )
+    except ValueError as e:
+        raise InvalidInputError(f"Invalid preset inputs: {e}")
 
     # Resource-follows-parent: the webhook lives in the graph's org/team,
     # not the caller's active org.

@@ -17,15 +17,24 @@ _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
 
 
-def _graph(*, input_schema=None):
+@pytest.fixture(autouse=True)
+def _mock_validate_execution_input():
+    """setup_triggered_preset validates inputs via the execution-input builder,
+    which hits the DB. Default it to a no-op; the validation-failure test
+    overrides it to raise."""
+    with patch(
+        f"{_PATH}.validate_and_construct_node_execution_input", new=AsyncMock()
+    ) as m:
+        yield m
+
+
+def _graph():
     node = MagicMock()
     node.id = "trigger-node"
     graph = MagicMock()
     graph.id = "graph-1"
     graph.version = 1
     graph.webhook_input_node = node
-    # Empty schema by default -> constant_inputs validation is a no-op.
-    graph.input_schema = input_schema if input_schema is not None else {}
     return graph
 
 
@@ -120,19 +129,21 @@ async def test_webhook_setup_rejected_raises():
 
 
 @pytest.mark.asyncio
-async def test_constant_inputs_validated_against_graph_input_schema():
-    """constant_inputs that violate the graph's input schema are rejected before
-    the preset (or webhook) is created."""
-    graph = _graph(
-        input_schema={
-            "type": "object",
-            "properties": {"count": {"type": "number"}},
-            "required": ["count"],
-        }
-    )
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=graph)
-    with p_graph, p_creds, p_webhook, p_create as create_mock:
-        with pytest.raises(InvalidInputError, match="Invalid graph inputs"):
+async def test_invalid_inputs_rejected_before_webhook_setup():
+    """Inputs the execution-input validator rejects fail the setup before any
+    webhook is registered or preset created."""
+    p_graph, p_creds, p_webhook, p_create = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.validate_and_construct_node_execution_input",
+            new=AsyncMock(side_effect=ValueError("count is not a number")),
+        ),
+    ):
+        with pytest.raises(InvalidInputError, match="Invalid preset inputs"):
             await setup_triggered_preset(
                 user_id=_USER,
                 graph_id="graph-1",
@@ -143,6 +154,7 @@ async def test_constant_inputs_validated_against_graph_input_schema():
                 agent_credentials={},
                 constant_inputs={"count": "not-a-number"},
             )
+    webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
 
 
