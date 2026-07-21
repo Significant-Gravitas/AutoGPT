@@ -71,7 +71,7 @@ class ResolvedModel(NamedTuple):
 _DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
-def _catalog_lookup(slug: str):
+def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
@@ -102,6 +102,7 @@ def _catalog_lookup(slug: str):
 
 
 _sentry_reported: set[tuple[str, str]] = set()
+_unloaded_reported: list[bool] = []
 
 
 async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
@@ -112,6 +113,16 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     refused; HIDDEN visibility serves fine when explicitly routed.
     """
     if not llm_registry.get_all_models():
+        if not llm_registry.registry.is_loaded() and not _unloaded_reported:
+            # Empty-because-dormant is legitimate; empty-because-nobody-
+            # called-load_catalog() in this process is a wiring bug that
+            # would silently disable gating and cells — say so, once.
+            _unloaded_reported.append(True)
+            logger.error(
+                "[model_router] registry gating skipped: load_catalog() was "
+                "never called in this process — routing cells and serve-time "
+                "gating are inactive"
+            )
         return None
     model = _catalog_lookup(slug)
     if model is None:

@@ -116,6 +116,30 @@ def test_metadata_matches_pre_catalog_snapshot():
         assert MODEL_METADATA[LlmModel(slug)]._asdict() == fields, slug
 
 
+def test_kimi_k3_bills_at_authored_rates():
+    """The flagship catalog-native model's billing projections — flat tier
+    and per-1M token rates — must match its authored catalog entry."""
+    k3 = LlmModel("moonshotai/kimi-k3")
+    assert MODEL_COST[k3] == 9
+    assert TOKEN_COST[k3].model_dump() == {
+        "input": 450.0,
+        "output": 2250.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+
+
+def test_provider_usd_prices_are_all_or_nothing():
+    """A half-authored provider USD price must refuse to construct — it
+    would silently underprice against the transport family default."""
+    import pytest
+
+    from backend.data.llm_registry.catalog_model import CatalogModelCost
+
+    with pytest.raises(ValueError, match="must be set together"):
+        CatalogModelCost(run_credits=1, provider_input_usd_per_1m=3.0)
+
+
 def test_routing_cells_use_transport_ready_spellings():
     """Routing cells are sent to providers (nearly) verbatim, so they must use
     the spelling the transport expects — NOT the catalog's canonical slug.

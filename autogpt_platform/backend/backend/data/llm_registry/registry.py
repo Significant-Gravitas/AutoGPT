@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 class RegistryModelMetadata(BaseModel):
     """Model facts in the shape block schemas expect.
 
+    Field-compatible with ``llm_models.ModelMetadata`` by design — the two
+    shapes must not drift (one is the block-facing NamedTuple projection,
+    this is the router-facing pydantic view of the same catalog facts).
+
     Standalone rather than reusing the ``ModelMetadata`` NamedTuple from
     ``backend.blocks.llm`` — the registry must not couple to the hardcoded
     enum module it will eventually replace, and NamedTuples serialize as
@@ -62,8 +66,12 @@ class RegistryModel(BaseModel):
     is_enabled: bool
     is_recommended: bool = False
 
-    # is_enabled is the kill switch (never serves when False); visibility only
-    # controls who SEES the model — HIDDEN still serves when explicitly routed.
+    # is_enabled is the kill switch for SERVING NEW WORK: copilot refuses the
+    # model and it leaves picker metadata. Existing agent graphs keep
+    # executing (and billing) — hard-stopping users' running agents is a
+    # deliberate separate act (the retire CLI), never a flag side-effect.
+    # visibility only controls who SEES the model — HIDDEN still serves
+    # when explicitly routed.
     kind: str = "CHAT"
     visibility: str = "GA"
     min_subscription_tier: SubscriptionTierName | None = None
@@ -82,6 +90,7 @@ class RegistryModel(BaseModel):
 # locking is needed.
 _dynamic_models: dict[str, RegistryModel] = {}
 _routes: dict[tuple[str, str, str], str] = {}
+_loaded = False
 
 
 def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
@@ -132,7 +141,7 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     empty registry (which would silently disable routing cells and
     serve-time gating).
     """
-    global _dynamic_models, _routes
+    global _dynamic_models, _routes, _loaded
     if payload is None:
         payload = get_catalog()
     models = _build_models(payload)
@@ -144,9 +153,17 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     }
     _dynamic_models = models
     _routes = routes
+    _loaded = True
     logger.info(
         "LLM catalog loaded: %d models, %d routing cells", len(models), len(routes)
     )
+
+
+def is_loaded() -> bool:
+    """Whether load_catalog() has run in this process — distinguishes a
+    deliberately-dormant registry from an entrypoint that forgot to load
+    (the latter silently disables copilot gating and routing cells)."""
+    return _loaded
 
 
 def get_model(slug: str) -> RegistryModel | None:

@@ -209,6 +209,15 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
         raise ValueError("No nodes to revert in this migration")
 
     async with transaction() as tx:
+        # Atomic claim: the guarded update IS the lock — a concurrent revert
+        # of the same migration matches zero rows and aborts here without
+        # touching any nodes (fixes the check-then-act race on isReverted).
+        claimed = await tx.llmmodelmigration.update_many(
+            where={"id": migration_id, "isReverted": False},
+            data={"isReverted": True, "revertedAt": datetime.now(timezone.utc)},
+        )
+        if claimed == 0:
+            raise ValueError(f"Migration '{migration_id}' has already been reverted")
         # Guarded on the migrated value: nodes manually repointed at a third
         # model since the migration are left alone.
         result = await tx.execute_raw(
@@ -231,10 +240,6 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
             migration.targetModelSlug,
         )
         nodes_reverted = result if isinstance(result, int) else 0
-        await tx.llmmodelmigration.update(
-            where={"id": migration_id},
-            data={"isReverted": True, "revertedAt": datetime.now(timezone.utc)},
-        )
 
     if get_model(migration.sourceModelSlug) is None:
         logger.warning(

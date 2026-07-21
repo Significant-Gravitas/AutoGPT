@@ -61,7 +61,7 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
-from ..model_router import resolve_model
+from ..model_router import ResolvedModel, RoutingSource, resolve_model_route
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -1944,13 +1944,15 @@ def _resolve_sdk_model() -> str | None:
 async def _resolve_thinking_model_for_user(
     tier: "CopilotLlmModel",
     user_id: str | None,
-) -> str:
+) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
     Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
-    to the ``ChatConfig`` default on missing user / missing flag.
+    to the ``ChatConfig`` default on missing user / missing flag. Returns
+    the model together with which routing layer picked it, so persisted
+    assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model("thinking", tier, user_id, config=config)
+    return await resolve_model_route("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -1979,8 +1981,8 @@ async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
     user_id: str | None = None,
-) -> str | None:
-    """Resolve the SDK model string for a turn.
+) -> tuple[str | None, RoutingSource]:
+    """Resolve the SDK model string for a turn, plus which layer picked it.
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
@@ -1996,7 +1998,7 @@ async def _resolve_sdk_model_for_request(
     4. ``ChatConfig`` static default for the tier.
     """
     if config.claude_agent_model:
-        return config.claude_agent_model
+        return config.claude_agent_model, "env"
 
     tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
@@ -2020,7 +2022,7 @@ async def _resolve_sdk_model_for_request(
     # must be honoured.  Without this, a subscription-mode deployment
     # silently ignores the ``copilot-model-routing[thinking][standard]``
     # flag entirely, which defeats the point of cohort-based routing.
-    ld_overrides_default = resolved != tier_default
+    ld_overrides_default = resolved.model != tier_default
     if (
         not ld_overrides_default
         and tier_name == "standard"
@@ -2030,9 +2032,9 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
         )
-        return None
+        return None, "env"
     try:
-        sdk_model = _normalize_model_name(resolved)
+        sdk_model = _normalize_model_name(resolved.model)
     except ValueError as exc:
         # The per-user LD value didn't pass ``_normalize_model_name``'s
         # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
@@ -2054,19 +2056,19 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
             session_id[:12] if session_id else "?",
-            resolved,
+            resolved.model,
             tier_name,
             exc,
             sdk_model,
         )
-        return sdk_model
+        return sdk_model, "env"
     logger.info(
         "[SDK] [%s] Resolved model for tier=%s: %s",
         session_id[:12] if session_id else "?",
         tier_name,
         sdk_model,
     )
-    return sdk_model
+    return sdk_model, resolved.source
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -3949,6 +3951,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Stamping state for THIS turn: messages beyond this index were created
+    # by the current turn and get model/routing_source at persist time.
+    # Pre-feature history rows (NULL model) must never be back-stamped.
+    pre_turn_message_count = len(session.messages)
+    routing_source: RoutingSource = "env"
+
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
     if session.organization_id is None and organization_id:
@@ -4266,7 +4274,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
-        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
+        sdk_model, routing_source = await _resolve_sdk_model_for_request(
+            model, session_id, user_id
+        )
         fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
@@ -5312,6 +5322,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # Stamp this turn's assistant messages with the model that
+            # served them and which routing layer picked it — the SDK
+            # adapters build messages far from the resolution context, so
+            # the stamp lands here, bounded to the turn's own rows.
+            for _msg in session.messages[pre_turn_message_count:]:
+                if _msg.role == "assistant" and _msg.model is None:
+                    _msg.model = effective_model
+                    _msg.routing_source = routing_source
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(

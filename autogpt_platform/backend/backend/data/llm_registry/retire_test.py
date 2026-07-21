@@ -8,6 +8,7 @@ validation and the active-migration partial unique index.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import prisma.models
 import pytest
@@ -207,3 +208,20 @@ async def test_prefixed_model_nodes_are_found_and_rewritten(retirement_env):
     revert = await revert_model_migration(result.migration_id)
     assert revert.nodes_reverted == 1
     assert await _node_model(node_id) == source
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_dry_run_writes_nothing(retirement_env, mocker):
+    """The destructive CLI defaults to dry-run: without --yes it must
+    report and exit 1 having written no node changes and no record."""
+    from backend.data.llm_registry.retire import _build_parser, _run_cli
+
+    source, replacement = _two_catalog_slugs()
+    node_id = await _seed_node(retirement_env, _node_value(source))
+
+    mocker.patch("backend.data.db.connect", new=AsyncMock())
+    args = _build_parser().parse_args([source, "--replacement", replacement])
+    assert await _run_cli(args) == 1
+
+    assert await _node_model(node_id) == _node_value(source)
+    assert await prisma.models.LlmModelMigration.prisma().count() == 0

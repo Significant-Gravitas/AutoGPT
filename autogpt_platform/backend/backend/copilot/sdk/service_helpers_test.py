@@ -16,6 +16,7 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
 
+from ..model_router import ResolvedModel
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
@@ -589,13 +590,16 @@ class TestResolveSdkModelForRequestTransportAware:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv", user_id="user-1"
             )
-        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated form.
-        assert resolved == "claude-opus-4-7"
+        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated
+        # form; and the LD routing source rides along for message stamping.
+        assert resolved == ("claude-opus-4-7", "ld")
 
     @pytest.mark.asyncio
     async def test_subscription_standard_no_override_returns_none(
@@ -616,12 +620,43 @@ class TestResolveSdkModelForRequestTransportAware:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std", user_id="user-1"
             )
-        assert resolved is None
+        assert resolved == (None, "env")
+
+    @pytest.mark.asyncio
+    async def test_env_default_stamps_env_source(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
+        """No LD opinion, no subscription: the config default serves and the
+        routing source says so — this is the value persisted onto SDK-path
+        assistant messages."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
+            ),
+        ):
+            model, source = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-env", user_id="user-1"
+            )
+        assert source == "env"
+        assert model is not None
 
 
 # ---------------------------------------------------------------------------

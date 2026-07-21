@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATALOG_SCHEMA_VERSION = 1
 
@@ -74,6 +74,20 @@ class CatalogModelCost(BaseModel):
     # Not the billing source; the credits fields above are what users pay.
     provider_input_usd_per_1m: float | None = Field(default=None, ge=0)
     provider_output_usd_per_1m: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _provider_usd_both_or_neither(self) -> "CatalogModelCost":
+        # A half-authored provider price would silently fall back to the
+        # transport module's (cheaper) family default — underpricing a
+        # premium SKU with no error. Refuse the partial state at authoring.
+        if (self.provider_input_usd_per_1m is None) != (
+            self.provider_output_usd_per_1m is None
+        ):
+            raise ValueError(
+                "provider_input_usd_per_1m and provider_output_usd_per_1m "
+                "must be set together"
+            )
+        return self
 
 
 class CatalogModel(BaseModel):
