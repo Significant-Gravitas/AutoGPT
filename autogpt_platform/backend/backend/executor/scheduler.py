@@ -347,7 +347,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
 
 
 async def _best_effort_unschedule(
-    schedule_id: str | None, user_id: str, *, reason: str
+    schedule_id: str | None, graph_id: str, user_id: str, *, reason: str
 ) -> None:
     """Self-delete a schedule whose firing condition is no longer satisfiable
     (graph deleted, session deleted, validation failure, etc.).
@@ -360,10 +360,10 @@ async def _best_effort_unschedule(
     try:
         if not schedule_id:
             logger.warning(
-                f"Old scheduled job for graph {args.graph_id} (user {args.user_id}) "
+                f"Old scheduled job for graph {graph_id} (user {user_id}) "
                 f"has no schedule_id, attempting targeted cleanup"
             )
-            await _cleanup_old_schedules_without_id(args.graph_id, args.user_id)
+            await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
         else:
             await get_scheduler_client().delete_schedule(
                 schedule_id=schedule_id, user_id=user_id
@@ -379,7 +379,7 @@ async def _best_effort_unschedule(
 async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
     """Convenience wrapper for copilot-turn schedules whose target session is gone."""
     await _best_effort_unschedule(
-        args.schedule_id, args.user_id, reason="session deleted"
+        args.schedule_id, args.graph_id, args.user_id, reason="session deleted"
     )
 
 
@@ -389,6 +389,7 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
     )
     await _best_effort_unschedule(
         args.schedule_id,
+        args.graph_id,
         args.user_id,
         reason=f"graph {args.graph_id} validation failed",
     )
