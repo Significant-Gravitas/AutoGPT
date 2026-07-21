@@ -35,3 +35,24 @@ def test_kill_switched_model_hidden_from_picker_metadata(monkeypatch):
 def test_all_models_visible_when_none_disabled():
     metadata = _schema_metadata()
     assert len(metadata) == len(list(LlmModel))
+
+
+def test_default_model_survives_killing_the_recommended_entry(monkeypatch):
+    """Killing the only is_recommended model must not crash boot — the
+    default falls back to the first enabled block-selectable model."""
+    from backend.data.llm_registry import llm_models
+    from backend.data.llm_registry.catalog import get_catalog
+
+    payload = get_catalog()
+    killed = payload.model_copy(
+        update={
+            "models": [
+                (m.model_copy(update={"is_enabled": False}) if m.is_recommended else m)
+                for m in payload.models
+            ]
+        }
+    )
+    monkeypatch.setattr(llm_models, "get_catalog", lambda: killed)
+    fallback = llm_models._default_model_from_catalog()
+    assert fallback is not None
+    assert not any(m.is_recommended and m.is_enabled for m in killed.models)

@@ -8,11 +8,14 @@ and facts share one package; ``backend.blocks.llm`` re-exports everything
 for the existing import surface.
 """
 
+import logging
 from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from typing import Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
+
+logger = logging.getLogger(__name__)
 
 
 class ModelMetadata(NamedTuple):
@@ -257,13 +260,24 @@ def _default_model_from_catalog() -> LlmModel:
     one home. First enabled ``is_recommended`` entry with an enum identifier
     wins (catalog order); no recommendation is a data error caught at boot.
     """
+    members = {m.value for m in LlmModel}
+    first_enabled: LlmModel | None = None
     for model in get_catalog().models:
-        if model.is_recommended and model.is_enabled:
-            try:
-                return LlmModel(model.slug)
-            except ValueError:
-                continue
-    raise ValueError("catalog declares no recommended enabled model")
+        if not model.is_enabled or model.slug not in members:
+            continue
+        if model.is_recommended:
+            return LlmModel(model.slug)
+        if first_enabled is None:
+            first_enabled = LlmModel(model.slug)
+    # Killing the recommended model must not crash boot — fall back to the
+    # first enabled block-selectable model (deterministic catalog order).
+    if first_enabled is not None:
+        logger.error(
+            "catalog has no enabled is_recommended model — defaulting to %s",
+            first_enabled.value,
+        )
+        return first_enabled
+    raise ValueError("catalog declares no enabled block-selectable models")
 
 
 DEFAULT_LLM_MODEL = _default_model_from_catalog()
