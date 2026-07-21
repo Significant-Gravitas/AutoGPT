@@ -103,7 +103,14 @@ def test_billing_matches_pre_catalog_snapshot():
 
 
 def test_metadata_matches_pre_catalog_snapshot():
-    """Same parity proof for the block-facing metadata projection."""
+    """Same parity proof for the block-facing metadata projection.
+
+    DISCLOSED DELTA: 4 provider_name cells in the snapshot were updated to
+    the catalog's display names — the cutover intentionally renames them:
+    "V0" → "v0 by Vercel" (v0-1.0-md, v0-1.5-md, v0-1.5-lg) and
+    "AI/ML" → "AI/ML API" (meta-llama/Llama-3.3-70B-Instruct-Turbo).
+    Every other cell is the deleted literal, byte-for-byte.
+    """
     snapshot = json.loads(_SNAPSHOT_PATH.read_text())
     for slug, fields in snapshot["model_metadata"].items():
         assert MODEL_METADATA[LlmModel(slug)]._asdict() == fields, slug

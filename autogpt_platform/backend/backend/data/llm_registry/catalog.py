@@ -29,10 +29,10 @@ _catalog_cache: CatalogPayload | None = None
 def get_catalog() -> CatalogPayload:
     """Build-once accessor for the catalog payload.
 
-    Raises on an invalid catalog literal — construction is deliberately
-    NOT at import time, so a bad catalog degrades fail-soft inside
-    ``registry.load_catalog`` callers instead of ImportError-crashing
-    every process that transitively imports this package."""
+    Raises on an invalid catalog literal. The catalog is LOAD-BEARING:
+    ``llm_models``/``block_cost_config`` call this at module import, so a
+    bad catalog stops every process at boot (the intended fail-hard —
+    CI's catalog tests catch it long before a deploy does)."""
     global _catalog_cache
     if _catalog_cache is None:
         _catalog_cache = _build_catalog()
@@ -655,6 +655,8 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=9,
                     input_credits_per_1m=450.0,
                     output_credits_per_1m=2250.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
                 ),
             ),
             CatalogModel(

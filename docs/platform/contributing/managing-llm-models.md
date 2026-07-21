@@ -26,19 +26,21 @@ Each `CatalogModel` entry:
 | `context_window` / `max_output_tokens` | Token limits. |
 | `price_tier` | 1 (cheapest) to 3 (most expensive); used for display. |
 | `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when LaunchDarkly routes to it. |
-| `visibility` | Who may *see* the model: `GA` (everyone; the only tier exported by the public catalog endpoint), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Visibility never overrides `is_enabled`. |
+| `visibility` | Who may *see* the model: `GA` (everyone), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Informational until the catalog-driven picker lands (today a model stays out of block pickers by not having an enum line); the field is the picker's contract. Visibility never overrides `is_enabled`. |
 | `min_subscription_tier` | Optional tier gate (e.g. `MAX`); enforcement arrives with the catalog-driven model picker. |
-| `fallback_model_slug` | Standing replacement pointer; pre-fills the retirement flow and reserved for future automatic failover. |
-| `supports_*` / `capabilities` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational today; surfaced as warnings, never runtime-blocking. |
-| `cost` | Flat `run_credits` and/or per-1M token credit rates. See the cost note below. |
+| `fallback_model_slug` | Standing replacement pointer: the retirement CLI defaults `--replacement` to it, and it is reserved for future automatic failover. |
+| `supports_*` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational and authored opportunistically — `False` means *not asserted*, not "unsupported"; nothing consumes them at runtime yet, so only rely on authored `True` values. |
+| `cost` | What users pay: flat `run_credits` and/or per-1M token **credit** rates (billing reads these). Optionally `provider_*_usd_per_1m`: what the provider charges us — the USD list price, used for in-turn cost estimates when a model is priced off its family default (e.g. Kimi K3's $3/$15). |
 
-> **Cost note:** block billing still reads `MODEL_COST` / `TOKEN_COST` in
-> `backend/data/block_cost_config.py`. Until the catalog becomes the billing
-> source, tripwire tests enforce that catalog costs and those dicts stay in
-> lockstep — so a cost change means editing **both** places, and CI fails if
-> they disagree. The same applies to new block-selectable models: the
-> `LlmModel` enum in `backend/blocks/llm.py` remains the runtime source for
-> block model selection until the catalog-driven switch lands.
+> **Cost note:** the catalog IS the billing source. `MODEL_METADATA`,
+> `MODEL_COST`, and `TOKEN_COST` still exist as names, but they are
+> **derived from the catalog at import** — there is nothing else to edit.
+> One transitional artifact: `pre_catalog_costs_snapshot.json` pins the
+> prices billed at the cutover, so changing a **pre-cutover** model's price
+> is a deliberate two-line diff (catalog + snapshot) that shows old→new in
+> review. New models never touch the snapshot, and the first legitimate
+> legacy price change may simply delete the snapshot test instead
+> (it is cutover proof, not a permanent fixture).
 
 `CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination. **Cells ship empty**: an unset cell means the `CHAT_*_MODEL` env vars keep that combination, and *claiming* a cell is the explicit act of moving its control into the catalog:
 
@@ -63,6 +65,16 @@ shipped file but never overrides a self-hosted operator's
 
 ## Updating the catalog
 
+What each change touches — this is the complete list:
+
+| Change | You edit |
+| --- | --- |
+| Add a **block-selectable** model | Catalog entry + one `LlmModel` name line (`llm_registry/llm_models.py`). An import-time check refuses to boot if they drift. |
+| Add a **copilot-only** model | Catalog entry. |
+| Change a price (post-cutover model) | Catalog entry. |
+| Change a price (pre-cutover model) | Catalog entry + its snapshot line (see cost note). |
+| Kill / visibility / routing cell | Catalog entry. |
+
 1. Edit `catalog.py` (add a model, change a cell, flip a flag).
 2. Open a PR. Catalog-only diffs are reviewed by the `/review` bot — the integrity tests are the review.
 3. Merge. CD propagates the change with the next deploy.
@@ -72,7 +84,7 @@ Two lanes:
 - **Ordinary changes** (new models, metadata, visibility promotions) target `dev` and ride the normal release train.
 - **Incident-speed changes** (kills, routing swaps) may use a `hotfix/*` branch targeting `master` — the base-branch check permits this — so the change deploys with CD immediately after merge. Reverting is `git revert` on the same lane. **Immediately merge `master` back to `dev` after a catalog hotfix**: until the back-merge lands, the next release train would silently revert your change (an emergency kill un-killing itself is the worst version of this).
 
-Two things the file's public nature implies: a `HIDDEN` model is hidden from pickers and the public catalog endpoint, **not from anyone reading this repository** — genuinely embargoed models cannot ride this mechanism before announcement. And a model that exists only in the catalog (not yet in the `LlmModel` enum) must **omit its `cost` field** — the cost-drift tripwire requires catalog costs to mirror the billing dicts exactly until the catalog becomes the billing source.
+Two notes. The file is public: a `HIDDEN` model is hidden from pickers, **not from anyone reading this repository** — genuinely embargoed models cannot ride this mechanism before announcement. And a catalog-only model (no enum line) simply never surfaces in blocks — it may and should still carry `cost`: copilot cost estimation uses it today and block billing picks it up automatically if the model later gains an enum line.
 
 ## How AutoPilot picks a model
 
@@ -82,7 +94,7 @@ Each `(mode, tier)` cell resolves through three layers, top wins:
 2. **Catalog routing cell** — the PR-authored default above.
 3. **`CHAT_*_MODEL` environment variables** — the bootstrap floor (see `.env.default`).
 
-The catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged, reported to Sentry, and recorded for inspection — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain.
+On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged every time, reported to Sentry once per slug — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Self-hosted installs and local transports skip the gate entirely (LD → env, their slugs are their own business). Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain (message stamping covers the baseline path today).
 
 ## Rolling out a new model
 

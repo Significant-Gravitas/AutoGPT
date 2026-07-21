@@ -244,9 +244,7 @@ async def resolve_model_route(
 
     if user_id:
         ld_slug = await _ld_cell_value(mode, tier, user_id)
-        if ld_slug and (
-            not gated or await _registry_refuses(ld_slug, "ld") is None
-        ):
+        if ld_slug and (not gated or await _registry_refuses(ld_slug, "ld") is None):
             return ResolvedModel(ld_slug, "ld")
 
     if not gated:

@@ -34,6 +34,7 @@ from pydantic import BaseModel
 
 import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.registry import get_model, load_catalog
 
 logger = logging.getLogger(__name__)
@@ -279,7 +280,11 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("slug", nargs="?", help="model slug to retire")
-    parser.add_argument("--replacement", help="catalog slug nodes migrate to")
+    parser.add_argument(
+        "--replacement",
+        help="catalog slug nodes migrate to (defaults to the retired model's "
+        "catalog fallback_model_slug when set)",
+    )
     parser.add_argument("--reason", help="recorded on the migration row")
     parser.add_argument("--yes", action="store_true", help="execute (no dry-run)")
     parser.add_argument("--usage", metavar="SLUG", help="print node count and exit")
@@ -315,8 +320,23 @@ async def _run_cli(args: argparse.Namespace) -> int:
         for row in await list_model_migrations(args.include_reverted):
             print(json.dumps(row))
         return 0
+    if args.slug and not args.replacement:
+        # Standing replacement pointer: the catalog's fallback_model_slug
+        # pre-fills --replacement so routine retirements are one argument.
+        by_slug = {m.slug: m for m in get_catalog().models}
+        entry = by_slug.get(args.slug)
+        if entry is not None and entry.fallback_model_slug:
+            args.replacement = entry.fallback_model_slug
+            print(
+                f"--replacement defaulted from catalog fallback: "
+                f"'{args.replacement}'"
+            )
     if not args.slug or not args.replacement:
-        print("slug and --replacement are required to retire", file=sys.stderr)
+        print(
+            "slug and --replacement are required to retire (no catalog "
+            "fallback_model_slug is set for this model)",
+            file=sys.stderr,
+        )
         return 2
 
     usage = await count_model_usage(args.slug)

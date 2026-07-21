@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.data.llm_registry.catalog import get_catalog
 
 # Merged prod + dev distinct values, 2026-07-20. NULL rows (nodes without a
@@ -153,15 +153,20 @@ BLOCKS_DIR = Path(__file__).parents[2] / "blocks"
 
 
 def test_every_stored_llm_model_value_resolves_through_the_catalog():
+    # Block runtime resolves via the ENUM, whose identifiers must be catalog-
+    # backed (import-time check) — assert against enum values so a future
+    # copilot-only catalog model can't mask a value blocks would reject.
+    enum_values = {m.value for m in LlmModel}
     catalog_slugs = {m.slug for m in get_catalog().models}
+    assert enum_values <= catalog_slugs
     unresolved = []
     for value in STORED_MODEL_VALUES:
         if value in NON_LLM_BLOCK_VALUES:
             continue
-        if value in catalog_slugs:
+        if value in enum_values:
             continue
         legacy = LEGACY_MODEL_MAPPINGS.get(value)
-        if legacy is not None and legacy.value in catalog_slugs:
+        if legacy is not None and legacy.value in enum_values:
             continue
         unresolved.append(value)
     assert not unresolved, (
