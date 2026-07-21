@@ -7,7 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
-from .helpers import require_guide_read
+from .helpers import coerce_agent_json, require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
 logger = logging.getLogger(__name__)
@@ -39,8 +39,12 @@ class ValidateAgentGraphTool(BaseTool):
             "type": "object",
             "properties": {
                 "agent_json": {
-                    "type": "object",
-                    "description": "Agent JSON with 'nodes' and 'links' arrays.",
+                    "type": ["object", "string"],
+                    "description": (
+                        "Agent JSON with 'nodes' and 'links' arrays, or the "
+                        'string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
+                    ),
                 },
             },
             "required": ["agent_json"],
@@ -50,7 +54,7 @@ class ValidateAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict | None = None,
+        agent_json: dict | str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
@@ -59,9 +63,13 @@ class ValidateAgentGraphTool(BaseTool):
         if guide_gate is not None:
             return guide_gate
 
-        if not agent_json or not isinstance(agent_json, dict):
+        agent_json = coerce_agent_json(agent_json)
+        if not agent_json:
             return ErrorResponse(
-                message="Please provide a valid agent JSON object.",
+                message=(
+                    "Please provide a valid agent JSON object, or the string "
+                    '"@@agptfile:<path>" referencing a JSON file.'
+                ),
                 error="Missing or invalid agent_json parameter",
                 session_id=session_id,
             )

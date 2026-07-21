@@ -21,6 +21,7 @@ import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/preset
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 
 // Pass hard-coded data to individual handler functions to override faker-generated data.
 export const mockHandlers = [
@@ -47,4 +48,5 @@ export const mockHandlers = [
   ...getSchedulesMock(),
   ...getSearchMock(),
   ...getStoreMock(),
+  ...getWorkspaceMock(),
 ];

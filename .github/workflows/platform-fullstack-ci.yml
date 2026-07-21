@@ -41,7 +41,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -101,7 +101,7 @@ jobs:
       - name: Set up Frontend - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -291,7 +291,7 @@ jobs:
       - name: Set up tests - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 

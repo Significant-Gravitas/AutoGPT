@@ -333,6 +333,12 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             is_user_message=pending.role == "user",
             context=metadata.get("context"),
             file_ids=metadata.get("file_ids"),
+            # Session-anchored tenancy: promoted turns attribute to the
+            # session's org/team, same as directly-dispatched turns —
+            # without this, capped users' queued turns would lose their
+            # org context on promotion.
+            organization_id=head.organization_id,
+            team_id=head.team_id,
             mode=metadata.get("mode"),
             model=metadata.get("model"),
             permissions=metadata.get("permissions"),

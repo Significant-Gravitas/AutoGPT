@@ -1976,3 +1976,60 @@ async def test_bare_ref_parquet_nan_replaced_with_none():
         for cell in row:
             if isinstance(cell, float):
                 assert not math.isnan(cell), f"NaN leaked: {row}"
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_bare_ref_parses_to_dict():
+    """A bare ref in a slot typed ["object", "string"] (e.g. agent_json)
+    gets structured parsing — a JSON file arrives at the tool as a dict."""
+
+    async def _resolve(*_args, **_kwargs):
+        return '{"nodes": [{"id": "n1"}], "links": []}'
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": {"type": ["object", "string"]}},
+        "required": ["agent_json"],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": "@@agptfile:/home/user/agent.json"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] == {"nodes": [{"id": "n1"}], "links": []}
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_dict_skips_inner_expansion():
+    """An inline dict in a ["object", "string"]-typed slot with no declared
+    properties is left untouched — inner strings that merely mention
+    @@agptfile syntax (e.g. prompt text in an agent graph) must not be
+    expanded."""
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": {"type": ["object", "string"]}},
+        "required": ["agent_json"],
+    }
+    agent = {
+        "nodes": [{"id": "n1", "input_default": {"prompt": "@@agptfile:/x.json"}}],
+        "links": [],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": agent},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] is agent

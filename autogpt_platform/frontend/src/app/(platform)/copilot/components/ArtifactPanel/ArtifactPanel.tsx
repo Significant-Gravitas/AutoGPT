@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { MIN_ARTIFACT_PANEL_WIDTH } from "../../store";
+import { MIN_ARTIFACT_PANEL_WIDTH, PANEL_RESERVED_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactContent } from "./components/ArtifactContent";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
@@ -41,6 +41,31 @@ export function ArtifactPanel({ mobile }: Props) {
   if (activeArtifact && classification) {
     lastShownRef.current = { artifact: activeArtifact, classification };
   }
+
+  // The stored width is a preference, not a guarantee: the panel is shrink-0,
+  // so on narrow viewports it would overflow the flex row and get clipped on
+  // the right. Clamp the rendered width to the space the row actually leaves
+  // (same reservation the resize handle uses while dragging); the stored
+  // width is left untouched and applies again once the viewport grows.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState<number | null>(null);
+  const showDesktopPanel = !mobile && !!activeArtifact && !!classification;
+  useEffect(() => {
+    if (!showDesktopPanel || typeof ResizeObserver === "undefined") return;
+    const parent = panelRef.current?.parentElement;
+    if (!parent) return;
+    const update = () =>
+      setAvailableWidth(parent.offsetWidth - PANEL_RESERVED_WIDTH);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(parent);
+    return () => {
+      observer.disconnect();
+      // Drop the measurement on close so a reopen after a viewport resize
+      // never renders a frame with a stale width.
+      setAvailableWidth(null);
+    };
+  }, [showDesktopPanel]);
 
   if (mobile) {
     const shown = lastShownRef.current;
@@ -101,10 +126,18 @@ export function ArtifactPanel({ mobile }: Props) {
 
   if (!activeArtifact || !classification) return null;
 
+  // jsdom reports offsetWidth 0 — treat non-positive readings as "unknown"
+  // and fall back to the stored width.
+  const renderedWidth =
+    availableWidth == null || availableWidth <= 0
+      ? artifactPanelWidth
+      : Math.min(artifactPanelWidth, availableWidth);
+
   return (
     <div
+      ref={panelRef}
       data-artifact-panel
-      style={{ width: artifactPanelWidth, userSelect: "text" }}
+      style={{ width: renderedWidth, userSelect: "text" }}
       className="relative flex h-full shrink-0 flex-col border-l border-l-[#80808017] bg-sidebar"
     >
       <PanelResizeHandle

@@ -14,10 +14,39 @@ import random
 from datetime import datetime, timedelta
 
 import prisma.enums
+import prisma.models
 from faker import Faker
 from prisma import Json, Prisma
 
 faker = Faker()
+
+
+async def resolve_user_tenancy(
+    db: Prisma, users: list[prisma.models.User]
+) -> dict[str, tuple[str | None, str | None]]:
+    """Map each user id -> (personal org id, default team id) from the DB.
+
+    Mirrors the migration invariant (org_migration.assign_resources_to_teams):
+    a row's tenancy is the *executing* user's personal org + its default team.
+    Values are None for users that somehow lack a personal org.
+    """
+    tenancy: dict[str, tuple[str | None, str | None]] = {}
+    for user in users:
+        member = await db.orgmember.find_first(
+            where={
+                "userId": user.id,
+                "isOwner": True,
+                "Org": {"isPersonal": True, "deletedAt": None},
+            },
+        )
+        if member is None:
+            tenancy[user.id] = (None, None)
+            continue
+        team = await db.team.find_first(
+            where={"orgId": member.orgId, "isDefault": True}
+        )
+        tenancy[user.id] = (member.orgId, team.id if team else None)
+    return tenancy
 
 
 async def main():
@@ -47,6 +76,10 @@ async def main():
     )
     print()
 
+    # Resolve each user's personal org + default team so new tenancy-scoped
+    # rows (AgentGraphExecution) are tagged like the migration would tag them.
+    user_tenancy = await resolve_user_tenancy(db, users)
+
     # 1. Add new AgentGraphExecutions to update mv_agent_run_counts
     print("1. Adding new agent graph executions...")
     print("-" * 40)
@@ -59,6 +92,7 @@ async def main():
         num_new_executions = random.randint(5, 15)
         for _ in range(num_new_executions):
             user = random.choice(users)
+            org_id, team_id = user_tenancy[user.id]
             execution_data.append(
                 {
                     "agentGraphId": graph.id,
@@ -80,6 +114,8 @@ async def main():
                             "blocks_executed": random.randint(1, 10),
                         }
                     ),
+                    "organizationId": org_id,
+                    "teamId": team_id,
                 }
             )
             new_executions_count += 1

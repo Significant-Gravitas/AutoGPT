@@ -16,10 +16,14 @@ export const RunInputDialog = ({
   isOpen,
   setIsOpen,
   purpose,
+  graphID,
+  graphVersion,
 }: {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   purpose: "run" | "schedule";
+  graphID?: string;
+  graphVersion?: number | null;
 }) => {
   const hasInputs = useGraphStore((state) => state.hasInputs);
   const hasCredentials = useGraphStore((state) => state.hasCredentials);
@@ -36,7 +40,7 @@ export const RunInputDialog = ({
     credentialValues,
     handleCredentialFieldChange,
     isExecutingGraph,
-  } = useRunInputDialog({ setIsOpen });
+  } = useRunInputDialog({ setIsOpen, graphID, graphVersion });
 
   // Tutorial integration - track input values for the tutorial
   const setTutorialInputValues = useTutorialStore(
