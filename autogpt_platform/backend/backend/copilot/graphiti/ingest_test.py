@@ -1,6 +1,7 @@
 """Tests for Graphiti ingestion queue and worker logic."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -194,6 +195,77 @@ class TestEnqueueEpisode:
             assert result is False
 
     @pytest.mark.asyncio
+    async def test_enqueue_episode_rejects_oversized_body_without_queueing(
+        self,
+    ) -> None:
+        """A body over MAX_EPISODE_BODY_BYTES is rejected (False) before any
+        worker or queue is touched — degraded dream writes must not reach
+        FalkorDB or the extraction LLM."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="runaway_consolidated_fact",
+                episode_body="x" * (ingest.MAX_EPISODE_BODY_BYTES + 1),
+                is_json=True,
+            )
+            assert result is False
+            mock_worker.assert_not_awaited()
+            assert q.empty()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_accepts_body_at_exact_size_cap(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="cap_sized_ep",
+                episode_body="x" * ingest.MAX_EPISODE_BODY_BYTES,
+            )
+            assert result is True
+            assert not q.empty()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_size_cap_counts_bytes_not_chars(self) -> None:
+        """Multi-byte UTF-8 content is measured in encoded bytes, so a
+        char-count under the cap can still be rejected."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            # "é" encodes to 2 bytes — half the cap in chars, just over in bytes.
+            body = "é" * (ingest.MAX_EPISODE_BODY_BYTES // 2 + 1)
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="multibyte_ep",
+                episode_body=body,
+            )
+            assert result is False
+            assert q.empty()
+
+    @pytest.mark.asyncio
     async def test_enqueue_episode_json_mode(self) -> None:
         with (
             patch.object(ingest, "derive_group_id", return_value="user_abc"),
@@ -315,3 +387,175 @@ class TestWorkerIdleTimeout:
         # After idle timeout the worker should have cleaned up.
         assert user_id not in state.user_queues
         assert user_id not in state.user_workers
+
+
+class TestStampEdgeMetadata:
+    """#13389: dream-envelope metadata is stamped onto the edges a dream
+    episode newly created, gated on the ``episodes == [episode_uuid]``
+    dedup-safety invariant so user-authored edges are never clobbered."""
+
+    # The real producer (``dream/apply._edge_metadata``) always emits all
+    # five keys, so tests pass a complete payload unless exercising the
+    # incomplete-payload guard explicitly.
+    FULL_META = {
+        "status": "active",
+        "source_kind": "user_asserted",
+        "scope": "real:global",
+        "confidence": None,
+        "provenance": None,
+    }
+
+    def _edge(self, uuid: str, episodes: list[str], expired_at=None, invalid_at=None):
+        return SimpleNamespace(
+            uuid=uuid,
+            episodes=episodes,
+            expired_at=expired_at,
+            invalid_at=invalid_at,
+        )
+
+    def _result(self, episode_uuid: str, edges):
+        return SimpleNamespace(episode=SimpleNamespace(uuid=episode_uuid), edges=edges)
+
+    def _client(self):
+        client = SimpleNamespace()
+        client.driver = SimpleNamespace(execute_query=AsyncMock())
+        return client
+
+    @pytest.mark.asyncio
+    async def test_stamps_only_sole_sourced_edges(self) -> None:
+        """The core safety test: only edges whose ``episodes`` is exactly
+        [this episode] get stamped. A dedup-merge (extra uuid) and an
+        invalidated pre-existing edge are both skipped — they may be
+        user-authored, and stamping would overwrite their provenance."""
+        client = self._client()
+        result = self._result(
+            "ep-1",
+            [
+                self._edge("new", ["ep-1"]),  # freshly created → stamp
+                self._edge("merged", ["ep-1", "old-ep"]),  # dedup merge → skip
+                self._edge("invalidated", ["other-ep"]),  # predates → skip
+            ],
+        )
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, self.FULL_META, "abc"
+        )
+        client.driver.execute_query.assert_awaited_once()
+        kwargs = client.driver.execute_query.await_args.kwargs
+        assert kwargs["uuids"] == ["new"]
+        assert kwargs["gid"] == "user_abc"
+
+    @pytest.mark.asyncio
+    async def test_skips_retired_but_stamps_future_invalid_at(self) -> None:
+        """A brand-new edge graphiti retired in the same add_episode
+        (episodes==[uuid] but expired_at, or a PAST invalid_at) must NOT be
+        stamped with a live status — that would contradict its temporal
+        fields. A FUTURE invalid_at is still live (true now, ends later) and
+        MUST be stamped, else its dream metadata never lands."""
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        future = datetime.now(timezone.utc) + timedelta(days=365)
+        client = self._client()
+        result = self._result(
+            "ep-1",
+            [
+                self._edge("live", ["ep-1"]),  # new + temporally live → stamp
+                self._edge("expired", ["ep-1"], expired_at=past),  # retired → skip
+                self._edge("invalid_past", ["ep-1"], invalid_at=past),  # → skip
+                self._edge(
+                    "invalid_future", ["ep-1"], invalid_at=future
+                ),  # still live → stamp
+            ],
+        )
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, self.FULL_META, "abc"
+        )
+        kwargs = client.driver.execute_query.await_args.kwargs
+        assert kwargs["uuids"] == ["live", "invalid_future"]
+
+    @pytest.mark.asyncio
+    async def test_no_new_edges_skips_query_entirely(self) -> None:
+        """A dream fact that only merged into existing edges produces no
+        sole-sourced target → no Cypher runs at all."""
+        client = self._client()
+        result = self._result("ep-1", [self._edge("merged", ["ep-1", "old"])])
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, self.FULL_META, "abc"
+        )
+        client.driver.execute_query.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_incomplete_metadata_skips_stamp(self) -> None:
+        """A partial payload missing a required field (status/source_kind/
+        scope) must skip the stamp entirely rather than NULL-clobber the
+        edge's required props."""
+        client = self._client()
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, {"status": "active"}, "abc"
+        )
+        client.driver.execute_query.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_sets_all_five_envelope_fields(self) -> None:
+        client = self._client()
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
+        meta = {
+            "status": "tentative",
+            "source_kind": "assistant_derived",
+            "scope": "real:global",
+            "confidence": 0.8,
+            "provenance": "dream:p1:recombine:2026",
+        }
+        await ingest._stamp_edge_metadata(client, "user_abc", result, meta, "abc")
+        kwargs = client.driver.execute_query.await_args.kwargs
+        for k, v in meta.items():
+            assert kwargs[k] == v
+
+    @pytest.mark.asyncio
+    async def test_stamp_failure_is_swallowed(self) -> None:
+        """A stamp failure must not propagate — the edge still exists with
+        graphiti defaults; ingestion must not be failed by a metadata miss."""
+        client = self._client()
+        client.driver.execute_query = AsyncMock(side_effect=RuntimeError("boom"))
+        result = self._result("ep-1", [self._edge("new", ["ep-1"])])
+        # Should not raise.
+        await ingest._stamp_edge_metadata(
+            client, "user_abc", result, self.FULL_META, "abc"
+        )
+
+
+class TestEnqueueEpisodeEdgeMetadata:
+    @pytest.mark.asyncio
+    async def test_edge_metadata_rides_payload_sidecar(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            w.return_value = q
+            meta = {"status": "active", "provenance": "dream:p1"}
+            await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="s",
+                name="dream_ep",
+                episode_body="{}",
+                is_json=True,
+                edge_metadata=meta,
+            )
+            payload = q.get_nowait()
+            assert payload["_edge_metadata"] == meta
+
+    @pytest.mark.asyncio
+    async def test_default_sidecar_is_none_for_non_dream_writes(self) -> None:
+        """Conversation turns / memory-store calls pass no edge_metadata →
+        sidecar is None → worker skips stamping → no behavior change."""
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            w.return_value = q
+            await ingest.enqueue_episode(
+                user_id="abc", session_id="s", name="ep", episode_body="hi"
+            )
+            payload = q.get_nowait()
+            assert payload["_edge_metadata"] is None

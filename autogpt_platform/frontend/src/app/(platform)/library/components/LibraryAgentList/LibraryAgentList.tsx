@@ -17,9 +17,11 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
+import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 
@@ -134,6 +136,17 @@ export function LibraryAgentList({
 
   const agentStatusMap = useAgentStatusMap(agents);
 
+  const hasNoFolders =
+    !showFolders || (foldersData?.folders?.length ?? 0) === 0;
+  const isPristineEmpty =
+    !agentLoading &&
+    !isFavoritesTab &&
+    agents.length === 0 &&
+    hasNoFolders &&
+    !searchTerm &&
+    !selectedFolderId &&
+    statusFilter === "all";
+
   return (
     <>
       {isAgentBriefingEnabled &&
@@ -164,6 +177,11 @@ export function LibraryAgentList({
       )}
 
       <div className="pt-4">
+        {!selectedFolderId && activeTab === "all" && (
+          <div className="mb-4">
+            <LowCreditBanner />
+          </div>
+        )}
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
@@ -195,6 +213,8 @@ export function LibraryAgentList({
             <HeartIcon className="h-10 w-10" />
             <Text variant="body">No favorite agents yet</Text>
           </div>
+        ) : isPristineEmpty ? (
+          <LibraryEmptyState />
         ) : (
           <InfiniteScroll
             isFetchingNextPage={isFetchingNextPage}
@@ -206,7 +226,7 @@ export function LibraryAgentList({
               <AnimatePresence mode="popLayout">
                 <motion.div
                   key={`${activeTab}-${selectedFolderId || "all"}`}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
                   variants={activeContainerVariants}
                   initial="hidden"
                   animate="show"

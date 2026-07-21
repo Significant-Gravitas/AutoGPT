@@ -228,7 +228,46 @@ export async function getInvalidSeededAuthStateKeys(
   );
 }
 
+// Seed logins are retried because the /login form is gated behind client
+// hydration + a getCurrentUser() round-trip; on constrained CI runners a single
+// attempt occasionally exceeds the form timeout. Without a retry one slow login
+// fails the whole suite, since global setup is not covered by Playwright's
+// `retries`.
+const AUTH_SETUP_MAX_ATTEMPTS = 3;
+
+// Cap how many seed logins run at once. Logging in every account in parallel
+// overwhelms the frontend + auth service on a 2-vCPU runner, which is what
+// pushed the form render past its timeout to begin with.
+const AUTH_SETUP_CONCURRENCY = 2;
+
 async function createAuthStateForUser(
+  baseURL: string,
+  accountKey: (typeof AUTH_STATE_KEYS)[number],
+): Promise<void> {
+  const { email } = SEEDED_TEST_ACCOUNTS[accountKey];
+
+  for (let attempt = 1; attempt <= AUTH_SETUP_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await attemptCreateAuthState(baseURL, accountKey);
+      return;
+    } catch (error) {
+      if (attempt === AUTH_SETUP_MAX_ATTEMPTS) {
+        throw new Error(
+          `Failed to create auth state for ${email} after ${AUTH_SETUP_MAX_ATTEMPTS} attempts: ${String(
+            error,
+          )}. If these seeded QA accounts are missing, seed them with backend/test/e2e_test_data.py before running Playwright.`,
+        );
+      }
+      console.warn(
+        `⚠️ Auth state seeding for ${email} failed on attempt ${attempt}/${AUTH_SETUP_MAX_ATTEMPTS}, retrying: ${String(
+          error,
+        )}`,
+      );
+    }
+  }
+}
+
+async function attemptCreateAuthState(
   baseURL: string,
   accountKey: (typeof AUTH_STATE_KEYS)[number],
 ): Promise<void> {
@@ -261,13 +300,6 @@ async function createAuthStateForUser(
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     await context.storageState({ path: statePath });
     await context.close();
-  } catch (error) {
-    const { email } = SEEDED_TEST_ACCOUNTS[accountKey];
-    throw new Error(
-      `Failed to create auth state for ${email}: ${String(
-        error,
-      )}. If these seeded QA accounts are missing, seed them with backend/test/e2e_test_data.py before running Playwright.`,
-    );
   } finally {
     await browser.close();
   }
@@ -276,9 +308,44 @@ async function createAuthStateForUser(
 export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
   const invalidKeys = await getInvalidSeededAuthStateKeys(baseURL);
 
-  await Promise.all(
-    invalidKeys.map((accountKey) =>
-      createAuthStateForUser(baseURL, accountKey),
-    ),
+  const results = await mapWithConcurrency(
+    invalidKeys,
+    AUTH_SETUP_CONCURRENCY,
+    (accountKey) => createAuthStateForUser(baseURL, accountKey),
   );
+
+  const firstFailure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (firstFailure) {
+    throw firstFailure.reason;
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await task(items[index]),
+        };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }

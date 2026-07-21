@@ -1,6 +1,7 @@
 """Shared helpers for chat tools."""
 
 import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -18,9 +19,10 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, workspace_db
+from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
@@ -31,6 +33,7 @@ from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
@@ -172,6 +175,8 @@ async def execute_block(
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
     dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -226,6 +231,14 @@ async def execute_block(
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
+        # get_user_by_id raises ValueError on missing user; fall back to UTC
+        # so an orphaned-session block call still runs instead of crashing.
+        try:
+            user_timezone = get_user_timezone_or_utc(
+                (await user_db().get_user_by_id(user_id)).timezone
+            )
+        except ValueError:
+            user_timezone = "UTC"
 
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -240,6 +253,9 @@ async def execute_block(
             workspace_id=workspace.id,
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            user_timezone=user_timezone,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -322,8 +338,15 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pre-execution credit check (courtesy; spend_credits is atomic)
-            cost, cost_filter = block_usage_cost(block, input_data)
+            # Pre-execution credit check (courtesy; spend_credits is atomic).
+            # Pass `use_preflight_estimate=False` because this path bypasses
+            # the executor manager and never runs reconciliation — locking in
+            # the historical-average estimate as the final charge would be
+            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
+            # those types, preserving the pre-#13031 contract.
+            cost, cost_filter = block_usage_cost(
+                block, input_data, use_preflight_estimate=False
+            )
             has_cost = cost > 0
             _credit_db = credit_db()
             if has_cost:
@@ -591,6 +614,14 @@ async def prepare_block_for_execution(
             session_id=session_id,
         )
 
+    # LLMs sometimes pass `"credentials": null` instead of omitting the field.
+    # Treat null credential fields as absent so the injection path below can
+    # populate them, and so _base.validate_data doesn't reject null against a
+    # required object schema.
+    for field_name in block.input_schema.get_credentials_fields():
+        if field_name in input_data and input_data[field_name] is None:
+            input_data.pop(field_name)
+
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data
     )
@@ -724,6 +755,8 @@ async def check_hitl_review(
     prep: BlockPreparation,
     user_id: str,
     session_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
@@ -778,6 +811,8 @@ async def check_hitl_review(
         node_id=synthetic_node_id,
         node_exec_id=synthetic_node_exec_id,
         sensitive_action_safe_mode=True,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     should_pause, input_data = await block.is_block_exec_need_review(
         input_data,
@@ -887,10 +922,97 @@ def _resolve_discriminated_credentials(
 
 
 _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+# Mirrors :data:`backend.copilot.tools.skills.DEFAULT_SKILLS` — the
+# agent-building guide now also ships as the canonical default skill,
+# so calling ``read_skill("agent_building_guide")`` satisfies the gate.
+_AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
+
+
+_ENTER_BUILDING_MODE_TOOL_NAME = "enter_agent_building_mode"
+
+
+def session_entered_building_mode(session: ChatSession) -> bool:
+    """True when this session is in agent-building mode.
+
+    Any of these signals counts: an ``enter_agent_building_mode`` call
+    (preferred path), a ``get_agent_building_guide`` call, or a
+    ``read_skill(name="agent_building_guide")`` call. All are durable —
+    derived from message history, no session-metadata write needed. Called
+    at turn start (by the system-prompt builder) this reflects prior turns
+    only; called mid-turn (by the building-mode restart) it also sees the
+    current turn's in-flight calls.
+    """
+    return session.has_tool_been_called(
+        _ENTER_BUILDING_MODE_TOOL_NAME
+    ) or session_read_building_guide(session)
+
+
+def session_read_building_guide(session: ChatSession) -> bool:
+    """True when the agent-building guide was loaded in this session.
+
+    Accepts either the ``get_agent_building_guide`` tool call or a
+    ``read_skill(name="agent_building_guide")`` call.
+    """
+    return session.has_tool_been_called(
+        _AGENT_GUIDE_TOOL_NAME
+    ) or _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME)
+
+
+def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
+    """Return True iff the model has called ``read_skill(name=skill_name)``
+    in this session (durable history or current-turn in-flight calls).
+
+    Scans tool-call arguments — :meth:`ChatSession.has_tool_been_called`
+    only checks tool names, but the skill registry path discriminates by
+    argument.  Defensive against malformed JSON / missing args so a
+    badly-formed historical row does not crash the guard.
+
+    Same-turn safety: also inspects in-flight calls (captured via
+    :meth:`ChatSession.get_inflight_tool_call_args`) so a ``read_skill``
+    dispatched earlier in the *current* turn is recognised before its
+    row lands in ``session.messages``.
+    """
+    # In-flight first — newest calls live here and the dispatcher
+    # records argument dicts (not strings) so no JSON parsing needed.
+    for args in session.get_inflight_tool_call_args("read_skill"):
+        if str(args.get("name") or "").strip().lower() == skill_name:
+            return True
+    # Durable scan of past turns + already-flushed current turn.
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            # Defensive: a persisted row may carry ``function`` as ``None`` or
+            # a non-dict if a past producer ever shipped a malformed payload —
+            # treat the flat ``name`` / ``arguments`` shape as the fallback so
+            # the gate path never raises on bad data.
+            fn_raw = tc.get("function")
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or tc.get("name")
+            if name != "read_skill":
+                continue
+            raw_args = fn.get("arguments") if fn else tc.get("arguments")
+            if isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(raw_args, dict):
+                parsed = raw_args
+            else:
+                continue
+            if str(parsed.get("name") or "").strip().lower() == skill_name:
+                return True
+    return False
 
 
 def require_guide_read(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Accepts either the legacy ``get_agent_building_guide`` tool call OR
+    a ``read_skill(name="agent_building_guide")`` call — the skill
+    registry now seeds the same content as the canonical default skill,
+    so either path satisfies the contract.
 
     Import inline to keep ``helpers.py`` free of tool-response imports.
     Uses :meth:`ChatSession.has_tool_been_called` which checks both the
@@ -902,22 +1024,113 @@ def require_guide_read(session: ChatSession, tool_name: str):
     Kimi K2.6 in particular because its aggressive tool-call chaining
     exercises this path far more than Sonnet does.
     """
-    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
-
     # Builder-bound sessions always receive the guide inline via the
     # per-turn ``<builder_context>`` injection (see
     # ``backend.copilot.builder_context``), so no tool-call gate is needed —
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
-    if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
+    # Building sessions get the guide in the (cached) system prompt — see
+    # ``build_builder_system_prompt_suffix``.
+    if session.guide_in_system_prompt:
         return None
+    if session_read_building_guide(session):
+        return None
+    if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
+        if not chat_config.transport.supports_sdk:
+            # SDK-less deployment: the enter tool served the guide inline.
+            return None
+        return ErrorResponse(
+            message=(
+                "The engine switch is pending — building continues "
+                "automatically on the next turn with the guide loaded. End "
+                f"your turn now with a brief note; do not retry {tool_name} "
+                "in this turn."
+            ),
+            session_id=session.session_id,
+        )
     return ErrorResponse(
         message=(
-            f"Call get_agent_building_guide first, then retry {tool_name}. "
+            f"Call enter_agent_building_mode first, then retry {tool_name}. "
+            "It loads the agent-building guide into your system prompt where "
+            "it survives context compaction. (get_agent_building_guide or "
+            'read_skill(name="agent_building_guide") also satisfy this gate.) '
             "The guide documents required block ids, input/output schemas, "
             "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
             "generating agent JSON without it produces schema mismatches."
         ),
         session_id=session.session_id,
     )
+
+
+_LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
+
+
+def _has_for_creation_args(args: dict) -> bool:
+    """``for_creation=True`` + non-empty ``goal_summary``: the inputs the
+    hybrid search actually needs. Empty goal_summary soft-fails without
+    running the search, so it must not satisfy the gate."""
+    if args.get("for_creation") is not True:
+        return False
+    goal_summary = args.get("goal_summary")
+    return isinstance(goal_summary, str) and bool(goal_summary.strip())
+
+
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff a satisfying ``find_library_agent`` call exists in the
+    current turn's in-flight buffer. Turn-scoped on purpose: a stale
+    call from an earlier turn's unrelated goal must not satisfy the
+    gate for a new create_agent request."""
+    for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
+        if _has_for_creation_args(args):
+            return True
+    return False
+
+
+def require_library_check(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
+    hasn't been called in this session. Bypassed in builder-bound sessions
+    (already editing a specific agent)."""
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if session.metadata.builder_graph_id:
+        return None
+    if _was_called_for_creation(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Before {tool_name} can run, search the user's library for an "
+            "agent that already does what they want. Call "
+            "`find_library_agent` with `for_creation=true` and "
+            "`goal_summary=<one-sentence description of the user's goal>` "
+            "(default-mode substring search does NOT satisfy this gate). "
+            "If any agents are returned, present them to the user and ask "
+            "whether they want to reuse one. Only retry "
+            f"{tool_name} with `library_check_ack=true` if the user "
+            "explicitly chooses to build a new agent anyway."
+        ),
+        session_id=session.session_id,
+    )
+
+
+def coerce_agent_json(
+    agent_json: dict[str, Any] | str | None,
+) -> dict[str, Any] | None:
+    """Coerce an ``agent_json`` tool argument into a dict.
+
+    A bare ``@@agptfile:`` reference is expanded and JSON-parsed into a dict
+    by the SDK layer before the tool runs, but a raw JSON string can still
+    arrive — e.g. a reference embedded in surrounding text, or a file that
+    failed structured parsing. Returns None when the value cannot be
+    interpreted as a JSON object.
+    """
+    if isinstance(agent_json, dict):
+        return agent_json
+    if isinstance(agent_json, str) and agent_json.strip():
+        try:
+            parsed = json.loads(agent_json)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+    return None

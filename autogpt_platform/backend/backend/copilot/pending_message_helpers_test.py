@@ -54,16 +54,43 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 # ── is_turn_in_flight: fail-closed on Redis errors ────────────────────
 
 
+def _mock_chat_db(
+    monkeypatch: pytest.MonkeyPatch, *, status: str | None = "idle"
+) -> None:
+    """Stub ``chat_db()`` so the ``is_turn_in_flight`` fallthrough that
+    reads ``ChatSession.chatStatus`` doesn't hit a real DB connection."""
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value=status)
+    monkeypatch.setattr(helpers_module, "chat_db", lambda: db)
+
+
 @pytest.mark.asyncio
 async def test_is_turn_in_flight_returns_false_when_no_active_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Redis says no active stream AND ChatSession is idle → not in flight."""
     monkeypatch.setattr(
         helpers_module,
         "get_active_session_meta",
         AsyncMock(return_value=None),
     )
+    _mock_chat_db(monkeypatch, status="idle")
     assert await is_turn_in_flight("sess-1") is False
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_true_when_queued(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Queued sessions are also in flight even though the Redis stream
+    registry has no entry — the dispatcher hasn't claimed the row yet."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    _mock_chat_db(monkeypatch, status="queued")
+    assert await is_turn_in_flight("sess-1") is True
 
 
 @pytest.mark.asyncio
@@ -77,6 +104,7 @@ async def test_is_turn_in_flight_returns_true_when_running(
         "get_active_session_meta",
         AsyncMock(return_value=active),
     )
+    _mock_chat_db(monkeypatch, status="running")
     assert await is_turn_in_flight("sess-1") is True
 
 
@@ -111,6 +139,27 @@ async def test_is_turn_in_flight_raises_on_redis_cluster_exception(
         "get_active_session_meta",
         AsyncMock(side_effect=RedisClusterException("slot not covered")),
     )
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_when_chat_status_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB-side ``get_chat_session_status`` failure must surface as the
+    same typed ``StreamRegistryUnavailable`` the Redis branch raises so
+    the HTTP layer's existing 503 + Retry-After mapping covers it.
+    Without this the Prisma error would bubble as a raw 500."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(side_effect=RuntimeError("db down"))
+    monkeypatch.setattr(helpers_module, "chat_db", lambda: db)
+
     with pytest.raises(StreamRegistryUnavailable):
         await is_turn_in_flight("sess-1")
 

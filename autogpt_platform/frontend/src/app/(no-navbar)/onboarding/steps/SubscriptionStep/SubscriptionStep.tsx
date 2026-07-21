@@ -4,17 +4,15 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CountrySelector } from "./components/CountrySelector/CountrySelector";
-import { PlanCard } from "./components/PlanCard/PlanCard";
-import { PLAN_KEYS, PLANS } from "./helpers";
+import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
+import { PLAN_KEYS } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionStep } from "./useSubscriptionStep";
 
 export function SubscriptionStep() {
   const {
     billing,
     setBilling,
-    countryIdx,
-    setCountryIdx,
+    plans,
     country,
     isYearly,
     handlePlanSelect,
@@ -75,7 +73,7 @@ export function SubscriptionStep() {
 
         <div className="relative mt-2 w-full max-w-[75.625rem]">
           <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
-            {PLANS.map((plan) => (
+            {plans.map((plan) => (
               <PlanCard
                 key={plan.key}
                 plan={plan}
@@ -84,6 +82,7 @@ export function SubscriptionStep() {
                 onSelect={handlePlanSelect}
                 loading={isUpdatingTier && selectedPlan === plan.key}
                 disabled={isUpdatingTier && selectedPlan !== plan.key}
+                priceCaption="billing-period"
                 className={cn(
                   plan.key === PLAN_KEYS.MAX && "order-1 md:order-none",
                   plan.key === PLAN_KEYS.PRO && "order-2 md:order-none",
@@ -91,9 +90,6 @@ export function SubscriptionStep() {
                 )}
               />
             ))}
-          </div>
-          <div className="mt-4 flex justify-center px-[1rem] md:fixed md:right-6 md:top-[14px] md:z-50 md:mt-0 md:px-0">
-            <CountrySelector selected={countryIdx} onSelect={setCountryIdx} />
           </div>
         </div>
 

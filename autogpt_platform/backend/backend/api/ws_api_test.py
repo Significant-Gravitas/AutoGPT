@@ -520,7 +520,7 @@ def test_health_endpoint_returns_ok() -> None:
     ws_api.app.router.lifespan_context = _noop_lifespan
     try:
         with TestClient(ws_api.app) as client:
-            r = client.get("/")
+            r = client.get("/health")
         assert r.status_code == 200
         assert r.json() == {"status": "healthy"}
     finally:

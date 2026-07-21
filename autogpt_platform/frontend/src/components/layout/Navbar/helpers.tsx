@@ -10,7 +10,12 @@ import {
   IconType,
   IconUploadCloud,
 } from "@/components/__legacy__/ui/icons";
-import { ChatsIcon, StorefrontIcon } from "@phosphor-icons/react";
+import {
+  ChatsIcon,
+  CreditCardIcon,
+  QuestionIcon,
+  StorefrontIcon,
+} from "@phosphor-icons/react";
 
 type Link = {
   name: string;
@@ -41,6 +46,7 @@ export type MenuItemGroup = {
     icon: IconType;
     text: string;
     href?: string;
+    external?: boolean;
     onClick?: () => void;
   }[];
 };
@@ -50,8 +56,8 @@ export const accountMenuItems: MenuItemGroup[] = [
     items: [
       {
         icon: IconType.Edit,
-        text: "Edit profile",
-        href: "/settings/profile",
+        text: "Account",
+        href: "/settings/account",
       },
     ],
   },
@@ -93,27 +99,34 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
       items: [
         {
           icon: IconType.Edit,
-          text: "Edit profile",
+          text: "Profile",
           href: "/settings/profile",
         },
-      ],
-    },
-    {
-      items: [
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/settings/account",
+        },
+        {
+          icon: IconType.Billing,
+          text: "Billing",
+          href: "/settings/billing",
+        },
         {
           icon: IconType.LayoutDashboard,
           text: "Creator Dashboard",
           href: "/settings/creator-dashboard",
         },
         {
-          icon: IconType.UploadCloud,
-          text: "Publish an agent",
+          icon: IconType.Help,
+          text: "Help & Docs",
+          href: "https://agpt.co/docs",
+          external: true,
         },
       ],
     },
   ];
 
-  // Add admin menu item for admin users
   if (userRole === "admin") {
     baseMenuItems.push({
       items: [
@@ -126,26 +139,14 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
     });
   }
 
-  // Add settings and logout
-  baseMenuItems.push(
-    {
-      items: [
-        {
-          icon: IconType.Settings,
-          text: "Settings",
-          href: "/settings",
-        },
-      ],
-    },
-    {
-      items: [
-        {
-          icon: IconType.LogOut,
-          text: "Log out",
-        },
-      ],
-    },
-  );
+  baseMenuItems.push({
+    items: [
+      {
+        icon: IconType.LogOut,
+        text: "Log out",
+      },
+    ],
+  });
 
   return baseMenuItems;
 }
@@ -173,6 +174,10 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <IconSliders className={iconClass} />;
     case IconType.Chat:
       return <ChatsIcon className={iconClass} />;
+    case IconType.Billing:
+      return <CreditCardIcon className={iconClass} />;
+    case IconType.Help:
+      return <QuestionIcon className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }

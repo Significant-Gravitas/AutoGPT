@@ -476,7 +476,14 @@ async def mcp_store_token(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
-        host=hostname,
+        # Use the full ``mcp_server_url`` for parity with the OAuth callback
+        # response and with ``to_meta_response``'s ``get_host`` (which reads
+        # the same metadata key for MCP creds).  The list endpoint already
+        # normalizes both flows to full URL via ``get_host``, so the matching
+        # logic in ``MCPSetupCard.liveHasCred`` works either way — but
+        # returning the same shape from POST keeps the contract consistent
+        # for any consumer that uses the immediate POST response.
+        host=credentials.metadata.get("mcp_server_url"),
     )
 
 

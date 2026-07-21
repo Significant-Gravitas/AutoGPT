@@ -1,18 +1,26 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+
+type Messages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 const A_ID = "11111111-0000-0000-0000-000000000000";
 const B_ID = "22222222-0000-0000-0000-000000000000";
 
-function makeArtifact(id: string, title = `${id}.txt`) {
+function makeArtifact(
+  id: string,
+  title = `${id}.txt`,
+  origin: ArtifactRef["origin"] = "agent",
+): ArtifactRef {
   return {
     id,
     title,
     mimeType: "text/plain",
     sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
-    origin: "agent" as const,
+    origin,
   };
 }
 
@@ -20,47 +28,38 @@ function resetStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
     },
   });
+  useCopilotUIStore.getState().resetAutoOpenState();
 }
 
-describe("useAutoOpenArtifacts", () => {
+const defaultProps = {
+  sessionId: "s1",
+  messages: [] as Messages,
+  isLoadingSession: false,
+  isArtifactsEnabled: true,
+};
+
+describe("useAutoOpenArtifacts (card-based)", () => {
   beforeEach(resetStore);
-  // Testing Library auto-cleanup isn't registered in our Vitest setup, so
-  // mounted `renderHook` instances (and their unmount cleanups) would leak
-  // between tests — here the unmount effect in useAutoOpenArtifacts would
-  // fire after the next test had already run and corrupt its assertions.
   afterEach(cleanup);
 
-  it("does not auto-open on initial render", () => {
-    renderHook(() => useAutoOpenArtifacts({ sessionId: "s1" }));
+  // ── Lifecycle ──────────────────────────────────────────────────────
+
+  it("does not open the panel on initial render", () => {
+    renderHook(() => useAutoOpenArtifacts(defaultProps));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
-  it("does not auto-open when rerendering within the same session", () => {
-    const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
-      { initialProps: { sessionId: "s1" } },
-    );
-
-    act(() => {
-      rerender({ sessionId: "s1" });
-    });
-
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("resets the panel state when sessionId changes", () => {
+  it("clears artifact preview state when sessionId changes", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
     const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
+      ({ sessionId }) => useAutoOpenArtifacts({ ...defaultProps, sessionId }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -68,78 +67,74 @@ describe("useAutoOpenArtifacts", () => {
       rerender({ sessionId: "s2" });
     });
 
+    // Switching sessions clears the preview via activeArtifact; we assert on
+    // activeArtifact (not isOpen) because the drawer is gated on it.
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
   });
 
-  it("does not carry a stale back stack into the next session", () => {
+  it("clears artifact preview on unmount (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
-    useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
-
-    const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
-      { initialProps: { sessionId: "s1" } },
+    // openArtifact opens the context region (isOpen: true) and drives the
+    // preview drawer via activeArtifact.
+    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
+      A_ID,
     );
 
-    act(() => {
-      rerender({ sessionId: "s2" });
-    });
-
-    useCopilotUIStore.getState().openArtifact(makeArtifact("c", "c.txt"));
-
-    const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.activeArtifact?.id).toBe("c");
-    expect(s.history).toEqual([]);
-  });
-
-  // SECRT-2254: "had agent panel open then went to profile then went to home
-  // and agent panel was still open". Nav-away unmounts the copilot page; if
-  // the panel state persists in the store, coming back re-renders it open.
-  it("closes the panel on unmount so nav-away → nav-back doesn't resurrect it (SECRT-2254)", () => {
-    useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({ sessionId: "s1" }),
-    );
-
+    const { unmount } = renderHook(() => useAutoOpenArtifacts(defaultProps));
     act(() => {
       unmount();
     });
 
+    // Drawer is gated on activeArtifact, so clearing it is what hides the
+    // preview after nav-away; we assert on activeArtifact here.
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
     expect(s.activeArtifact).toBeNull();
-    expect(s.history).toEqual([]);
   });
+});
 
-  // SECRT-2220: "keep closed by default" — a fresh mount (e.g. user returns to
-  // /copilot) must start with a closed panel even if the store somehow carries
-  // stale state from a prior life.
-  it("does not re-open a panel whose store state is stale on fresh mount (SECRT-2220)", () => {
-    // Simulate the store being left in an open state by a previous page life.
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: true,
-        isMinimized: false,
-        isMaximized: false,
-        width: 600,
-        activeArtifact: makeArtifact(A_ID, "stale.txt"),
-        history: [],
-      },
-    });
+// ── registerArtifactForAutoOpen (store unit tests) ────────────────
+//
+// Auto-open is disabled — registerArtifactForAutoOpen is only kept to track
+// known IDs and upgrade metadata when a richer ref arrives for the same id.
 
-    const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({ sessionId: "s1" }),
-    );
-    act(() => {
-      unmount();
-    });
+describe("registerArtifactForAutoOpen", () => {
+  beforeEach(resetStore);
 
-    // Next mount of the page should see a clean store.
-    renderHook(() => useAutoOpenArtifacts({ sessionId: "s1" }));
+  it("never auto-opens the panel, regardless of readiness", () => {
+    useCopilotUIStore.getState().setAutoOpenReady();
+    const ref = makeArtifact(A_ID);
+    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("upgrades activeArtifact metadata when a richer ref arrives for a known ID", () => {
+    const weakRef: ArtifactRef = {
+      id: A_ID,
+      title: "File " + A_ID.slice(0, 8),
+      mimeType: null,
+      sourceUrl: `/api/proxy/api/workspace/files/${A_ID}/download`,
+      origin: "agent",
+    };
+    // First registration tracks the ID but doesn't open the panel.
+    useCopilotUIStore.getState().registerArtifactForAutoOpen(weakRef);
+    // Simulate the user explicitly opening this artifact afterwards.
+    useCopilotUIStore.getState().openArtifact(weakRef);
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact?.mimeType,
+    ).toBeNull();
+
+    const richRef: ArtifactRef = {
+      id: A_ID,
+      title: "plan.md",
+      mimeType: "text/markdown",
+      sourceUrl: `/api/proxy/api/workspace/files/${A_ID}/download`,
+      origin: "agent",
+    };
+    useCopilotUIStore.getState().registerArtifactForAutoOpen(richRef);
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact?.mimeType,
+    ).toBe("text/markdown");
   });
 });

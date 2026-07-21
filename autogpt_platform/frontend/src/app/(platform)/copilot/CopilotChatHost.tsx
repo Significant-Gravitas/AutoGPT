@@ -45,6 +45,7 @@ export function CopilotChatHost({
     rateLimitMessage,
     dismissRateLimit,
     sessionDryRun,
+    sessionChatStatus,
   } = useCopilotPage();
 
   return (
@@ -58,12 +59,13 @@ export function CopilotChatHost({
           Test mode — this session runs agents as simulation
         </div>
       )}
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <ChatContainer
           messages={messages}
           status={status}
           error={error}
           sessionId={sessionId}
+          sessionChatStatus={sessionChatStatus}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}

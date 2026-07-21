@@ -12,6 +12,7 @@ def redis_mock():
     mock = AsyncMock()
     mock.get = AsyncMock()
     mock.set = AsyncMock()
+    mock.delete = AsyncMock()
     with patch("backend.copilot.bot.threads.get_redis_async", return_value=mock):
         yield mock
 
@@ -53,3 +54,20 @@ class TestIsSubscribed:
         read_key = redis_mock.get.await_args.args[0]
         write_key = redis_mock.set.await_args.args[0]
         assert read_key == write_key
+
+
+class TestUnsubscribe:
+    @pytest.mark.asyncio
+    async def test_deletes_the_key(self, redis_mock):
+        await threads.unsubscribe("discord", "thread-1")
+        redis_mock.delete.assert_awaited_once_with(
+            "copilot-bot:thread:discord:thread-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_uses_same_key_as_subscribe(self, redis_mock):
+        await threads.unsubscribe("discord", "thread-1")
+        await threads.subscribe("discord", "thread-1")
+        del_key = redis_mock.delete.await_args.args[0]
+        write_key = redis_mock.set.await_args.args[0]
+        assert del_key == write_key

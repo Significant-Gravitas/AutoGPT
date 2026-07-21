@@ -17,6 +17,10 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.copilot.active_turns import (
+    MAX_TURN_LIFETIME_SECONDS,
+    running_turn_limit_message,
+)
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
     CopilotPermissions,
@@ -42,11 +46,10 @@ _AUTOPILOT_TOOL_CALL_ID = "autopilot_block"
 _AUTOPILOT_TOOL_NAME = "autopilot_block"
 
 # Ceiling on how long AutoPilotBlock.execute_copilot will wait for the
-# enqueued turn's terminal event. Graph blocks run synchronously from
-# the caller's perspective so we wait effectively as long as needed; 6h
-# matches the previous abandoned-task cap and is much longer than any
-# legitimate AutoPilot turn.
-_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = 6 * 60 * 60  # 6 hours
+# enqueued turn's terminal event. Sourced from the shared turn-lifetime
+# constant so the block-level wait, the per-user slot stale-cutoff, and
+# any future per-turn timer all advance together.
+_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = MAX_TURN_LIFETIME_SECONDS
 
 
 class SubAgentRecursionError(BlockExecutionError):
@@ -92,6 +95,13 @@ class AutoPilotBlock(Block):
     run blocks, and more. This block enables sub-agent patterns (autopilot calling
     autopilot) and scheduled autopilot execution via the agent executor.
     """
+
+    # Coordination block: an autopilot run is a multi-step agentic loop that
+    # can dispatch sub-agents (recursively) and orchestrate platform tools.
+    # Applying the leaf-block wall-clock cap would false-positive on
+    # legitimately long autopilot runs; rely on per-LLM-call timeouts and
+    # downstream sub-graph caps for bounding.
+    execution_timeout_seconds: int | None = None
 
     class Input(BlockSchemaInput):
         """Input schema for the AutoPilot block."""
@@ -289,11 +299,23 @@ class AutoPilotBlock(Block):
             },
         )
 
-    async def create_session(self, user_id: str, *, dry_run: bool) -> str:
+    async def create_session(
+        self,
+        user_id: str,
+        *,
+        dry_run: bool,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
 
-        session = await create_chat_session(user_id, dry_run=dry_run)
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
         return session.session_id
 
     async def execute_copilot(
@@ -353,6 +375,12 @@ class AutoPilotBlock(Block):
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
             )
+            if outcome == "rejected_concurrent_turn_cap":
+                # No session record / transcript was created — the slot
+                # cap rejected before ``create_session`` ran. Surface a
+                # message that points at the actionable cause rather
+                # than the empty transcript.
+                raise RuntimeError(running_turn_limit_message())
             if outcome == "failed":
                 raise RuntimeError(
                     "AutoPilot turn failed — see the session's transcript"
@@ -452,6 +480,8 @@ class AutoPilotBlock(Block):
             sid = await self.create_session(
                 execution_context.user_id,
                 dry_run=input_data.dry_run or execution_context.dry_run,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
             )
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own

@@ -5,6 +5,7 @@ import type { UIMessage } from "ai";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -56,6 +57,7 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionChatStatus,
   } = useChatSession({ dryRun: isDryRun });
 
   const {
@@ -170,12 +172,18 @@ export function useCopilotPage() {
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(message: string, files?: File[]) {
+  async function onSend(
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) {
     const trimmed = message.trim();
-    if (!trimmed && (!files || files.length === 0)) return;
+    const hasAttachments =
+      (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
+    if (!trimmed && !hasAttachments) return;
 
     if (sessionId && isInflightRef.current) {
-      if (files && files.length > 0) {
+      if (hasAttachments) {
         toast({
           title: "Please wait to attach files",
           description:
@@ -193,7 +201,7 @@ export function useCopilotPage() {
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          await sendNewMessage(message, files);
+          await sendNewMessage(message, files, workspaceFiles);
           return;
         }
         toast({
@@ -212,7 +220,7 @@ export function useCopilotPage() {
     if (sessionId) {
       isInflightRef.current = true;
     }
-    await sendNewMessage(message, files);
+    await sendNewMessage(message, files, workspaceFiles);
   }
 
   useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
@@ -252,5 +260,6 @@ export function useCopilotPage() {
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionChatStatus,
   };
 }

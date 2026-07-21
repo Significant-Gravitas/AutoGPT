@@ -24,7 +24,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from backend.copilot import stream_registry
-from backend.copilot.executor.utils import enqueue_copilot_turn
+from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
@@ -39,7 +40,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-SessionOutcome = Literal["completed", "failed", "running", "queued"]
+SessionOutcome = Literal[
+    "completed",
+    "failed",
+    "running",
+    "queued",
+    "rejected_concurrent_turn_cap",
+]
 
 
 @dataclass
@@ -195,21 +202,35 @@ async def run_copilot_turn_via_queue(
         observed.pending_buffer_length = state.buffer_length
         return outcome, observed
 
+    # Same per-user concurrent-turn cap as the HTTP chat route via the
+    # shared ``schedule_turn`` helper — without this a graph spawning N
+    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
+    # out unbounded copilot turns past the user's cap.
     turn_id = str(uuid.uuid4())
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        turn_id=turn_id,
-    )
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=user_id,
-        message=message,
-        turn_id=turn_id,
-        permissions=permissions,
-    )
+    try:
+        await schedule_turn(
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=message,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            permissions=permissions,
+        )
+    except ConcurrentTurnLimitError:
+        # Sub-AutoPilot / run_sub_session caller is at the cap (this is
+        # the graph-block / tool path, not the HTTP route). Use a
+        # distinct ``rejected_concurrent_turn_cap`` outcome so callers
+        # render an actionable "wait for an in-flight turn to finish"
+        # error instead of a generic "see transcript" pointer (the
+        # session was never created, so the transcript is empty).
+        logger.warning(
+            "[queue] session=%s user=%s rejected by concurrent-turn cap (tool=%s)",
+            session_id[:12],
+            user_id[:8] if user_id else "?",
+            tool_name,
+        )
+        return "rejected_concurrent_turn_cap", SessionResult()
     return await wait_for_session_result(
         session_id=session_id,
         user_id=user_id,

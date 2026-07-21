@@ -14,6 +14,7 @@ x-backend-env:
   DATABASEMANAGER_HOST: database_manager
   EXECUTIONMANAGER_HOST: executor
   NOTIFICATIONMANAGER_HOST: notification_server
+  PLATFORMLINKINGMANAGER_HOST: platform_linking_manager
   CLAMAV_SERVICE_HOST: clamav
   DB_HOST: db
   REDIS_HOST: redis-0
@@ -140,8 +141,16 @@ services:
     ports:
       - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
       - "3001:3000" # FalkorDB web UI
-    environment:
-      - REDIS_ARGS=--requirepass ${GRAPHITI_FALKORDB_PASSWORD:-}
+    <<: *backend-env-files
+    # `:?` exits the container if the var is unset/empty, surfacing a
+    # missing-config error instead of silent `--requirepass ""` auth.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set}"
+        && exec /var/lib/falkordb/bin/run.sh "$$@"
+      - --
     volumes:
       - falkordb_data:/data
     networks:
@@ -150,7 +159,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'redis-cli -p 6379 -a "${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1',
+          'redis-cli -p 6379 -a "$${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping | grep -q PONG',
         ]
       interval: 10s
       timeout: 5s
@@ -401,6 +410,39 @@ services:
       <<: *backend-env
     ports:
       - "8007:8007"
+    networks:
+      - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  platform_linking_manager:
+    profiles: ["bot"]
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["platform-linking-manager"] # points to entry in [tool.poetry.scripts] in pyproject.toml
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-0:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    ports:
+      - "8009:8009"
     networks:
       - app-network
     logging:

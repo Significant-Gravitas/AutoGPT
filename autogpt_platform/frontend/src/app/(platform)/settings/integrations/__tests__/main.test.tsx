@@ -184,6 +184,31 @@ describe("SettingsIntegrationsPage — delete", () => {
       expect(screen.queryByText("Personal")).toBeNull();
     });
   });
+
+  test("managed credentials hide the trash button and select checkbox", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({
+          id: "a1",
+          provider: "ayrshare",
+          title: "Ayrshare (managed by AutoGPT)",
+          is_managed: true,
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    expect(
+      await screen.findByText("Ayrshare (managed by AutoGPT)"),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /delete ayrshare/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: /select ayrshare/i }),
+    ).toBeNull();
+  });
 });
 
 describe("SettingsIntegrationsPage — selection bar", () => {

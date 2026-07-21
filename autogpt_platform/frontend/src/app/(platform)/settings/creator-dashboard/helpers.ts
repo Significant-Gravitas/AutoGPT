@@ -8,7 +8,27 @@ import {
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { SubmissionStats } from "@/app/api/__generated__/models/submissionStats";
+
+export interface EditPayload extends StoreSubmissionEditRequest {
+  store_listing_version_id: string;
+  graph_id: string;
+}
+
+export function buildEditPayload(submission: StoreSubmission): EditPayload {
+  return {
+    name: submission.name,
+    sub_heading: submission.sub_heading,
+    description: submission.description,
+    image_urls: submission.image_urls,
+    video_url: submission.video_url,
+    categories: submission.categories,
+    changes_summary: submission.changes_summary || "Update Submission",
+    store_listing_version_id: submission.listing_version_id,
+    graph_id: submission.graph_id,
+  };
+}
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
@@ -19,14 +39,12 @@ export type SortDir = "asc" | "desc";
 
 export interface FilterState {
   statuses: SubmissionStatus[];
-  nameQuery: string;
   sortKey: SortKey | null;
   sortDir: SortDir;
 }
 
 export const INITIAL_FILTER_STATE: FilterState = {
   statuses: [],
-  nameQuery: "",
   sortKey: null,
   sortDir: "desc",
 };
@@ -47,11 +65,6 @@ export function applyFiltersAndSort(
   if (state.statuses.length > 0) {
     const set = new Set(state.statuses);
     result = result.filter((s) => set.has(s.status));
-  }
-
-  if (state.nameQuery.trim()) {
-    const q = state.nameQuery.trim().toLowerCase();
-    result = result.filter((s) => s.name.toLowerCase().includes(q));
   }
 
   if (state.sortKey) {
@@ -79,11 +92,7 @@ function sortValue(submission: StoreSubmission, key: SortKey): number {
 }
 
 export function isFiltered(state: FilterState): boolean {
-  return (
-    state.statuses.length > 0 ||
-    state.nameQuery.trim() !== "" ||
-    state.sortKey !== null
-  );
+  return state.statuses.length > 0 || state.sortKey !== null;
 }
 
 export interface StatusVisual {

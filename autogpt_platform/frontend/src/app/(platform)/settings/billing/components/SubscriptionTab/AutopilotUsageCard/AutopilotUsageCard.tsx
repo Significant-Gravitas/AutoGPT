@@ -47,35 +47,41 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
 function UsageBar({ window }: { window: UsageWindowView }) {
   const reduceMotion = useReducedMotion();
   const percent = Math.min(Math.max(window.percent, 0), 100);
+  const isHigh = percent >= 80;
+  const percentLabel =
+    window.percent > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="body-medium" as="span" className="text-textBlack">
-        {window.label}
-      </Text>
-      <div className="flex items-center gap-3">
-        <div className="relative h-6 flex-1 overflow-hidden rounded-[4px] bg-[repeating-linear-gradient(135deg,_#d4d4d8_0,_#d4d4d8_2px,_transparent_2px,_transparent_6px)]">
-          <motion.div
-            initial={reduceMotion ? { width: `${percent}%` } : { width: 0 }}
-            animate={{ width: `${percent}%` }}
-            transition={
-              reduceMotion
-                ? undefined
-                : { duration: 0.9, ease: EASE_OUT, delay: 0.25 }
-            }
-            className="h-full bg-zinc-300"
-          />
-        </div>
-        <Text
-          variant="body-medium"
-          as="span"
-          className="shrink-0 tabular-nums text-textBlack"
-        >
-          {percent}%
+      <div className="flex items-baseline justify-between">
+        <Text variant="body-medium" className="text-neutral-700">
+          {window.label}
+        </Text>
+        <Text variant="body" className="tabular-nums text-neutral-500">
+          {percentLabel}
         </Text>
       </div>
-      <Text variant="body" as="span" className="text-zinc-500">
-        {window.prefix} <span className="text-zinc-800">{window.value}</span>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+        <motion.div
+          role="progressbar"
+          aria-label={`${window.label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          initial={reduceMotion ? { width: `${percent}%` } : { width: 0 }}
+          animate={{ width: `${percent}%` }}
+          transition={
+            reduceMotion
+              ? undefined
+              : { duration: 0.9, ease: EASE_OUT, delay: 0.25 }
+          }
+          className={`h-full rounded-full ${
+            isHigh ? "bg-orange-500" : "bg-blue-500"
+          }`}
+        />
+      </div>
+      <Text variant="small" className="text-neutral-400">
+        {window.prefix} <span className="text-neutral-700">{window.value}</span>
       </Text>
     </div>
   );

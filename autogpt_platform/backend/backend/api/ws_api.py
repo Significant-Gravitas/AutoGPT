@@ -333,6 +333,7 @@ async def websocket_router(
 
 
 @app.get("/")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 

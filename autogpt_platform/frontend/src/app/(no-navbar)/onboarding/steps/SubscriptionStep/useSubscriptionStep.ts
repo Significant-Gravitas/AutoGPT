@@ -1,16 +1,19 @@
 import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/credits/credits";
-import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { environment } from "@/services/environment";
 import { useState } from "react";
-import { normalizeOnboardingProfile } from "../../helpers";
-import { useOnboardingWizardStore } from "../../store";
-import { COUNTRIES } from "./countries";
-import { PLAN_KEYS, type PlanKey, TEAM_INTAKE_FORM_URL } from "./helpers";
+import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
+import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
+import {
+  PLAN_KEYS,
+  type PlanKey,
+  TEAM_INTAKE_FORM_URL,
+} from "@/components/molecules/PlanCard/plans";
+import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 
 const PLAN_TO_TIER: Record<
-  Exclude<PlanKey, typeof PLAN_KEYS.TEAM>,
+  Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
   SubscriptionTierRequestTier
 > = {
   PRO: "PRO",
@@ -22,15 +25,11 @@ interface CheckoutResponse {
 }
 
 export function useSubscriptionStep() {
-  const billing = useOnboardingWizardStore((s) => s.selectedBilling);
   const setSelectedBilling = useOnboardingWizardStore(
     (s) => s.setSelectedBilling,
   );
   const selectedCountryCode = useOnboardingWizardStore(
     (s) => s.selectedCountryCode,
-  );
-  const setSelectedCountryCode = useOnboardingWizardStore(
-    (s) => s.setSelectedCountryCode,
   );
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -38,6 +37,7 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
+  const { billing, plans } = useSubscriptionPricingExperiment();
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.
@@ -51,17 +51,12 @@ export function useSubscriptionStep() {
   const country = COUNTRIES[countryIdx];
   const isYearly = billing === "yearly";
 
-  function setCountryIdx(idx: number) {
-    const next = COUNTRIES[idx];
-    if (!next) return;
-    setSelectedCountryCode(next.countryCode);
-  }
-
   async function handlePlanSelect(planKey: PlanKey) {
     if (planKey === PLAN_KEYS.TEAM) {
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
+    if (planKey === PLAN_KEYS.BUSINESS) return;
     if (isProcessing) return;
     setIsSubmitting(true);
 
@@ -77,29 +72,18 @@ export function useSubscriptionStep() {
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
 
-    const { name, role, painPoints } = normalizeOnboardingProfile(
-      useOnboardingWizardStore.getState(),
-    );
-
     try {
-      // POST the profile pre-redirect as defence in depth: zustand persist
-      // (sessionStorage) keeps the store across the Stripe round-trip, but
-      // submitting now also covers the case where the user closes the tab
-      // mid-checkout — the backend still has their name / role / pain
-      // points. Abort on failure rather than starting a Checkout session
-      // we'd have to reconcile with a missing profile after success.
-      await postV1SubmitOnboardingProfile({
-        user_name: name,
-        user_role: role,
-        pain_points: painPoints,
-      });
-
+      // The paywall is the first step, so there's no profile to submit yet —
+      // name / role / pain points are collected after payment. On a successful
+      // checkout Stripe returns the user to Welcome to begin onboarding; on
+      // cancel, back to this paywall.
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=5&subscription=success`,
-          cancel_url: `${baseUrl}?step=4&subscription=cancelled`,
+          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success`,
+          cancel_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.subscription}&subscription=cancelled`,
+          billing_cycle: isYearly ? "yearly" : "monthly",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
@@ -129,8 +113,7 @@ export function useSubscriptionStep() {
   return {
     billing,
     setBilling: setSelectedBilling,
-    countryIdx,
-    setCountryIdx,
+    plans,
     country,
     isYearly,
     handlePlanSelect,

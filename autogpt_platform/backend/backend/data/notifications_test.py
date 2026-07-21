@@ -19,6 +19,8 @@ from backend.data.notifications import (
     NotificationEventModel,
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
+    get_all_batches_by_type,
+    get_user_notification_oldest_message_in_batch,
 )
 from backend.util.test import SpinTestServer
 
@@ -394,5 +396,69 @@ async def test_upsert_retries_on_unique_violation(
             where={"UserNotificationBatch": {"is": {"userId": user_id}}}
         )
         assert event_count == 2
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_oldest_message_returns_single_event(server: SpinTestServer):
+    # Hot-path egress fix: must return a single oldest event without dragging
+    # the whole batch back through Prisma's eager-include path.
+    user_id = f"notif-oldest-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        for i in range(5):
+            await create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name=f"e{i}"),
+            )
+
+        oldest = await get_user_notification_oldest_message_in_batch(
+            user_id, NotificationType.AGENT_RUN
+        )
+        assert oldest is not None
+        all_events = await NotificationEvent.prisma().find_many(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}},
+            order={"createdAt": "asc"},
+        )
+        assert oldest.created_at == all_events[0].createdAt
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_oldest_message_returns_none_when_empty(server: SpinTestServer):
+    user_id = f"notif-oldest-empty-{uuid4()}"
+    await _create_test_user(user_id)
+    try:
+        oldest = await get_user_notification_oldest_message_in_batch(
+            user_id, NotificationType.AGENT_RUN
+        )
+        assert oldest is None
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_all_batches_does_not_eager_load_events(server: SpinTestServer):
+    # Caller iterates batches and re-fetches events per batch when actually
+    # sending; loading them here was the egress hot path.
+    user_id = f"notif-allbatches-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        for i in range(3):
+            await create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name=f"e{i}"),
+            )
+
+        batches = await get_all_batches_by_type(NotificationType.AGENT_RUN)
+        mine = [b for b in batches if b.user_id == user_id]
+        assert len(mine) == 1
+        assert mine[0].notifications == []
     finally:
         await _cleanup_test_user(user_id)

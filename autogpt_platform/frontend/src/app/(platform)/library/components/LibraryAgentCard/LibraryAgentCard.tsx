@@ -130,7 +130,7 @@ export function LibraryAgentCard({
               type="button"
               onClick={() => router.push(`/library/agents/${id}`)}
               data-testid="library-agent-card-see-runs-link"
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >
               <EyeIcon size={14} className="shrink-0" />
               See tasks
@@ -144,11 +144,11 @@ export function LibraryAgentCard({
               type="button"
               onClick={() => {
                 const prompt = encodeURIComponent(
-                  `Tell me about ${name}, its current status, recent runs and how can I get the most out of it`,
+                  `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
                 );
                 router.push(`/copilot?autosubmit=true#prompt=${prompt}`);
               }}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >
               <ChatCircleDotsIcon size={14} className="shrink-0" />
               Chat

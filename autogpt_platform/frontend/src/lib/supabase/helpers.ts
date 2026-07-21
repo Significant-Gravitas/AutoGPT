@@ -84,7 +84,6 @@ export interface EventListeners {
 
 export function setupSessionEventListeners(
   onVisibilityChange: () => void,
-  onFocus: () => void,
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
   if (environment.isServerSide()) {
@@ -92,13 +91,11 @@ export function setupSessionEventListeners(
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.addEventListener("focus", onFocus);
   window.addEventListener("storage", onStorageChange);
 
   return {
     cleanup: () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorageChange);
     },
   };

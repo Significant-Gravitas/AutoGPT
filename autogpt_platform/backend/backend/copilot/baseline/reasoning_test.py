@@ -13,6 +13,7 @@ from backend.copilot.baseline.reasoning import (
     OpenRouterDeltaExtension,
     ReasoningDetail,
     _is_reasoning_route,
+    anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
 from backend.copilot.model import ChatMessage
@@ -224,6 +225,66 @@ class TestReasoningExtraBody:
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", 0) is None
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", -1) is None
         assert reasoning_extra_body("moonshotai/kimi-k2.6", 0) is None
+
+
+class TestAnthropicThinkingExtraBody:
+    def test_claude_route_returns_anthropic_native_fragment(self):
+        # Direct-Anthropic mode swaps the OR ``reasoning`` wrapper for
+        # the native ``thinking`` parameter — without this fragment,
+        # extended-thinking is silently dropped on api.anthropic.com.
+        assert anthropic_thinking_extra_body("anthropic/claude-sonnet-4-6", 4096) == {
+            "thinking": {"type": "enabled", "budget_tokens": 4096}
+        }
+
+    def test_post_normalize_claude_id_still_matches(self):
+        # `normalize_model_for_transport` strips ``anthropic/`` and dots
+        # before the call — confirm the helper handles either shape.
+        assert anthropic_thinking_extra_body("claude-haiku-4-5", 8192) == {
+            "thinking": {"type": "enabled", "budget_tokens": 8192}
+        }
+
+    def test_kimi_route_returns_none(self):
+        # Kimi never reaches Anthropic — even though it's a reasoning
+        # route, the Anthropic-native ``thinking`` fragment would be
+        # nonsense on Moonshot's endpoint.
+        assert anthropic_thinking_extra_body("moonshotai/kimi-k2.6", 8192) is None
+        assert (
+            anthropic_thinking_extra_body("moonshotai/kimi-k2-thinking", 4096) is None
+        )
+
+    def test_non_reasoning_route_returns_none(self):
+        assert anthropic_thinking_extra_body("openai/gpt-4o", 4096) is None
+        assert anthropic_thinking_extra_body("google/gemini-2.5-pro", 4096) is None
+
+    def test_zero_max_tokens_kill_switch(self):
+        # Same operator kill switch as the OR helper.
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", 0) is None
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", -1) is None
+
+    def test_legacy_claude_3_models_excluded(self):
+        # claude-3-haiku / 3-opus / 3-sonnet / 3-5-* 400 on direct Anthropic
+        # when ``thinking`` is sent (and ``max_tokens`` inflation can also
+        # exceed Haiku's 4096 output cap).  Only Claude 3.7 + Claude 4.x
+        # families opt in.
+        for model in (
+            "claude-3-haiku-20240307",
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "anthropic/claude-3-haiku-20240307",
+        ):
+            assert anthropic_thinking_extra_body(model, 4096) is None, model
+
+    def test_claude_3_7_and_claude_4_families_included(self):
+        for model in (
+            "claude-3-7-sonnet-20250219",
+            "claude-opus-4-7",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "anthropic/claude-opus-4-7",
+        ):
+            assert anthropic_thinking_extra_body(model, 4096) is not None, model
 
 
 class TestBaselineReasoningEmitter:
