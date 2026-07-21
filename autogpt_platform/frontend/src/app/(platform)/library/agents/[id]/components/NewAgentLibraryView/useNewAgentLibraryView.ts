@@ -62,6 +62,10 @@ export function useNewAgentLibraryView() {
 
   const presetsQuery = useAgentPresetsQuery(agent?.graph_id);
   const presets = presetsQuery.data?.presets;
+  // The presets query fetches a single page (capped at 100). For agents
+  // beyond that cap, an unknown ID can't be ruled out as a preset, so the
+  // derivation falls back to the by-ID preset detail view — which fails
+  // fast into the not-found card if the ID is truly gone.
   const presetsComplete =
     !!presetsQuery.data &&
     presetsQuery.data.pagination.total_items <=
@@ -286,18 +290,28 @@ export function useNewAgentLibraryView() {
       : null;
   const selectedTriggerError = presetsQuery.error || triggerAgentsQuery.error;
 
+  function retryTriggerLists() {
+    if (presetsQuery.isError) presetsQuery.refetch();
+    if (triggerAgentsQuery.isError) triggerAgentsQuery.refetch();
+  }
+
   return {
     agentId: id,
     agent,
     ready: isSuccess,
     activeTemplate,
     isTemplateLoading,
-    error: error || templateError,
+    // The template query shares its cache key with the trigger detail
+    // view's preset query, so its error state must only surface on the
+    // Templates tab — otherwise a 404 on the Triggers tab (handled inline
+    // there) would blank the whole page.
+    error: error || (activeTab === "templates" ? templateError : null),
     hasAnyItems,
     showSidebarLayout,
     activeItemId,
     selectedTriggerKind,
     selectedTriggerError,
+    retryTriggerLists,
     sidebarLoading,
     activeTab,
     setActiveTab: handleSetActiveTab,

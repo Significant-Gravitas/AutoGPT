@@ -42,6 +42,7 @@ export function NewAgentLibraryView() {
     activeItemId,
     selectedTriggerKind,
     selectedTriggerError,
+    retryTriggerLists,
     sidebarLoading,
     activeTab,
     setActiveTab,
@@ -160,6 +161,7 @@ export function NewAgentLibraryView() {
                     : "Failed to load triggers",
               }}
               context="triggers"
+              onRetry={retryTriggerLists}
             />
           </SelectedViewLayout>
         );

@@ -89,21 +89,21 @@ export function deriveSelectedTriggerKind(args: {
   return "not-found";
 }
 
-export function isClientError(error: unknown): boolean {
+function getErrorStatus(error: unknown): number | null {
   if (typeof error !== "object" || error === null || !("status" in error)) {
-    return false;
+    return null;
   }
   const status = (error as { status?: unknown }).status;
-  return typeof status === "number" && status >= 400 && status < 500;
+  return typeof status === "number" ? status : null;
+}
+
+export function isClientError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  return status !== null && status >= 400 && status < 500;
 }
 
 export function isNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    (error as { status?: unknown }).status === 404
-  );
+  return getErrorStatus(error) === 404;
 }
 
 /**

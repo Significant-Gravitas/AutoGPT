@@ -22,6 +22,7 @@ import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -648,7 +649,14 @@ describe("Library agent view — trigger agents", () => {
     // Without the activeItem guards, the zero-trigger redirect + zero-item
     // layout replace this with the empty-tasks screen.
     await screen.findByText("Trigger not found");
-    await screen.findByRole("button", { name: /clear selection/i });
+    const clearButton = await screen.findByRole("button", {
+      name: /clear selection/i,
+    });
+
+    fireEvent.click(clearButton);
+    await waitFor(() => {
+      expect(screen.queryByText("Trigger not found")).toBeNull();
+    });
   });
 
   test("membership self-corrects a wrong agent: hint to the webhook trigger view", async () => {
@@ -695,6 +703,38 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByText("Trigger Details");
     expect(screen.getByDisplayValue("Beyond Page Trigger")).toBeDefined();
     expect(screen.queryByText("Trigger not found")).toBeNull();
+  });
+
+  test("webhook trigger deleted between list and detail fetch renders the not-found card", async () => {
+    const webhookPreset = makeWebhookPreset({ name: "Just Deleted" });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      singlePresetListHandler(webhookPreset),
+      // The preset is in the list, but its by-ID detail fetch 404s — the
+      // race where it's deleted between the list load and selection.
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        () =>
+          new HttpResponse(
+            JSON.stringify({ detail: "Preset #preset-1 not found" }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      ),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=preset:${webhookPreset.id}`,
+    );
+
+    await screen.findByText("Trigger not found");
+    expect(screen.queryByText(/when retrieving/i)).toBeNull();
   });
 
   test("failed trigger-agents fetch shows an error card even when presets load fine", async () => {

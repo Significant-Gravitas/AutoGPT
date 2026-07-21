@@ -4,6 +4,7 @@ import {
   activeItemParamFor,
   deriveSelectedTriggerKind,
   isClientError,
+  isNotFoundError,
   parseActiveItemParam,
   retryUnlessClientError,
 } from "../components/NewAgentLibraryView/helpers";
@@ -60,6 +61,15 @@ describe("retryUnlessClientError", () => {
     expect(retryUnlessClientError(0, new Error("network down"))).toBe(true);
     expect(retryUnlessClientError(0, null)).toBe(true);
     expect(retryUnlessClientError(0, { status: "404" })).toBe(true);
+  });
+
+  test("isNotFoundError only matches a numeric 404 status", () => {
+    expect(isNotFoundError({ status: 404 })).toBe(true);
+    expect(isNotFoundError({ status: 403 })).toBe(false);
+    expect(isNotFoundError({ status: 422 })).toBe(false);
+    expect(isNotFoundError({ status: "404" })).toBe(false);
+    expect(isNotFoundError(new Error("not found"))).toBe(false);
+    expect(isNotFoundError(null)).toBe(false);
   });
 });
 
