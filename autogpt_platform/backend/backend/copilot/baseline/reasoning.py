@@ -215,6 +215,14 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
     """
     if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
         return None
+    if _is_claude_5_family(model):
+        # Claude 5 removed ``budget_tokens`` (adaptive thinking only) and
+        # OpenRouter maps ``reasoning.max_tokens`` onto it — the request
+        # would 400. Send nothing: omitting the field runs the family's
+        # documented adaptive default. Before routing copilot traffic to a
+        # 5-family model, live-probe whether OpenRouter accepts the
+        # ``reasoning.effort`` shape and wire it here.
+        return None
     return {"reasoning": {"max_tokens": max_thinking_tokens}}
 
 
@@ -231,6 +239,28 @@ _THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
     "claude-haiku-4",  # 4.5
     "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
 )
+
+# The Claude 5 family (sonnet-5 / fable-5 / mythos-5) is deliberately NOT
+# in the list above: it runs ADAPTIVE thinking by default and 400s on the
+# ``budget_tokens`` fragment (the field was removed with 4.7's tokenizer
+# generation). For these models both thinking fragments stay off — the
+# adaptive default is the documented behavior; the operator token budget
+# (kill switch aside) does not apply to them.
+_CLAUDE_5_PREFIXES: tuple[str, ...] = (
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-opus-5",
+)
+
+
+def _is_claude_5_family(model: str) -> bool:
+    lowered = model.lower()
+    for prefix in ("anthropic/", "anthropic."):
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix) :]
+            break
+    return lowered.startswith(_CLAUDE_5_PREFIXES)
 
 
 def _is_thinking_capable_claude(model: str) -> bool:

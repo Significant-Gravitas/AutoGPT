@@ -2093,3 +2093,37 @@ class TestAnthropicTemperatureDeprecation:
             )
         params = async_create.call_args.kwargs["requests"][0]["params"]
         assert params["temperature"] == 0.2
+
+
+class TestClaude5TemperatureRejection:
+    """The Claude 5 family 400s on non-default sampling params — the strip
+    list is load-bearing for batch (dream) submissions, which have no
+    retry self-heal."""
+
+    def test_sonnet_5_temperature_stripped(self):
+        from backend.util.llm.providers import _anthropic_accepts_temperature
+
+        assert _anthropic_accepts_temperature("claude-sonnet-5") is False
+        assert _anthropic_accepts_temperature("claude-sonnet-4-6") is True
+
+    def test_self_heal_matches_unsupported_phrasing(self):
+        import anthropic
+        import httpx
+
+        from backend.util.llm.providers import _is_temperature_deprecation_error
+
+        def _err(msg: str) -> anthropic.BadRequestError:
+            resp = httpx.Response(
+                400,
+                request=httpx.Request("POST", "https://api.anthropic.com"),
+                json={"error": {"message": msg}},
+            )
+            return anthropic.BadRequestError(msg, response=resp, body=None)
+
+        assert _is_temperature_deprecation_error(
+            _err("`temperature` is deprecated for this model")
+        )
+        assert _is_temperature_deprecation_error(
+            _err("temperature is not supported by this model")
+        )
+        assert not _is_temperature_deprecation_error(_err("rate limited"))

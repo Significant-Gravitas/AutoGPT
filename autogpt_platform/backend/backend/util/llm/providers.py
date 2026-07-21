@@ -112,6 +112,12 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
     "claude-opus-4-7",
     "claude-opus-4-8",
+    # Whole Claude 5 family: non-default temperature/top_p/top_k are 400s
+    # (litellm: supports_sampling_params=false). Load-bearing for batch
+    # submissions (dream), which have no retry self-heal.
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
 )
 
 
@@ -120,8 +126,14 @@ def _anthropic_accepts_temperature(model: str) -> bool:
 
 
 def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
+    # The Claude 5 family's rejection wording is unverified (4.7/4.8 say
+    # "deprecated") — match the sibling phrasings so the sync-path
+    # self-heal fires for future families regardless of the exact word.
     error_text = str(exc).lower()
-    return "temperature" in error_text and "deprecated" in error_text
+    return "temperature" in error_text and any(
+        phrase in error_text
+        for phrase in ("deprecated", "not supported", "unsupported", "removed")
+    )
 
 
 # ---------------------------------------------------------------------------

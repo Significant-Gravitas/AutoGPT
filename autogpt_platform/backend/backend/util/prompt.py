@@ -216,7 +216,8 @@ def estimate_token_count(
     """
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
-    return sum(_msg_tokens(m, enc) for m in messages)
+    raw = sum(_msg_tokens(m, enc) for m in messages)
+    return int(raw * _token_estimate_factor(model))
 
 
 def estimate_token_count_str(
@@ -240,7 +241,7 @@ def estimate_token_count_str(
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
     text = json.dumps(text) if not isinstance(text, str) else text
-    return _tok_len(text, enc)
+    return int(_tok_len(text, enc) * _token_estimate_factor(model))
 
 
 # ---------------------------------------------------------------------------#
@@ -307,6 +308,33 @@ class CompressResult:
     original_token_count: int = 0
     messages_summarized: int = 0
     messages_dropped: int = 0
+
+
+# Estimation correction for the Claude 5 family (sonnet-5/fable-5/
+# mythos-5, plus the shared 4.7/4.8 tokenizer generation): Anthropic ships
+# no local tokenizer, so estimates ride tiktoken o200k_base, which already
+# undercounts Claude 4.x by ~15-20%; the Claude 5 tokenizer additionally
+# counts ~30% MORE tokens for the same text (Anthropic migration guide).
+# 1.5 ≈ 1.175 x 1.3 — deliberately on the high side: overestimating
+# shrinks compaction targets and max_tokens headroom (safe), while
+# underestimating overflows the context window (a 400 at serve time).
+CLAUDE_5_TOKEN_FACTOR = 1.5
+
+_CLAUDE_5_TOKENIZER_MARKERS = (
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-opus-5",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+)
+
+
+def _token_estimate_factor(model: str) -> float:
+    tail = model.split("/")[-1].lower()
+    if tail.startswith(_CLAUDE_5_TOKENIZER_MARKERS):
+        return CLAUDE_5_TOKEN_FACTOR
+    return 1.0
 
 
 def _normalize_model_for_tokenizer(model: str) -> str:

@@ -1119,3 +1119,40 @@ class TestGetCompressionTarget:
     def test_small_model_returns_default(self) -> None:
         # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
         assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD
+
+
+class TestClaude5TokenFactor:
+    """The Claude 5 family tokenizes ~30% denser than 4.x and ships no
+    local tokenizer — estimates get the conservative correction factor."""
+
+    def test_sonnet_5_estimate_is_scaled(self):
+        from backend.util.prompt import CLAUDE_5_TOKEN_FACTOR, estimate_token_count_str
+
+        text = "hello world " * 200
+        base = estimate_token_count_str(text, model="claude-sonnet-4-6")
+        scaled = estimate_token_count_str(text, model="claude-sonnet-5")
+        assert scaled == int(base * CLAUDE_5_TOKEN_FACTOR)
+
+    def test_factor_applies_through_vendor_prefix(self):
+        from backend.util.prompt import estimate_token_count_str
+
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="anthropic/claude-sonnet-5"
+        ) == estimate_token_count_str(text, model="claude-sonnet-5")
+
+    def test_claude_4_6_unscaled(self):
+        from backend.util.prompt import estimate_token_count_str
+
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="claude-sonnet-4-6"
+        ) == estimate_token_count_str(text, model="gpt-4o")
+
+    def test_opus_4_7_shares_the_new_tokenizer(self):
+        from backend.util.prompt import estimate_token_count_str
+
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="claude-opus-4-7"
+        ) == estimate_token_count_str(text, model="claude-sonnet-5")

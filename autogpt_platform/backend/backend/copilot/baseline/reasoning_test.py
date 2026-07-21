@@ -573,3 +573,32 @@ class TestBaselineReasoningEmitterRenderFlag:
         assert len(events) == 2
         assert isinstance(events[0], StreamReasoningStart)
         assert isinstance(events[1], StreamReasoningDelta)
+
+
+class TestClaude5FamilyThinking:
+    """Claude 5 removed ``budget_tokens`` — both thinking fragments must
+    stay off (the documented adaptive default serves), while 4.x keeps
+    its budget-capped fragments."""
+
+    def test_openrouter_fragment_suppressed_for_sonnet_5(self):
+        from backend.copilot.baseline.reasoning import reasoning_extra_body
+
+        assert reasoning_extra_body("anthropic/claude-sonnet-5", 5000) is None
+
+    def test_anthropic_fragment_suppressed_for_sonnet_5(self):
+        from backend.copilot.baseline.reasoning import anthropic_thinking_extra_body
+
+        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+
+    def test_sonnet_4_6_keeps_budget_fragments(self):
+        from backend.copilot.baseline.reasoning import (
+            anthropic_thinking_extra_body,
+            reasoning_extra_body,
+        )
+
+        assert reasoning_extra_body("anthropic/claude-sonnet-4.6", 5000) == {
+            "reasoning": {"max_tokens": 5000}
+        }
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", 5000) == {
+            "thinking": {"type": "enabled", "budget_tokens": 5000}
+        }
