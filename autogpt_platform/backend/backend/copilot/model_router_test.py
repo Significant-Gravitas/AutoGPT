@@ -17,10 +17,10 @@ def _empty_catalog_by_default():
     the real catalog into the module globals and legitimately leave it there.
     Snapshot, clear, restore, so suite order can never change outcomes.
     TestRegistryGating's own fixture layers its populated state on top."""
-    old = (reg._dynamic_models, reg._schema_options, reg._routes)
-    reg._dynamic_models, reg._schema_options, reg._routes = {}, [], {}
+    old = (reg._dynamic_models, reg._routes)
+    reg._dynamic_models, reg._routes = {}, {}
     yield
-    reg._dynamic_models, reg._schema_options, reg._routes = old
+    reg._dynamic_models, reg._routes = old
 
 
 def _make_config() -> ChatConfig:
@@ -375,10 +375,10 @@ class TestRegistryGating:
         from backend.util.settings import BehaveAs
 
         mocker.patch.object(router_mod.settings.config, "behave_as", BehaveAs.CLOUD)
-        self.record = mocker.patch(
-            "backend.copilot.model_router.record_route_warning", new=AsyncMock()
+        router_mod._sentry_reported.clear()
+        self.sentry = mocker.patch(
+            "backend.copilot.model_router.sentry_sdk.capture_message"
         )
-        mocker.patch("backend.copilot.model_router.sentry_sdk.capture_message")
         yield
         reg._dynamic_models, reg._routes = old_models, old_routes
 
@@ -407,8 +407,38 @@ class TestRegistryGating:
             "fast", "standard", "user-1", config=_make_config()
         )
         assert resolved.source == "env"
-        self.record.assert_called_once()
-        assert self.record.call_args.args[0] == "typo/model"
+        self.sentry.assert_called_once()
+        assert "'typo/model'" in self.sentry.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_sentry_fires_once_per_refused_slug(self, mocker):
+        """A bad LD slug refuses on every turn; Sentry hears about it once
+        per process, the log hears about it every time."""
+        from backend.copilot.model_router import resolve_model_route
+
+        self._ld(mocker, "typo/model")
+        for _ in range(3):
+            await resolve_model_route(
+                "fast", "standard", "user-1", config=_make_config()
+            )
+        self.sentry.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ld_date_suffixed_anthropic_slug_serves(self, mocker):
+        """OpenRouter drops the -YYYYMMDD snapshot suffix Anthropic's API
+        slugs carry; an LD experiment routing to the 4.5 family must match
+        the suffixed catalog slug, not be refused as unknown."""
+        from backend.copilot.model_router import resolve_model_route
+
+        self.reg._dynamic_models["claude-haiku-4-5-20251001"] = self.make(
+            "claude-haiku-4-5-20251001"
+        )
+        self._ld(mocker, "anthropic/claude-haiku-4-5")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("anthropic/claude-haiku-4-5", "ld")
+        self.sentry.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_disabled_ld_slug_refused_kill_switch(self, mocker):
@@ -419,7 +449,7 @@ class TestRegistryGating:
             "fast", "standard", "user-1", config=_make_config()
         )
         assert resolved.source == "env"
-        self.record.assert_called_once()
+        self.sentry.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_hidden_ld_slug_serves(self, mocker):
@@ -431,7 +461,7 @@ class TestRegistryGating:
             "fast", "standard", "user-1", config=_make_config()
         )
         assert resolved == ("hidden/model", "ld")
-        self.record.assert_not_called()
+        self.sentry.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_db_cell_used_when_no_ld(self, mocker):
@@ -470,7 +500,7 @@ class TestRegistryGating:
         cfg = _make_config()
         resolved = await resolve_model_route("fast", "standard", "user-1", config=cfg)
         assert resolved == (cfg.fast_standard_model, "env")
-        assert self.record.call_args.args[2] == "db"
+        assert "refused db slug" in self.sentry.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_no_user_skips_ld_but_uses_db_cell(self):
@@ -493,7 +523,7 @@ class TestRegistryGating:
             "fast", "standard", "user-1", config=_make_config()
         )
         assert resolved == ("totally/unregistered", "ld")
-        self.record.assert_not_called()
+        self.sentry.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ld_openrouter_spelling_matches_bare_catalog_slug(self, mocker):
@@ -508,7 +538,7 @@ class TestRegistryGating:
             "fast", "standard", "user-1", config=_make_config()
         )
         assert resolved == ("anthropic/claude-opus-4.6", "ld")
-        self.record.assert_not_called()
+        self.sentry.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cell_value_is_returned_verbatim(self, mocker):
@@ -644,6 +674,28 @@ class TestExecutorCatalogLoad:
 
 class TestSelfHostedSkipsCells:
     """Cells are cloud deployment config: behave_as != CLOUD ignores them."""
+
+    @pytest.mark.asyncio
+    async def test_self_hosted_ld_slug_not_catalog_gated(self, mocker):
+        """A self-hosted operator's LD flag may route to their own model
+        (e.g. a custom Ollama tag) that the shipped catalog has never heard
+        of — the catalog must not veto it. Gating is cloud-only."""
+        import backend.data.llm_registry.registry as reg
+        from backend.copilot.model_router import resolve_model_route
+
+        old_models, old_routes = reg._dynamic_models, reg._routes
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value={"fast": {"standard": "qwen3:8b-custom"}}),
+        )
+        try:
+            resolved = await resolve_model_route(
+                "fast", "standard", "user-1", config=_make_config()
+            )
+        finally:
+            reg._dynamic_models, reg._routes = old_models, old_routes
+
+        assert resolved == ("qwen3:8b-custom", "ld")
 
     @pytest.mark.asyncio
     async def test_self_hosted_cloud_transport_resolves_env_not_cell(self, mocker):

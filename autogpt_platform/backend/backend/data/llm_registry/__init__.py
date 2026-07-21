@@ -16,15 +16,10 @@ from .catalog_model import (
 )
 from .registry import (
     RegistryModel,
-    RegistryModelCreator,
     RegistryModelMetadata,
-    get_all_model_slugs_for_validation,
     get_all_models,
-    get_default_model_slug,
-    get_enabled_models,
     get_model,
     get_route,
-    get_schema_options,
     load_catalog,
 )
 
@@ -39,14 +34,9 @@ __all__ = [
     "CatalogProvider",
     # Registry view
     "RegistryModel",
-    "RegistryModelCreator",
     "RegistryModelMetadata",
-    "get_all_model_slugs_for_validation",
     "get_all_models",
-    "get_default_model_slug",
-    "get_enabled_models",
     "get_model",
     "get_route",
-    "get_schema_options",
     "load_catalog",
 ]

@@ -17,13 +17,9 @@ from backend.data.llm_registry.catalog_model import (
 )
 from backend.data.llm_registry.registry import (
     RegistryModel,
-    get_all_model_slugs_for_validation,
     get_all_models,
-    get_default_model_slug,
-    get_enabled_models,
     get_model,
     get_route,
-    get_schema_options,
     load_catalog,
 )
 
@@ -71,7 +67,8 @@ def test_load_catalog_builds_l1_from_payload():
     )
 
     assert {m.slug for m in get_all_models()} == {"openai/gpt-a", "openai/gpt-b"}
-    assert [m.slug for m in get_enabled_models()] == ["openai/gpt-a"]
+    enabled = [m.slug for m in get_all_models() if m.is_enabled]
+    assert enabled == ["openai/gpt-a"]
     assert get_route("copilot", "thinking", "standard") == "openai/gpt-a"
     assert get_route("copilot", "fast", "standard") is None
 
@@ -91,7 +88,6 @@ def test_registry_model_carries_joined_display_data():
 
     assert isinstance(model, RegistryModel)
     assert model.provider_display_name == "OpenAI"
-    assert model.creator is not None and model.creator.display_name == "OpenAI"
     assert model.metadata.provider == "openai"
     assert model.metadata.price_tier == 2
     assert model.cost is not None and model.cost.run_credits == 3
@@ -121,66 +117,12 @@ def test_get_model_not_found():
     assert get_model("nonexistent/model") is None
 
 
-def test_schema_options_enabled_only_sorted():
-    load_catalog(
-        _payload(
-            [
-                _model("openai/zeta", display_name="Zeta"),
-                _model("openai/alpha", display_name="Alpha"),
-                _model("openai/old", display_name="Old", is_enabled=False),
-            ]
-        )
-    )
-    options = get_schema_options()
-
-    assert [o["value"] for o in options] == ["openai/alpha", "openai/zeta"]
-    assert options[0]["group"] == "openai"
-
-
-def test_default_model_prefers_recommended_enabled():
-    load_catalog(
-        _payload(
-            [
-                _model("openai/a", display_name="A"),
-                _model("openai/b", display_name="B", is_recommended=True),
-                _model(
-                    "openai/c",
-                    display_name="C",
-                    is_recommended=True,
-                    is_enabled=False,
-                ),
-            ]
-        )
-    )
-    assert get_default_model_slug() == "openai/b"
-
-
-def test_default_model_falls_back_to_first_enabled():
-    load_catalog(
-        _payload(
-            [
-                _model("openai/b", display_name="B"),
-                _model("openai/a", display_name="A"),
-            ]
-        )
-    )
-    assert get_default_model_slug() == "openai/a"
-
-
-def test_validation_slugs_enabled_only():
-    load_catalog(
-        _payload([_model("openai/a"), _model("openai/dead", is_enabled=False)])
-    )
-    assert get_all_model_slugs_for_validation() == ["openai/a"]
-
-
 def test_real_catalog_loads():
     """The shipped catalog file builds a complete L1."""
     load_catalog(CATALOG)
 
     assert len(get_all_models()) > 50
-    assert get_default_model_slug() is not None
+    assert any(m.is_recommended and m.is_enabled for m in get_all_models())
     # Cells ship empty (env stays authoritative until a cell is claimed) —
     # populated-cell behavior is covered by the seeded-payload tests above.
     assert get_route("copilot", "thinking", "standard") is None
-    assert len(get_schema_options()) > 50

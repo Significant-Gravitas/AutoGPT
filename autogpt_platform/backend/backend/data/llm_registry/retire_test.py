@@ -14,7 +14,7 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 import backend.data.llm_registry.registry as reg
-from backend.data.llm_registry.registry import get_enabled_models, load_catalog
+from backend.data.llm_registry.registry import get_all_models, load_catalog
 from backend.data.llm_registry.retire import (
     count_model_usage,
     list_model_migrations,
@@ -81,7 +81,7 @@ async def _seed_node(created_graph_ids: list[str], model_value: str) -> str:
 
 
 def _two_catalog_slugs() -> tuple[str, str]:
-    models = get_enabled_models()
+    models = [m for m in get_all_models() if m.is_enabled]
     assert len(models) >= 2
     return models[0].slug, models[1].slug
 

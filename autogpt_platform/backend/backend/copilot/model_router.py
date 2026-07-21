@@ -5,17 +5,20 @@ Each cell of the ``(mode, tier)`` matrix resolves through three layers:
 1. The JSON-valued LaunchDarkly flag ``copilot-model-routing`` (per-user —
    cohort experiments and rollouts live here, and the flag returns model
    slugs directly).
-2. The LLM registry's admin-set routing cell (``LlmModelRoute``, surface
-   ``"copilot"``) — the config layer the admin page edits.
+2. The catalog's routing cell (``catalog.py`` ``routing`` section, surface
+   ``"copilot"``) — our cloud's deployment config, shipped with the code.
 3. The static ``ChatConfig`` default (env vars) — the bootstrap floor.
 
-The registry is the serve-time gate for layers 1 and 2: a slug the registry
-doesn't know, or one with ``isEnabled=false`` (the kill switch), is refused —
-loudly (log + Sentry + route_warnings record) — and resolution falls through
-to the next layer. ``visibility=HIDDEN`` models DO serve when routed: that's
-the pre-launch testing state (registered + routable, not shown in pickers).
-An EMPTY registry never gates anything, so installs where the registry is
-dormant keep exact pre-registry behavior.
+On our cloud, the registry is the serve-time gate for layers 1 and 2: a slug
+the catalog doesn't know, or one with ``is_enabled=False`` (the kill switch),
+is refused — loudly (log + Sentry) — and resolution falls through to the next
+layer. ``visibility=HIDDEN`` models DO serve when routed: that's the
+pre-launch testing state (registered + routable, not shown in pickers).
+Self-hosted installs and local transports skip the gate entirely (their LD
+and env slugs are their own business — the shipped catalog must not veto an
+operator's custom model). An EMPTY registry never gates anything either;
+production processes always load it (fail-hard boot), so that branch is
+defense-in-depth for exotic embedders only.
 
 Matrix:
 
@@ -40,13 +43,13 @@ payload, or LD failure all fall through to the next layer.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal, NamedTuple
 
 import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.route_warnings import record_route_warning
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -63,6 +66,9 @@ ROUTE_SURFACE_COPILOT = "copilot"
 class ResolvedModel(NamedTuple):
     model: str
     source: RoutingSource
+
+
+_DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
 def _catalog_lookup(slug: str):
@@ -84,7 +90,18 @@ def _catalog_lookup(slug: str):
         model = llm_registry.get_model(candidate)
         if model is not None:
             return model
+    # Anthropic's API slugs carry a -YYYYMMDD snapshot suffix that the
+    # OpenRouter canonical form drops (anthropic/claude-haiku-4-5 ↔ catalog
+    # claude-haiku-4-5-20251001) — match on the date-stripped catalog slug
+    # so LD experiments can route to snapshot-suffixed models.
+    candidate_set = set(candidates)
+    for model in llm_registry.get_all_models():
+        if _DATE_SUFFIX.sub("", model.slug) in candidate_set:
+            return model
     return None
+
+
+_sentry_reported: set[tuple[str, str]] = set()
 
 
 async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
@@ -109,11 +126,15 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
         slug,
         reason,
     )
-    sentry_sdk.capture_message(
-        f"copilot routing refused {layer} slug {slug!r}: {reason}",
-        level="warning",
-    )
-    await record_route_warning(slug, reason, layer)
+    # Log every refusal (greppable), but Sentry only once per (layer, slug)
+    # per process — a bad LD slug refuses on EVERY turn until fixed, and one
+    # event per turn during an incident is noise, not signal.
+    if (layer, slug) not in _sentry_reported:
+        _sentry_reported.add((layer, slug))
+        sentry_sdk.capture_message(
+            f"copilot routing refused {layer} slug {slug!r}: {reason}",
+            level="warning",
+        )
     return reason
 
 
@@ -207,23 +228,28 @@ async def resolve_model_route(
     ``source`` is stamped onto persisted chat messages so product
     intelligence can segment quality metrics by model and routing layer.
     """
+    # The catalog gates (and cells apply) on OUR CLOUD's hosted transports
+    # only — they are not rules for everyone:
+    # - self-hosted installs (behave_as != CLOUD) keep LD/env authority over
+    #   their own slugs; the shipped catalog must not veto an operator's
+    #   custom model (they can't edit our catalog to register it)
+    # - local transports (Ollama/vLLM) pass slugs through verbatim; catalog
+    #   gating would refuse every local model and a cloud-slug cell would
+    #   404 at request time
+    # Both resolve LD → env, exactly as before the catalog existed.
+    gated = (
+        settings.config.behave_as == BehaveAs.CLOUD
+        and config.baseline_provider != "local"
+    )
+
     if user_id:
         ld_slug = await _ld_cell_value(mode, tier, user_id)
-        if ld_slug and await _registry_refuses(ld_slug, "ld") is None:
+        if ld_slug and (
+            not gated or await _registry_refuses(ld_slug, "ld") is None
+        ):
             return ResolvedModel(ld_slug, "ld")
 
-    # Routing cells are OUR CLOUD's deployment config that happens to travel
-    # in the shipped catalog file — they are not defaults for everyone:
-    # - self-hosted installs (behave_as != CLOUD) keep env authority; a cell
-    #   we set for prod must not override an operator's CHAT_*_MODEL on
-    #   their next upgrade (they have no LD to escape through)
-    # - local transports (Ollama/vLLM) pass slugs through verbatim with no
-    #   ValueError — a cloud-slug cell would 404 at request time
-    # Both resolve LD → env only, exactly as before the catalog existed.
-    if (
-        settings.config.behave_as != BehaveAs.CLOUD
-        or config.baseline_provider == "local"
-    ):
+    if not gated:
         return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
 
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)

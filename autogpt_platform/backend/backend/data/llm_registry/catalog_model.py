@@ -13,7 +13,7 @@ anything per-install (retirement records live in the DB, see
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,7 +38,6 @@ class CatalogProvider(BaseModel):
     name: str = Field(pattern=_NAME_PATTERN)
     display_name: str = Field(min_length=1, max_length=200)
     description: str | None = None
-    metadata: dict[str, Any] = {}
 
 
 class CatalogCreator(BaseModel):
@@ -100,8 +99,6 @@ class CatalogModel(BaseModel):
     supports_json_output: bool = False
     supports_reasoning: bool = False
     supports_parallel_tool_calls: bool = False
-    capabilities: dict[str, Any] = {}
-    metadata: dict[str, Any] = {}
     cost: CatalogModelCost | None = None
 
 

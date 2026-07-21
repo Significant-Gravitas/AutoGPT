@@ -15,7 +15,7 @@ facts live.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -49,16 +49,6 @@ class RegistryModelMetadata(BaseModel):
     price_tier: Literal[1, 2, 3]
 
 
-class RegistryModelCreator(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    display_name: str
-    description: str | None = None
-    website_url: str | None = None
-    logo_url: str | None = None
-
-
 class RegistryModel(BaseModel):
     """A catalog model joined with its provider/creator display data."""
 
@@ -68,12 +58,9 @@ class RegistryModel(BaseModel):
     display_name: str
     description: str | None = None
     metadata: RegistryModelMetadata
-    capabilities: dict[str, Any] = {}
-    extra_metadata: dict[str, Any] = {}
     provider_display_name: str
     is_enabled: bool
     is_recommended: bool = False
-    creator: RegistryModelCreator | None = None
 
     # is_enabled is the kill switch (never serves when False); visibility only
     # controls who SEES the model — HIDDEN still serves when explicitly routed.
@@ -94,7 +81,6 @@ class RegistryModel(BaseModel):
 # swaps are atomic, and the file can't change under a running process, so no
 # locking is needed.
 _dynamic_models: dict[str, RegistryModel] = {}
-_schema_options: list[dict[str, str]] = []
 _routes: dict[tuple[str, str, str], str] = {}
 
 
@@ -122,22 +108,9 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
                 creator_name=creator.display_name if creator else "Unknown",
                 price_tier=m.price_tier,
             ),
-            capabilities=dict(m.capabilities),
-            extra_metadata=dict(m.metadata),
             provider_display_name=provider_display,
             is_enabled=m.is_enabled,
             is_recommended=m.is_recommended,
-            creator=(
-                RegistryModelCreator(
-                    name=creator.name,
-                    display_name=creator.display_name,
-                    description=creator.description,
-                    website_url=creator.website_url,
-                    logo_url=creator.logo_url,
-                )
-                if creator
-                else None
-            ),
             kind=m.kind,
             visibility=m.visibility,
             min_subscription_tier=m.min_subscription_tier,
@@ -151,20 +124,6 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
     return models
 
 
-def _build_schema_options(models: dict[str, RegistryModel]) -> list[dict[str, str]]:
-    """Model-selection dropdown options. Enabled models only."""
-    return [
-        {
-            "label": model.display_name,
-            "value": model.slug,
-            "group": model.metadata.provider,
-            "description": model.description or "",
-        }
-        for model in sorted(models.values(), key=lambda m: m.display_name.lower())
-        if model.is_enabled
-    ]
-
-
 def load_catalog(payload: CatalogPayload | None = None) -> None:
     """Build the L1 structures from the catalog file. Called at startup.
 
@@ -173,7 +132,7 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     empty registry (which would silently disable routing cells and
     serve-time gating).
     """
-    global _dynamic_models, _schema_options, _routes
+    global _dynamic_models, _routes
     if payload is None:
         payload = get_catalog()
     models = _build_models(payload)
@@ -184,13 +143,9 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
         for tier, slug in tiers.items()
     }
     _dynamic_models = models
-    _schema_options = _build_schema_options(models)
     _routes = routes
     logger.info(
-        "LLM catalog loaded: %d models, %d schema options, %d routing cells",
-        len(models),
-        len(_schema_options),
-        len(routes),
+        "LLM catalog loaded: %d models, %d routing cells", len(models), len(routes)
     )
 
 
@@ -202,30 +157,6 @@ def get_model(slug: str) -> RegistryModel | None:
 def get_all_models() -> list[RegistryModel]:
     """All catalog models, including disabled ones."""
     return list(_dynamic_models.values())
-
-
-def get_enabled_models() -> list[RegistryModel]:
-    """Only enabled catalog models."""
-    return [model for model in _dynamic_models.values() if model.is_enabled]
-
-
-def get_schema_options() -> list[dict[str, str]]:
-    """Model-selection dropdown options (enabled models only)."""
-    return list(_schema_options)
-
-
-def get_default_model_slug() -> str | None:
-    """First recommended enabled model, else first enabled model."""
-    models = sorted(_dynamic_models.values(), key=lambda m: m.display_name)
-    recommended = next(
-        (m.slug for m in models if m.is_recommended and m.is_enabled), None
-    )
-    return recommended or next((m.slug for m in models if m.is_enabled), None)
-
-
-def get_all_model_slugs_for_validation() -> list[str]:
-    """Enabled model slugs, for validating user-supplied model ids."""
-    return [model.slug for model in _dynamic_models.values() if model.is_enabled]
 
 
 def get_route(surface: str, mode: str, tier: str) -> str | None:
