@@ -212,4 +212,3 @@ test-screenshots/
 .ign*
 **/.ign*
 .claude/scheduled_tasks.lock
-.mesa/
