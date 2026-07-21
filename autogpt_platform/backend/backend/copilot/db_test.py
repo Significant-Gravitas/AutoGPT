@@ -900,3 +900,86 @@ async def test_update_chat_message_tool_calls_not_found():
 
     assert result is False
     mock_logger.warning.assert_called_once()
+
+
+# ---------- Stamping columns: the Prisma persistence boundary ----------
+
+
+@pytest.mark.asyncio
+async def test_batch_persist_maps_stamp_columns_to_prisma_names():
+    """The snake_case message fields must land on the camelCase Prisma
+    columns — a mapping typo here silently stops analytics populating."""
+    from backend.copilot.db import add_chat_messages_batch
+
+    captured: dict = {}
+
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_msg,
+        patch.object(PrismaChatSession, "prisma") as mock_sess,
+        patch("backend.copilot.db.db.transaction") as mock_tx,
+    ):
+        mock_tx.return_value.__aenter__ = AsyncMock(return_value=None)
+        mock_tx.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        async def _capture(data):
+            captured["rows"] = data
+
+        mock_msg.return_value.create_many = AsyncMock(side_effect=_capture)
+        mock_msg.return_value.find_first = AsyncMock(return_value=None)
+        mock_sess.return_value.update = AsyncMock()
+
+        await add_chat_messages_batch(
+            session_id=SESSION_ID,
+            start_sequence=0,
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "hi",
+                    "model": "claude-sonnet-4-6",
+                    "routing_source": "catalog",
+                }
+            ],
+        )
+
+    (row,) = captured["rows"]
+    assert row["model"] == "claude-sonnet-4-6"
+    assert row["routingSource"] == "catalog"
+    assert "routing_source" not in row
+
+
+def test_from_db_restores_stamp_columns():
+    """Prisma camelCase columns come back as the snake_case message fields."""
+    from backend.copilot.model import ChatMessage
+
+    prisma_msg = PrismaChatMessage.model_construct(
+        id="m-1",
+        sessionId=SESSION_ID,
+        sequence=1,
+        role="assistant",
+        content="hi",
+        model="claude-sonnet-4-6",
+        routingSource="catalog",
+        createdAt=datetime.now(UTC),
+    )
+    restored = ChatMessage.from_db(prisma_msg)
+    assert restored.model == "claude-sonnet-4-6"
+    assert restored.routing_source == "catalog"
+
+
+def test_from_db_null_stamps_stay_null():
+    """Pre-feature rows (NULL columns) must not grow phantom values."""
+    from backend.copilot.model import ChatMessage
+
+    prisma_msg = PrismaChatMessage.model_construct(
+        id="m-2",
+        sessionId=SESSION_ID,
+        sequence=2,
+        role="assistant",
+        content="old",
+        model=None,
+        routingSource=None,
+        createdAt=datetime.now(UTC),
+    )
+    restored = ChatMessage.from_db(prisma_msg)
+    assert restored.model is None
+    assert restored.routing_source is None
