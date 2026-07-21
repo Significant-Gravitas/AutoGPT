@@ -95,7 +95,10 @@ async def setup_triggered_preset(
 
     # Validate the preset's inputs the same way the executor will — regular
     # inputs as graph inputs, trigger config as the trigger node's mask — so an
-    # invalid preset is rejected before any webhook is registered.
+    # invalid preset is rejected before any webhook is registered. A placeholder
+    # `payload` stands in for the (not-yet-received) webhook event, which the
+    # trigger node requires to pass execution-input construction. Uses
+    # ``dry_run`` so the not-yet-registered webhook credential isn't required.
     try:
         await validate_and_construct_node_execution_input(
             graph_id=graph.id,
@@ -103,7 +106,9 @@ async def setup_triggered_preset(
             graph_inputs=constant_inputs,
             graph_version=graph.version,
             graph_credentials_inputs=agent_credentials,
-            nodes_input_masks={trigger_node.id: trigger_config_with_credentials},
+            nodes_input_masks={
+                trigger_node.id: {**trigger_config_with_credentials, "payload": {}}
+            },
             dry_run=True,
         )
     except ValueError as e:

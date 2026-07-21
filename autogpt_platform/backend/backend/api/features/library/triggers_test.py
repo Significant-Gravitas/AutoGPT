@@ -100,6 +100,20 @@ async def test_wraps_trigger_config_alongside_constant_inputs():
 
 
 @pytest.mark.asyncio
+async def test_validation_mask_includes_payload_placeholder(
+    _mock_validate_execution_input,
+):
+    """The validation call passes a placeholder `payload` in the trigger mask so
+    the webhook trigger node passes execution-input construction (which requires
+    a payload for WEBHOOK/WEBHOOK_MANUAL starting nodes)."""
+    p_graph, p_creds, p_webhook, p_create = _patches(graph=_graph())
+    with p_graph, p_creds, p_webhook, p_create:
+        await _setup()
+    masks = _mock_validate_execution_input.await_args.kwargs["nodes_input_masks"]
+    assert "payload" in masks["trigger-node"]
+
+
+@pytest.mark.asyncio
 async def test_graph_not_found_raises():
     p_graph, p_creds, p_webhook, p_create = _patches(graph=None)
     with p_graph, p_creds, p_webhook, p_create:
