@@ -28,6 +28,7 @@ interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
@@ -38,6 +39,7 @@ export function RunAgentModal({
   triggerSlot,
   agent,
   initialInputValues,
+  initialTriggerConfigValues,
   initialInputCredentials,
   onRunCreated,
   onTriggerSetup,
@@ -89,6 +91,7 @@ export function RunAgentModal({
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
     initialInputValues,
+    initialTriggerConfigValues,
     initialInputCredentials,
   });
 

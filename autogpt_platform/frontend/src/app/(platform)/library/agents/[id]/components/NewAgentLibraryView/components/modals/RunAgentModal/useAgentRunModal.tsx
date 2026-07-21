@@ -34,6 +34,7 @@ interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
 }
 
@@ -53,10 +54,10 @@ export function useAgentRunModal(
   // For triggered agents the form is split in two: `inputValues` holds the
   // graph's regular inputs (sent as `constant_inputs` when setting up the
   // trigger), and these hold the trigger node's config (sent as
-  // `trigger_config`).
+  // `trigger_config`). Seeded from `initialTriggerConfigValues` when editing.
   const [triggerConfigValues, setTriggerConfigValues] = useState<
     Record<string, any>
-  >({});
+  >(callbacks?.initialTriggerConfigValues || {});
 
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
@@ -73,8 +74,12 @@ export function useAgentRunModal(
   useEffect(() => {
     setInputValues(callbacks?.initialInputValues || {});
     setInputCredentials(callbacks?.initialInputCredentials || {});
-    setTriggerConfigValues({});
-  }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
+    setTriggerConfigValues(callbacks?.initialTriggerConfigValues || {});
+  }, [
+    callbacks?.initialInputValues,
+    callbacks?.initialTriggerConfigValues,
+    callbacks?.initialInputCredentials,
+  ]);
 
   const allProviders = useContext(CredentialsProvidersContext);
 
