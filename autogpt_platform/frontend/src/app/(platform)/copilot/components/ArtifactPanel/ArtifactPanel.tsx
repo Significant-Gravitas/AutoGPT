@@ -59,7 +59,12 @@ export function ArtifactPanel({ mobile }: Props) {
     update();
     const observer = new ResizeObserver(update);
     observer.observe(parent);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      // Drop the measurement on close so a reopen after a viewport resize
+      // never renders a frame with a stale width.
+      setAvailableWidth(null);
+    };
   }, [showDesktopPanel]);
 
   if (mobile) {
