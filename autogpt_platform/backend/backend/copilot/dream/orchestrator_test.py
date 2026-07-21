@@ -718,25 +718,15 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
 # ---------------------------------------------------------------------------
 
 
-def _input_with_episode_times(*valid_ats: str | None) -> DreamInput:
-    """Bundle with one old active fact + episodes at the given valid_at
-    timestamps — the 'old facts, maybe-stale episodes' nightly shape."""
+def _input_with_episodes(episodes: list[EpisodeRow]) -> DreamInput:
+    """Bundle with one old active fact + the given episodes — the 'old
+    facts, maybe-stale episodes' nightly shape."""
     return DreamInput(
         user_id="u",
         group_id="g",
         window_start=datetime(2026, 5, 26, tzinfo=timezone.utc),
         window_end=datetime(2026, 6, 9, tzinfo=timezone.utc),
-        episodes=[
-            EpisodeRow(
-                uuid=f"e{i}",
-                name=None,
-                content="hello",
-                source_description=None,
-                valid_at=valid_at,
-                created_at=None,
-            )
-            for i, valid_at in enumerate(valid_ats)
-        ],
+        episodes=episodes,
         facts=[
             FactRow(
                 uuid="f0",
@@ -752,7 +742,32 @@ def _input_with_episode_times(*valid_ats: str | None) -> DreamInput:
         ],
         recent_sessions=[],
         known_fact_uuids={"f0"},
-        known_episode_uuids={f"e{i}" for i in range(len(valid_ats))},
+        known_episode_uuids={e.uuid for e in episodes},
+    )
+
+
+def _episode_at(
+    valid_at: str | None,
+    *,
+    uuid: str = "e0",
+    name: str | None = None,
+    source_description: str | None = None,
+    created_at: str | None = None,
+) -> EpisodeRow:
+    return EpisodeRow(
+        uuid=uuid,
+        name=name,
+        content="hello",
+        source_description=source_description,
+        valid_at=valid_at,
+        created_at=created_at,
+    )
+
+
+def _input_with_episode_times(*valid_ats: str | None) -> DreamInput:
+    """Bundle with plain user episodes at the given ``valid_at`` timestamps."""
+    return _input_with_episodes(
+        [_episode_at(valid_at, uuid=f"e{i}") for i, valid_at in enumerate(valid_ats)]
     )
 
 
@@ -937,6 +952,145 @@ async def test_unparseable_episode_timestamp_counts_as_new_and_runs(
 
     assert result.skipped is False
     apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dream_authored_episode_newer_than_marker_does_not_count_as_new(
+    mocker, _stub_marker_redis
+):
+    """A productive pass enqueues its own ``dream_``-prefixed episodes with
+    ``valid_at = now()`` (after the stamped ``window_end``). They must NOT
+    count as new activity, or every productive night would trigger a paid
+    no-op pass the next night that only re-reads its own output."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at("2026-06-01T00:00:00Z", uuid="e0"),
+                    _episode_at(
+                        "2026-06-30T00:00:00Z",
+                        uuid="e1",
+                        name="dream_p-xyz_consolidate_000",
+                        source_description="dream-pass consolidation; src_episodes=e0",
+                    ),
+                ]
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_completion", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_normal_episode_newer_than_marker_runs_even_beside_dream_episode(
+    mocker, _stub_marker_redis
+):
+    """Excluding dream-authored episodes must not suppress genuine user
+    activity: a normal episode newer than the marker still triggers the pass
+    even when a dream-authored episode sits alongside it."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-30T00:00:00Z",
+                        uuid="e0",
+                        name="dream_p-xyz_recombine_000",
+                        source_description="dream-pass proposal",
+                    ),
+                    _episode_at("2026-06-09T12:00:00Z", uuid="e1"),
+                ]
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_created_after_marker_counts_as_new_despite_old_valid_at(
+    mocker, _stub_marker_redis
+):
+    """An episode whose graph node is materialized by async ingestion after
+    the gather query has ``valid_at`` (reference_time) < marker but
+    ``created_at`` > marker. Novelty uses the later of the two, so it counts
+    as new instead of being silently dropped."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-01T00:00:00Z",
+                        uuid="e0",
+                        created_at="2026-06-09T00:00:00Z",
+                    )
+                ]
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_old_in_both_valid_at_and_created_at_skips(
+    mocker, _stub_marker_redis
+):
+    """Taking the max of valid_at/created_at must not spuriously run: when
+    both timestamps predate the marker, the pass still skips."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-01T00:00:00Z",
+                        uuid="e0",
+                        created_at="2026-06-05T00:00:00Z",
+                    )
+                ]
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_completion", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

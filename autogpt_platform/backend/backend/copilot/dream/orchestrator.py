@@ -27,7 +27,13 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations
 from .billing import check_dream_budget, record_phase_cost
-from .fetch import DreamInput, EpisodeRow, gather_dream_input, parse_episode_timestamp
+from .fetch import (
+    DreamInput,
+    EpisodeRow,
+    gather_dream_input,
+    is_dream_authored_episode,
+    parse_episode_timestamp,
+)
 from .llm import (
     CompletionUsage,
     DreamLLMError,
@@ -568,13 +574,20 @@ async def _stamp_last_completed_marker(user_id: str, as_of: datetime) -> None:
 
 
 def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> bool:
-    """True when any episode is newer than the last-completed marker.
+    """True when any *user* episode is newer than the last-completed marker.
+
+    Dream-authored episodes are excluded: a productive pass enqueues its
+    own writes with ``valid_at = now()`` (after the stamped ``window_end``),
+    so counting them would make every subsequent nightly run a paid no-op
+    that only re-reads its own output.
 
     An episode with no parseable timestamp counts as new — we can't
     prove it's old, and skipping a pass we owed the user is worse than
     running one we didn't.
     """
     for episode in episodes:
+        if is_dream_authored_episode(episode):
+            continue
         episode_at = parse_episode_timestamp(episode)
         if episode_at is None or episode_at > marker:
             return True

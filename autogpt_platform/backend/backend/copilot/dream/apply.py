@@ -40,6 +40,7 @@ from backend.copilot.tools.graphiti_forget import (
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
+from .fetch import DREAM_EPISODE_NAME_PREFIX
 from .schemas import (
     ConsolidatedFact,
     DemotionSummary,
@@ -66,8 +67,13 @@ def _provenance(pass_id: str, phase: str) -> str:
 
 
 def _episode_name(pass_id: str, phase: str, counter: int) -> str:
-    """Stable, auditable episode name for dream-derived writes."""
-    return f"dream_{pass_id}_{phase}_{counter:03d}"
+    """Stable, auditable episode name for dream-derived writes.
+
+    Shares ``DREAM_EPISODE_NAME_PREFIX`` with the novelty check
+    (:func:`fetch.is_dream_authored_episode`) so dream-authored episodes
+    stay recognizable and never re-trigger a paid pass on themselves.
+    """
+    return f"{DREAM_EPISODE_NAME_PREFIX}{pass_id}_{phase}_{counter:03d}"
 
 
 def _edge_metadata(envelope: MemoryEnvelope) -> dict:
