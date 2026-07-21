@@ -97,11 +97,14 @@ def test_registry_model_carries_joined_display_data():
     assert model.cost is not None and model.cost.run_credits == 3
 
 
-def test_null_max_output_tokens_falls_back_to_context_window():
+def test_null_max_output_tokens_is_preserved():
+    """None means "unknown/no published cap" — substituting context_window
+    would overstate the limit and publish wrong data through the catalog
+    endpoint."""
     load_catalog(_payload([_model("openai/gpt-a", max_output_tokens=None)]))
     model = get_model("openai/gpt-a")
     assert model is not None
-    assert model.metadata.max_output_tokens == 128000
+    assert model.metadata.max_output_tokens is None
 
 
 def test_unknown_provider_falls_back_to_name():

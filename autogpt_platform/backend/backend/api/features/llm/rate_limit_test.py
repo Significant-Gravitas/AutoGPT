@@ -23,15 +23,31 @@ def test_client_ip_no_xff_uses_socket_peer():
     assert get_client_ip(_request()) == "10.0.0.9"
 
 
-def test_client_ip_takes_lb_appended_xff_entry():
+def _as_cloud(mocker):
+    import backend.api.features.llm.rate_limit as rl_mod
+    from backend.util.settings import BehaveAs
+
+    mocker.patch.object(rl_mod.settings.config, "behave_as", BehaveAs.CLOUD)
+
+
+def test_client_ip_takes_lb_appended_xff_entry(mocker):
     # Client-forgeable entries come first; the trusted LB appends last.
+    _as_cloud(mocker)
     request = _request({"x-forwarded-for": "6.6.6.6, 203.0.113.7"})
     assert get_client_ip(request) == "203.0.113.7"
 
 
-def test_client_ip_single_xff_entry():
+def test_client_ip_single_xff_entry(mocker):
+    _as_cloud(mocker)
     request = _request({"x-forwarded-for": "203.0.113.7"})
     assert get_client_ip(request) == "203.0.113.7"
+
+
+def test_client_ip_ignores_xff_on_self_hosted():
+    # behave_as defaults to LOCAL in tests — the case under test. A spoofed
+    # XFF must not mint fresh rate-limit buckets on directly-exposed installs.
+    request = _request({"x-forwarded-for": "6.6.6.6"})
+    assert get_client_ip(request) == "10.0.0.9"
 
 
 def test_client_ip_no_client_object():
