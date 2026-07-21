@@ -1024,7 +1024,7 @@ The block handles connection, authentication, and message delivery, returning a 
 | to_email | Recipient email address | str | Yes |
 | subject | Subject of the email | str | Yes |
 | body | Body of the email | str | Yes |
-| config | SMTP Config | SMTP Config | Yes |
+| config | SMTP server configuration. The port must be one of 25, 465, 587, or 2525. | SMTP Config | Yes |
 
 ### Outputs
 

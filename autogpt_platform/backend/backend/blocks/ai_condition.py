@@ -79,7 +79,10 @@ class AIConditionBlock(AIBlockBase):
         model: LlmModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
-            description="The language model to use for evaluating the condition.",
+            description=(
+                "The language model to use for evaluating the condition. "
+                f"Defaults to `{DEFAULT_LLM_MODEL.value}`."
+            ),
             advanced=False,
         )
         credentials: AICredentials = AICredentialsField()
