@@ -7,11 +7,11 @@ import { GlobalSearchModal } from "./GlobalSearchModal";
 import { selectSearchResult } from "./selectSearchResult";
 import { useGlobalSearchStore } from "./useGlobalSearchStore";
 
-// Mounted once in the platform layout so Cmd/Ctrl+K opens the search palette
-// from any page. Renders a single modal instance driven by the shared store.
+// Mounted once in the platform layout so Cmd/Ctrl+Shift+K opens the search
+// palette from any page. Renders a single modal instance driven by the store.
 export function GlobalSearchOverlay() {
   // Search is a first-class part of the new layout (sidebar Search item +
-  // Cmd/Ctrl+K), so enable it whenever that layout is on, independent of the
+  // Cmd/Ctrl+Shift+K), so enable it whenever that layout is on, independent of
   // chat-search flag that gates it in the classic layout.
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
@@ -38,6 +38,7 @@ export function GlobalSearchOverlay() {
       if (event.repeat) return;
       if (event.key.toLocaleLowerCase() !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
+      if (!event.shiftKey) return;
       event.preventDefault();
       useGlobalSearchStore.getState().toggleSearch();
     }

@@ -45,6 +45,11 @@ export function usePlatformChrome() {
   const isCopilotRoute =
     pathname === "/copilot" || Boolean(pathname?.startsWith("/copilot/"));
 
+  // Settings brings its own sidebar (with a Back link), so it renders without
+  // the top Navbar even though it opts out of the new app-sidebar layout.
+  const isSettingsRoute =
+    pathname === "/settings" || Boolean(pathname?.startsWith("/settings/"));
+
   // Logged-out marketplace visitors get the tour demo sidebar as an upsell.
   // Waits for the session check so it never flashes at logged-in users.
   const showTourSidebar =
@@ -60,5 +65,6 @@ export function usePlatformChrome() {
     // below an empty strip; on mobile it stays for the sidebar trigger.
     hasInsetHeaderTitle: Boolean(getRouteTitle(pathname)),
     showTourSidebar,
+    isSettingsRoute,
   };
 }

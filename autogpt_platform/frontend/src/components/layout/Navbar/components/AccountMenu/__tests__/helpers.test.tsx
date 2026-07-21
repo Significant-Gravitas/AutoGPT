@@ -11,6 +11,7 @@ describe("getAccountMenuPhosphorIcon", () => {
     IconType.Settings,
     IconType.Billing,
     IconType.Help,
+    IconType.WhatsNew,
     IconType.LogOut,
   ])("returns a Phosphor icon element for %s", (icon) => {
     const result = getAccountMenuPhosphorIcon(icon);

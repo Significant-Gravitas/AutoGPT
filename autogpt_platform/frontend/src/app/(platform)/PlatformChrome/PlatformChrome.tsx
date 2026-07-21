@@ -29,6 +29,7 @@ export function PlatformChrome({ children }: Props) {
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
+    isSettingsRoute,
   } = usePlatformChrome();
 
   const content = (
@@ -55,7 +56,9 @@ export function PlatformChrome({ children }: Props) {
 
   if (showNewLayout) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+      >
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
@@ -82,6 +85,17 @@ export function PlatformChrome({ children }: Props) {
           <section className="flex-1">{content}</section>
         </SidebarInset>
       </SidebarProvider>
+    );
+  }
+
+  // Settings renders its own sidebar shell — no top Navbar.
+  if (isSettingsRoute) {
+    return (
+      <main className="flex h-screen w-full flex-col">
+        <AdminImpersonationBanner />
+        <GlobalSearchOverlay />
+        <section className="flex-1">{content}</section>
+      </main>
     );
   }
 
