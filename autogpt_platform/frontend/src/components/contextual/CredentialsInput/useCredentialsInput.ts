@@ -195,6 +195,11 @@ export function useCredentialsInput({
 
     // Generation marker — lets this flow's continuation detect that it was
     // superseded (new flow, or unmount) while awaiting the login URL.
+    // Re-entrancy contract: SUPERSEDE — the newest call wins because it may
+    // target a different credential (add account vs scope upgrade).
+    // Deliberately different from useOAuthConnect.connect, which BLOCKS
+    // re-entry (single flow target). Reconcile the two explicitly if this
+    // lifecycle is ever extracted into a shared hook.
     const flowId = ++oauthFlowIdRef.current;
 
     // Open the sign-in window synchronously, before the first await — iOS

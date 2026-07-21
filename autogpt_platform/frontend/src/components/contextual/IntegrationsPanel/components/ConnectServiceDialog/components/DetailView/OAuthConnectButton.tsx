@@ -23,8 +23,8 @@ export function OAuthConnectButton({
   return (
     <div className="flex flex-col gap-3">
       <Text variant="body" className="text-[#505057]">
-        We&apos;ll open {providerName} sign-in in a new window. Approve access
-        there to finish connecting.
+        We&apos;ll open a {providerName} sign-in window. Approve access there to
+        finish connecting.
       </Text>
       <Button
         type="button"

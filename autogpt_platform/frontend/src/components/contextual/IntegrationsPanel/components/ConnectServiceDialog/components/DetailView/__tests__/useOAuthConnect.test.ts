@@ -12,7 +12,7 @@ vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
   preOpenOAuthPopup: vi.fn(() => null),
   OAUTH_ERROR_POPUP_BLOCKED:
-    "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.",
+    "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.",
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({

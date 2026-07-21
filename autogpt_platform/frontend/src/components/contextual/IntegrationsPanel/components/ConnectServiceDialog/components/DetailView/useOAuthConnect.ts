@@ -49,6 +49,11 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     // again before the pending state re-renders the button, and a second
     // concurrent flow would overwrite preOpenedWindowRef/abortRef. State
     // isn't readable synchronously here, so track it in a ref.
+    // Re-entrancy contract: BLOCK — this button has a single flow target, so
+    // a second call is always a duplicate. Deliberately different from
+    // useCredentialsInput.executeOAuthFlow, which SUPERSEDES (its next call
+    // may target a different credential). Reconcile the two explicitly if
+    // this lifecycle is ever extracted into a shared hook.
     if (isPendingRef.current) return;
     isPendingRef.current = true;
     setIsPending(true);

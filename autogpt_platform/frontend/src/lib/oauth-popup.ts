@@ -12,7 +12,7 @@ export const OAUTH_ERROR_WINDOW_CLOSED = "Sign-in window was closed";
 export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
 export const OAUTH_ERROR_FLOW_TIMED_OUT = "OAuth flow timed out";
 export const OAUTH_ERROR_POPUP_BLOCKED =
-  "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.";
+  "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.";
 export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
   "Popup blocked — allow popups for this site and try again.";
 
@@ -109,6 +109,7 @@ export function openOAuthPopup(
 } {
   const {
     stateToken,
+    preOpenedWindow,
     useCrossOriginListeners = false,
     broadcastChannelName = "oauth_popup",
     localStorageKey = "oauth_popup_result",
@@ -124,9 +125,7 @@ export function openOAuthPopup(
   // so the gesture context is intact when openOAuthPopup itself is called
   // straight from a click handler.
   const popup =
-    options.preOpenedWindow !== undefined
-      ? options.preOpenedWindow
-      : preOpenOAuthPopup();
+    preOpenedWindow !== undefined ? preOpenedWindow : preOpenOAuthPopup();
 
   let popupBlocked = false;
   let fallbackBlocked = false;

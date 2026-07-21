@@ -25,7 +25,7 @@ vi.mock("@/lib/oauth-popup", () => ({
   OAUTH_ERROR_FLOW_CANCELED: "OAuth flow was canceled",
   OAUTH_ERROR_FLOW_TIMED_OUT: "OAuth flow timed out",
   OAUTH_ERROR_POPUP_BLOCKED:
-    "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.",
+    "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.",
 }));
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
@@ -229,7 +229,39 @@ describe("CredentialsInput – OAuth flow", () => {
     );
     // The waiting modal must direct the user to the fallback tab instead of
     // to a popup that doesn't exist.
-    expect(await screen.findByText(/blocked the sign-in popup/i)).toBeDefined();
+    expect(
+      await screen.findByText(/blocked the sign-in window/i),
+    ).toBeDefined();
+  });
+
+  it("closes the pre-opened window when the login-URL request fails", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    mockPreOpenOAuthPopup.mockReturnValue(fakeWindow);
+
+    const oAuthLoginMock = vi
+      .fn()
+      .mockRejectedValue(new Error("provider not configured"));
+    mockUseBackendAPI.mockReturnValue(
+      makeBackendAPI({ oAuthLogin: oAuthLoginMock }),
+    );
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+
+    // The failure happens before openOAuthPopup adopts the window, so the
+    // flow still owns the dangling about:blank window and must close it.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
   });
 
   it("closes the pre-opened window and skips adoption when unmounted mid-initiation", async () => {
