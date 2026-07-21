@@ -9,6 +9,7 @@ for the existing import surface.
 """
 
 import logging
+import re
 from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from typing import Literal, NamedTuple
@@ -16,6 +17,10 @@ from typing import Literal, NamedTuple
 from backend.data.llm_registry.catalog import get_catalog
 
 logger = logging.getLogger(__name__)
+
+# Anthropic snapshot-date suffix (claude-haiku-4-5-20251001 → -20251001).
+# Shared by every slug canonicalizer so the pattern can't drift.
+MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 
 
 class ModelMetadata(NamedTuple):
@@ -256,6 +261,13 @@ MODEL_METADATA = _build_model_metadata()
 # (EMPLOYEES/ADMINS/HIDDEN visibility) — the catalog's documented "who can
 # SEE this" contract. Enum values stay valid either way, so stored graphs
 # referencing a hidden model keep validating and executing.
+#
+# DECIDED SCOPE: at the block layer this filter is a UX control, not a
+# safety control. A hand-crafted graph node can still select a
+# kill-switched slug; execution of stored graphs must keep working after
+# a kill (and keep billing), so the block layer deliberately does not
+# veto. The hard-stop for an incident is the retirement CLI, which
+# rewrites the nodes; copilot serving IS vetoed at resolution time.
 _PICKER_HIDDEN_SLUGS = frozenset(
     m.slug for m in get_catalog().models if not m.is_enabled or m.visibility != "GA"
 )

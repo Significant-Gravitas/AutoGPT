@@ -23,6 +23,7 @@ from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import (
     CatalogModelCost,
     CatalogPayload,
+    ModelVisibility,
     SubscriptionTierName,
 )
 
@@ -73,7 +74,7 @@ class RegistryModel(BaseModel):
     # visibility only controls who SEES the model — HIDDEN still serves
     # when explicitly routed.
     kind: str = "CHAT"
-    visibility: str = "GA"
+    visibility: ModelVisibility = "GA"
     min_subscription_tier: SubscriptionTierName | None = None
     fallback_model_slug: str | None = None
 

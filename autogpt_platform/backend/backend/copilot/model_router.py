@@ -43,13 +43,13 @@ payload, or LD failure all fall through to the next layer.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Literal, NamedTuple
 
 import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -68,9 +68,6 @@ ROUTE_SURFACE_COPILOT = "copilot"
 class ResolvedModel(NamedTuple):
     model: str
     source: RoutingSource
-
-
-_DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
 def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
@@ -98,7 +95,7 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
     # so LD experiments can route to snapshot-suffixed models.
     candidate_set = set(candidates)
     for model in llm_registry.get_all_models():
-        if _DATE_SUFFIX.sub("", model.slug) in candidate_set:
+        if MODEL_DATE_SUFFIX_RE.sub("", model.slug) in candidate_set:
             return model
     return None
 

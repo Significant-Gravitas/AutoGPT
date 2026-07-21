@@ -61,6 +61,8 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
 from ..model_router import ResolvedModel, RoutingSource, resolve_model_route
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
@@ -5593,16 +5595,13 @@ async def _fetch_graphiti_context(
     return True, ctx
 
 
-_MODEL_DATE_SUFFIX = re.compile(r"-\d{8}$")
-
-
 def _canonical_model(model: str) -> str:
     """Spelling-insensitive model identity for fallback detection:
     vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
     tail = model.lower().split("/")[-1]
     if tail.startswith("anthropic."):
         tail = tail[len("anthropic.") :]
-    return _MODEL_DATE_SUFFIX.sub("", tail.replace(".", "-"))
+    return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
 
 
 def _same_model(a: str, b: str | None) -> bool:

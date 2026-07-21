@@ -110,6 +110,11 @@ class ChatMessage(BaseModel):
     # overload fallback served a different model than the routed one).
     # Product-intelligence mirrors these to segment quality judgments by
     # model. None on user/tool rows.
+    #
+    # Deliberately NOT exclude=True: the persistence layer serializes
+    # messages via model_dump (insert + back-fill both read these keys),
+    # and surfacing the serving model to clients is intended (model badge
+    # UX). routing_source rides along; it names a layer, not a secret.
     model: str | None = None
     routing_source: str | None = None
 
@@ -1000,8 +1005,8 @@ async def _save_session_to_db(
         if updated:
             msg.stamps_pending_save = False
 
-    for _stamp_msg in pending_stamps:
-        await _backfill_stamps(_stamp_msg)
+    if pending_stamps:
+        await asyncio.gather(*(_backfill_stamps(m) for m in pending_stamps))
 
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above

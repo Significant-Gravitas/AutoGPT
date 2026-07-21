@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATALOG_SCHEMA_VERSION = 1
 
+ModelVisibility = Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"]
+
 # Guard against a runaway generator expanding into an unreviewable file.
 MAX_CATALOG_MODELS = 2000
 
@@ -110,7 +112,7 @@ class CatalogModel(BaseModel):
     # is_enabled: is_enabled=False is the kill switch (copilot refuses,
     # picker hides); visibility="HIDDEN" still SERVES when explicitly
     # routed — the pre-launch testing state.
-    visibility: Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"] = "GA"
+    visibility: ModelVisibility = "GA"
     # Null = available on every subscription tier. Enforcement lands with
     # the catalog-driven model picker when that ships.
     min_subscription_tier: SubscriptionTierName | None = None

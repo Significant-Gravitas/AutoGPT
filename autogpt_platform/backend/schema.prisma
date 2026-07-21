@@ -421,7 +421,9 @@ model ChatMessage {
   durationMs Int? // Wall-clock milliseconds for this assistant turn
 
   // Which LLM served this assistant turn, and which routing layer picked it
-  // ("ld" | "db" | "env"). Product-intelligence mirrors these columns to
+  // ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+  // overload fallback served a different model than the routed one).
+  // Product-intelligence mirrors these columns to
   // segment quality judgments by model — model experiments are unmeasurable
   // without them. Null on user/tool rows and rows predating this column.
   model         String?

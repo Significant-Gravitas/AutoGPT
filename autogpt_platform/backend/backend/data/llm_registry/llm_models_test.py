@@ -70,3 +70,20 @@ def test_non_ga_model_hidden_from_picker_metadata(monkeypatch):
     metadata = _schema_metadata()
     assert victim.value not in metadata
     assert LlmModel(victim.value) is victim
+
+
+class TestAliasResolution:
+    """Stored graphs depend on _missing_'s alias/prefix resolution — the
+    behavior moved with the identity module and keeps direct coverage."""
+
+    def test_openrouter_alias_resolves_date_suffixed_member(self):
+        assert LlmModel("anthropic/claude-haiku-4-5") is LlmModel.CLAUDE_4_5_HAIKU
+
+    def test_generic_vendor_prefix_strips(self):
+        assert LlmModel("anthropic/claude-sonnet-4-6") is LlmModel.CLAUDE_4_6_SONNET
+
+    def test_unknown_slug_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError):
+            LlmModel("someprovider/not-a-model")
