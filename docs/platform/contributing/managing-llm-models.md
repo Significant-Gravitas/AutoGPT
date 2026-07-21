@@ -107,7 +107,7 @@ On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slu
 
 Retirement has two halves:
 
-1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats LD routing).
+1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats LD routing). Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs.
 2. **Migrate existing graph nodes** onto a replacement so users' agents keep working:
 
 ```bash

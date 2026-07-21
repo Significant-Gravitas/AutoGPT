@@ -287,3 +287,23 @@ async def test_cli_replacement_defaults_from_catalog_fallback(retirement_env, mo
     assert await _run_cli(args) == 1  # dry run banner path
     assert args.replacement == replacement
     assert await _node_model(node_id) == _node_value(source)  # nothing written
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_double_revert_refused_by_atomic_claim(retirement_env):
+    """The second revert of the same migration must refuse — the guarded
+    in-transaction claim matches zero rows (the TOCTOU race guard)."""
+    source, replacement = _two_catalog_slugs()
+    await _seed_node(retirement_env, _node_value(source))
+    await retire_model(source, replacement)
+    migration_id = (await list_model_migrations())[0].id
+
+    await revert_model_migration(migration_id)
+    with pytest.raises(ValueError, match="already been reverted"):
+        await revert_model_migration(migration_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_revert_unknown_migration_id_refused(retirement_env):
+    with pytest.raises(ValueError, match="not found"):
+        await revert_model_migration("no-such-migration-id")
