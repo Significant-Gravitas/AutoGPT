@@ -436,6 +436,10 @@ class LibraryAgentResponse(pydantic.BaseModel):
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
+
+    A preset's webhook is never caller-specified here; webhook-triggered presets
+    are created through ``POST /presets/setup-trigger``, which provisions a
+    webhook owned by the caller server-side.
     """
 
     graph_id: str
@@ -448,8 +452,6 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     description: str
 
     is_active: bool = True
-
-    webhook_id: Optional[str] = None
 
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
@@ -500,7 +502,27 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    # Read-only in responses; set server-side via the setup-trigger flow only.
+    webhook_id: Optional[str] = None
     webhook: "Webhook | None"
+
+    @pydantic.field_serializer("webhook")
+    def _redact_webhook_signing_material(
+        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
+    ):
+        # Never expose a webhook's signing secret / provider webhook id to API
+        # clients; callers only need the ingress URL and non-sensitive metadata.
+        if webhook is None:
+            return None
+        return webhook.model_dump(
+            mode=info.mode, exclude={"secret", "provider_webhook_id"}
+        )
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
@@ -536,6 +558,8 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
         )

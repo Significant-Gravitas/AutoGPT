@@ -35,6 +35,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         webhook_type: WT,
         resource: str,
         events: list[str],
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> integrations.Webhook:
         if not app_config.platform_base_url:
             raise MissingConfigError(
@@ -56,6 +58,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             events=events,
             resource=resource,
             credentials=credentials,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     async def get_manual_webhook(
@@ -65,6 +69,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         events: list[str],
         graph_id: Optional[str] = None,
         preset_id: Optional[str] = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> integrations.Webhook:
         """
         Tries to find an existing webhook tied to `graph_id`/`preset_id`,
@@ -97,6 +103,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             webhook_type=webhook_type,
             events=events,
             register=False,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     async def prune_webhook_if_dangling(
@@ -226,6 +234,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         resource: str = "",
         credentials: Optional[Credentials] = None,
         register: bool = True,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> integrations.Webhook:
         if not app_config.platform_base_url:
             raise MissingConfigError(
@@ -264,5 +274,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 provider_webhook_id=provider_webhook_id,
                 config=config,
                 secret=secret,
+                organization_id=organization_id,
+                team_id=team_id,
             )
         )

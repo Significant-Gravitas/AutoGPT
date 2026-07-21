@@ -69,6 +69,7 @@ redis = "^6.2.0"
 regex = "^2025.9.18"
 replicate = "^1.0.6"
 sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.44.0"}
+slack-sdk = "^3.41.0"
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
@@ -166,6 +167,12 @@ asyncio_default_fixture_loop_scope = "session"
 # Disable syrupy plugin to avoid conflict with pytest-snapshot
 # Both provide --snapshot-update argument causing ArgumentError
 addopts = "-p no:syrupy"
+# The suite should never take 30+ minutes — a run that long is hung.
+# Dump every thread's stack (without killing the run) when any single
+# test exceeds 5 minutes so hangs name themselves instead of looking
+# like slow tests. Root-caused example: a unit test reaching a real
+# DatabaseManager RPC whose socket read never returned.
+faulthandler_timeout = 300
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
