@@ -13,7 +13,7 @@ export function StepsCollapse({ children }: Props) {
       <Dialog.Trigger>
         <button
           type="button"
-          className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-700"
+          className="flex items-center gap-1 !text-xs text-zinc-500 transition-colors hover:text-zinc-700"
         >
           <ListBulletsIcon size={12} weight="bold" />
           <span>Show steps</span>

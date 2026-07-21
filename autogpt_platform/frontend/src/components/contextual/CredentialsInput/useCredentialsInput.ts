@@ -12,6 +12,7 @@ import {
   OAUTH_ERROR_POPUP_BLOCKED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
+  preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -70,12 +71,22 @@ export function useCredentialsInput({
   const credentials = useCredentials(schema, siblingInputs);
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const oauthFlowIdRef = useRef(0);
+  const preOpenedWindowRef = useRef<Window | null>(null);
   const [isDeletingCredential, setIsDeletingCredential] = useState(false);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      // Invalidate any in-flight flow so its continuation bails instead of
+      // adopting the window, and close a window pre-opened by a flow that
+      // never reached openOAuthPopup (its abort isn't registered yet).
+      oauthFlowIdRef.current += 1;
       oauthAbortRef.current?.();
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
     };
   }, []);
 
@@ -173,8 +184,29 @@ export function useCredentialsInput({
   async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
 
-    // Abort any previous OAuth flow
+    // Abort any previous OAuth flow, and close the window of one that was
+    // still initiating (its abort wasn't registered yet, so the abort above
+    // can't reach it).
     oauthAbortRef.current?.();
+    if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+      preOpenedWindowRef.current.close();
+    }
+    preOpenedWindowRef.current = null;
+
+    // Generation marker — lets this flow's continuation detect that it was
+    // superseded (new flow, or unmount) while awaiting the login URL.
+    // Re-entrancy contract: SUPERSEDE — the newest call wins because it may
+    // target a different credential (add account vs scope upgrade).
+    // Deliberately different from useOAuthConnect.connect, which BLOCKS
+    // re-entry (single flow target). Reconcile the two explicitly if this
+    // lifecycle is ever extracted into a shared hook.
+    const flowId = ++oauthFlowIdRef.current;
+
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback.
+    const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     // MCP uses dynamic OAuth discovery per server URL
     const isMCP = provider === "mcp" && !!discriminatorValue;
@@ -197,26 +229,37 @@ export function useCredentialsInput({
         ));
       }
 
+      // A newer flow (or an unmount) superseded this one while the login
+      // URL was being fetched — the superseding path already closed the
+      // pre-opened window; don't adopt it or touch state.
+      if (flowId !== oauthFlowIdRef.current) return;
+
       setOAuth2FlowInProgress(true);
       setOAuthPopupBlocked(false);
 
-      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        // Always enable BroadcastChannel + localStorage listeners — they are
-        // the only path that works when the popup is blocked and we fall back
-        // to a new tab (window.opener can be severed by cross-origin COOP).
-        useCrossOriginListeners: true,
-        acceptMessageTypes: isMCP
-          ? ["mcp_oauth_result"]
-          : ["oauth_popup_result"],
-      });
+      const { promise, cleanup, popupBlocked, fallbackBlocked } =
+        openOAuthPopup(login_url, {
+          stateToken: state_token,
+          preOpenedWindow,
+          // Always enable BroadcastChannel + localStorage listeners — they are
+          // the only path that works when the popup is blocked and we fall back
+          // to a new tab (window.opener can be severed by cross-origin COOP).
+          useCrossOriginListeners: true,
+          acceptMessageTypes: isMCP
+            ? ["mcp_oauth_result"]
+            : ["oauth_popup_result"],
+        });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
 
       // The blank popup window was rejected by the browser — the helper has
       // already fallen back to opening the login URL in a new tab, but that
       // tab is easy to miss. Track the state so the waiting modal can
       // change its copy and direct the user to the right place, and emit a
       // toast in case they've already dismissed the modal.
-      if (popupBlocked) {
+      // Skip when the fallback was blocked too — the promise has already
+      // rejected and the error below carries the correct retry message.
+      if (popupBlocked && !fallbackBlocked) {
         setOAuthPopupBlocked(true);
         toast({
           title: "Popup blocked",
@@ -259,6 +302,18 @@ export function useCredentialsInput({
         provider,
       });
     } catch (error) {
+      // Close the dangling about:blank window only while this flow still
+      // owns it — i.e. the error occurred before openOAuthPopup adopted the
+      // window. After handoff the ref is nulled and the helper closes the
+      // window itself on abort, so it's no longer ours to close.
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
+      }
+      // A superseded flow must not surface its errors over the newer flow.
+      if (flowId !== oauthFlowIdRef.current) return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -271,8 +326,13 @@ export function useCredentialsInput({
         setOAuthError(`OAuth error: ${message}`);
       }
     } finally {
-      setOAuth2FlowInProgress(false);
-      oauthAbortRef.current = null;
+      // A superseded flow must not tear down the newer flow's state —
+      // nulling oauthAbortRef here would orphan the newer popup's abort
+      // handler, and resetting the in-progress flag would close its UI.
+      if (flowId === oauthFlowIdRef.current) {
+        setOAuth2FlowInProgress(false);
+        oauthAbortRef.current = null;
+      }
     }
   }
 

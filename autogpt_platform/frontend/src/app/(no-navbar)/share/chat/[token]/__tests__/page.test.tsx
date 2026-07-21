@@ -35,11 +35,9 @@ function resetArtifactPanelStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();
@@ -303,8 +301,8 @@ describe("SharedChatPage", () => {
 
     await screen.findByText(/Latest artifact/);
     await waitFor(() => {
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(true);
       expect(panel.activeArtifact?.id).toBe(latestArtifactId);
       expect(panel.activeArtifact?.title).toBe("latest.md");
     });

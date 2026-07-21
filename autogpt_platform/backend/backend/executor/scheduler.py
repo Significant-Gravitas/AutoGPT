@@ -180,6 +180,8 @@ async def _execute_graph(**kwargs):
             graph_version=args.graph_version,
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
+            organization_id=args.organization_id,
+            team_id=args.team_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -227,7 +229,12 @@ async def _execute_copilot_turn(**kwargs):
         # otherwise — orphan turns into a missing session would never
         # surface in any UI.
         if args.session_id is None:
-            new_session = await create_chat_session(args.user_id, dry_run=False)
+            new_session = await create_chat_session(
+                args.user_id,
+                dry_run=False,
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+            )
             target_session_id = new_session.session_id
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
@@ -256,6 +263,8 @@ async def _execute_copilot_turn(**kwargs):
             message=args.message,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
+            organization_id=args.organization_id,
+            team_id=args.team_id,
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
@@ -324,6 +333,10 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
+            # Same for tenancy — dropping these would re-home a fresh-session
+            # turn to the user's default org after a cap retry.
+            organization_id=args.organization_id,
+            team_id=args.team_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1089,6 +1102,8 @@ class GraphExecutionJobArgs(BaseModel):
     cron: str
     input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
+    organization_id: str = ""
+    team_id: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1114,6 +1129,11 @@ class CopilotTurnJobArgs(BaseModel):
     # the user originally requested. Optional for backward compat with rows
     # persisted before this field was added.
     user_timezone: str | None = None
+    # Org/team captured at schedule time so a fresh session minted at
+    # fire time lands in the same tenant as the chat that scheduled it.
+    # Optional for backward compat with rows persisted before org tagging.
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1609,6 +1629,8 @@ class Scheduler(AppService):
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
         user_timezone: str | None = None,
+        organization_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -1632,6 +1654,8 @@ class Scheduler(AppService):
             cron=cron,
             input_data=input_data,
             input_credentials=input_credentials,
+            organization_id=organization_id or "",
+            team_id=team_id,
         )
         job = self._persist_schedule(
             dispatch_func=execute_graph,
@@ -1656,6 +1680,8 @@ class Scheduler(AppService):
         name: Optional[str] = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -1678,6 +1704,8 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
             user_timezone=user_timezone,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
@@ -1736,7 +1764,11 @@ class Scheduler(AppService):
 
     @expose
     def get_graph_execution_schedules(
-        self, graph_id: str | None = None, user_id: str | None = None
+        self,
+        graph_id: str | None = None,
+        user_id: str | None = None,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> list[GraphExecutionJobInfo]:
         """Return graph-kind schedules only (typed for legacy callers).
 
@@ -1748,7 +1780,11 @@ class Scheduler(AppService):
         return [
             info
             for info in self.get_execution_schedules(
-                graph_id=graph_id, user_id=user_id, kind="graph"
+                graph_id=graph_id,
+                user_id=user_id,
+                kind="graph",
+                organization_id=organization_id,
+                team_ids=team_ids,
             )
             if isinstance(info, GraphExecutionJobInfo)
         ]
@@ -1811,12 +1847,19 @@ class Scheduler(AppService):
         user_id: str | None = None,
         session_id: str | None = None,
         kind: str | None = None,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
         """Return schedules of both kinds, filtered by the given fields.
 
         *kind* may be ``"graph"``, ``"copilot_turn"``, or ``None`` for all.
         Graph-only filters (*graph_id*) silently skip copilot-turn rows;
         copilot-only filters (*session_id*) silently skip graph rows.
+
+        With *organization_id* (from a membership-verified RequestContext)
+        the org/team visibility rules apply instead of strict ownership:
+        own schedules + org-home schedules + schedules of teams in
+        *team_ids* (resolved by the caller, who has async DB access).
         """
         jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
@@ -1826,7 +1869,17 @@ class Scheduler(AppService):
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if user_id is not None and info.user_id != user_id:
+            if organization_id is not None:
+                # GraphExecutionJobArgs defaults organization_id to "" —
+                # normalise so untagged rows never match an org clause.
+                info_org = info.organization_id or None
+                owned = user_id is not None and info.user_id == user_id
+                in_org = info_org == organization_id and (
+                    info.team_id is None or info.team_id in (team_ids or [])
+                )
+                if not (owned or in_org):
+                    continue
+            elif user_id is not None and info.user_id != user_id:
                 continue
             if graph_id is not None and (
                 not isinstance(info, GraphExecutionJobInfo) or info.graph_id != graph_id

@@ -17,18 +17,24 @@ import {
   CircleNotchIcon,
   DotsThreeIcon,
   DownloadSimpleIcon,
+  FolderIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
+import {
+  createFileDragImage,
+  FILE_DRAG_MIME,
+} from "../../WorkspaceFolders/drag";
 import {
   deriveFileOrigin,
+  downloadFileBlob,
   formatFileSize,
   formatRelativeDate,
-  getFileDownloadUrl,
   getFileTypeIcon,
   getFileTypeLabel,
 } from "../helpers";
@@ -36,6 +42,7 @@ import { CardPreview } from "./CardPreview";
 
 interface Props {
   file: WorkspaceFileItem;
+  onOpen: (file: WorkspaceFileItem) => void;
 }
 
 const CARD_VARIANTS: Variants = {
@@ -54,42 +61,99 @@ const REDUCED_CARD_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
-export function ArtifactCard({ file }: Props) {
+export function ArtifactCard({ file, onOpen }: Props) {
   const origin = deriveFileOrigin(file.path);
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
-  const TypeIcon = getFileTypeIcon(file.mime_type);
+  const TypeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const dragImageRef = useRef<HTMLElement | null>(null);
+
+  // Clean up a leftover drag-image node if the card unmounts mid-drag (before
+  // dragend fires), so the off-screen element isn't leaked into the DOM.
+  useEffect(() => {
+    return () => {
+      dragImageRef.current?.remove();
+      dragImageRef.current = null;
+    };
+  }, []);
+
+  function handleDragStart(e: React.DragEvent<HTMLLIElement>) {
+    dragImageRef.current?.remove();
+    e.dataTransfer.setData(FILE_DRAG_MIME, file.id);
+    e.dataTransfer.effectAllowed = "move";
+    const dragImage = createFileDragImage(file.name);
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 16, 16);
+    dragImageRef.current = dragImage;
+  }
+
+  function handleDragEnd() {
+    dragImageRef.current?.remove();
+    dragImageRef.current = null;
+  }
 
   return (
     <motion.li
       variants={reduceMotion ? REDUCED_CARD_VARIANTS : CARD_VARIANTS}
       style={{ willChange: "transform, opacity, filter" }}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
+      draggable
+      onDragStartCapture={handleDragStart}
+      onDragEndCapture={handleDragEnd}
     >
-      <CardPreview file={file} />
-      <div className="flex items-center gap-3 p-3">
-        <TypeIcon
-          size={20}
-          weight="regular"
-          className="shrink-0 text-zinc-500"
-        />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Text
-            variant="body-medium"
-            className="truncate text-zinc-900"
-            title={file.name}
-          >
-            {file.name}
-          </Text>
-          <Text variant="small" className="truncate text-zinc-500">
-            {getFileTypeLabel(file.mime_type)} ·{" "}
-            {formatFileSize(file.size_bytes)} ·{" "}
-            {formatRelativeDate(file.created_at)}
-          </Text>
+      {/* Full-card click target: opening the file is the primary action.
+          Sits behind the content (z-0); the content is pointer-events-none so
+          clicks fall through, except the kebab menu which re-enables them. */}
+      <button
+        type="button"
+        onClick={() => onOpen(file)}
+        aria-label={`Open ${file.name}`}
+        className="absolute inset-0 z-0 cursor-pointer"
+        data-testid="artifacts-card-open"
+      />
+      <div className="pointer-events-none relative z-10">
+        <CardPreview file={file} />
+        <div className="flex items-center gap-3 p-3">
+          <TypeIcon
+            size={20}
+            weight="regular"
+            className="shrink-0 text-zinc-500"
+          />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Text
+              variant="body-medium"
+              className="truncate text-zinc-900"
+              title={file.name}
+            >
+              {file.name}
+            </Text>
+            <Text variant="small" className="truncate text-zinc-500">
+              {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
+              {formatFileSize(file.size_bytes)} ·{" "}
+              {formatRelativeDate(file.created_at)}
+            </Text>
+          </div>
+          <div className="pointer-events-auto">
+            <CardMenu
+              file={file}
+              goLabel={goLabel}
+              goHref={origin.href}
+              onMove={() => setIsMoveOpen(true)}
+            />
+          </div>
         </div>
-        <CardMenu file={file} goLabel={goLabel} goHref={origin.href} />
       </div>
+      {isMoveOpen && (
+        <MoveToFolderDialog
+          fileId={file.id}
+          fileName={file.name}
+          currentFolderId={file.folder_id}
+          isOpen={isMoveOpen}
+          setIsOpen={setIsMoveOpen}
+        />
+      )}
     </motion.li>
   );
 }
@@ -98,10 +162,12 @@ function CardMenu({
   file,
   goLabel,
   goHref,
+  onMove,
 }: {
   file: WorkspaceFileItem;
   goLabel: string;
   goHref: string;
+  onMove: () => void;
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
@@ -130,18 +196,7 @@ function CardMenu({
     if (isDownloading) return;
     setIsDownloading(true);
     try {
-      const res = await fetch(getFileDownloadUrl(file.id));
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Defer revocation so browsers (Firefox/Edge) have time to start the download.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      await downloadFileBlob(file.id, file.name);
     } catch (error) {
       toast({
         title: "Failed to download file",
@@ -194,6 +249,16 @@ function CardMenu({
             <ArrowSquareOutIcon size={16} className="mr-2" />
             {goLabel}
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onMove();
+          }}
+          data-testid="artifacts-move-to-folder"
+        >
+          <FolderIcon size={16} className="mr-2" />
+          Move to folder
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

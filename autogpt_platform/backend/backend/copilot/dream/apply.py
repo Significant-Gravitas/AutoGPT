@@ -78,6 +78,24 @@ def _episode_name(pass_id: str, phase: str, counter: int) -> str:
     return f"dream_{pass_id}_{phase}_{counter:03d}"
 
 
+def _edge_metadata(envelope: MemoryEnvelope) -> dict:
+    """Cypher-serializable MemoryFact attributes from a dream envelope.
+
+    Stamped onto the edges the envelope's episode newly creates (see
+    ``ingest._stamp_edge_metadata``) so dream provenance/status/source_kind
+    land deterministically on the edge — graphiti's text-based attribute
+    extraction can't recover them from the episode body. Enums are reduced
+    to their string values; ``confidence``/``provenance`` may be None.
+    """
+    return {
+        "status": envelope.status.value,
+        "source_kind": envelope.source_kind.value,
+        "scope": envelope.scope,
+        "confidence": envelope.confidence,
+        "provenance": envelope.provenance,
+    }
+
+
 async def _write_consolidated_fact(
     user_id: str,
     pass_id: str,
@@ -104,6 +122,7 @@ async def _write_consolidated_fact(
             f"{','.join(fact.source_episode_uuids[:5])}"
         ),
         is_json=True,
+        edge_metadata=_edge_metadata(envelope),
     )
 
 
@@ -135,6 +154,7 @@ async def _write_proposed_finding(
         episode_body=envelope.model_dump_json(),
         source_description="; ".join(description_parts),
         is_json=True,
+        edge_metadata=_edge_metadata(envelope),
     )
 
 
@@ -329,13 +349,27 @@ async def _create_dream_session(user_id: str, pass_id: str) -> str:
     # through ``chat_db()`` means the dream pass (running in the
     # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
     # the DatabaseManager process itself uses the direct module.
+    from backend.api.features.orgs.db import get_user_default_team
     from backend.copilot.model import ChatSessionMetadata
     from backend.data.db_accessors import chat_db
+
+    # Dream passes run per-user with no request context; the user's
+    # default (personal) org is the correct tenant for their dreams.
+    try:
+        org_id, team_id = await get_user_default_team(user_id)
+    except Exception:
+        logger.warning(
+            f"Could not resolve default team for dream session (user {user_id}); "
+            "creating tenant-less session"
+        )
+        org_id, team_id = None, None
 
     session_id = str(uuidlib.uuid4())
     await chat_db().create_chat_session(
         session_id=session_id,
         user_id=user_id,
+        organization_id=org_id,
+        team_id=team_id,
         metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
     )
     return session_id
