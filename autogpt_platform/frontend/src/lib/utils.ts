@@ -194,6 +194,24 @@ export function exportAsJSONFile(obj: object, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+export function agentGraphExportFilename(
+  graph: unknown,
+  fallbackName = "agent",
+): string {
+  const { name, version } = (
+    typeof graph === "object" && graph !== null ? graph : {}
+  ) as { name?: unknown; version?: unknown };
+  const rawName = typeof name === "string" && name.trim() ? name : fallbackName;
+  const safeName =
+    rawName
+      .trim()
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+      .replace(/[_ ]+$/, "") || "agent";
+  return typeof version === "number"
+    ? `${safeName}_v${version}.json`
+    : `${safeName}.json`;
+}
+
 export function setNestedProperty(obj: any, path: string, value: any) {
   if (!obj || typeof obj !== "object") {
     throw new Error("Target must be a non-null object");

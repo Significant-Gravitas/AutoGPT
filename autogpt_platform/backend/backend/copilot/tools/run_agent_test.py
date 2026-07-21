@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
+from backend.data.execution import ExecutionStatus
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import GraphValidationError
 
@@ -1190,3 +1191,168 @@ async def test_maybe_save_preset_creates_with_default_name():
     assert preset_arg.name == "My Agent"
     assert preset_arg.inputs == {"x": 1}
     assert preset_arg.graph_id == "g1"
+
+
+def _completed_run_mocks(
+    mocker,
+    *,
+    outputs: dict,
+    node_executions: list | None = None,
+    detailed_fetch_error: Exception | None = None,
+):
+    """Wire the waited-COMPLETED path: library agent, execution, waiter,
+    outputs, and the detailed per-node trace fetch."""
+    from unittest.mock import MagicMock
+
+    from backend.data.execution import GraphExecutionWithNodes
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-1", "team-1")),
+    )
+    execution = MagicMock()
+    execution.id = "exec-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=execution),
+    )
+    completed = MagicMock()
+    completed.status = ExecutionStatus.COMPLETED
+    completed.started_at = None
+    completed.ended_at = None
+    mocker.patch(
+        "backend.copilot.tools.run_agent.wait_for_execution",
+        AsyncMock(return_value=completed),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_execution_outputs",
+        return_value=outputs,
+    )
+    detailed = MagicMock(spec=GraphExecutionWithNodes)
+    detailed.node_executions = node_executions or []
+    db = MagicMock()
+    if detailed_fetch_error is not None:
+        db.get_graph_execution = AsyncMock(side_effect=detailed_fetch_error)
+    else:
+        db.get_graph_execution = AsyncMock(return_value=detailed)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_db",
+        return_value=db,
+    )
+    return lib
+
+
+def _failed_node(node_id: str = "n1") -> "MagicMock":
+    from unittest.mock import MagicMock
+
+    ne = MagicMock()
+    ne.status = ExecutionStatus.FAILED
+    ne.node_id = node_id
+    ne.block_id = "block-x"
+    ne.output_data = {"error": ["boom exploded"]}
+    ne.input_data = {}
+    ne.start_time = None
+    ne.end_time = None
+    return ne
+
+
+async def _run_waited(mocker, *, dry_run: bool):
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+    return await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=dry_run,
+        wait_for_result=30,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_completed_run_with_failed_node_warns_and_reports(mocker):
+    """A COMPLETED run with a FAILED node must NOT read as success: the
+    message carries the warning and the response carries nodes_failed."""
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "finished with status COMPLETED" in response.message
+    assert "FAILED despite the COMPLETED" in response.message
+    assert "completed successfully" not in response.message
+    assert response.execution.nodes_failed is not None
+    assert response.execution.nodes_failed[0]["error"] == "boom exploded"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_completed_run_with_empty_outputs_warns(mocker):
+    _completed_run_mocks(mocker, outputs={}, node_executions=[])
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "produced no outputs" in response.message
+    assert "completed successfully" not in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_healthy_completed_run_reports_success(mocker):
+    _completed_run_mocks(mocker, outputs={"result": ["ok"]}, node_executions=[])
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "completed successfully" in response.message
+    assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_wet_run_omits_node_trace_dry_run_inlines_it(mocker):
+    """The full per-node trace is inlined only on dry runs (LLM debugging);
+    wet-run responses stay small."""
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    wet = await _run_waited(mocker, dry_run=False)
+    assert wet.execution.node_executions is None
+
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    dry = await _run_waited(mocker, dry_run=True)
+    assert dry.execution.node_executions is not None
+    assert dry.execution.node_executions[0]["status"] == "FAILED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_detailed_fetch_failure_degrades_to_summary(mocker):
+    """When the per-node trace fetch raises, the run response still returns
+    (summary only) instead of crashing."""
+    _completed_run_mocks(
+        mocker,
+        outputs={"result": ["ok"]},
+        detailed_fetch_error=RuntimeError("db down"),
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "completed successfully" in response.message
+    assert response.execution.nodes_failed is None
