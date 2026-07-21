@@ -1941,28 +1941,6 @@ def _resolve_sdk_model() -> str | None:
     return _normalize_model_name(config.thinking_standard_model)
 
 
-def _stamp_turn_messages(
-    messages: list[ChatMessage],
-    *,
-    start_index: int,
-    model: str | None,
-    routing_source: RoutingSource,
-) -> None:
-    """Stamp THIS turn's assistant messages with the serving model and
-    routing layer.
-
-    The SDK adapters build messages far from the resolution context, so
-    the stamp lands at persist time — bounded to ``start_index`` (the
-    session length when the turn began) so pre-feature history rows with
-    NULL model are never back-stamped with today's values, and never
-    overwriting an already-stamped row.
-    """
-    for msg in messages[start_index:]:
-        if msg.role == "assistant" and msg.model is None:
-            msg.model = model
-            msg.routing_source = routing_source
-
-
 async def _resolve_thinking_model_for_user(
     tier: "CopilotLlmModel",
     user_id: str | None,
@@ -5344,10 +5322,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # Prefer the ACTUALLY-executed model (observed on
+            # AssistantMessage.model, survives retries) over the pre-turn
+            # resolution — a mid-turn CLI fallback_model activation (529
+            # overload) would otherwise stamp the wrong model.
             _stamp_turn_messages(
                 session.messages,
                 start_index=pre_turn_message_count,
-                model=effective_model,
+                model=(state.observed_model if state is not None else None)
+                or effective_model,
                 routing_source=routing_source,
             )
             try:
@@ -5612,3 +5595,25 @@ async def _fetch_graphiti_context(
 
     ctx = await fetch_warm_context(user_id, message or "") or ""
     return True, ctx
+
+
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    model: str | None,
+    routing_source: RoutingSource,
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+    """
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source

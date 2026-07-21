@@ -63,13 +63,13 @@ class RegistryModel(BaseModel):
     description: str | None = None
     metadata: RegistryModelMetadata
     provider_display_name: str
-    is_enabled: bool
-    is_recommended: bool = False
-
     # is_enabled is the kill switch for SERVING NEW WORK: copilot refuses the
     # model and it leaves picker metadata. Existing agent graphs keep
     # executing (and billing) — hard-stopping users' running agents is a
     # deliberate separate act (the retire CLI), never a flag side-effect.
+    is_enabled: bool
+    is_recommended: bool = False
+
     # visibility only controls who SEES the model — HIDDEN still serves
     # when explicitly routed.
     kind: str = "CHAT"
@@ -154,9 +154,12 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     _dynamic_models = models
     _routes = routes
     _loaded = True
-    logger.info(
-        "LLM catalog loaded: %d models, %d routing cells", len(models), len(routes)
-    )
+    logger.info(f"LLM catalog loaded: {len(models)} models, {len(routes)} routing cells")
+
+
+def has_models() -> bool:
+    """O(1) emptiness check — the resolver asks this on every turn."""
+    return bool(_dynamic_models)
 
 
 def is_loaded() -> bool:

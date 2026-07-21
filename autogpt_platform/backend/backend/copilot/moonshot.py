@@ -43,7 +43,8 @@ from __future__ import annotations
 from backend.data.llm_registry.catalog import get_catalog
 
 # Every Kimi K2.x SKU shares these rates — $0.60/$2.80 per million
-# (input/output) via OpenRouter as of April 2026.  Cache-read / cache-write discounts are NOT applied here:
+# (input/output) via OpenRouter as of April 2026.
+# Cache-read / cache-write discounts are NOT applied here:
 # OpenRouter currently exposes only a single input price per Moonshot
 # endpoint; the real billed amount (with cache savings) lands via the
 # reconcile path.  Keep in sync with https://platform.moonshot.ai/docs/pricing.

@@ -225,3 +225,35 @@ async def test_cli_dry_run_writes_nothing(retirement_env, mocker):
 
     assert await _node_model(node_id) == _node_value(source)
     assert await prisma.models.LlmModelMigration.prisma().count() == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_revert_leaves_manually_repointed_nodes_alone(retirement_env):
+    """The documented revert guard: nodes a user manually repointed at a
+    third model since the migration are NOT touched by the revert, and the
+    result reports them as already-changed."""
+    source, replacement = _two_catalog_slugs()
+    node_a = await _seed_node(retirement_env, _node_value(source))
+    node_b = await _seed_node(retirement_env, _node_value(source))
+
+    result = await retire_model(source, replacement)
+    assert result.nodes_migrated == 2
+
+    third = "user/hand-picked-model"
+    node = await prisma.models.AgentNode.prisma().find_unique(
+        where={"id": node_b}
+    )
+    assert node is not None
+    ci = dict(node.constantInput) if isinstance(node.constantInput, dict) else json.loads(str(node.constantInput))
+    ci["model"] = third
+    await prisma.models.AgentNode.prisma().update(
+        where={"id": node_b}, data={"constantInput": prisma.Json(ci)}
+    )
+
+    migrations = await list_model_migrations()
+    revert = await revert_model_migration(migrations[0].id)
+
+    assert revert.nodes_reverted == 1
+    assert revert.nodes_already_changed == 1
+    assert await _node_model(node_a) == _node_value(source)
+    assert await _node_model(node_b) == third

@@ -102,7 +102,7 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
 
 
 _sentry_reported: set[tuple[str, str]] = set()
-_unloaded_reported: list[bool] = []
+_unloaded_reported = False
 
 
 async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
@@ -112,12 +112,13 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     exact pre-registry behavior). Unknown slug or kill-switched model is
     refused; HIDDEN visibility serves fine when explicitly routed.
     """
-    if not llm_registry.get_all_models():
+    if not llm_registry.has_models():
+        global _unloaded_reported
         if not llm_registry.is_loaded() and not _unloaded_reported:
             # Empty-because-dormant is legitimate; empty-because-nobody-
             # called-load_catalog() in this process is a wiring bug that
             # would silently disable gating and cells — say so, once.
-            _unloaded_reported.append(True)
+            _unloaded_reported = True
             logger.error(
                 "[model_router] registry gating skipped: load_catalog() was "
                 "never called in this process — routing cells and serve-time "

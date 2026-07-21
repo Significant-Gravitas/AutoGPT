@@ -104,6 +104,10 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 
+def _enum_members_by_value() -> dict[str, LlmModel]:
+    return {m.value: m for m in LlmModel}
+
+
 def _model_cost_from_catalog() -> dict[LlmModel, int]:
     """Flat credits-per-run tiers, read from the catalog — the single
     source of truth for model pricing.
@@ -112,7 +116,7 @@ def _model_cost_from_catalog() -> dict[LlmModel, int]:
     a model from being SERVED to new work, but stored graphs that still
     reference it keep executing — and an execution that happens must be
     billed. Filtering here would make killed-model usage free."""
-    members = {m.value: m for m in LlmModel}
+    members = _enum_members_by_value()
     costs: dict[LlmModel, int] = {}
     for model in get_catalog().models:
         member = members.get(model.slug)
@@ -151,7 +155,7 @@ class TokenRate(BaseModel):
 # credit-to-USD conversion, 1 credit ≈ $0.01, uniform 1.5x margin over
 # the published provider price).
 def _token_cost_from_catalog() -> dict[LlmModel, TokenRate]:
-    members = {m.value: m for m in LlmModel}
+    members = _enum_members_by_value()
     rates: dict[LlmModel, TokenRate] = {}
     for model in get_catalog().models:
         member = members.get(model.slug)

@@ -20,6 +20,7 @@ from .registry import (
     get_all_models,
     get_model,
     get_route,
+    has_models,
     is_loaded,
     load_catalog,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "get_all_models",
     "get_model",
     "get_route",
+    "has_models",
     "is_loaded",
     "load_catalog",
 ]

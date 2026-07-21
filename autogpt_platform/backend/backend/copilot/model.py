@@ -105,6 +105,12 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Which LLM served this assistant turn and which routing layer picked it
+    # ("ld" | "catalog" | "env"). Product-intelligence mirrors these to
+    # segment quality judgments by model. None on user/tool rows.
+    model: str | None = None
+    routing_source: str | None = None
+
     tool_calls_pending_save: bool = Field(default=False, exclude=True)
     """True when ``tool_calls`` mutated after this row was already persisted.
 
@@ -131,12 +137,6 @@ class ChatMessage(BaseModel):
         dropped-tool-calls bug."""
         if self.sequence is not None:
             self.tool_calls_pending_save = True
-
-    # Which LLM served this assistant turn and which routing layer picked it
-    # ("ld" | "db" | "env"). Product-intelligence mirrors these to segment
-    # quality judgments by model. None on user/tool rows.
-    model: str | None = None
-    routing_source: str | None = None
 
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
