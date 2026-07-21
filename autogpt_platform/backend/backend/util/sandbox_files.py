@@ -98,6 +98,7 @@ BINARY_EXTENSIONS = {
     ".7z",
     # Audio
     ".mp3",
+    ".aac",
     ".wav",
     ".ogg",
     ".flac",
