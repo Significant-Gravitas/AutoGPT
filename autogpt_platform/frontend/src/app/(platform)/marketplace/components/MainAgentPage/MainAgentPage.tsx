@@ -1,8 +1,10 @@
 "use client";
+import { okData } from "@/app/api/helpers";
 import { Separator } from "@/components/__legacy__/ui/separator";
+import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { okData } from "@/app/api/helpers";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { AgentImages } from "../AgentImages/AgentImage";
 import { AgentInfo } from "../AgentInfo/AgentInfo";
@@ -27,15 +29,7 @@ export function MainAgentPage({ params }: Props) {
   } = useMainAgentPage({ params });
 
   if (isLoading) {
-    return (
-      <div className="mx-auto w-full max-w-[1360px]">
-        <main className="px-4">
-          <div className="flex h-[600px] items-center justify-center">
-            <AgentPageLoading />
-          </div>
-        </main>
-      </div>
-    );
+    return <AgentPageLoading />;
   }
 
   if (hasError) {
@@ -84,19 +78,33 @@ export function MainAgentPage({ params }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-[1360px]">
-      <main className="mt-5 px-4">
-        <Breadcrumbs items={breadcrumbs} />
+      <main className="mt-5 px-4 pb-12">
+        <div className="mb-4 flex items-center justify-between px-4 md:!-mb-3">
+          <Button
+            variant="ghost"
+            size="small"
+            as="NextLink"
+            href="/marketplace"
+            className="relative -left-2 lg:!-left-4"
+            leftIcon={<ArrowLeftIcon size={16} />}
+          >
+            Go back
+          </Button>
+          <div className="hidden md:block">
+            <Breadcrumbs items={breadcrumbs} />
+          </div>
+        </div>
 
-        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
-          <div className="w-full md:w-auto md:shrink-0">
+        <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
+          <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
               agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
+              creatorAvatar={agentData.creator_avatar ?? ""}
               shortDescription={agentData.sub_heading ?? ""}
               longDescription={agentData.description ?? ""}
-              rating={agentData.rating ?? 0}
               runs={agentData.runs ?? 0}
               categories={agentData.categories ?? []}
               lastUpdated={
@@ -144,22 +152,20 @@ export function MainAgentPage({ params }: Props) {
             })()}
           />
         </div>
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="my-6 bg-transparent" />
         {otherAgents && (
           <AgentsSection
-            margin="32px"
             agents={otherAgents.agents}
             sectionTitle={`Other agents by ${agentData.creator ?? ""}`}
           />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
-        {similarAgents && (
+        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
+        {similarAgents && similarAgents.agents.length > 0 ? (
           <AgentsSection
-            margin="32px"
             agents={similarAgents.agents}
             sectionTitle="Similar agents"
           />
-        )}
+        ) : null}
         <BecomeACreator />
       </main>
     </div>

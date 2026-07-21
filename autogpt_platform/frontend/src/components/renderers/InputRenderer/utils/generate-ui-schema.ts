@@ -44,9 +44,19 @@ export function generateUiSchemaForCustomFields(
         const customFieldId = findCustomFieldId(propSchema);
 
         if (customFieldId) {
+          const hasAnyOfOrOneOf =
+            propSchema.anyOf || propSchema.oneOf ? true : false;
           uiSchema[key] = {
             ...(uiSchema[key] as object),
             "ui:field": customFieldId,
+            ...(hasAnyOfOrOneOf && {
+              "ui:options": {
+                ...((uiSchema[key] as Record<string, unknown>)?.[
+                  "ui:options"
+                ] as object),
+                fieldReplacesAnyOrOneOf: true,
+              },
+            }),
           };
           // Skip further processing for custom fields
           continue;

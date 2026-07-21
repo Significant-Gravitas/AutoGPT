@@ -5,23 +5,24 @@ This script creates test data for E2E tests by using API functions instead of di
 This approach ensures compatibility with future model changes by using the API layer.
 
 Image/Video URL Domains Used:
-- Images: picsum.photos (for all image URLs - avatars, store listing images, etc.)
+- Images: none. Avatars and store listing images are seeded empty so the
+  frontend renders its built-in solid-color/boring-avatars fallback. This
+  avoids any external image dependency (e.g. picsum.photos) that intermittently
+  504'd through Next's /_next/image optimizer and stalled E2E navigations.
 - Videos: youtube.com (for store listing video URLs)
-
-Add these domains to your Next.js config:
-```javascript
-// next.config.js
-images: {
-  domains: ['picsum.photos'],
-}
-```
 """
 
 import asyncio
+import json
 import random
+import uuid
+from pathlib import Path
 from typing import Any, Dict, List
 
+import prisma.enums as prisma_enums
+import prisma.models as prisma_models
 from faker import Faker
+from pydantic import SecretStr
 
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
@@ -30,12 +31,17 @@ from backend.api.features.store.db import (
     create_store_submission,
     review_store_submission,
 )
+from backend.api.features.store.model import StoreSubmission
+from backend.blocks.io import AgentInputBlock
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
-from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
+from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
+from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 
 faker = Faker()
 
@@ -60,14 +66,31 @@ MAX_REVIEWS_PER_VERSION = 5
 GUARANTEED_FEATURED_AGENTS = 8
 GUARANTEED_FEATURED_CREATORS = 5
 GUARANTEED_TOP_AGENTS = 10
-
-
-def get_image():
-    """Generate a consistent image URL using picsum.photos service."""
-    width = random.choice([200, 300, 400, 500, 600, 800])
-    height = random.choice([200, 300, 400, 500, 600, 800])
-    seed = random.randint(1, 1000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
+E2E_MARKETPLACE_CREATOR_EMAIL = "test123@example.com"
+E2E_MARKETPLACE_CREATOR_USERNAME = "e2e-marketplace"
+E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
+E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
+E2E_MARKETPLACE_AGENT_INPUT_VALUE = 8
+E2E_MARKETPLACE_AGENT_OUTPUT_VALUE = 42
+_LOCAL_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1] / "agents" / "calculator-agent.json"
+)
+_DOCKER_TEMPLATE_PATH = Path(
+    "/app/autogpt_platform/backend/agents/calculator-agent.json"
+)
+E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
+    _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
+)
+SEEDED_TEST_EMAILS = [
+    "test123@example.com",
+    "e2e.qa.auth@example.com",
+    "e2e.qa.builder@example.com",
+    "e2e.qa.library@example.com",
+    "e2e.qa.marketplace@example.com",
+    "e2e.qa.settings@example.com",
+    "e2e.qa.parallel.a@example.com",
+    "e2e.qa.parallel.b@example.com",
+]
 
 
 def get_video_url():
@@ -100,6 +123,25 @@ def get_category():
     return random.choice(categories)
 
 
+def load_deterministic_marketplace_graph() -> Graph:
+    graph = Graph.model_validate(
+        json.loads(E2E_MARKETPLACE_AGENT_TEMPLATE_PATH.read_text())
+    )
+    graph.name = E2E_MARKETPLACE_AGENT_NAME
+    graph.description = (
+        "Deterministic marketplace calculator graph for Playwright PR E2E coverage."
+    )
+
+    for node in graph.nodes:
+        if (
+            node.block_id == AgentInputBlock().id
+            and node.input_default.get("value") is None
+        ):
+            node.input_default["value"] = E2E_MARKETPLACE_AGENT_INPUT_VALUE
+
+    return graph
+
+
 class TestDataCreator:
     """Creates test data using API functions for E2E tests."""
 
@@ -112,6 +154,31 @@ class TestDataCreator:
         self.api_keys: List[Dict[str, Any]] = []
         self.presets: List[Dict[str, Any]] = []
         self.profiles: List[Dict[str, Any]] = []
+        # Org/workspace context per user (populated after migration runs)
+        self._user_org_cache: Dict[str, tuple[str | None, str | None]] = {}
+
+    async def _get_user_org_ws(self, user_id: str) -> tuple[str | None, str | None]:
+        """Get (organization_id, team_id) for a user, with caching."""
+        if user_id not in self._user_org_cache:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(user_id)
+            self._user_org_cache[user_id] = (org_id, ws_id)
+        return self._user_org_cache[user_id]
+
+    async def _bootstrap_personal_orgs_for_seeded_users(self) -> None:
+        """Run the personal-org bootstrap so seeded users have an org/team.
+
+        ``create_orgs_for_existing_users`` is idempotent — it finds users
+        without a personal Organization owner-membership and creates one
+        plus a default Team. We invoke it directly (rather than the full
+        ``run_migration``) because credit/transaction/store backfills
+        aren't relevant to fresh test users.
+        """
+        from backend.data.org_migration import create_orgs_for_existing_users
+
+        created = await create_orgs_for_existing_users()
+        print(f"Bootstrapped personal orgs for {created} seeded user(s)")
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -123,12 +190,12 @@ class TestDataCreator:
         for i in range(NUM_USERS):
             try:
                 # Generate test user data
-                if i == 0:
-                    # First user should have test123@gmail.com email for testing
-                    email = "test123@gmail.com"
+                if i < len(SEEDED_TEST_EMAILS):
+                    # Keep a deterministic pool for Playwright global setup and PR smoke flows
+                    email = SEEDED_TEST_EMAILS[i]
                 else:
                     email = faker.unique.email()
-                password = "testpassword123"  # Standard test password
+                password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
                 user_id = f"test-user-{i}-{faker.uuid4()}"
 
                 # Create user in Supabase Auth (if needed)
@@ -254,7 +321,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1012, "y": 674}},
                     )
@@ -274,7 +340,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1117, "y": 78}},
                     )
@@ -368,8 +433,14 @@ class TestDataCreator:
                 )
 
                 try:
-                    # Use the API function to create graph
-                    created_graph = await create_graph(graph, user["id"])
+                    # Use the API function to create graph with org context
+                    org_id, ws_id = await self._get_user_org_ws(user["id"])
+                    created_graph = await create_graph(
+                        graph,
+                        user["id"],
+                        organization_id=org_id,
+                        team_id=ws_id,
+                    )
                     graph_dict = created_graph.model_dump()
                     # Ensure userId is included for store submissions
                     graph_dict["userId"] = user["id"]
@@ -474,6 +545,9 @@ class TestDataCreator:
             from backend.data.auth.api_key import APIKeyPermission
 
             try:
+                # Tag the key with the user's personal org (mirrors the real
+                # request path, which always passes ctx.org_id).
+                org_id, _ws_id = await self._get_user_org_ws(user["id"])
                 # Use the API function to create API key
                 api_key, _ = await create_api_key(
                     name=faker.word(),
@@ -483,6 +557,7 @@ class TestDataCreator:
                         APIKeyPermission.READ_GRAPH,
                     ],
                     description=faker.text(),
+                    organization_id=org_id,
                 )
                 api_keys.append(api_key.model_dump())
             except Exception as e:
@@ -537,7 +612,10 @@ class TestDataCreator:
                         + str(random.randint(100, 999)),  # Ensure uniqueness
                         "description": faker.text(max_nb_chars=200),
                         "links": [faker.url() for _ in range(random.randint(1, 3))],
-                        "avatarUrl": get_image(),
+                        # Empty (not None): the Creator view types avatar_url as
+                        # non-nullable, so null breaks /api/store/creators. Empty
+                        # string renders the frontend's fallback avatar.
+                        "avatarUrl": "",
                         "isFeatured": is_featured,
                     },
                 )
@@ -548,6 +626,47 @@ class TestDataCreator:
             except Exception as e:
                 print(f"Error updating profile {profile.id}: {e}")
                 continue
+
+        deterministic_creator = next(
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
+            None,
+        )
+        if deterministic_creator:
+            deterministic_profile = next(
+                (
+                    profile
+                    for profile in existing_profiles
+                    if profile.userId == deterministic_creator["id"]
+                ),
+                None,
+            )
+            if deterministic_profile:
+                try:
+                    updated_profile = await prisma.profile.update(
+                        where={"id": deterministic_profile.id},
+                        data={
+                            "name": "E2E Marketplace Creator",
+                            "username": E2E_MARKETPLACE_CREATOR_USERNAME,
+                            "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
+                            "links": ["https://example.com/e2e-marketplace"],
+                            # Empty (not None) — Creator view requires non-null avatar_url.
+                            "avatarUrl": "",
+                            "isFeatured": True,
+                        },
+                    )
+                    profiles = [
+                        profile
+                        for profile in profiles
+                        if profile.get("id") != deterministic_profile.id
+                    ]
+                    if updated_profile is not None:
+                        profiles.append(updated_profile.model_dump())
+                except Exception as e:
+                    print(f"Error updating deterministic E2E creator profile: {e}")
 
         self.profiles = profiles
         return profiles
@@ -564,58 +683,180 @@ class TestDataCreator:
         featured_count = 0
         submission_counter = 0
 
-        # Create a special test submission for test123@gmail.com (ALWAYS approved + featured)
+        # Create a deterministic calculator marketplace agent for PR E2E coverage
         test_user = next(
-            (user for user in self.users if user["email"] == "test123@gmail.com"), None
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
+            None,
         )
-        if test_user and self.agent_graphs:
-            test_submission_data = {
-                "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"],
-                "agent_version": 1,
-                "slug": "test-agent-submission",
-                "name": "Test Agent Submission",
-                "sub_heading": "A test agent for frontend testing",
-                "video_url": "https://www.youtube.com/watch?v=test123",
-                "image_urls": [
-                    "https://picsum.photos/200/300",
-                    "https://picsum.photos/200/301",
-                    "https://picsum.photos/200/302",
-                ],
-                "description": "This is a test agent submission specifically created for frontend testing purposes.",
-                "categories": ["test", "demo", "frontend"],
-                "changes_summary": "Initial test submission",
-            }
+        if test_user:
+            deterministic_graph = None
 
             try:
-                test_submission = await create_store_submission(**test_submission_data)
-                submissions.append(test_submission.model_dump())
-                print("✅ Created special test store submission for test123@gmail.com")
-
-                # ALWAYS approve and feature the test submission
-                if test_submission.store_listing_version_id:
-                    approved_submission = await review_store_submission(
-                        store_listing_version_id=test_submission.store_listing_version_id,
-                        is_approved=True,
-                        external_comments="Test submission approved",
-                        internal_comments="Auto-approved test submission",
-                        reviewer_id=test_user["id"],
+                existing_graph = await prisma_models.AgentGraph.prisma().find_first(
+                    where={
+                        "userId": test_user["id"],
+                        "name": E2E_MARKETPLACE_AGENT_NAME,
+                        "isActive": True,
+                    },
+                    order={"version": "desc"},
+                )
+                if existing_graph:
+                    deterministic_graph = {
+                        "id": existing_graph.id,
+                        "version": existing_graph.version,
+                        "name": existing_graph.name,
+                        "userId": test_user["id"],
+                    }
+                    self.agent_graphs.append(deterministic_graph)
+                    print(
+                        "✅ Reused existing deterministic marketplace graph: "
+                        f"{existing_graph.id}"
                     )
-                    approved_submissions.append(approved_submission.model_dump())
-                    print("✅ Approved test store submission")
-
-                    await prisma.storelistingversion.update(
-                        where={"id": test_submission.store_listing_version_id},
-                        data={"isFeatured": True},
+                else:
+                    deterministic_graph_model = make_graph_model(
+                        load_deterministic_marketplace_graph(),
+                        test_user["id"],
                     )
-                    featured_count += 1
-                    print("🌟 Marked test agent as FEATURED")
-
+                    deterministic_graph_model.reassign_ids(
+                        user_id=test_user["id"],
+                        reassign_graph_id=True,
+                    )
+                    created_deterministic_graph = await create_graph(
+                        deterministic_graph_model,
+                        test_user["id"],
+                    )
+                    deterministic_graph = created_deterministic_graph.model_dump()
+                    deterministic_graph["userId"] = test_user["id"]
+                    self.agent_graphs.append(deterministic_graph)
+                    print("✅ Created deterministic marketplace graph")
             except Exception as e:
-                print(f"Error creating test store submission: {e}")
-                import traceback
+                print(f"Error creating deterministic marketplace graph: {e}")
 
-                traceback.print_exc()
+            if deterministic_graph is None and self.agent_graphs:
+                test_user_graphs = [
+                    graph
+                    for graph in self.agent_graphs
+                    if graph.get("userId") == test_user["id"]
+                ]
+                deterministic_graph = next(
+                    (
+                        graph
+                        for graph in test_user_graphs
+                        if not graph.get("name", "").startswith("DummyInput ")
+                    ),
+                    test_user_graphs[0] if test_user_graphs else None,
+                )
+
+            if deterministic_graph:
+                test_submission_data = {
+                    "user_id": test_user["id"],
+                    "graph_id": deterministic_graph["id"],
+                    "graph_version": deterministic_graph.get("version", 1),
+                    "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                    "name": E2E_MARKETPLACE_AGENT_NAME,
+                    "sub_heading": "A deterministic calculator agent for PR E2E coverage",
+                    "video_url": "https://www.youtube.com/watch?v=test123",
+                    "image_urls": [],
+                    "description": (
+                        "A deterministic marketplace calculator agent that adds "
+                        f"{E2E_MARKETPLACE_AGENT_INPUT_VALUE} and 34 to produce "
+                        f"{E2E_MARKETPLACE_AGENT_OUTPUT_VALUE} for frontend E2E coverage."
+                    ),
+                    "categories": ["test", "demo", "frontend"],
+                    "changes_summary": (
+                        "Initial deterministic calculator submission seeded from "
+                        "backend/agents/calculator-agent.json"
+                    ),
+                }
+
+                try:
+                    existing_deterministic_submission = (
+                        await prisma_models.StoreListingVersion.prisma().find_first(
+                            where={
+                                "isDeleted": False,
+                                "StoreListing": {
+                                    "is": {
+                                        "owningUserId": test_user["id"],
+                                        "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                                        "isDeleted": False,
+                                    }
+                                },
+                            },
+                            include={"StoreListing": True},
+                            order={"version": "desc"},
+                        )
+                    )
+
+                    if existing_deterministic_submission:
+                        test_submission = StoreSubmission.from_listing_version(
+                            existing_deterministic_submission
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Reused deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+                    else:
+                        test_submission = await create_store_submission(
+                            **test_submission_data
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Created deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+
+                    current_status = (
+                        existing_deterministic_submission.submissionStatus
+                        if existing_deterministic_submission
+                        else test_submission.status
+                    )
+                    is_featured = bool(
+                        existing_deterministic_submission
+                        and existing_deterministic_submission.isFeatured
+                    )
+
+                    if test_submission.listing_version_id:
+                        if current_status != prisma_enums.SubmissionStatus.APPROVED:
+                            approved_submission = await review_store_submission(
+                                store_listing_version_id=test_submission.listing_version_id,
+                                is_approved=True,
+                                external_comments="Deterministic calculator submission approved",
+                                internal_comments="Auto-approved PR E2E marketplace submission",
+                                reviewer_id=test_user["id"],
+                            )
+                            approved_submissions.append(
+                                approved_submission.model_dump()
+                            )
+                            print("✅ Approved deterministic marketplace submission")
+                        else:
+                            approved_submissions.append(test_submission.model_dump())
+                            print(
+                                "✅ Deterministic marketplace submission already approved"
+                            )
+
+                        if is_featured:
+                            featured_count += 1
+                            print("🌟 Deterministic marketplace agent already FEATURED")
+                        else:
+                            await prisma.storelistingversion.update(
+                                where={"id": test_submission.listing_version_id},
+                                data={"isFeatured": True},
+                            )
+                            featured_count += 1
+                            print(
+                                "🌟 Marked deterministic marketplace agent as FEATURED"
+                            )
+
+                except Exception as e:
+                    print(f"Error creating deterministic marketplace submission: {e}")
+                    import traceback
+
+                    traceback.print_exc()
 
         # Create regular submissions for all users
         for user in self.users:
@@ -640,13 +881,13 @@ class TestDataCreator:
 
                     submission = await create_store_submission(
                         user_id=user["id"],
-                        agent_id=graph["id"],
-                        agent_version=graph.get("version", 1),
+                        graph_id=graph["id"],
+                        graph_version=graph.get("version", 1),
                         slug=faker.slug(),
                         name=graph.get("name", faker.sentence(nb_words=3)),
                         sub_heading=faker.sentence(),
                         video_url=get_video_url() if random.random() < 0.3 else None,
-                        image_urls=[get_image() for _ in range(3)],
+                        image_urls=[],
                         description=faker.text(),
                         categories=[get_category()],
                         changes_summary="Initial E2E test submission",
@@ -654,7 +895,7 @@ class TestDataCreator:
                     submissions.append(submission.model_dump())
                     print(f"✅ Created store submission: {submission.name}")
 
-                    if submission.store_listing_version_id:
+                    if submission.listing_version_id:
                         # DETERMINISTIC: First N submissions are always approved
                         # First GUARANTEED_FEATURED_AGENTS of those are always featured
                         should_approve = (
@@ -667,7 +908,7 @@ class TestDataCreator:
                             try:
                                 reviewer_id = random.choice(self.users)["id"]
                                 approved_submission = await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=True,
                                     external_comments="Auto-approved for E2E testing",
                                     internal_comments="Automatically approved by E2E test data script",
@@ -683,9 +924,7 @@ class TestDataCreator:
                                 if should_feature:
                                     try:
                                         await prisma.storelistingversion.update(
-                                            where={
-                                                "id": submission.store_listing_version_id
-                                            },
+                                            where={"id": submission.listing_version_id},
                                             data={"isFeatured": True},
                                         )
                                         featured_count += 1
@@ -699,9 +938,7 @@ class TestDataCreator:
                                 elif random.random() < 0.2:
                                     try:
                                         await prisma.storelistingversion.update(
-                                            where={
-                                                "id": submission.store_listing_version_id
-                                            },
+                                            where={"id": submission.listing_version_id},
                                             data={"isFeatured": True},
                                         )
                                         featured_count += 1
@@ -721,7 +958,7 @@ class TestDataCreator:
                             try:
                                 reviewer_id = random.choice(self.users)["id"]
                                 await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=False,
                                     external_comments="Submission rejected - needs improvements",
                                     internal_comments="Automatically rejected by E2E test data script",
@@ -788,12 +1025,196 @@ class TestDataCreator:
                 )
                 continue
 
+    async def create_kitchen_sink_data(self) -> None:
+        """Populate EVERY remaining tenancy-scoped model for the deterministic
+        login users, so a QA login is a "user with literally everything".
+
+        The other create_* methods cover graphs / library agents / presets /
+        API keys / store listings. This fills the gap: chats, executions,
+        webhooks, folders, search history, notification batches, human
+        reviews, and a real (non-system) connected credential — each tagged
+        with the user's personal org/team, mirroring the create-path scoping
+        so the fixture matches production shape.
+        """
+        print("Creating kitchen-sink data (all tenancy models) for login users...")
+
+        power_users = [u for u in self.users if u["email"] in SEEDED_TEST_EMAILS]
+        notif_type = list(prisma_enums.NotificationType)[0]
+
+        async def _try(label: str, coro) -> None:
+            # Per-model isolation: one model failing must not skip the rest.
+            try:
+                await coro
+            except Exception as e:
+                print(f"  kitchen-sink {label} failed for {user['email']}: {e}")
+
+        for user in power_users:
+            user_id = user["id"]
+            org_id, team_id = await self._get_user_org_ws(user_id)
+            org_team = {"organizationId": org_id, "teamId": team_id}
+            org_only = {"organizationId": org_id}
+            user_graphs = [g for g in self.agent_graphs if g.get("userId") == user_id]
+            graph = user_graphs[0] if user_graphs else None
+
+            # Chat session (+ one message) — the copilot conversation shell.
+            session_id = str(uuid.uuid4())
+            await _try(
+                "chat_session",
+                prisma.chatsession.create(
+                    data={
+                        "id": session_id,
+                        "userId": user_id,
+                        "title": "Kitchen-sink chat",
+                        **org_team,
+                    }
+                ),
+            )
+            await _try(
+                "chat_message",
+                prisma.chatmessage.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "sessionId": session_id,
+                        "role": "user",
+                        "content": "Seed message",
+                        "sequence": 1,
+                    }
+                ),
+            )
+
+            await _try(
+                "library_folder",
+                prisma.libraryfolder.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "name": "Kitchen-sink folder",
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "search_history",
+                prisma.buildersearchhistory.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "searchQuery": "kitchen sink",
+                        **org_only,
+                    }
+                ),
+            )
+
+            await _try(
+                "notification_batch",
+                prisma.usernotificationbatch.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "type": notif_type,
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "webhook",
+                prisma.integrationwebhook.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "provider": "github",
+                        "credentialsId": str(uuid.uuid4()),
+                        "webhookType": "repo",
+                        "resource": "owner/repo",
+                        "events": ["push"],
+                        "config": SafeJson({}),
+                        "secret": uuid.uuid4().hex,
+                        "providerWebhookId": str(uuid.uuid4()),
+                        **org_team,
+                    }
+                ),
+            )
+
+            # Real (non-system) connected credential — encrypt a proper
+            # Credentials model exactly like set_user_credentials, so the
+            # decrypt/validate read path (get_user_credentials) accepts it.
+            # (A raw/plaintext payload is silently rejected and never shows.)
+            cred_id = str(uuid.uuid4())
+            gh_cred = APIKeyCredentials(
+                id=cred_id,
+                provider="github",
+                api_key=SecretStr("ghp_kitchensink_seed"),
+                title="Kitchen-sink GitHub",
+            )
+            await _try(
+                "credential",
+                prisma.integrationcredential.create(
+                    data={
+                        "id": cred_id,
+                        "organizationId": org_id or "",
+                        "ownerType": prisma_enums.CredentialOwnerType.USER,
+                        "ownerId": user_id,
+                        "teamId": team_id,
+                        "provider": gh_cred.provider,
+                        "credentialType": gh_cred.type,
+                        "displayName": gh_cred.title or gh_cred.provider,
+                        "encryptedPayload": JSONCryptor().encrypt(gh_cred.model_dump()),
+                        "createdByUserId": user_id,
+                    }
+                ),
+            )
+
+            # Execution + a pending human review, if the user has a graph.
+            if graph:
+                exec_id = str(uuid.uuid4())
+                await _try(
+                    "execution",
+                    prisma.agentgraphexecution.create(
+                        data={
+                            "id": exec_id,
+                            "agentGraphId": graph["id"],
+                            "agentGraphVersion": graph.get("version", 1),
+                            "userId": user_id,
+                            "executionStatus": prisma_enums.AgentExecutionStatus.COMPLETED,
+                            **org_team,
+                        }
+                    ),
+                )
+                await _try(
+                    "human_review",
+                    prisma.pendinghumanreview.create(
+                        data={
+                            "nodeExecId": str(uuid.uuid4()),
+                            "userId": user_id,
+                            "graphExecId": exec_id,
+                            "graphId": graph["id"],
+                            "graphVersion": graph.get("version", 1),
+                            "payload": SafeJson({"input": "seed"}),
+                            "status": prisma_enums.ReviewStatus.WAITING,
+                            "instructions": "Seed review",
+                            **org_only,
+                        }
+                    ),
+                )
+
+        print(f"Kitchen-sink data created for {len(power_users)} login users")
+
     async def create_all_test_data(self):
         """Create all test data."""
         print("Starting E2E test data creation...")
 
         # Create users first
         await self.create_test_users()
+
+        # Backfill personal orgs/teams for the users we just inserted.
+        # The app's lifespan-context migration already ran at backend
+        # startup, so it only knows about users that existed back then —
+        # seeded users created above wouldn't have orgs without this,
+        # and every route that now requires ctx.org_id (API keys,
+        # builder save/run, library run, copilot session) would fail.
+        await self._bootstrap_personal_orgs_for_seeded_users()
 
         # Get available blocks
         await self.get_available_blocks()
@@ -815,6 +1236,10 @@ class TestDataCreator:
 
         # Create store submissions
         await self.create_test_store_submissions()
+
+        # Populate every remaining tenancy model for the login users so a
+        # QA login is a "user with literally everything".
+        await self.create_kitchen_sink_data()
 
         # Add user credits
         await self.add_user_credits()

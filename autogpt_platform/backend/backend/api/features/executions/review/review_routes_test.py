@@ -638,7 +638,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock get_node_executions to return node_id mapping
     mock_get_node_executions = mocker.patch(
-        "backend.data.execution.get_node_executions"
+        "backend.api.features.executions.review.routes.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
     mock_node_exec.node_exec_id = "test_node_123"
@@ -936,7 +936,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock get_node_executions to return node_id mapping
     mock_get_node_executions = mocker.patch(
-        "backend.data.execution.get_node_executions"
+        "backend.api.features.executions.review.routes.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
     mock_node_exec.node_exec_id = "node_exec_approved"
@@ -1148,7 +1148,7 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
     # Mock get_node_executions to return batch node data
     mock_get_node_executions = mocker.patch(
-        "backend.data.execution.get_node_executions"
+        "backend.api.features.executions.review.routes.get_node_executions"
     )
     # Create mock node executions for each review
     mock_node_execs = []

@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import { GraphInputSchema, GraphOutputSchema } from "@/lib/autogpt-server-api";
+import type {
+  GraphInputSchema,
+  GraphOutputSchema,
+} from "@/lib/autogpt-server-api";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { okData } from "@/app/api/helpers";
 import { getEffectiveType } from "@/lib/utils";
 import { EdgeLike, getSchemaProperties, getSchemaRequired } from "./helpers";
 import {
@@ -11,26 +17,38 @@ import {
 /**
  * Checks if a newer version of a sub-agent is available and determines compatibility
  */
-export function useSubAgentUpdate<T extends GraphMetaLike>(
+export function useSubAgentUpdate(
   nodeID: string,
   graphID: string | undefined,
   graphVersion: number | undefined,
   currentInputSchema: GraphInputSchema | undefined,
   currentOutputSchema: GraphOutputSchema | undefined,
   connections: EdgeLike[],
-  availableGraphs: T[],
-): SubAgentUpdateInfo<T> {
+  availableGraphs: GraphMetaLike[],
+): SubAgentUpdateInfo<GraphModel> {
   // Find the latest version of the same graph
-  const latestGraph = useMemo(() => {
+  const latestGraphInfo = useMemo(() => {
     if (!graphID) return null;
     return availableGraphs.find((graph) => graph.id === graphID) || null;
   }, [graphID, availableGraphs]);
 
-  // Check if there's an update available
+  // Check if there's a newer version available
   const hasUpdate = useMemo(() => {
-    if (!latestGraph || graphVersion === undefined) return false;
-    return latestGraph.version! > graphVersion;
-  }, [latestGraph, graphVersion]);
+    if (!latestGraphInfo || graphVersion === undefined) return false;
+    return latestGraphInfo.version! > graphVersion;
+  }, [latestGraphInfo, graphVersion]);
+
+  // Fetch full graph IF an update is detected
+  const { data: latestGraph } = useGetV1GetSpecificGraph(
+    graphID ?? "",
+    { version: latestGraphInfo?.version },
+    {
+      query: {
+        enabled: hasUpdate && !!graphID && !!latestGraphInfo?.version,
+        select: okData,
+      },
+    },
+  );
 
   // Get connected input and output handles for this specific node
   const connectedHandles = useMemo(() => {
@@ -152,8 +170,8 @@ export function useSubAgentUpdate<T extends GraphMetaLike>(
   return {
     hasUpdate,
     currentVersion: graphVersion || 0,
-    latestVersion: latestGraph?.version || 0,
-    latestGraph,
+    latestVersion: latestGraphInfo?.version || 0,
+    latestGraph: latestGraph || null,
     isCompatible: compatibilityResult.isCompatible,
     incompatibilities: compatibilityResult.incompatibilities,
   };

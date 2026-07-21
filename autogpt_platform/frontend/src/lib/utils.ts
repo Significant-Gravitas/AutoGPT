@@ -1,8 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
-import { isEmpty as _isEmpty } from "lodash";
+import _isEmpty from "lodash/isEmpty";
 import { twMerge } from "tailwind-merge";
 
-import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
@@ -195,6 +194,24 @@ export function exportAsJSONFile(obj: object, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+export function agentGraphExportFilename(
+  graph: unknown,
+  fallbackName = "agent",
+): string {
+  const { name, version } = (
+    typeof graph === "object" && graph !== null ? graph : {}
+  ) as { name?: unknown; version?: unknown };
+  const rawName = typeof name === "string" && name.trim() ? name : fallbackName;
+  const safeName =
+    rawName
+      .trim()
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+      .replace(/[_ ]+$/, "") || "agent";
+  return typeof version === "number"
+    ? `${safeName}_v${version}.json`
+    : `${safeName}.json`;
+}
+
 export function setNestedProperty(obj: any, path: string, value: any) {
   if (!obj || typeof obj !== "object") {
     throw new Error("Target must be a non-null object");
@@ -332,81 +349,6 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   );
 }
 
-function rectanglesOverlap(
-  rect1: { x: number; y: number; width: number; height?: number },
-  rect2: { x: number; y: number; width: number; height?: number },
-): boolean {
-  const x1 = rect1.x,
-    y1 = rect1.y,
-    w1 = rect1.width,
-    h1 = rect1.height ?? 100;
-  const x2 = rect2.x,
-    y2 = rect2.y,
-    w2 = rect2.width,
-    h2 = rect2.height ?? 100;
-
-  // Check if the rectangles do not overlap
-  return !(x1 + w1 <= x2 || x1 >= x2 + w2 || y1 + h1 <= y2 || y1 >= y2 + h2);
-}
-
-export function findNewlyAddedBlockCoordinates(
-  nodeDimensions: NodeDimension,
-  newWidth: number,
-  margin: number,
-  zoom: number,
-) {
-  const nodeDimensionArray = Object.values(nodeDimensions);
-
-  for (let i = nodeDimensionArray.length - 1; i >= 0; i--) {
-    const lastNode = nodeDimensionArray[i];
-    const lastNodeHeight = lastNode.height ?? 100;
-
-    // Right of the last node
-    let newX = lastNode.x + lastNode.width + margin;
-    let newY = lastNode.y;
-    let newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionRight = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionRight) {
-      return { x: newX, y: newY };
-    }
-
-    // Left of the last node
-    newX = lastNode.x - newWidth - margin;
-    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionLeft = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionLeft) {
-      return { x: newX, y: newY };
-    }
-
-    // Below the last node
-    newX = lastNode.x;
-    newY = lastNode.y + lastNodeHeight + margin;
-    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionBelow = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionBelow) {
-      return { x: newX, y: newY };
-    }
-  }
-
-  // Default position if no space is found
-  return {
-    x: 0,
-    y: 0,
-  };
-}
-
 export function hasNonNullNonObjectValue(obj: any): boolean {
   if (obj !== null && typeof obj === "object") {
     return Object.values(obj).some((value) => hasNonNullNonObjectValue(value));
@@ -501,4 +443,15 @@ export function isValidUUID(value: string): boolean {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
+}
+
+export function getApprovedMarketplaceUrl(args: {
+  creatorUsername: string | null | undefined;
+  slug: string | null | undefined;
+  isApproved: boolean;
+}): string | undefined {
+  if (!args.isApproved || !args.creatorUsername || !args.slug) {
+    return undefined;
+  }
+  return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
 }

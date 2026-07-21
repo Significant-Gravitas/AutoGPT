@@ -6,12 +6,13 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
   "/profile",
   "/library",
-  "/monitoring",
+  "/settings",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
@@ -83,7 +84,6 @@ export interface EventListeners {
 
 export function setupSessionEventListeners(
   onVisibilityChange: () => void,
-  onFocus: () => void,
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
   if (environment.isServerSide()) {
@@ -91,13 +91,11 @@ export function setupSessionEventListeners(
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.addEventListener("focus", onFocus);
   window.addEventListener("storage", onStorageChange);
 
   return {
     cleanup: () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorageChange);
     },
   };

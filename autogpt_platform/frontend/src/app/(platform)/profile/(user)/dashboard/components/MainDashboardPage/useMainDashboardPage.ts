@@ -24,7 +24,7 @@ type EditState = {
   submission:
     | (StoreSubmissionEditRequest & {
         store_listing_version_id: string | undefined;
-        agent_id: string;
+        graph_id: string;
       })
     | null;
 };
@@ -79,7 +79,7 @@ export const useMainDashboardPage = () => {
   const onEditSubmission = (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
-      agent_id: string;
+      graph_id: string;
     },
   ) => {
     setEditState({
@@ -90,7 +90,7 @@ export const useMainDashboardPage = () => {
 
   const onEditSuccess = async (submission: StoreSubmission) => {
     try {
-      if (!submission.store_listing_version_id) {
+      if (!submission.listing_version_id) {
         Sentry.captureException(
           new Error("No store listing version ID found for submission"),
         );

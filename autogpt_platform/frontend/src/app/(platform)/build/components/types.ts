@@ -9,4 +9,5 @@ export enum BlockUIType {
   AGENT = "Agent",
   AI = "AI",
   AYRSHARE = "Ayrshare",
+  MCP_TOOL = "MCP Tool",
 }

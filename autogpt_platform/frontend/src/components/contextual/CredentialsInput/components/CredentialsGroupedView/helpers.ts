@@ -23,10 +23,35 @@ function hasRequiredScopes(
   return true;
 }
 
+/** Check if a credential matches the discriminator values (e.g. MCP server URL). */
+function matchesDiscriminatorValues(
+  credential: { host?: string | null; provider: string; type: string },
+  discriminatorValues?: string[],
+) {
+  // MCP OAuth2 credentials must match by server URL
+  if (credential.type === "oauth2" && credential.provider === "mcp") {
+    if (!discriminatorValues || discriminatorValues.length === 0) return false;
+    return (
+      credential.host != null && discriminatorValues.includes(credential.host)
+    );
+  }
+  // Host-scoped credentials match by host
+  if (credential.type === "host_scoped" && credential.host) {
+    if (!discriminatorValues || discriminatorValues.length === 0) return true;
+    return discriminatorValues.some((v) => {
+      try {
+        return new URL(v).hostname === credential.host;
+      } catch {
+        return false;
+      }
+    });
+  }
+  return true;
+}
+
 export function splitCredentialFieldsBySystem(
   credentialFields: CredentialField[],
   allProviders: CredentialsProvidersContextType | null,
-  inputCredentials?: Record<string, unknown>,
 ) {
   if (!allProviders || credentialFields.length === 0) {
     return {
@@ -52,17 +77,9 @@ export function splitCredentialFieldsBySystem(
     }
   }
 
-  const sortByUnsetFirst = (a: CredentialField, b: CredentialField) => {
-    const aIsSet = Boolean(inputCredentials?.[a[0]]);
-    const bIsSet = Boolean(inputCredentials?.[b[0]]);
-
-    if (aIsSet === bIsSet) return 0;
-    return aIsSet ? 1 : -1;
-  };
-
   return {
-    userCredentialFields: userFields.sort(sortByUnsetFirst),
-    systemCredentialFields: systemFields.sort(sortByUnsetFirst),
+    userCredentialFields: userFields,
+    systemCredentialFields: systemFields,
   };
 }
 
@@ -160,6 +177,7 @@ export function findSavedCredentialByProviderAndType(
   credentialTypes: string[],
   requiredScopes: string[] | undefined,
   allProviders: CredentialsProvidersContextType | null,
+  discriminatorValues?: string[],
 ): SavedCredential | undefined {
   for (const providerName of providerNames) {
     const providerData = allProviders?.[providerName];
@@ -176,9 +194,14 @@ export function findSavedCredentialByProviderAndType(
         credentialTypes.length === 0 ||
         credentialTypes.includes(credential.type);
       const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+      const hostMatches = matchesDiscriminatorValues(
+        credential,
+        discriminatorValues,
+      );
 
       if (!typeMatches) continue;
       if (!scopesMatch) continue;
+      if (!hostMatches) continue;
 
       matchingCredentials.push(credential as SavedCredential);
     }
@@ -190,9 +213,14 @@ export function findSavedCredentialByProviderAndType(
           credentialTypes.length === 0 ||
           credentialTypes.includes(credential.type);
         const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+        const hostMatches = matchesDiscriminatorValues(
+          credential,
+          discriminatorValues,
+        );
 
         if (!typeMatches) continue;
         if (!scopesMatch) continue;
+        if (!hostMatches) continue;
 
         matchingCredentials.push(credential as SavedCredential);
       }
@@ -214,6 +242,7 @@ export function findSavedUserCredentialByProviderAndType(
   credentialTypes: string[],
   requiredScopes: string[] | undefined,
   allProviders: CredentialsProvidersContextType | null,
+  discriminatorValues?: string[],
 ): SavedCredential | undefined {
   for (const providerName of providerNames) {
     const providerData = allProviders?.[providerName];
@@ -230,9 +259,14 @@ export function findSavedUserCredentialByProviderAndType(
         credentialTypes.length === 0 ||
         credentialTypes.includes(credential.type);
       const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+      const hostMatches = matchesDiscriminatorValues(
+        credential,
+        discriminatorValues,
+      );
 
       if (!typeMatches) continue;
       if (!scopesMatch) continue;
+      if (!hostMatches) continue;
 
       matchingCredentials.push(credential as SavedCredential);
     }
