@@ -518,6 +518,7 @@ class CoPilotProcessor:
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
+        user_cancelled = False
 
         try:
             # Choose service based on LaunchDarkly flag.
@@ -622,6 +623,7 @@ class CoPilotProcessor:
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
                 error_msg = "Operation cancelled"
+                user_cancelled = True
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
@@ -630,9 +632,17 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = "Operation cancelled"
+                user_cancelled = True
             try:
+                # A user-initiated cancel still marks the session "failed"
+                # (so queued turns are promoted and locks released), but must
+                # not publish a StreamError: the frontend would render it as
+                # "the assistant encountered an error" on the live/resumed
+                # stream even though the user asked for the stop.
                 await stream_registry.mark_session_completed(
-                    entry.session_id, error_message=error_msg
+                    entry.session_id,
+                    error_message=error_msg,
+                    skip_error_publish=user_cancelled,
                 )
             except Exception as mark_err:
                 log.error(f"Failed to mark session completed: {mark_err}")

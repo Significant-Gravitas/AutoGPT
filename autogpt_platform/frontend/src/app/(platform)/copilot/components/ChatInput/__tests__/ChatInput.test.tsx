@@ -663,6 +663,7 @@ function StopHarness({
   setIsUserStopping,
 }: StopHarnessProps) {
   const isUserStoppingRef = useRef(false);
+  const isCancelInFlightRef = useRef(false);
   const stop = useCopilotStop({
     sessionId,
     sdkStop,
@@ -671,6 +672,8 @@ function StopHarness({
     >[0]["setMessages"],
     isUserStoppingRef,
     setIsUserStopping,
+    isCancelInFlightRef,
+    refetchSession: () => Promise.resolve({}),
   });
   return <ChatInput onSend={vi.fn()} isStreaming onStop={stop} />;
 }

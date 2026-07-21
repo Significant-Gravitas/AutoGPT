@@ -1053,11 +1053,20 @@ async def cancel_session_task(
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
     )
-    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # ``skip_error_publish``: the user asked for this stop, so surfacing it to
+    # the frontend as a StreamError would render a spurious "assistant
+    # encountered an error" banner on any live/resumed stream. The persisted
+    # cancellation marker on the session messages already tells the UI (and
+    # any later reload) that the turn was stopped.
+    await stream_registry.mark_session_completed(
+        session_id, error_message="Cancelled", skip_error_publish=True
+    )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
     await _clear_pending_best_effort(session_id)
-    return CancelSessionResponse(cancelled=True)
+    return CancelSessionResponse(
+        cancelled=True, reason="cancel_published_not_confirmed"
+    )
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
