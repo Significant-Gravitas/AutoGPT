@@ -58,7 +58,9 @@ settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
-RoutingSource = Literal["ld", "catalog", "env"]
+# "fallback" is stamped (never resolved): it marks turns where the CLI's
+# 529-overload fallback served a different model than the routed one.
+RoutingSource = Literal["ld", "catalog", "env", "fallback"]
 
 ROUTE_SURFACE_COPILOT = "copilot"
 

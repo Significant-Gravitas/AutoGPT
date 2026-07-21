@@ -5322,15 +5322,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
-            # Prefer the ACTUALLY-executed model (observed on
-            # AssistantMessage.model, survives retries) over the pre-turn
-            # resolution — a mid-turn CLI fallback_model activation (529
-            # overload) would otherwise stamp the wrong model.
             _stamp_turn_messages(
                 session.messages,
                 start_index=pre_turn_message_count,
-                model=(state.observed_model if state is not None else None)
-                or effective_model,
+                requested_model=effective_model,
+                actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
             try:
@@ -5601,7 +5597,8 @@ def _stamp_turn_messages(
     messages: list[ChatMessage],
     *,
     start_index: int,
-    model: str | None,
+    requested_model: str | None,
+    actual_model: str | None,
     routing_source: RoutingSource,
 ) -> None:
     """Stamp THIS turn's assistant messages with the serving model and
@@ -5612,7 +5609,16 @@ def _stamp_turn_messages(
     session length when the turn began) so pre-feature history rows with
     NULL model are never back-stamped with today's values, and never
     overwriting an already-stamped row.
+
+    ``actual_model`` is the model observed on ``AssistantMessage.model``
+    (survives retries). When it differs from the requested resolution the
+    CLI's overload fallback served the turn — the stamp records the actual
+    model with ``routing_source="fallback"`` so analytics never attribute
+    a fallback-served turn to the layer that routed a different model.
     """
+    model = actual_model or requested_model
+    if actual_model is not None and actual_model != requested_model:
+        routing_source = "fallback"
     for msg in messages[start_index:]:
         if msg.role == "assistant" and msg.model is None:
             msg.model = model

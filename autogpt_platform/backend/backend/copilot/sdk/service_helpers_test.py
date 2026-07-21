@@ -1511,7 +1511,11 @@ class TestStampTurnMessages:
 
         msgs = self._messages()
         _stamp_turn_messages(
-            msgs, start_index=1, model="claude-sonnet-4-6", routing_source="env"
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
         )
         assert msgs[0].model is None  # pre-turn history untouched
         assert msgs[1].model is None  # user rows untouched
@@ -1525,10 +1529,45 @@ class TestStampTurnMessages:
         msgs[2].model = "already/stamped"
         msgs[2].routing_source = "ld"
         _stamp_turn_messages(
-            msgs, start_index=0, model="claude-sonnet-4-6", routing_source="env"
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
         )
         assert msgs[2].model == "already/stamped"
         assert msgs[2].routing_source == "ld"
+
+    def test_fallback_divergence_restamps_source(self):
+        """When the CLI's overload fallback served a different model than
+        the routed one, the stamp records the ACTUAL model and marks the
+        source as "fallback" — never attributing the turn to a layer that
+        routed a different model."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="moonshotai/kimi-k2.6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].model == "claude-sonnet-4-6"
+        assert msgs[0].routing_source == "fallback"
+
+    def test_matching_observed_model_keeps_source(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"
 
 
 class TestChatMessageStampRoundTrip:

@@ -106,8 +106,10 @@ class ChatMessage(BaseModel):
     created_at: datetime | None = None
 
     # Which LLM served this assistant turn and which routing layer picked it
-    # ("ld" | "catalog" | "env"). Product-intelligence mirrors these to
-    # segment quality judgments by model. None on user/tool rows.
+    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # overload fallback served a different model than the routed one).
+    # Product-intelligence mirrors these to segment quality judgments by
+    # model. None on user/tool rows.
     model: str | None = None
     routing_source: str | None = None
 
