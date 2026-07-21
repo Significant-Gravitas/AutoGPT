@@ -113,7 +113,7 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     refused; HIDDEN visibility serves fine when explicitly routed.
     """
     if not llm_registry.get_all_models():
-        if not llm_registry.registry.is_loaded() and not _unloaded_reported:
+        if not llm_registry.is_loaded() and not _unloaded_reported:
             # Empty-because-dormant is legitimate; empty-because-nobody-
             # called-load_catalog() in this process is a wiring bug that
             # would silently disable gating and cells — say so, once.

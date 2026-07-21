@@ -110,7 +110,7 @@ class CatalogModel(BaseModel):
     # the pre-launch testing state.
     visibility: Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"] = "GA"
     # Null = available on every subscription tier. Enforcement lands with
-    # the registry-driven picker (Phase B).
+    # the catalog-driven model picker when that ships.
     min_subscription_tier: SubscriptionTierName | None = None
     # Standing replacement pointer: pre-fills the retirement CLI's
     # replacement and is the hook for future runtime failover.
