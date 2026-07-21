@@ -108,11 +108,11 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
             metadata=RegistryModelMetadata(
                 provider=m.provider,
                 context_window=m.context_window,
-                max_output_tokens=(
-                    m.max_output_tokens
-                    if m.max_output_tokens is not None
-                    else m.context_window
-                ),
+                # None means "unknown/no published cap" — substituting
+                # context_window would overstate the output limit (a 1M-token
+                # context model does not emit 1M output tokens) and publish
+                # wrong data through the catalog endpoint.
+                max_output_tokens=m.max_output_tokens,
                 display_name=m.display_name,
                 provider_name=provider_display,
                 creator_name=creator.display_name if creator else "Unknown",
