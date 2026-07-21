@@ -168,8 +168,10 @@ def _build_schema_options(models: dict[str, RegistryModel]) -> list[dict[str, st
 def load_catalog(payload: CatalogPayload | None = None) -> None:
     """Build the L1 structures from the catalog file. Called at startup.
 
-    Raises on an inconsistent payload — the caller owns fail-soft (an empty
-    registry degrades every consumer to pre-catalog behavior).
+    Raises on an inconsistent payload — the catalog is load-bearing, so
+    callers let the failure stop the boot rather than serving with an
+    empty registry (which would silently disable routing cells and
+    serve-time gating).
     """
     global _dynamic_models, _schema_options, _routes
     if payload is None:

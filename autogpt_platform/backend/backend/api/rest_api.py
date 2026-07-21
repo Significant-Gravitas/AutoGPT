@@ -159,13 +159,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
-    # Load the LLM catalog file into the in-process registry view. Fail-soft:
-    # an empty registry degrades every consumer (copilot routing gates, the
-    # public catalog endpoint) to pre-catalog behavior.
-    try:
-        backend.data.llm_registry.load_catalog()
-    except Exception:
-        logger.warning("LLM catalog load failed; registry is empty", exc_info=True)
+    # Build the in-process registry view of the LLM catalog. Fail-hard: the
+    # catalog is load-bearing (blocks and billing already built from it at
+    # import, or this process would not have started), so a failure here is
+    # a bug that should stop the boot, not degrade copilot gating silently.
+    backend.data.llm_registry.load_catalog()
 
     with launch_darkly_context():
         yield
