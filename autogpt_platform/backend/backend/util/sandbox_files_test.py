@@ -233,8 +233,10 @@ async def test_store_failure_keeps_decoded_text_content():
 async def test_store_unknown_extension_defaults_octet_stream_mime():
     store = AsyncMock(return_value="workspace://f1")
     with patch("backend.util.sandbox_files.store_media_file", store):
+        # mimetypes tables differ per platform (.7z is known on Linux but not
+        # Windows) — use an extension no table knows.
         await store_sandbox_files(
-            [_extracted("archive.7z", b"7z\xbc\xaf", is_text=False)], _ctx()
+            [_extracted("blob.zz9unknown", b"\x00\x01", is_text=False)], _ctx()
         )
     assert store.await_args is not None
     assert store.await_args.kwargs["file"].startswith(
