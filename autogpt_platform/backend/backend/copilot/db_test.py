@@ -983,3 +983,28 @@ def test_from_db_null_stamps_stay_null():
     restored = ChatMessage.from_db(prisma_msg)
     assert restored.model is None
     assert restored.routing_source is None
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_stamps_maps_prisma_columns():
+    """The stamp back-fill writes the camelCase Prisma columns."""
+    from backend.copilot.db import update_chat_message_stamps
+
+    with patch.object(PrismaChatMessage, "prisma") as mock_msg:
+        update = AsyncMock(return_value=object())
+        mock_msg.return_value.update = update
+
+        ok = await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=7,
+            model="claude-sonnet-4-6",
+            routing_source="fallback",
+        )
+
+    assert ok is True
+    kwargs = update.call_args.kwargs
+    assert kwargs["data"] == {
+        "model": "claude-sonnet-4-6",
+        "routingSource": "fallback",
+    }
+    assert kwargs["where"]["sessionId_sequence"]["sequence"] == 7

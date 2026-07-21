@@ -1569,6 +1569,25 @@ class TestStampTurnMessages:
         )
         assert msgs[0].routing_source == "ld"
 
+    def test_flushed_rows_flagged_for_stamp_backfill(self):
+        """A row the mid-turn flush already persisted (has a sequence) gets
+        flagged so the save path back-fills its columns — the insert path
+        only covers unsequenced rows."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        msgs[2].sequence = 7  # flushed mid-turn
+        _stamp_turn_messages(
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
+        )
+        assert msgs[2].model == "claude-sonnet-4-6"
+        assert msgs[2].stamps_pending_save is True
+        assert msgs[1].stamps_pending_save is False  # user row untouched
+
 
 class TestChatMessageStampRoundTrip:
     """model/routing_source survive the ChatMessage serialization cycle the

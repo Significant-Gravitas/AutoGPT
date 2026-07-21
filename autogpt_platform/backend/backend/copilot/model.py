@@ -113,6 +113,12 @@ class ChatMessage(BaseModel):
     model: str | None = None
     routing_source: str | None = None
 
+    stamps_pending_save: bool = Field(default=False, exclude=True)
+    """True when model/routing_source were stamped after this row was already
+    persisted (mid-turn flush assigned its sequence before end-of-turn
+    stamping ran). The save path back-fills flagged rows — same mechanism
+    as ``tool_calls_pending_save`` below."""
+
     tool_calls_pending_save: bool = Field(default=False, exclude=True)
     """True when ``tool_calls`` mutated after this row was already persisted.
 
@@ -955,6 +961,7 @@ async def _save_session_to_db(
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
             msg.tool_calls_pending_save = False
+            msg.stamps_pending_save = False
 
     # Back-fill tool_calls onto rows that were flushed before their
     # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
@@ -968,6 +975,33 @@ async def _save_session_to_db(
         for m in session.messages
         if m.tool_calls_pending_save and m.sequence is not None
     ]
+
+    # Same repair for stamps: rows flushed mid-turn got their sequence
+    # before end-of-turn stamping ran (see ChatMessage.stamps_pending_save).
+    pending_stamps = [
+        m for m in session.messages if m.stamps_pending_save and m.sequence is not None
+    ]
+
+    async def _backfill_stamps(msg: ChatMessage) -> None:
+        assert msg.sequence is not None
+        try:
+            updated = await db.update_chat_message_stamps(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                model=msg.model,
+                routing_source=msg.routing_source,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill stamps for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+        if updated:
+            msg.stamps_pending_save = False
+
+    for _stamp_msg in pending_stamps:
+        await _backfill_stamps(_stamp_msg)
 
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above

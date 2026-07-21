@@ -5623,3 +5623,8 @@ def _stamp_turn_messages(
         if msg.role == "assistant" and msg.model is None:
             msg.model = model
             msg.routing_source = routing_source
+            if msg.sequence is not None:
+                # Row already flushed to the DB mid-turn — flag it so the
+                # save path back-fills the columns (insert only covers
+                # unsequenced rows).
+                msg.stamps_pending_save = True
