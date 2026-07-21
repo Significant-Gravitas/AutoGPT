@@ -30,11 +30,15 @@ export function parseActiveItemParam(activeItem: string | null): {
   activeItemId: string | null;
   triggerKindHint: TriggerKind | null;
 } {
-  for (const [kind, prefix] of Object.entries(TRIGGER_KIND_PREFIX)) {
+  const prefixEntries = Object.entries(TRIGGER_KIND_PREFIX) as [
+    TriggerKind,
+    string,
+  ][];
+  for (const [kind, prefix] of prefixEntries) {
     if (activeItem?.startsWith(prefix)) {
       return {
         activeItemId: activeItem.slice(prefix.length),
-        triggerKindHint: kind as TriggerKind,
+        triggerKindHint: kind,
       };
     }
   }
@@ -83,6 +87,9 @@ export function deriveSelectedTriggerKind(args: {
   // Membership is only conclusive once both lists have resolved: a pending
   // or failed fetch says nothing about whether the item exists.
   if (!args.listsResolved) {
+    // Deliberate optimistic routing: trusting the hint here means a wrong
+    // or stale hint costs one throwaway, fast-failing by-ID fetch before
+    // membership self-corrects — the price of instant deep-link rendering.
     if (args.triggerKindHint) return args.triggerKindHint;
     return args.anyListFailed ? "error" : "loading";
   }

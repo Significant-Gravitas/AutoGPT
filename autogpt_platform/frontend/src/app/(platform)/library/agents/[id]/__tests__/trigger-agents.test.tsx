@@ -621,14 +621,27 @@ describe("Library agent view — trigger agents", () => {
       is_hidden: true,
     });
 
+    let releaseTriggerAgents!: () => void;
+    const listGate = new Promise<void>((resolve) => {
+      releaseTriggerAgents = resolve;
+    });
+
+    let presetGetCalls = 0;
     server.use(
       ...baseHandlers(),
       emptyPresetsHandler,
       emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
-      // The wrong hint briefly mounts the preset detail view, which fetches
-      // by ID; serve it a default response so the request isn't unhandled.
-      getGetV2GetASpecificPresetMockHandler(),
+      getGetV2ListTriggerAgentsMockHandler(async () => {
+        await listGate;
+        return [triggerAgent];
+      }),
+      // The wrong hint mounts the preset detail view while the list is
+      // gated; count its speculative by-ID request to prove the hint
+      // actually routed before membership resolved.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return getGetV2GetASpecificPresetResponseMock();
+      }),
     );
 
     renderWithInitialParams(
@@ -636,7 +649,52 @@ describe("Library agent view — trigger agents", () => {
       `activeTab=triggers&activeItem=preset:${TRIGGER_ID}`,
     );
 
+    await waitFor(() => expect(presetGetCalls).toBeGreaterThanOrEqual(1));
+
+    releaseTriggerAgents();
     await screen.findByText("Routed right despite wrong hint");
+  });
+
+  test("a preset: hint mounts the detail view while the lists are still loading", async () => {
+    const webhookPreset = makeWebhookPreset({ name: "Hint Routed Early" });
+    let releaseLists!: () => void;
+    const listGate = new Promise<void>((resolve) => {
+      releaseLists = resolve;
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler(async () => {
+        await listGate;
+        return [];
+      }),
+      getGetV2ListPresetsMockHandler(async () => {
+        await listGate;
+        return {
+          presets: [webhookPreset],
+          pagination: {
+            total_items: 1,
+            total_pages: 1,
+            current_page: 1,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=preset:${webhookPreset.id}`,
+    );
+
+    // The detail view renders from the hint alone — both list queries are
+    // still gated at this point.
+    await screen.findByText("Trigger Details");
+    screen.getByDisplayValue("Hint Routed Early");
+
+    releaseLists();
   });
 
   test("stale selection of the sole trigger keeps its not-found state with a recovery action", async () => {

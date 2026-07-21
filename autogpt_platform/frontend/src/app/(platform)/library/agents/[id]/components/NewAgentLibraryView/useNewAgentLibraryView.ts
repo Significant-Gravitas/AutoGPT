@@ -2,23 +2,23 @@ import {
   useGetV2GetLibraryAgent,
   useGetV2ListTriggerAgents,
 } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useParams } from "next/navigation";
+import { parseAsString, useQueryStates } from "nuqs";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deriveSelectedTriggerKind,
   parseActiveItemParam,
   retryUnlessClientError,
   SelectedTriggerKind,
 } from "./helpers";
+import { useActiveTemplateQuery } from "./hooks/useActiveTemplateQuery";
 import { useAgentPresetsQuery } from "./hooks/useAgentPresetsQuery";
-import { useParams } from "next/navigation";
-import { parseAsString, useQueryStates } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
 
 function parseTab(
   value: string | null,
@@ -83,29 +83,8 @@ export function useNewAgentLibraryView() {
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const { activeItemId, triggerKindHint } = parseActiveItemParam(activeItem);
 
-  const {
-    data: _template,
-    isSuccess: isTemplateLoaded,
-    isLoading: isTemplateLoading,
-    error: rawTemplateError,
-  } = useGetV2GetASpecificPreset(activeItemId ?? "", {
-    query: {
-      enabled: Boolean(activeTab === "templates" && activeItemId),
-      select: okData,
-      retry: retryUnlessClientError,
-    },
-  });
-  // This query shares its cache key with SelectedTriggerView's preset
-  // detail query, so its error state is only meaningful on the Templates
-  // tab — a 404 on the Triggers tab is handled inline there and must not
-  // surface as a page-level error.
-  const templateError = activeTab === "templates" ? rawTemplateError : null;
-  const activeTemplate =
-    isTemplateLoaded &&
-    activeTab === "templates" &&
-    _template?.id === activeItemId
-      ? _template
-      : null;
+  const { activeTemplate, isTemplateLoading, templateError } =
+    useActiveTemplateQuery({ activeItemId, activeTab });
 
   useEffect(() => {
     if (!activeTabRaw && !activeItem) {
@@ -296,8 +275,6 @@ export function useNewAgentLibraryView() {
           anyListFailed: presetsQuery.isError || triggerAgentsQuery.isError,
         })
       : null;
-  const selectedTriggerError = presetsQuery.error || triggerAgentsQuery.error;
-
   function retryTriggerLists() {
     if (presetsQuery.isError) presetsQuery.refetch();
     if (triggerAgentsQuery.isError) triggerAgentsQuery.refetch();
@@ -314,7 +291,6 @@ export function useNewAgentLibraryView() {
     showSidebarLayout,
     activeItemId,
     selectedTriggerKind,
-    selectedTriggerError,
     retryTriggerLists,
     sidebarLoading,
     activeTab,

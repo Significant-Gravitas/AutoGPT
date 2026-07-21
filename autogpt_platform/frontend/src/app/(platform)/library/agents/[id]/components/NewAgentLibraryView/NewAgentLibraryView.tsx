@@ -41,7 +41,6 @@ export function NewAgentLibraryView() {
     hasAnyItems,
     activeItemId,
     selectedTriggerKind,
-    selectedTriggerError,
     retryTriggerLists,
     sidebarLoading,
     activeTab,
@@ -122,7 +121,7 @@ export function NewAgentLibraryView() {
     );
   }
 
-  function renderSelectedTrigger(triggerItemId: string) {
+  function renderSelectedTrigger(selectedItemId: string) {
     if (!agent) return null;
 
     switch (selectedTriggerKind) {
@@ -130,7 +129,7 @@ export function NewAgentLibraryView() {
         return (
           <SelectedTriggerAgentView
             agent={agent}
-            triggerAgentId={triggerItemId}
+            triggerAgentId={selectedItemId}
             onClearSelectedRun={handleClearSelectedRun}
             banner={renderMarketplaceUpdateBanner()}
           />
@@ -139,7 +138,7 @@ export function NewAgentLibraryView() {
         return (
           <SelectedTriggerView
             agent={agent}
-            triggerId={triggerItemId}
+            triggerId={selectedItemId}
             onClearSelectedRun={handleClearSelectedRun}
             onSwitchToRunsTab={() => setActiveTab("runs")}
             banner={renderMarketplaceUpdateBanner()}
@@ -156,9 +155,7 @@ export function NewAgentLibraryView() {
             <ErrorCard
               responseError={{
                 message:
-                  selectedTriggerError instanceof Error
-                    ? selectedTriggerError.message
-                    : "Failed to load triggers",
+                  "Could not load this agent's triggers. Check your connection and try again.",
               }}
               context="triggers"
               onRetry={retryTriggerLists}

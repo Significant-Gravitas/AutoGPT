@@ -21,6 +21,17 @@ describe("activeItem param prefix contract", () => {
     });
   });
 
+  test("a prefix with an empty suffix yields an empty ID with the hint", () => {
+    expect(parseActiveItemParam("agent:")).toEqual({
+      activeItemId: "",
+      triggerKindHint: "trigger-agent",
+    });
+    expect(parseActiveItemParam("preset:")).toEqual({
+      activeItemId: "",
+      triggerKindHint: "webhook-trigger",
+    });
+  });
+
   test("passes through bare IDs and null with no hint", () => {
     expect(parseActiveItemParam("bare-id")).toEqual({
       activeItemId: "bare-id",
