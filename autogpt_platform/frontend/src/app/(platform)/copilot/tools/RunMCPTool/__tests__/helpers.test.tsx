@@ -235,8 +235,8 @@ describe("getAnimationText", () => {
       state: "input-streaming",
       ...BASE,
     });
-    expect(text).toContain("Discovering");
-    expect(text).toContain("mcp.example.com");
+    expect(text).toContain("Connecting");
+    expect(text).toContain("example.com");
   });
 
   it("shows tool call text when tool_name is set", () => {
@@ -245,7 +245,7 @@ describe("getAnimationText", () => {
       input: { server_url: "https://mcp.example.com/mcp", tool_name: "fetch" },
     });
     expect(text).toContain("fetch");
-    expect(text).toContain("mcp.example.com");
+    expect(text).toContain("example.com");
   });
 
   it("includes query argument preview when tool_arguments has a query key", () => {
@@ -282,7 +282,7 @@ describe("getAnimationText", () => {
         tool_arguments: {},
       },
     });
-    expect(text).toBe("Calling list_users on mcp.example.com");
+    expect(text).toBe("Calling list_users on example.com");
   });
 
   it("truncates long argument previews to 60 chars with ellipsis", () => {
@@ -327,8 +327,8 @@ describe("getAnimationText", () => {
       output: DISCOVERY,
       input: { server_url: "https://mcp.example.com/mcp" },
     });
-    expect(text).toContain("Discovered");
-    expect(text).toContain("1");
+    expect(text).toContain("Connected");
+    expect(text).toContain("example.com");
   });
 
   it("shows setup label on output-available for setup requirements", () => {

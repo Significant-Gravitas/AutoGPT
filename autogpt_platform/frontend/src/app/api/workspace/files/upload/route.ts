@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const headers: Record<string, string> = {};
-    if (token && token !== "no-token-found") {
+    if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 

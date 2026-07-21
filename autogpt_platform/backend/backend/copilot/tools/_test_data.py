@@ -12,7 +12,7 @@ from backend.api.features.store import db as store_db
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.data import db as db_module
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
@@ -42,17 +42,45 @@ async def _ensure_db_connected() -> None:
         await db_module.connect()
 
 
-def make_session(user_id: str):
-    return ChatSession(
+def make_session(user_id: str, *, guide_read: bool = True, library_check: bool = True):
+    """Build a fake ChatSession for tool tests.
+
+    ``guide_read=True`` (default) pre-populates the session with a
+    ``get_agent_building_guide`` tool-call history entry so the agent-
+    generation gate lets through any subsequent ``create_agent`` /
+    ``edit_agent`` / ``validate_agent_graph`` / ``fix_agent_graph`` call.
+
+    ``library_check=True`` (default) announces an in-flight
+    ``find_library_agent(for_creation=true)`` call so the create-time
+    library-similarity gate lets through ``create_agent``. The gate is
+    turn-scoped (in-flight only), so seeding via the in-flight buffer —
+    not the durable messages list — is the correct shape.
+    """
+    messages: list[ChatMessage] = []
+    if guide_read:
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
+            )
+        )
+    session = ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
-        messages=[],
+        messages=messages,
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         successful_agent_runs={},
         successful_agent_schedules={},
     )
+    if library_check:
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "test"},
+        )
+    return session
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -77,14 +105,24 @@ async def setup_test_data(server):
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
-    await prisma.profile.create(
-        data=ProfileCreateInput(
-            userId=user.id,
-            username=username,
-            name=f"Test User {username}",
-            description="Test user profile",
-            links=[],  # Required field - empty array for test profiles
-        )
+    await prisma.profile.upsert(
+        where={"userId": user.id},
+        data={
+            # get_or_create_user auto-creates a default profile; tests need
+            # this specific username for store agent lookups.
+            "create": ProfileCreateInput(
+                userId=user.id,
+                username=username,
+                name=f"Test User {username}",
+                description="Test user profile",
+                links=[],
+            ),
+            "update": {
+                "username": username,
+                "name": f"Test User {username}",
+                "description": "Test user profile",
+            },
+        },
     )
 
     # 2. Create a test graph with agent input -> agent output
@@ -102,7 +140,6 @@ async def setup_test_data(server):
             "value": "",
             "advanced": False,
             "description": "Test input field",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )
@@ -151,8 +188,8 @@ async def setup_test_data(server):
     unique_slug = f"test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Test Agent",
         description="A simple test agent",
@@ -161,10 +198,10 @@ async def setup_test_data(server):
         image_urls=["https://example.com/image.jpg"],
     )
 
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     # 4. Approve the store listing version
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval",
@@ -204,14 +241,24 @@ async def setup_llm_test_data(server):
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
-    await prisma.profile.create(
-        data=ProfileCreateInput(
-            userId=user.id,
-            username=username,
-            name=f"Test User {username}",
-            description="Test user profile for LLM tests",
-            links=[],  # Required field - empty array for test profiles
-        )
+    await prisma.profile.upsert(
+        where={"userId": user.id},
+        data={
+            # get_or_create_user auto-creates a default profile; tests need
+            # this specific username for store agent lookups.
+            "create": ProfileCreateInput(
+                userId=user.id,
+                username=username,
+                name=f"Test User {username}",
+                description="Test user profile for LLM tests",
+                links=[],
+            ),
+            "update": {
+                "username": username,
+                "name": f"Test User {username}",
+                "description": "Test user profile for LLM tests",
+            },
+        },
     )
 
     # 2. Create test OpenAI credentials for the user
@@ -242,7 +289,6 @@ async def setup_llm_test_data(server):
             "value": "",
             "advanced": False,
             "description": "Prompt for the LLM",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )
@@ -321,8 +367,8 @@ async def setup_llm_test_data(server):
     unique_slug = f"llm-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="LLM Test Agent",
         description="An agent with LLM capabilities",
@@ -330,9 +376,9 @@ async def setup_llm_test_data(server):
         categories=["testing", "ai"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for LLM agent",
@@ -368,14 +414,24 @@ async def setup_firecrawl_test_data(server):
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
-    await prisma.profile.create(
-        data=ProfileCreateInput(
-            userId=user.id,
-            username=username,
-            name=f"Test User {username}",
-            description="Test user profile for Firecrawl tests",
-            links=[],  # Required field - empty array for test profiles
-        )
+    await prisma.profile.upsert(
+        where={"userId": user.id},
+        data={
+            # get_or_create_user auto-creates a default profile; tests need
+            # this specific username for store agent lookups.
+            "create": ProfileCreateInput(
+                userId=user.id,
+                username=username,
+                name=f"Test User {username}",
+                description="Test user profile for Firecrawl tests",
+                links=[],
+            ),
+            "update": {
+                "username": username,
+                "name": f"Test User {username}",
+                "description": "Test user profile for Firecrawl tests",
+            },
+        },
     )
 
     # NOTE: We deliberately do NOT create Firecrawl credentials for this user
@@ -396,7 +452,6 @@ async def setup_firecrawl_test_data(server):
             "value": "",
             "advanced": False,
             "description": "URL for Firecrawl to scrape",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )
@@ -476,8 +531,8 @@ async def setup_firecrawl_test_data(server):
     unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Firecrawl Test Agent",
         description="An agent with Firecrawl integration (no credentials)",
@@ -485,9 +540,9 @@ async def setup_firecrawl_test_data(server):
         categories=["testing", "scraping"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for Firecrawl agent",

@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 
 import { Key } from "lucide-react";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Button } from "@/components/atoms/Button/Button";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 // This SSO button is not a part of inputSchema - that's why we are not rendering it using Input renderer
 export const AyrshareConnectButton = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const credentialsActions = useContext(CredentialsActionsContext);
 
   const handleSSOLogin = async () => {
     setIsLoading(true);
@@ -19,6 +21,10 @@ export const AyrshareConnectButton = () => {
       if (status !== 200) {
         throw new Error(data.detail);
       }
+      // The SSO endpoint provisions the managed Ayrshare credential as a
+      // side effect — reload the credentials context so the block's
+      // dropdown picks it up without a page refresh.
+      credentialsActions?.reload();
       const popup = window.open(data.sso_url, "_blank", "popup=true");
       if (!popup) {
         throw new Error(

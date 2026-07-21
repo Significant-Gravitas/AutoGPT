@@ -4,57 +4,124 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from backend.copilot.tools.execution_utils import NodeFailureSummary
+from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
 
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
+    # General
+    ERROR = "error"
+    NO_RESULTS = "no_results"
+    NEED_LOGIN = "need_login"
+
+    # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
+    INPUT_VALIDATION_ERROR = "input_validation_error"
     EXECUTION_STARTED = "execution_started"
-    NEED_LOGIN = "need_login"
-    ERROR = "error"
-    NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
-    AGENT_PREVIEW = "agent_preview"
-    AGENT_SAVED = "agent_saved"
-    CLARIFICATION_NEEDED = "clarification_needed"
+    SUGGESTED_GOAL = "suggested_goal"
+
+    # Agent builder (create / edit / validate / fix)
+    AGENT_BUILDER_GUIDE = "agent_builder_guide"
+    AGENT_BUILDER_PREVIEW = "agent_builder_preview"
+    AGENT_BUILDER_SAVED = "agent_builder_saved"
+    AGENT_BUILDER_CLARIFICATION_NEEDED = "agent_builder_clarification_needed"
+    AGENT_BUILDER_VALIDATION_RESULT = "agent_builder_validation_result"
+    AGENT_BUILDER_FIX_RESULT = "agent_builder_fix_result"
+
+    # Task decomposition (goal → sub-instructions)
+    TASK_DECOMPOSITION = "task_decomposition"
+
+    # Block
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
+    REVIEW_REQUIRED = "review_required"
+
+    # Schedules
+    SCHEDULE_LIST = "schedule_list"
+    SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_CREATED = "schedule_created"
+
+    # Agent triggers
+    AGENT_TRIGGER_LIST = "agent_trigger_list"
+    TRIGGER_SETUP = "trigger_setup"
+    TRIGGER_CONFIG_REQUIRED = "trigger_config_required"
+
+    # Presets (list / update / delete)
+    PRESET_LIST = "preset_list"
+    PRESET_UPDATED = "preset_updated"
+    PRESET_DELETED = "preset_deleted"
+
+    # MCP
+    MCP_GUIDE = "mcp_guide"
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
+
+    # Docs
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
-    # Workspace response types
+
+    # Workspace files
     WORKSPACE_FILE_LIST = "workspace_file_list"
     WORKSPACE_FILE_CONTENT = "workspace_file_content"
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    # Long-running operation types
-    OPERATION_IN_PROGRESS = "operation_in_progress"
-    # Input validation
-    INPUT_VALIDATION_ERROR = "input_validation_error"
-    # Web fetch
-    WEB_FETCH = "web_fetch"
-    # Agent-browser multi-step automation (navigate, act, screenshot)
+
+    # Folder management
+    FOLDER_CREATED = "folder_created"
+    FOLDER_LIST = "folder_list"
+    FOLDER_UPDATED = "folder_updated"
+    FOLDER_MOVED = "folder_moved"
+    FOLDER_DELETED = "folder_deleted"
+    AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
+
+    # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"
     BROWSER_ACT = "browser_act"
     BROWSER_SCREENSHOT = "browser_screenshot"
+
     # Code execution
     BASH_EXEC = "bash_exec"
-    # Feature request types
+
+    # Web
+    WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
+
+    # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
-    # Goal refinement
-    SUGGESTED_GOAL = "suggested_goal"
-    # MCP tool types
-    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
-    MCP_TOOL_OUTPUT = "mcp_tool_output"
+
+    # Graphiti memory
+    MEMORY_STORE = "memory_store"
+    MEMORY_SEARCH = "memory_search"
+    MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
+    MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
+    # Planning
+    TODO_WRITE = "todo_write"
+
+    # Platform info
+    PLATFORM_INFO = "platform_info"
+
+    # Chat-platform proactive output (post message / create thread)
+    CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
+    CHAT_PLATFORM_POSTED = "chat_platform_posted"
+
+    # Skills (self-distilled procedure registry)
+    SKILL_STORED = "skill_stored"
+    SKILL_LOADED = "skill_loaded"
+    SKILL_DELETED = "skill_deleted"
+    SKILL_LIST = "skill_list"
 
 
 # Base response model
@@ -85,9 +152,40 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    graph_version: int | None = None
+    match_score: float | None = Field(
+        default=None,
+        description=(
+            "Combined relevance score in [0, 1] when this agent was returned "
+            "from a similarity search (e.g. the create-time library check). "
+            "Null for non-similarity sources."
+        ),
+    )
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",
+    )
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's outputs (for AgentExecutorBlock)",
+    )
     inputs: dict[str, Any] | None = Field(
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",
+    )
+    graph: BaseGraph | None = Field(
+        default=None,
+        description="Full graph structure (nodes + links) when include_graph is requested",
+    )
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
     )
 
 
@@ -140,7 +238,16 @@ class AgentDetails(BaseModel):
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
-    trigger_info: dict[str, Any] | None = None
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentDetailsResponse(ToolResponseBase):
@@ -197,6 +304,8 @@ class ExecutionStartedResponse(ToolResponseBase):
     library_agent_id: str | None = None
     library_agent_link: str | None = None
     status: str = "QUEUED"
+    # Set when the run was started with save_as_preset=true.
+    saved_preset_id: str | None = None
 
 
 # Auth/error models
@@ -211,8 +320,120 @@ class ErrorResponse(ToolResponseBase):
     """Response for errors."""
 
     type: ResponseType = ResponseType.ERROR
+    execution_id: str | None = None
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+class SubSessionProgressSnapshot(BaseModel):
+    """Mid-flight snapshot of a running sub-AutoPilot.
+
+    Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
+    caller passes ``include_progress=true`` while the sub is still running.
+    """
+
+    message_count: int = Field(
+        description="Total messages in the sub's ChatSession so far.",
+    )
+    last_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Up to the last 5 messages (role + truncated content) from the "
+            "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+
+
+class WorkspaceFileInfoData(BaseModel):
+    """Workspace file metadata (not a response itself).
+
+    Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
+    on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
+    sub-AutoPilot wrote, ``path`` is already session-qualified
+    (``/sessions/<sub_id>/...``) and can be passed straight to
+    ``read_workspace_file(path=...)`` for cross-session retrieval.
+    """
+
+    file_id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+
+
+class SubSessionStatusResponse(ToolResponseBase):
+    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+
+    Returned by both ``run_sub_session`` (synchronously when the sub finishes
+    within ``wait_for_result``, else with ``status='running'``) and
+    ``get_sub_session_result`` when the agent polls.
+    """
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+        description=(
+            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "target session already had a turn in flight, so the message was "
+            "pushed onto its pending buffer and will be picked up by the "
+            "existing turn on its next drain."
+        ),
+    )
+    sub_session_id: str = Field(
+        description=(
+            "Opaque id for this run. Pass to ``get_sub_session_result`` or "
+            "``run_sub_session(cancel=true, ...)`` to interact with it."
+        ),
+    )
+    response: str | None = Field(
+        default=None,
+        description="Assistant response text when status=completed.",
+    )
+    sub_autopilot_session_id: str | None = Field(
+        default=None,
+        description=(
+            "The session_id of the sub-AutoPilot conversation. Use with "
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
+        ),
+    )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Tool calls made during the sub-AutoPilot run.",
+    )
+    sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
+        default=None,
+        description=(
+            "Persistent workspace files the sub wrote during the run. "
+            "Populated when status=completed and the sub used "
+            "write_workspace_file — lets the parent recover work delivered "
+            "via files rather than inline text. Read each via "
+            "read_workspace_file(path=<read_path>)."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when status=error.",
+    )
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="How long the sub-AutoPilot has been running (or took).",
+    )
+    progress: SubSessionProgressSnapshot | None = Field(
+        default=None,
+        description=(
+            "Mid-flight progress snapshot. Populated only when "
+            "get_sub_session_result is called with include_progress=true "
+            "and the sub is still running."
+        ),
+    )
 
 
 class InputValidationErrorResponse(ToolResponseBase):
@@ -239,6 +460,8 @@ class ExecutionOutputInfo(BaseModel):
     ended_at: datetime | None = None
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
+    node_executions: list[dict[str, Any]] | None = None
+    nodes_failed: list[NodeFailureSummary] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
@@ -275,7 +498,7 @@ class ClarifyingQuestion(BaseModel):
 class AgentPreviewResponse(ToolResponseBase):
     """Response for previewing a generated agent before saving."""
 
-    type: ResponseType = ResponseType.AGENT_PREVIEW
+    type: ResponseType = ResponseType.AGENT_BUILDER_PREVIEW
     agent_json: dict[str, Any]
     agent_name: str
     description: str
@@ -286,9 +509,10 @@ class AgentPreviewResponse(ToolResponseBase):
 class AgentSavedResponse(ToolResponseBase):
     """Response when an agent is saved to the library."""
 
-    type: ResponseType = ResponseType.AGENT_SAVED
+    type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
@@ -297,7 +521,7 @@ class AgentSavedResponse(ToolResponseBase):
 class ClarificationNeededResponse(ToolResponseBase):
     """Response when the LLM needs more information from the user."""
 
-    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
 
 
@@ -374,6 +598,10 @@ class BlockInfoSummary(BaseModel):
         default_factory=dict,
         description="Full JSON schema for block outputs",
     )
+    static_output: bool = Field(
+        default=False,
+        description="Whether the block produces output without needing input",
+    )
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
         description="List of input fields for this block",
@@ -420,18 +648,24 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
+    is_dry_run: bool | None = (
+        None  # only set to True on dry-run; omitted in normal runs
+    )
 
 
-# Long-running operation models
-class OperationInProgressResponse(ToolResponseBase):
-    """Response when an operation is already in progress.
+class ReviewRequiredResponse(ToolResponseBase):
+    """Response when a block requires human review before execution."""
 
-    Returned for idempotency when the same tool_call_id is requested again
-    while the background task is still running.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
-    tool_call_id: str
+    type: ResponseType = ResponseType.REVIEW_REQUIRED
+    block_id: str
+    block_name: str
+    review_id: str = Field(description="The review ID for tracking approval status")
+    graph_exec_id: str = Field(
+        description="The graph execution ID for fetching review status"
+    )
+    input_data: dict[str, Any] = Field(
+        description="The input data that requires review"
+    )
 
 
 class WebFetchResponse(ToolResponseBase):
@@ -443,6 +677,32 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
+    results: list[WebSearchResult] = Field(default_factory=list)
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):
@@ -491,7 +751,17 @@ class MCPToolInfo(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any]
+    params: str | None = Field(
+        default=None,
+        description="Compact argument summary: top-level input field names, "
+        "required ones marked with *.",
+    )
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Full input schema. Omitted in discovery responses to "
+        "keep them small; the execution error path returns the failed "
+        "tool's full schema on demand.",
+    )
 
 
 class MCPToolsDiscoveredResponse(ToolResponseBase):
@@ -539,3 +809,258 @@ class BrowserScreenshotResponse(ToolResponseBase):
     type: ResponseType = ResponseType.BROWSER_SCREENSHOT
     file_id: str  # Workspace file ID — use read_workspace_file to retrieve
     filename: str
+
+
+# Agent generation tool response models
+
+
+class ValidationResultResponse(ToolResponseBase):
+    """Response for validate_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_VALIDATION_RESULT
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    error_count: int = 0
+
+
+class FixResultResponse(ToolResponseBase):
+    """Response for fix_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
+    # None when the fixed JSON was written to a workspace file instead
+    # (see fixed_agent_ref + fix_diff).
+    fixed_agent_json: dict[str, Any] | None = None
+    fixed_agent_ref: str | None = None
+    fix_diff: str | None = None
+    fixes_applied: list[str] = Field(default_factory=list)
+    fix_count: int = 0
+    valid_after_fix: bool = False
+    remaining_errors: list[str] = Field(default_factory=list)
+
+
+# Folder management models
+
+
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class FolderInfo(BaseModel):
+    """Information about a folder."""
+
+    id: str
+    name: str
+    parent_id: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
+
+
+class FolderTreeInfo(FolderInfo):
+    """Folder with nested children for tree display."""
+
+    children: list["FolderTreeInfo"] = []
+
+
+class FolderCreatedResponse(ToolResponseBase):
+    """Response when a folder is created."""
+
+    type: ResponseType = ResponseType.FOLDER_CREATED
+    folder: FolderInfo
+
+
+class FolderListResponse(ToolResponseBase):
+    """Response for listing folders."""
+
+    type: ResponseType = ResponseType.FOLDER_LIST
+    folders: list[FolderInfo] = Field(default_factory=list)
+    tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
+    count: int = 0
+
+
+class FolderUpdatedResponse(ToolResponseBase):
+    """Response when a folder is updated."""
+
+    type: ResponseType = ResponseType.FOLDER_UPDATED
+    folder: FolderInfo
+
+
+class FolderMovedResponse(ToolResponseBase):
+    """Response when a folder is moved."""
+
+    type: ResponseType = ResponseType.FOLDER_MOVED
+    folder: FolderInfo
+    target_parent_id: str | None = None
+
+
+class FolderDeletedResponse(ToolResponseBase):
+    """Response when a folder is deleted."""
+
+    type: ResponseType = ResponseType.FOLDER_DELETED
+    folder_id: str
+
+
+class AgentsMovedToFolderResponse(ToolResponseBase):
+    """Response when agents are moved to a folder."""
+
+    type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
+    agent_ids: list[str]
+    agent_names: list[str] = []
+    folder_id: str | None = None
+    count: int = 0
+
+
+# Task decomposition models
+
+
+class DecompositionStepModel(BaseModel):
+    """A single step in a decomposed agent-building plan."""
+
+    step_id: str = Field(description="Unique step identifier, e.g. 'step_1'")
+    description: str = Field(
+        description=(
+            "Plain-English description of what this step does for the user. "
+            "Do not put block class names or wiring verbs here — block_name "
+            "and action carry that technical detail."
+        )
+    )
+    action: str = Field(
+        description="Action type: 'add_block', 'connect_blocks', 'configure', etc."
+    )
+    block_name: str | None = Field(
+        default=None, description="Block being added, if applicable"
+    )
+    status: str = Field(
+        default="pending",
+        description="Step status: pending, in_progress, completed, failed",
+    )
+
+
+class TaskDecompositionResponse(ToolResponseBase):
+    """Response for decompose_goal tool — shows the plan to the user."""
+
+    type: ResponseType = ResponseType.TASK_DECOMPOSITION
+    goal: str = Field(description="The original user goal")
+    steps: list[DecompositionStepModel]
+    step_count: int = Field(
+        default=0, description="Number of steps (auto-derived from steps list)"
+    )
+
+    @model_validator(mode="after")
+    def sync_step_count(self) -> "TaskDecompositionResponse":
+        self.step_count = len(self.steps)
+        return self
+
+
+# --- Graphiti memory responses ---
+
+
+class MemoryStoreResponse(ToolResponseBase):
+    """Response when a memory is stored."""
+
+    type: ResponseType = ResponseType.MEMORY_STORE
+    memory_name: str
+
+
+class MemorySearchResponse(ToolResponseBase):
+    """Response when memories are searched."""
+
+    type: ResponseType = ResponseType.MEMORY_SEARCH
+    facts: list[str] = Field(default_factory=list)
+    recent_episodes: list[str] = Field(default_factory=list)
+
+
+class MemoryForgetCandidatesResponse(ToolResponseBase):
+    """Response with candidate memories to forget."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
+    candidates: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MemoryForgetConfirmResponse(ToolResponseBase):
+    """Response after deleting specific memory edges."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
+    deleted_uuids: list[str] = Field(default_factory=list)
+    failed_uuids: list[str] = Field(default_factory=list)
+
+
+# --- Planning ---
+
+
+class TodoItem(BaseModel):
+    """One entry in a ``TodoWrite`` checklist.
+
+    Mirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so
+    the frontend's ``GenericTool`` accordion renders baseline-emitted todos
+    identically to SDK-emitted ones.
+    """
+
+    content: str = Field(description="Imperative description of the task.")
+    activeForm: str = Field(
+        description="Present-continuous form shown while the task is running.",
+    )
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
+class TodoWriteResponse(ToolResponseBase):
+    """Ack returned by ``TodoWrite``.
+
+    The tool is effectively stateless — the authoritative task list lives in
+    the assistant's latest tool-call arguments, which are replayed from the
+    transcript on each turn. The tool output only needs to confirm that the
+    update was accepted so the model can proceed.
+    """
+
+    type: ResponseType = ResponseType.TODO_WRITE
+    todos: list[TodoItem] = Field(default_factory=list)
+
+
+class PlatformInfoResponse(ToolResponseBase):
+    """Response from the ``get_platform_info`` tool."""
+
+    type: ResponseType = ResponseType.PLATFORM_INFO
+    topic: str
+    tier: str | None = None
+    billing_url: str | None = "/settings/billing"
+
+
+# --- Chat-platform proactive output (Discord today; Slack/Telegram later) ---
+
+
+class ChatPlatformChannelSummary(BaseModel):
+    """A channel the bot can post to on the user's behalf."""
+
+    id: str
+    name: str
+    server_id: str
+    server_name: str | None = None
+
+
+class ChatPlatformChannelListResponse(ToolResponseBase):
+    """Response for the ``list_chat_platform_channels`` tool."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_CHANNEL_LIST
+    platform: str
+    channels: list[ChatPlatformChannelSummary] = Field(default_factory=list)
+    count: int = 0
+
+
+class ChatPlatformPostedResponse(ToolResponseBase):
+    """Response after the bot posts a message or creates a thread."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
+    platform: str
+    kind: Literal["message", "thread"]
+    channel_id: str
+    ref_id: str | None = None
+    url: str | None = None

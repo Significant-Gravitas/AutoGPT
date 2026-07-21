@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { ScaleLoader } from "../../ScaleLoader/ScaleLoader";
 
 const THINKING_PHRASES = [
@@ -26,6 +27,9 @@ const THINKING_PHRASES = [
 
 const PHRASE_CYCLE_MS = 6_000;
 const FADE_DURATION_MS = 300;
+
+/** Only show elapsed time after this many seconds. */
+const SHOW_TIME_AFTER_SECONDS = 20;
 
 /**
  * Cycles through thinking phrases sequentially with a fade-out/in transition.
@@ -72,22 +76,42 @@ function useCyclingPhrase(active: boolean) {
 
 interface Props {
   active: boolean;
+  elapsedSeconds: number;
+  /**
+   * Backend-emitted status message for the current silent gap (e.g.
+   * "Reading your message…", "Analyzing result…", "Optimizing conversation
+   * context…"). When provided, it replaces the rotating generic phrase so
+   * the user sees what's actually happening instead of a placeholder.
+   */
+  statusMessage?: string | null;
 }
 
-export function ThinkingIndicator({ active }: Props) {
+export function ThinkingIndicator({
+  active,
+  elapsedSeconds,
+  statusMessage,
+}: Props) {
   const { phrase, visible } = useCyclingPhrase(active);
+  const showTime = active && elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
+  const displayText = statusMessage || phrase;
+  const transitionOpacity = statusMessage ? 1 : visible ? 1 : 0;
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-neutral-500">
+    <span className="inline-flex items-center gap-1.5 text-sm text-neutral-500">
       <ScaleLoader size={16} />
       <span
         className="transition-opacity duration-300"
-        style={{ opacity: visible ? 1 : 0 }}
+        style={{ opacity: transitionOpacity }}
       >
         <span className="animate-pulse [animation-duration:1.5s]">
-          {phrase}
+          {displayText}
         </span>
       </span>
+      {showTime && (
+        <span className="animate-pulse tabular-nums [animation-duration:1.5s]">
+          • {formatElapsed(elapsedSeconds)}
+        </span>
+      )}
     </span>
   );
 }

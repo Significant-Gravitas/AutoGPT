@@ -25,7 +25,7 @@ from backend.copilot.sdk.compaction import (
 
 
 def _make_session() -> ChatSession:
-    return ChatSession.new(user_id="test-user")
+    return ChatSession.new(user_id="test-user", dry_run=False)
 
 
 # ---------------------------------------------------------------------------
@@ -162,10 +162,11 @@ class TestFilterCompactionMessages:
 
 
 class TestCompactionTracker:
-    def test_on_compact_sets_event(self):
+    def test_on_compact_registers_pending_attempt(self):
         tracker = CompactionTracker()
         tracker.on_compact()
-        assert tracker._compact_start.is_set()
+        assert tracker.attempt_count == 1
+        assert list(tracker._pending_transcript_paths) == [""]
 
     def test_emit_start_if_ready_no_event(self):
         tracker = CompactionTracker()
@@ -195,10 +196,11 @@ class TestCompactionTracker:
         session = _make_session()
         tracker.on_compact()
         tracker.emit_start_if_ready()
-        evts = await tracker.emit_end_if_ready(session)
-        assert len(evts) == 2
-        assert isinstance(evts[0], StreamToolOutputAvailable)
-        assert isinstance(evts[1], StreamFinishStep)
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert len(result.events) == 2
+        assert isinstance(result.events[0], StreamToolOutputAvailable)
+        assert isinstance(result.events[1], StreamFinishStep)
         # Should persist
         assert len(session.messages) == 2
 
@@ -210,28 +212,32 @@ class TestCompactionTracker:
         session = _make_session()
         tracker.on_compact()
         # Don't call emit_start_if_ready
-        evts = await tracker.emit_end_if_ready(session)
-        assert len(evts) == 5  # Full self-contained event
-        assert isinstance(evts[0], StreamStartStep)
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert len(result.events) == 5  # Full self-contained event
+        assert isinstance(result.events[0], StreamStartStep)
         assert len(session.messages) == 2
 
     @pytest.mark.asyncio
-    async def test_emit_end_no_op_when_done(self):
+    async def test_emit_end_no_op_when_no_new_compaction(self):
         tracker = CompactionTracker()
         session = _make_session()
         tracker.on_compact()
         tracker.emit_start_if_ready()
-        await tracker.emit_end_if_ready(session)
-        # Second call should be no-op
-        evts = await tracker.emit_end_if_ready(session)
-        assert evts == []
+        result1 = await tracker.emit_end_if_ready(session)
+        assert result1.just_ended is True
+        # Second call should be no-op (no new on_compact)
+        result2 = await tracker.emit_end_if_ready(session)
+        assert result2.just_ended is False
+        assert result2.events == []
 
     @pytest.mark.asyncio
     async def test_emit_end_no_op_when_nothing_happened(self):
         tracker = CompactionTracker()
         session = _make_session()
-        evts = await tracker.emit_end_if_ready(session)
-        assert evts == []
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is False
+        assert result.events == []
 
     def test_emit_pre_query(self):
         tracker = CompactionTracker()
@@ -239,27 +245,39 @@ class TestCompactionTracker:
         evts = tracker.emit_pre_query(session)
         assert len(evts) == 5
         assert len(session.messages) == 2
-        assert tracker._done is True
+        assert tracker.attempt_count == 1
+        assert tracker.completed_count == 1
+        assert tracker.get_observability_metadata() == {
+            "compaction_attempt_count": 1,
+            "compaction_attempt_sources": "pre_query",
+            "compaction_count": 1,
+            "compaction_sources": "pre_query",
+        }
 
     def test_reset_for_query(self):
         tracker = CompactionTracker()
-        tracker._done = True
+        tracker.on_compact("/some/path")
         tracker._start_emitted = True
         tracker._tool_call_id = "old"
+        tracker._active_transcript_path = "/active/path"
         tracker.reset_for_query()
-        assert tracker._done is False
         assert tracker._start_emitted is False
         assert tracker._tool_call_id == ""
+        assert tracker._active_transcript_path == ""
+        assert list(tracker._pending_transcript_paths) == []
 
     @pytest.mark.asyncio
-    async def test_pre_query_blocks_sdk_compaction(self):
-        """After pre-query compaction, SDK compaction events are suppressed."""
+    async def test_pre_query_does_not_block_sdk_compaction_within_query(self):
+        """SDK auto-compaction can still fire after a pre-query compaction."""
         tracker = CompactionTracker()
         session = _make_session()
         tracker.emit_pre_query(session)
         tracker.on_compact()
         evts = tracker.emit_start_if_ready()
-        assert evts == []  # _done blocks it
+        assert len(evts) == 3
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert tracker.completed_count == 2
 
     @pytest.mark.asyncio
     async def test_reset_allows_new_compaction(self):
@@ -279,9 +297,9 @@ class TestCompactionTracker:
         session = _make_session()
         tracker.on_compact()
         start_evts = tracker.emit_start_if_ready()
-        end_evts = await tracker.emit_end_if_ready(session)
+        result = await tracker.emit_end_if_ready(session)
         start_evt = start_evts[1]
-        end_evt = end_evts[0]
+        end_evt = result.events[0]
         assert isinstance(start_evt, StreamToolInputStart)
         assert isinstance(end_evt, StreamToolOutputAvailable)
         assert start_evt.toolCallId == end_evt.toolCallId
@@ -289,3 +307,134 @@ class TestCompactionTracker:
         tool_calls = session.messages[0].tool_calls
         assert tool_calls is not None
         assert tool_calls[0]["id"] == start_evt.toolCallId
+
+    @pytest.mark.asyncio
+    async def test_multiple_compactions_within_query(self):
+        """Two mid-stream compactions within a single query both trigger."""
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        # First compaction cycle
+        tracker.on_compact("/path/1")
+        tracker.emit_start_if_ready()
+        result1 = await tracker.emit_end_if_ready(session)
+        assert result1.just_ended is True
+        assert len(result1.events) == 2
+        assert result1.transcript_path == "/path/1"
+
+        # Second compaction cycle in the same query
+        tracker.on_compact("/path/2")
+        start_evts = tracker.emit_start_if_ready()
+        assert len(start_evts) == 3
+        result2 = await tracker.emit_end_if_ready(session)
+        assert result2.just_ended is True
+        assert result2.transcript_path == "/path/2"
+        assert tracker.completed_count == 2
+
+    @pytest.mark.asyncio
+    async def test_multiple_compactions_with_intervening_message(self):
+        """Multiple compactions remain supported across query boundaries."""
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        # First compaction
+        tracker.on_compact("/path/1")
+        tracker.emit_start_if_ready()
+        result1 = await tracker.emit_end_if_ready(session)
+        assert result1.just_ended is True
+        assert result1.transcript_path == "/path/1"
+
+        # Simulate reset between queries
+        tracker.reset_for_query()
+
+        # Second compaction in new query
+        tracker.on_compact("/path/2")
+        start_evts = tracker.emit_start_if_ready()
+        assert len(start_evts) == 3
+        result2 = await tracker.emit_end_if_ready(session)
+        assert result2.just_ended is True
+        assert result2.transcript_path == "/path/2"
+
+    def test_on_compact_queues_transcript_path(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/some/path.jsonl")
+        assert list(tracker._pending_transcript_paths) == ["/some/path.jsonl"]
+
+    @pytest.mark.asyncio
+    async def test_emit_end_returns_transcript_path(self):
+        """CompactionResult includes the transcript_path from on_compact."""
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/my/session.jsonl")
+        tracker.emit_start_if_ready()
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert result.transcript_path == "/my/session.jsonl"
+        assert tracker._active_transcript_path == ""
+
+    @pytest.mark.asyncio
+    async def test_emit_end_clears_active_transcript_path(self):
+        """After emit_end, the active transcript path is reset."""
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/first/path.jsonl")
+        tracker.emit_start_if_ready()
+        await tracker.emit_end_if_ready(session)
+        assert tracker._active_transcript_path == ""
+
+    @pytest.mark.asyncio
+    async def test_multiple_pending_hooks_are_counted_even_before_completion(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.on_compact("/path/1")
+        tracker.emit_start_if_ready()
+        tracker.on_compact("/path/2")
+        tracker.on_compact("/path/3")
+
+        result1 = await tracker.emit_end_if_ready(session)
+        assert result1.just_ended is True
+        assert result1.transcript_path == "/path/1"
+        assert tracker.attempt_count == 3
+        assert tracker.completed_count == 1
+
+        tracker.emit_start_if_ready()
+        result2 = await tracker.emit_end_if_ready(session)
+        assert result2.just_ended is True
+        assert result2.transcript_path == "/path/2"
+
+        tracker.emit_start_if_ready()
+        result3 = await tracker.emit_end_if_ready(session)
+        assert result3.just_ended is True
+        assert result3.transcript_path == "/path/3"
+        assert tracker.completed_count == 3
+
+    def test_get_observability_metadata_includes_attempts_and_completions(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.emit_pre_query(session)
+        tracker.on_compact("/path/1")
+        tracker.on_compact("/path/2")
+
+        assert tracker.get_observability_metadata() == {
+            "compaction_attempt_count": 3,
+            "compaction_attempt_sources": "pre_query,sdk_internal:2",
+            "compaction_count": 1,
+            "compaction_sources": "pre_query",
+        }
+
+    def test_get_log_summary_includes_attempts_and_completions(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.emit_pre_query(session)
+        tracker.on_compact("/path/1")
+        tracker.on_compact("/path/2")
+
+        assert tracker.get_log_summary() == {
+            "attempt_count": 3,
+            "attempt_sources": "pre_query,sdk_internal:2",
+            "completed_count": 1,
+            "completed_sources": "pre_query",
+        }

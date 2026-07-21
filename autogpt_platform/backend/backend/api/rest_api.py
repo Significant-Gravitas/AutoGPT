@@ -16,27 +16,44 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.block_cost_admin_routes
+import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
+import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.memory_admin_routes
+import backend.api.features.admin.platform_cost_routes
+import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.orgs.invitation_routes
+import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
+import backend.api.features.push.routes as push_routes
+import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
+import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.org_migration
+import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -46,8 +63,12 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -55,6 +76,7 @@ from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
+    PreconditionFailed,
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
@@ -71,6 +93,11 @@ settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+
+# Backing client for webhook chat adapters (Slack Events API, etc.) whose routes
+# mount on this API. Owned at module level so `lifespan_context` can close it on
+# shutdown; the routes themselves are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
@@ -90,6 +117,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await backend.data.redis_client.get_redis_async()
 
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
@@ -116,12 +145,18 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Register managed credential providers (e.g. AgentMail)
+    from backend.integrations.managed_providers import register_all
+
+    register_all()
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
 
     with launch_darkly_context():
         yield
@@ -136,7 +171,23 @@ async def lifespan_context(app: fastapi.FastAPI):
     except Exception as e:
         logger.warning(f"Error shutting down workspace storage: {e}")
 
-    await backend.data.db.disconnect()
+    # Each cleanup is wrapped so one failure doesn't block the rest. The
+    # Redis close in particular silences asyncio's "Unclosed ClusterNode"
+    # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
+    try:
+        await backend.data.redis_client.disconnect_async()
+    except Exception:
+        logger.warning("redis_client.disconnect_async failed", exc_info=True)
+
+    try:
+        await backend.data.db.disconnect()
+    except Exception:
+        logger.warning("db.disconnect failed", exc_info=True)
 
 
 def custom_generate_unique_id(route: APIRoute):
@@ -209,13 +260,22 @@ instrument_fastapi(
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(
-                "%s %s failed. Investigate and resolve the underlying issue: %s",
-                request.method,
-                request.url.path,
-                exc,
-                exc_info=exc,
-            )
+            if status_code >= 500:
+                logger.exception(
+                    "%s %s failed. Investigate and resolve the underlying issue: %s",
+                    request.method,
+                    request.url.path,
+                    exc,
+                    exc_info=exc,
+                )
+            else:
+                logger.warning(
+                    "%s %s failed with %d: %s",
+                    request.method,
+                    request.url.path,
+                    status_code,
+                    exc,
+                )
 
         hint = (
             "Adjust the request and retry."
@@ -265,16 +325,22 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(
-    FolderAlreadyExistsError, handle_internal_http_error(409, False)
-)
-app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
-app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
-app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
+app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
+app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
+# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
+# maps to HTTP 402. log_error=False because it's not an error from the
+# server's perspective — the user just lacks entitlement.
+app.add_exception_handler(
+    UserPaywalledError, handle_internal_http_error(402, log_error=False)
+)
+app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
@@ -305,9 +371,39 @@ app.include_router(
     prefix="/api/credits",
 )
 app.include_router(
+    backend.api.features.admin.diagnostics_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.rate_limit_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/copilot",
+)
+app.include_router(
+    backend.api.features.admin.platform_cost_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
+    backend.api.features.admin.bot_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
+    backend.api.features.admin.block_cost_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.memory_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,
@@ -332,7 +428,22 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
-    workspace_routes.router,
+    chat_share.owner_router,
+    tags=["v2", "chat", "share"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_share.public_router,
+    tags=["v2", "chat", "share", "public"],
+    prefix="/api/public/shared/chats",
+)
+app.include_router(
+    team_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -346,6 +457,50 @@ app.include_router(
     tags=["oauth"],
     prefix="/api/oauth",
 )
+app.include_router(
+    org_routes.router,
+    tags=["v2", "orgs"],
+    prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.team_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.org_router,
+    tags=["v2", "orgs", "invitations"],
+    prefix="/api/orgs/{org_id}/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.router,
+    tags=["v2", "invitations"],
+    prefix="/api/invitations",
+)
+app.include_router(
+    transfer_routes.router,
+    tags=["v2", "transfers"],
+    prefix="/api/transfers",
+)
+app.include_router(
+    push_routes.router,
+    tags=["push"],
+    prefix="/api/push",
+)
+app.include_router(
+    search_routes.router,
+    tags=["search"],
+    prefix="/api/search",
+)
+app.include_router(
+    backend.api.features.platform_linking.routes.router,
+    tags=["platform-linking"],
+    prefix="/api/platform-linking",
+)
+
+# Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
+# No-op when no webhook platform is configured; errors surface at startup.
+register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
 
@@ -400,8 +555,26 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -415,8 +588,25 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         for_export: bool = False,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.get_graph(
-            graph_id, user_id, graph_version, for_export
+            graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
@@ -424,7 +614,26 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.create_new_graph(
+            create_graph, user_id, ctx
+        )
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -440,10 +649,27 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
+        from autogpt_libs.auth.models import RequestContext
+
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id)
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
@@ -488,9 +714,23 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         inputs: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.library.routes.presets.execute_preset(
             preset_id=preset_id,
             user_id=user_id,
+            ctx=ctx,
             inputs=inputs or {},
             credential_inputs={},
         )
@@ -519,8 +759,11 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
-    ) -> Credentials:
-        from .features.integrations.router import create_credentials, get_credential
+    ):
+        from backend.api.features.integrations.router import (
+            create_credentials,
+            get_credential,
+        )
 
         try:
             return await create_credentials(

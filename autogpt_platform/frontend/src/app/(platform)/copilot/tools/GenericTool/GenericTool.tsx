@@ -15,10 +15,12 @@ import {
   MagnifyingGlassIcon,
   MonitorIcon,
   PencilSimpleIcon,
+  RobotIcon,
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -31,6 +33,14 @@ import {
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import {
+  TOOL_TASK_OUTPUT,
+  type ToolCategory,
+  extractToolName,
+  getAnimationText,
+  getToolCategory,
+  truncate,
+} from "./helpers";
 
 interface Props {
   part: ToolUIPart;
@@ -46,77 +56,6 @@ function RenderMedia({
   const renderer = globalRegistry.getRenderer(value, metadata);
   if (!renderer) return null;
   return <OutputItem value={value} metadata={metadata} renderer={renderer} />;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tool name helpers                                                  */
-/* ------------------------------------------------------------------ */
-
-function extractToolName(part: ToolUIPart): string {
-  return part.type.replace(/^tool-/, "");
-}
-
-function formatToolName(name: string): string {
-  return name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tool categorization                                                */
-/* ------------------------------------------------------------------ */
-
-type ToolCategory =
-  | "bash"
-  | "web"
-  | "browser"
-  | "file-read"
-  | "file-write"
-  | "file-delete"
-  | "file-list"
-  | "search"
-  | "edit"
-  | "todo"
-  | "compaction"
-  | "other";
-
-function getToolCategory(toolName: string): ToolCategory {
-  switch (toolName) {
-    case "bash_exec":
-      return "bash";
-    case "web_fetch":
-    case "WebSearch":
-    case "WebFetch":
-      return "web";
-    case "browser_navigate":
-    case "browser_act":
-    case "browser_screenshot":
-      return "browser";
-    case "read_workspace_file":
-    case "read_file":
-    case "Read":
-      return "file-read";
-    case "write_workspace_file":
-    case "write_file":
-    case "Write":
-      return "file-write";
-    case "delete_workspace_file":
-      return "file-delete";
-    case "list_workspace_files":
-    case "glob":
-    case "Glob":
-      return "file-list";
-    case "grep":
-    case "Grep":
-      return "search";
-    case "edit_file":
-    case "Edit":
-      return "edit";
-    case "TodoWrite":
-      return "todo";
-    case "context_compaction":
-      return "compaction";
-    default:
-      return "other";
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -141,7 +80,7 @@ function ToolIcon({
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-neutral-400";
+  const iconClass = "text-green-500";
   switch (category) {
     case "bash":
       return <TerminalIcon size={14} weight="regular" className={iconClass} />;
@@ -173,6 +112,8 @@ function ToolIcon({
       return (
         <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
       );
+    case "agent":
+      return <RobotIcon size={14} weight="regular" className={iconClass} />;
     default:
       return <GearIcon size={14} weight="regular" className={iconClass} />;
   }
@@ -205,193 +146,10 @@ function AccordionIcon({ category }: { category: ToolCategory }) {
       return <ListChecksIcon size={32} weight="light" />;
     case "compaction":
       return <ArrowsClockwiseIcon size={32} weight="light" />;
+    case "agent":
+      return <RobotIcon size={32} weight="light" />;
     default:
       return <GearIcon size={32} weight="light" />;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Input extraction                                                   */
-/* ------------------------------------------------------------------ */
-
-function getInputSummary(toolName: string, input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const inp = input as Record<string, unknown>;
-
-  switch (toolName) {
-    case "bash_exec":
-      return typeof inp.command === "string" ? inp.command : null;
-    case "web_fetch":
-    case "WebFetch":
-      return typeof inp.url === "string" ? inp.url : null;
-    case "WebSearch":
-      return typeof inp.query === "string" ? inp.query : null;
-    case "browser_navigate":
-      return typeof inp.url === "string" ? inp.url : null;
-    case "browser_act":
-      return typeof inp.action === "string"
-        ? inp.target
-          ? `${inp.action} ${inp.target}`
-          : (inp.action as string)
-        : null;
-    case "browser_screenshot":
-      return null;
-    case "read_workspace_file":
-    case "read_file":
-    case "Read":
-      return (
-        (typeof inp.file_path === "string" ? inp.file_path : null) ??
-        (typeof inp.path === "string" ? inp.path : null)
-      );
-    case "write_workspace_file":
-    case "write_file":
-    case "Write":
-      return (
-        (typeof inp.file_path === "string" ? inp.file_path : null) ??
-        (typeof inp.path === "string" ? inp.path : null)
-      );
-    case "delete_workspace_file":
-      return typeof inp.file_path === "string" ? inp.file_path : null;
-    case "glob":
-    case "Glob":
-      return typeof inp.pattern === "string" ? inp.pattern : null;
-    case "grep":
-    case "Grep":
-      return typeof inp.pattern === "string" ? inp.pattern : null;
-    case "edit_file":
-    case "Edit":
-      return typeof inp.file_path === "string" ? inp.file_path : null;
-    case "TodoWrite": {
-      // Extract the in-progress task name for the status line
-      const todos = Array.isArray(inp.todos) ? inp.todos : [];
-      const active = todos.find(
-        (t: Record<string, unknown>) => t.status === "in_progress",
-      );
-      if (active && typeof active.activeForm === "string")
-        return active.activeForm;
-      if (active && typeof active.content === "string") return active.content;
-      return null;
-    }
-    default:
-      return null;
-  }
-}
-
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trimEnd() + "…";
-}
-
-/* ------------------------------------------------------------------ */
-/*  Animation text                                                     */
-/* ------------------------------------------------------------------ */
-
-function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
-  const toolName = extractToolName(part);
-  const summary = getInputSummary(toolName, part.input);
-  const shortSummary = summary ? truncate(summary, 60) : null;
-
-  switch (part.state) {
-    case "input-streaming":
-    case "input-available": {
-      switch (category) {
-        case "bash":
-          return shortSummary ? `Running: ${shortSummary}` : "Running command…";
-        case "web":
-          if (toolName === "WebSearch") {
-            return shortSummary
-              ? `Searching "${shortSummary}"`
-              : "Searching the web…";
-          }
-          return shortSummary
-            ? `Fetching ${shortSummary}`
-            : "Fetching web content…";
-        case "browser":
-          if (toolName === "browser_screenshot") return "Taking screenshot…";
-          return shortSummary
-            ? `Browsing ${shortSummary}`
-            : "Interacting with browser…";
-        case "file-read":
-          return shortSummary ? `Reading ${shortSummary}` : "Reading file…";
-        case "file-write":
-          return shortSummary ? `Writing ${shortSummary}` : "Writing file…";
-        case "file-delete":
-          return shortSummary ? `Deleting ${shortSummary}` : "Deleting file…";
-        case "file-list":
-          return shortSummary ? `Listing ${shortSummary}` : "Listing files…";
-        case "search":
-          return shortSummary
-            ? `Searching for "${shortSummary}"`
-            : "Searching…";
-        case "edit":
-          return shortSummary ? `Editing ${shortSummary}` : "Editing file…";
-        case "todo":
-          return shortSummary ? `${shortSummary}` : "Updating task list…";
-        case "compaction":
-          return "Summarizing earlier messages…";
-        default:
-          return `Running ${formatToolName(toolName)}…`;
-      }
-    }
-    case "output-available": {
-      switch (category) {
-        case "bash": {
-          const exitCode = getExitCode(part.output);
-          if (exitCode !== null && exitCode !== 0) {
-            return `Command exited with code ${exitCode}`;
-          }
-          return shortSummary ? `Ran: ${shortSummary}` : "Command completed";
-        }
-        case "web":
-          if (toolName === "WebSearch") {
-            return shortSummary
-              ? `Searched "${shortSummary}"`
-              : "Web search completed";
-          }
-          return shortSummary
-            ? `Fetched ${shortSummary}`
-            : "Fetched web content";
-        case "browser":
-          if (toolName === "browser_screenshot") return "Screenshot captured";
-          return shortSummary
-            ? `Browsed ${shortSummary}`
-            : "Browser action completed";
-        case "file-read":
-          return shortSummary ? `Read ${shortSummary}` : "File read completed";
-        case "file-write":
-          return shortSummary ? `Wrote ${shortSummary}` : "File written";
-        case "file-delete":
-          return shortSummary ? `Deleted ${shortSummary}` : "File deleted";
-        case "file-list":
-          return "Listed files";
-        case "search":
-          return shortSummary
-            ? `Searched for "${shortSummary}"`
-            : "Search completed";
-        case "edit":
-          return shortSummary ? `Edited ${shortSummary}` : "Edit completed";
-        case "todo":
-          return "Updated task list";
-        case "compaction":
-          return "Earlier messages were summarized";
-        default:
-          return `${formatToolName(toolName)} completed`;
-      }
-    }
-    case "output-error": {
-      switch (category) {
-        case "bash":
-          return "Command failed";
-        case "web":
-          return toolName === "WebSearch" ? "Search failed" : "Fetch failed";
-        case "browser":
-          return "Browser action failed";
-        default:
-          return `${formatToolName(toolName)} failed`;
-      }
-    }
-    default:
-      return `Running ${formatToolName(toolName)}…`;
   }
 }
 
@@ -432,13 +190,6 @@ function extractMcpText(output: Record<string, unknown>): string | null {
       .map((b) => b.text as string);
     if (texts.length > 0) return texts.join("\n");
   }
-  return null;
-}
-
-function getExitCode(output: unknown): number | null {
-  const parsed = parseOutput(output);
-  if (!parsed) return null;
-  if (typeof parsed.exit_code === "number") return parsed.exit_code;
   return null;
 }
 
@@ -486,9 +237,39 @@ function getBashAccordionData(
       ? `Command failed (exit ${exitCode})`
       : "Command output";
 
+  // The command itself is already in the subtitle row above; surface the
+  // outcome here so scanning the closed accordion tells the reader "how it
+  // ended" at a glance.  Prefer the backend's own first line of output
+  // (stderr for failures/timeouts — that's where bash_exec writes
+  // "Timed out after Xs" and where shells emit "command not found" etc.,
+  // stdout for success) over a terse "exit N" so the reader actually sees
+  // WHY the command ended.
+  const firstNonEmptyLine = (s: string | null): string | null => {
+    if (!s) return null;
+    const line = s.split("\n").find((l) => l.trim().length > 0);
+    return line ? truncate(line.trim(), 80) : null;
+  };
+  const stderrPreview = firstNonEmptyLine(stderr);
+  const stdoutPreview = firstNonEmptyLine(stdout);
+  let description: string | undefined;
+  if (timedOut) {
+    description = stderrPreview ?? "timed out";
+  } else if (exitCode !== null && exitCode !== 0) {
+    description = stderrPreview
+      ? `status code ${exitCode} · ${stderrPreview}`
+      : `status code ${exitCode}`;
+  } else if (exitCode === 0) {
+    description = stdoutPreview ?? "completed";
+  } else {
+    // Historical sessions persisted before exit_code/timed_out were added
+    // fall through here — fall back to the command preview so the closed
+    // accordion still tells the reader what ran.
+    description = truncate(command, 80);
+  }
+
   return {
     title,
-    description: truncate(command, 80),
+    description,
     content: (
       <div className="space-y-2">
         {command && (
@@ -525,15 +306,66 @@ function getWebAccordionData(
     string,
     unknown
   >;
-  const url =
-    getStringField(inp as Record<string, unknown>, "url", "query") ??
-    "Web content";
+  const query = getStringField(inp, "query");
+  const url = getStringField(inp, "url") ?? query ?? "Web content";
 
-  // Try direct string fields first, then MCP content blocks, then raw JSON
+  const results = Array.isArray(output.results)
+    ? (output.results as Array<Record<string, unknown>>)
+    : null;
+
+  if (results) {
+    const deep = inp.deep === true;
+    const noun = deep ? "research source" : "search result";
+    const answer = getStringField(output, "answer");
+    return {
+      title: `${results.length} ${noun}${results.length === 1 ? "" : "s"}`,
+      description: query ? truncate(query, 80) : undefined,
+      content: (
+        <div className="space-y-3">
+          {answer && (
+            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+              {answer}
+            </div>
+          )}
+          {results.map((r, i) => {
+            const title = getStringField(r, "title") ?? "(untitled)";
+            const href = getStringField(r, "url") ?? "";
+            const snippet = getStringField(r, "snippet");
+            const pageAge = getStringField(r, "page_age");
+            return (
+              <div key={i} className="text-sm">
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  <span className="font-medium">{title}</span>
+                )}
+                {href && (
+                  <div className="text-xs text-slate-500">
+                    {truncate(href, 100)}
+                  </div>
+                )}
+                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {pageAge && (
+                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ),
+    };
+  }
+
   let content = getStringField(output, "content", "text", "_raw");
   if (!content) content = extractMcpText(output);
   if (!content) {
-    // Fallback: render the raw JSON so the accordion isn't empty
     try {
       const raw = JSON.stringify(output, null, 2);
       if (raw !== "{}") content = raw;
@@ -547,11 +379,7 @@ function getWebAccordionData(
   const message = getStringField(output, "message");
 
   return {
-    title: statusCode
-      ? `Response (${statusCode})`
-      : url
-        ? "Web fetch"
-        : "Search results",
+    title: statusCode ? `Response (${statusCode})` : "Web fetch",
     description: truncate(url, 80),
     content: content ? (
       <ContentCodeBlock>{content}</ContentCodeBlock>
@@ -813,6 +641,53 @@ function getTodoAccordionData(input: unknown): AccordionData {
   };
 }
 
+function getAgentAccordionData(
+  toolName: string,
+  input: unknown,
+  output: Record<string, unknown>,
+): AccordionData {
+  const inp = (input && typeof input === "object" ? input : {}) as Record<
+    string,
+    unknown
+  >;
+  const isAsync = output.isAsync === true || output.status === "async_launched";
+
+  if (toolName === TOOL_TASK_OUTPUT) {
+    const status = getStringField(output, "retrieval_status");
+    const task = output.task;
+    return {
+      title: status === "timeout" ? "Agent still running" : "Agent result",
+      description:
+        typeof inp.agentId === "string" ? `Agent: ${inp.agentId}` : undefined,
+      content: task ? (
+        <ContentCodeBlock>{JSON.stringify(task, null, 2)}</ContentCodeBlock>
+      ) : (
+        <ContentMessage>
+          {status === "timeout"
+            ? "The agent hasn't finished yet. Results will appear automatically when it's done."
+            : "No result available."}
+        </ContentMessage>
+      ),
+    };
+  }
+
+  const description =
+    getStringField(inp, "description") ?? getStringField(output, "description");
+  const agentId = getStringField(output, "agentId");
+
+  return {
+    title: isAsync ? "Agent started (background)" : "Agent completed",
+    description: description ?? agentId ?? undefined,
+    content: isAsync ? (
+      <ContentMessage>
+        Running in the background. Results will appear here when ready.
+      </ContentMessage>
+    ) : (
+      <ContentCodeBlock>{JSON.stringify(output, null, 2)}</ContentCodeBlock>
+    ),
+  };
+}
+
 function getDefaultAccordionData(
   output: Record<string, unknown>,
 ): AccordionData {
@@ -864,6 +739,8 @@ function getAccordionData(
       return getFileAccordionData(category, input, output);
     case "todo":
       return getTodoAccordionData(input);
+    case "agent":
+      return getAgentAccordionData(toolName, input, output);
     default:
       return getDefaultAccordionData(output);
   }
@@ -904,8 +781,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Status line: always visible so the user sees what tool ran */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
@@ -913,7 +789,8 @@ export function GenericTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          animate={isStreaming}
+          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>
 

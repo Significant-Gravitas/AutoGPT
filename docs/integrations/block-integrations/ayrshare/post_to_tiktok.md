@@ -21,7 +21,7 @@ The block connects to TikTok's API through Ayrshare with controls for visibility
 |-------|-------------|------|----------|
 | post | The post text (max 2,200 chars, empty string allowed). Use @handle to mention users. Line breaks will be ignored. | str | Yes |
 | media_urls | Required media URLs. Either 1 video OR up to 35 images (JPG/JPEG/WEBP only). Cannot mix video and images. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Disable comments on the published post | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

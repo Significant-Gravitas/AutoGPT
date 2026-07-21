@@ -7,6 +7,8 @@ from tiktoken import encoding_for_model
 
 from backend.util import json
 from backend.util.prompt import (
+    DEFAULT_TOKEN_THRESHOLD,
+    MAIN_OBJECTIVE_PREFIX,
     CompressResult,
     _ensure_tool_pairs_intact,
     _msg_tokens,
@@ -15,6 +17,8 @@ from backend.util.prompt import (
     _truncate_tool_message_content,
     compress_context,
     estimate_token_count,
+    get_compression_target,
+    get_context_window,
 )
 
 
@@ -612,7 +616,7 @@ class TestEnsureToolPairsIntact:
     # ---- Mixed/Edge Case Tests ----
 
     def test_anthropic_with_type_message_field(self):
-        """Test Anthropic format with 'type': 'message' field (smart_decision_maker style)."""
+        """Test Anthropic format with 'type': 'message' field (orchestrator style)."""
         all_msgs = [
             {"role": "system", "content": "You are helpful."},
             {
@@ -628,7 +632,7 @@ class TestEnsureToolPairsIntact:
             },
             {
                 "role": "user",
-                "type": "message",  # Extra field from smart_decision_maker
+                "type": "message",  # Extra field from orchestrator
                 "content": [
                     {
                         "type": "tool_result",
@@ -742,6 +746,107 @@ class TestCompressContext:
         assert result.was_compacted is True
         # Should have truncated without summarization
         assert result.messages_summarized == 0
+
+    @pytest.mark.asyncio
+    async def test_final_tool_trim_updates_token_count(self):
+        """Keep incremental accounting accurate when Step 5 trims a tool result."""
+        enc = encoding_for_model("gpt-4o")
+        messages = [
+            {
+                "type": "function_call",
+                "call_id": "call_x",
+                "name": "lookup",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_x",
+                "output": "tool result " * 100,
+            },
+        ]
+
+        result = await compress_context(
+            messages,
+            target_tokens=40,
+            client=None,
+            reserve=0,
+            model="gpt-4o",
+            start_cap=20,
+            floor_cap=20,
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped == 0
+        assert result.error is None
+        assert len(enc.encode(result.messages[-1]["output"])) < len(
+            enc.encode(messages[-1]["output"])
+        )
+        assert result.token_count == sum(
+            _msg_tokens(message, enc) for message in result.messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_large_history_middle_out_deletion_stays_correct(self):
+        """Guard incremental token accounting in compress_context."""
+        enc = encoding_for_model("gpt-4o")
+        target = 4000
+        reserve = 256
+
+        messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        messages.append(
+            {
+                "role": "user",
+                "content": MAIN_OBJECTIVE_PREFIX + " keep this objective intact.",
+            }
+        )
+        for i in range(150):
+            role = "user" if i % 2 == 0 else "assistant"
+            body = (
+                f"item{i} " + "lorem ipsum dolor sit amet consectetur " * 15
+            ).strip()
+            messages.append({"role": role, "content": body})
+        messages.append(
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "f", "arguments": "{}"},
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": "call_x", "content": "tool result " * 50}
+        )
+
+        result = await compress_context(
+            messages, target_tokens=target, client=None, reserve=reserve, model="gpt-4o"
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped > 0
+        assert result.error is None
+        assert result.token_count + reserve <= target
+        assert result.token_count == sum(_msg_tokens(m, enc) for m in result.messages)
+
+        assert result.messages[0]["role"] == "system"
+        assert any(
+            isinstance(m.get("content"), str)
+            and m["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for m in result.messages
+        )
+
+        tool_call_ids = {
+            tc["id"] for m in result.messages for tc in (m.get("tool_calls") or [])
+        }
+        tool_response_ids = {
+            m["tool_call_id"] for m in result.messages if m.get("tool_call_id")
+        }
+        assert tool_response_ids <= tool_call_ids
+
+        assert result.messages_dropped == 113
 
     @pytest.mark.asyncio
     async def test_with_mocked_llm_client(self):
@@ -974,3 +1079,43 @@ class TestCompressResultDataclass:
         assert result.original_token_count == 500
         assert result.messages_summarized == 10
         assert result.messages_dropped == 5
+
+
+class TestGetContextWindow:
+    def test_claude_opus(self) -> None:
+        assert get_context_window("claude-opus-4-7") == 200_000
+
+    def test_claude_sonnet(self) -> None:
+        assert get_context_window("claude-sonnet-4-6") == 200_000
+
+    def test_openrouter_prefix(self) -> None:
+        assert get_context_window("anthropic/claude-opus-4-6") == 200_000
+
+    def test_version_suffix(self) -> None:
+        assert get_context_window("claude-opus-4-6") == 200_000
+
+    def test_gpt4o(self) -> None:
+        assert get_context_window("gpt-4o") == 128_000
+
+    def test_unknown_model(self) -> None:
+        assert get_context_window("some-unknown-model") is None
+
+    def test_case_insensitive(self) -> None:
+        assert get_context_window("GPT-4o") == 128_000
+
+
+class TestGetCompressionTarget:
+    def test_claude_opus_200k(self) -> None:
+        target = get_compression_target("anthropic/claude-opus-4-6")
+        assert target == 140_000  # 200K - 60K overhead
+
+    def test_gpt4o_128k(self) -> None:
+        target = get_compression_target("gpt-4o")
+        assert target == 68_000  # 128K - 60K overhead
+
+    def test_unknown_model_returns_default(self) -> None:
+        assert get_compression_target("unknown-model") == DEFAULT_TOKEN_THRESHOLD
+
+    def test_small_model_returns_default(self) -> None:
+        # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
+        assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD

@@ -67,6 +67,9 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        is_graph_execution: bool = True,
+        organization_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -137,16 +140,19 @@ class HITLReviewHelper:
             input_data=input_data,
             message=block_name,  # Use block_name directly as the message
             editable=editable,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         if result is None:
             logger.info(
                 f"Block {block_name} pausing execution for node {node_exec_id} - awaiting human review"
             )
-            await HITLReviewHelper.update_node_execution_status(
-                exec_id=node_exec_id,
-                status=ExecutionStatus.REVIEW,
-            )
+            if is_graph_execution:
+                await HITLReviewHelper.update_node_execution_status(
+                    exec_id=node_exec_id,
+                    status=ExecutionStatus.REVIEW,
+                )
             return None  # Signal that execution should pause
 
         # Mark review as processed if not already done
@@ -168,6 +174,9 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        is_graph_execution: bool = True,
+        organization_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -197,6 +206,9 @@ class HITLReviewHelper:
             graph_version=graph_version,
             block_name=block_name,
             editable=editable,
+            is_graph_execution=is_graph_execution,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         if review_result is None:

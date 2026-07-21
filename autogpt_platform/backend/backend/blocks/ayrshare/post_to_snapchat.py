@@ -1,16 +1,20 @@
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToSnapchatBlock(Block):
     """Block for posting to Snapchat with Snapchat-specific options."""
 
@@ -29,6 +33,14 @@ class PostToSnapchatBlock(Block):
             description="Required video URL for Snapchat posts. Snapchat only supports video content.",
             default_factory=list,
             advanced=False,
+        )
+
+        # Snapchat is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for Snapchat)",
+            default=True,
+            advanced=True,
         )
 
         # Snapchat-specific options
@@ -62,15 +74,10 @@ class PostToSnapchatBlock(Block):
         self,
         input_data: "PostToSnapchatBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to Snapchat with Snapchat-specific options."""
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -121,7 +128,7 @@ class PostToSnapchatBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             snapchat_options=snapchat_options if snapchat_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

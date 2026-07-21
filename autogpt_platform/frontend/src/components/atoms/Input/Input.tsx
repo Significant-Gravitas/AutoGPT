@@ -4,10 +4,14 @@ import {
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
-import { ReactNode, useState } from "react";
+import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
+import type { Variant } from "../Text/helpers";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useInput } from "./useInput";
+
+type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
 export interface TextFieldProps extends Omit<InputProps, "size"> {
   label: string;
@@ -17,6 +21,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
   error?: string;
   hint?: ReactNode;
   size?: "small" | "medium";
+  labelVariant?: Variant;
+  labelClassName?: string;
+  labelTooltip?: string;
   wrapperClassName?: string;
   type?:
     | "text"
@@ -35,20 +42,26 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
   amountSuffix?: string;
 }
 
-export function Input({
-  className,
-  label,
-  placeholder,
-  hideLabel = false,
-  decimalCount,
-  hint,
-  error,
-  size = "medium",
-  wrapperClassName,
-  amountPrefix,
-  amountSuffix,
-  ...props
-}: TextFieldProps) {
+export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
+  {
+    className,
+    label,
+    placeholder,
+    hideLabel = false,
+    decimalCount,
+    hint,
+    error,
+    size = "medium",
+    labelVariant = "large-medium",
+    labelClassName,
+    labelTooltip,
+    wrapperClassName,
+    amountPrefix,
+    amountSuffix,
+    ...props
+  },
+  ref,
+) {
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
       type: props.type,
@@ -74,11 +87,11 @@ export function Input({
 
   const baseStyles = cn(
     // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none w-full",
+    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none w-full",
     "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-400",
+    "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
     className,
   );
 
@@ -89,6 +102,7 @@ export function Input({
     if (props.type === "textarea") {
       return (
         <textarea
+          ref={ref as React.Ref<HTMLTextAreaElement>}
           className={cn(
             baseStyles,
             errorStyles,
@@ -161,6 +175,7 @@ export function Input({
 
     return (
       <BaseInput
+        ref={ref as React.Ref<HTMLInputElement>}
         className={cn(
           baseStyles,
           errorStyles,
@@ -225,11 +240,20 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="large-medium" as="span" className="text-black">
-          {label}
-        </Text>
+    <label htmlFor={props.id} className="flex w-full flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <Text
+            variant={labelVariant}
+            as="span"
+            className={cn("text-black", labelClassName)}
+          >
+            {label}
+          </Text>
+          {labelTooltip ? (
+            <InformationTooltip description={labelTooltip} iconSize={20} />
+          ) : null}
+        </div>
         {hint ? (
           <Text variant="small" as="span" className="!text-zinc-400">
             {hint}
@@ -239,4 +263,4 @@ export function Input({
       {inputWithError}
     </label>
   );
-}
+});

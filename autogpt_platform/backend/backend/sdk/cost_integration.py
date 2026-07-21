@@ -1,16 +1,18 @@
 """
 Integration between SDK provider costs and the execution cost system.
 
-This module provides the glue between provider-defined base costs and the 
+This module provides the glue between provider-defined base costs and the
 BLOCK_COSTS configuration used by the execution system.
 """
 
 import logging
-from typing import List, Type
+from typing import List, Type, TypeVar
 
 from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.sdk.registry import AutoRegistry
+
+BlockT = TypeVar("BlockT", bound=Type[Block])
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,7 @@ def cost(*costs: BlockCost):
         *costs: Variable number of BlockCost objects
     """
 
-    def decorator(block_class: Type[Block]) -> Type[Block]:
+    def decorator(block_class: BlockT) -> BlockT:
         # Register the costs for this block
         if costs:
             BLOCK_COSTS[block_class] = list(costs)

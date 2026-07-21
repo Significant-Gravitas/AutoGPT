@@ -19,6 +19,7 @@ from .helpers import (
     ContentSettings,
     CostDollars,
     ExaSearchResults,
+    merge_exa_cost,
     process_contents_settings,
 )
 
@@ -167,3 +168,4 @@ class ExaFindSimilarBlock(Block):
 
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars
+        merge_exa_cost(self, response)

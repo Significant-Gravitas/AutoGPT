@@ -15,9 +15,10 @@ type OutputsRecord = Record<string, Array<unknown>>;
 
 interface RunOutputsProps {
   outputs: OutputsRecord;
+  shareToken?: string;
 }
 
-export function RunOutputs({ outputs }: RunOutputsProps) {
+export function RunOutputs({ outputs, shareToken }: RunOutputsProps) {
   const items = useMemo(() => {
     const list: Array<{
       key: string;
@@ -30,6 +31,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
     Object.entries(outputs || {}).forEach(([key, values]) => {
       (values || []).forEach((value, index) => {
         const metadata: OutputMetadata = {};
+        if (shareToken) metadata.shareToken = shareToken;
         if (
           typeof value === "object" &&
           value !== null &&
@@ -76,7 +78,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
     });
 
     return list;
-  }, [outputs]);
+  }, [outputs, shareToken]);
 
   if (!items.length) {
     return <div className="text-neutral-600">No output from this run.</div>;

@@ -8,7 +8,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 /** Block details returned on first run_block attempt (before input_data provided). */
 export interface BlockDetailsResponse {
@@ -26,22 +26,37 @@ export interface BlockDetailsResponse {
   user_authenticated: boolean;
 }
 
+/** Response when a block requires human review before execution. */
+export interface ReviewRequiredResponse {
+  type: typeof ResponseType.review_required;
+  message: string;
+  session_id?: string | null;
+  block_id: string;
+  block_name: string;
+  review_id: string;
+  graph_exec_id: string;
+  input_data: Record<string, unknown>;
+}
+
 export interface RunBlockInput {
   block_id?: string;
   block_name?: string;
   input_data?: Record<string, unknown>;
+  dry_run?: boolean;
 }
 
 export type RunBlockToolOutput =
   | SetupRequirementsResponse
   | BlockDetailsResponse
   | BlockOutputResponse
+  | ReviewRequiredResponse
   | ErrorResponse;
 
 const RUN_BLOCK_OUTPUT_TYPES = new Set<string>([
   ResponseType.setup_requirements,
   ResponseType.block_details,
   ResponseType.block_output,
+  ResponseType.review_required,
   ResponseType.error,
 ]);
 
@@ -66,13 +81,37 @@ export function isRunBlockDetailsOutput(
 export function isRunBlockBlockOutput(
   output: RunBlockToolOutput,
 ): output is BlockOutputResponse {
-  return output.type === ResponseType.block_output || "block_id" in output;
+  return (
+    output.type === ResponseType.block_output ||
+    ("block_id" in output && !("review_id" in output))
+  );
+}
+
+export function isRunBlockReviewRequiredOutput(
+  output: RunBlockToolOutput,
+): output is ReviewRequiredResponse {
+  return (
+    output.type === ResponseType.review_required ||
+    ("review_id" in output && "block_name" in output && "input_data" in output)
+  );
 }
 
 export function isRunBlockErrorOutput(
   output: RunBlockToolOutput,
 ): output is ErrorResponse {
-  return output.type === ResponseType.error || "error" in output;
+  // Only match actual error responses (type=error), not block outputs that
+  // happen to have an "error" key in their outputs dict.  The old
+  // `"error" in output` check was too broad and caused BlockOutputResponse
+  // to be mis-identified as errors, showing dry-run results as failed.
+  if (output.type === ResponseType.error) return true;
+  // Fallback for untyped payloads: match only if "error" exists at the top
+  // level AND there is no "block_id" (which distinguishes BlockOutputResponse
+  // from ErrorResponse).  Note: `type` is optional in both interfaces, so
+  // correctness here depends on `block_id` presence (always set on
+  // BlockOutputResponse), not on `type` presence.
+  if (!("type" in output) && "error" in output && !("block_id" in output))
+    return true;
+  return false;
 }
 
 function parseOutput(output: unknown): RunBlockToolOutput | null {
@@ -91,10 +130,13 @@ function parseOutput(output: unknown): RunBlockToolOutput | null {
     if (typeof type === "string" && RUN_BLOCK_OUTPUT_TYPES.has(type)) {
       return output as RunBlockToolOutput;
     }
+    if ("review_id" in output) return output as ReviewRequiredResponse;
     if ("block_id" in output) return output as BlockOutputResponse;
     if ("block" in output) return output as BlockDetailsResponse;
     if ("setup_info" in output) return output as SetupRequirementsResponse;
-    if ("error" in output || "details" in output)
+    // Only match error responses that have an "error" key but NOT "block_id"
+    // (which would indicate a BlockOutputResponse, not an error).
+    if (("error" in output || "details" in output) && !("block_id" in output))
       return output as ErrorResponse;
   }
   return null;
@@ -115,6 +157,7 @@ export function getAnimationText(part: {
   const input = part.input as RunBlockInput | undefined;
   const blockName = input?.block_name?.trim();
   const blockId = input?.block_id?.trim();
+  const isDryRun = input?.dry_run === true;
   // Prefer block_name if available, otherwise fall back to block_id
   const blockText = blockName
     ? ` "${blockName}"`
@@ -125,22 +168,30 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `Running${blockText}`;
+      return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return `Running${blockText}`;
-      if (isRunBlockBlockOutput(output)) return `Ran "${output.block_name}"`;
+      if (!output)
+        return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
+      if (isRunBlockBlockOutput(output)) {
+        return output.is_dry_run
+          ? `Simulated "${output.block_name}"`
+          : `Ran "${output.block_name}"`;
+      }
       if (isRunBlockDetailsOutput(output))
         return `Details for "${output.block.name}"`;
       if (isRunBlockSetupRequirementsOutput(output)) {
         return `Setup needed for "${output.setup_info.agent_name}"`;
       }
-      return "Error running block";
+      if (isRunBlockReviewRequiredOutput(output)) {
+        return `Review needed for "${output.block_name}"`;
+      }
+      return "Action failed";
     }
     case "output-error":
-      return "Error running block";
+      return "Action failed";
     default:
-      return "Running the block";
+      return isDryRun ? "Simulating" : "Running";
   }
 }
 
@@ -157,7 +208,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
@@ -185,13 +236,16 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
 
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
+    const outputCount =
+      keys.length > 0
+        ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
+        : output.message;
     return {
       icon,
       title: output.block_name,
-      description:
-        keys.length > 0
-          ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
-          : output.message,
+      description: output.is_dry_run
+        ? `Simulated · ${outputCount}`
+        : outputCount,
     };
   }
 
@@ -224,6 +278,14 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
         missingCredsCount > 0
           ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
           : output.message,
+    };
+  }
+
+  if (isRunBlockReviewRequiredOutput(output)) {
+    return {
+      icon,
+      title: output.block_name,
+      description: "Sensitive action — awaiting review",
     };
   }
 

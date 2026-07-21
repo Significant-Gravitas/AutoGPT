@@ -30,21 +30,21 @@ export function getAnimationText(part: FindBlockToolPart): string {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `Searching for blocks${queryText}`;
+      return `Searching for actions${queryText}`;
 
     case "output-available": {
       const parsed = parseOutput(part.output);
       if (parsed) {
-        return `Found ${parsed.count} block${parsed.count === 1 ? "" : "s"}${queryText}`;
+        return `Found ${parsed.count} action${parsed.count === 1 ? "" : "s"}${queryText}`;
       }
-      return `Searching for blocks${queryText}`;
+      return `Searching for actions${queryText}`;
     }
 
     case "output-error":
-      return `Error finding blocks${queryText}`;
+      return `Search failed${query ? ` for "${query}"` : ""}`;
 
     default:
-      return "Searching for blocks";
+      return "Searching for actions";
   }
 }
 

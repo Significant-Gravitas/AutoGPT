@@ -6,7 +6,7 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 // ------------------------------------------------------------------ //
 //  Re-export generated types for use by RunMCPTool components
@@ -125,6 +125,11 @@ export function serverHost(url: string): string {
   }
 }
 
+/** Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev' */
+export function serviceNameFromHost(host: string): string {
+  return host.startsWith("mcp.") ? host.slice(4) : host;
+}
+
 /**
  * Return a short preview of the most meaningful argument value, e.g. `"my query"`.
  * Checks common "query" key names first, then falls back to the first string value.
@@ -174,28 +179,30 @@ export function getAnimationText(part: {
   const host = input?.server_url ? serverHost(input.server_url) : "";
   const toolName = input?.tool_name?.trim();
 
+  const service = host ? serviceNameFromHost(host) : "";
+
   switch (part.state) {
     case "input-streaming":
     case "input-available": {
-      if (!toolName) return `Discovering MCP tools${host ? ` on ${host}` : ""}`;
+      if (!toolName) return `Connecting to ${service || "integration"}…`;
       const argPreview = getArgPreview(input?.tool_arguments);
-      return `Calling ${toolName}${argPreview ? `(${argPreview})` : ""}${host ? ` on ${host}` : ""}`;
+      return `Calling ${toolName}${argPreview ? `(${argPreview})` : ""}${service ? ` on ${service}` : ""}`;
     }
     case "output-available": {
       const output = getRunMCPToolOutput(part);
-      if (!output) return "Connecting to MCP server";
+      if (!output) return "Connecting…";
       if (isSetupRequirementsOutput(output))
-        return `Connect to ${output.setup_info.agent_name}`;
+        return `Connect ${output.setup_info.agent_name}`;
       if (isMCPToolOutput(output))
-        return `Ran ${output.tool_name}${host ? ` on ${host}` : ""}`;
+        return `Ran ${output.tool_name}${service ? ` on ${service}` : ""}`;
       if (isDiscoveryOutput(output))
-        return `Discovered ${output.tools.length} tool(s) on ${serverHost(output.server_url)}`;
-      return "MCP error";
+        return `Connected to ${serviceNameFromHost(serverHost(output.server_url))}`;
+      return "Connection error";
     }
     case "output-error":
-      return "MCP error";
+      return "Connection error";
     default:
-      return "Connecting to MCP server";
+      return "Connecting…";
   }
 }
 
@@ -212,7 +219,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return (
     <PlugsConnectedIcon

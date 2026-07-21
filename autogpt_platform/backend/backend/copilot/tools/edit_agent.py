@@ -1,32 +1,23 @@
-"""EditAgentTool - Edits existing agents using natural language."""
+"""EditAgentTool - Edits existing agents using pre-built JSON."""
 
 import logging
 from typing import Any
 
+from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
+from backend.data.model import is_credentials_field_name
 
-from .agent_generator import (
-    AgentGeneratorNotConfiguredError,
-    generate_agent_patch,
-    get_agent_as_json,
-    get_user_message_for_error,
-    save_agent_to_library,
-)
+from .agent_generator import get_agent_as_json
+from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
-from .models import (
-    AgentPreviewResponse,
-    AgentSavedResponse,
-    ClarificationNeededResponse,
-    ClarifyingQuestion,
-    ErrorResponse,
-    ToolResponseBase,
-)
+from .helpers import coerce_agent_json, require_guide_read
+from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
 
 class EditAgentTool(BaseTool):
-    """Tool for editing existing agents using natural language."""
+    """Tool for editing existing agents using pre-built JSON."""
 
     @property
     def name(self) -> str:
@@ -35,11 +26,8 @@ class EditAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Edit an existing agent from the user's library using natural language. "
-            "Generates updates to the agent while preserving unchanged parts. "
-            "\n\nIMPORTANT: Before calling this tool, if the changes involve adding new "
-            "functionality, search for relevant existing agents using find_library_agent "
-            "that could be used as building blocks. Pass their IDs in library_agent_ids."
+            "Edit an existing agent. Validates, auto-fixes, and saves. "
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -53,81 +41,96 @@ class EditAgentTool(BaseTool):
             "properties": {
                 "agent_id": {
                     "type": "string",
-                    "description": (
-                        "The ID of the agent to edit. "
-                        "Can be a graph ID or library agent ID."
-                    ),
+                    "description": "Graph ID or library agent ID to edit.",
                 },
-                "changes": {
-                    "type": "string",
+                "agent_json": {
+                    "type": ["object", "string"],
                     "description": (
-                        "Natural language description of what changes to make. "
-                        "Be specific about what to add, remove, or modify."
-                    ),
-                },
-                "context": {
-                    "type": "string",
-                    "description": (
-                        "Additional context or answers to previous clarifying questions."
+                        "Updated agent JSON with nodes and links, or the "
+                        'string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
                     ),
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "List of library agent IDs to use as building blocks for the changes. "
-                        "If adding new functionality, search for relevant agents using "
-                        "find_library_agent first, then pass their IDs here."
-                    ),
+                    "description": "Library agent IDs as building blocks.",
                 },
                 "save": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to save the changes. "
-                        "Default is true. Set to false for preview only."
-                    ),
+                    "description": "Save changes (default: true). False for preview.",
                     "default": True,
                 },
             },
-            "required": ["agent_id", "changes"],
+            "required": ["agent_id", "agent_json"],
         }
 
     async def _execute(
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_id: str = "",
+        agent_json: dict[str, Any] | str | None = None,
+        save: bool = True,
+        library_agent_ids: list[str] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the edit_agent tool.
-
-        Flow:
-        1. Fetch the current agent
-        2. Generate updated agent (external service handles fixing and validation)
-        3. Preview or save based on the save parameter
-        """
-        agent_id = kwargs.get("agent_id", "").strip()
-        changes = kwargs.get("changes", "").strip()
-        context = kwargs.get("context", "")
-        library_agent_ids = kwargs.get("library_agent_ids", [])
-        save = kwargs.get("save", True)
+        agent_id = agent_id.strip()
+        if library_agent_ids is None:
+            library_agent_ids = []
         session_id = session.session_id if session else None
+
+        # Builder-bound sessions are locked to a specific graph: default
+        # missing agent_id to the bound graph, and reject any other id so
+        # the assistant cannot accidentally mutate a different agent.
+        builder_graph_id = session.metadata.builder_graph_id if session else None
+        if builder_graph_id:
+            if not agent_id:
+                agent_id = builder_graph_id
+            elif agent_id != builder_graph_id:
+                return ErrorResponse(
+                    message=(
+                        "This chat is bound to the builder's current agent. "
+                        "Editing a different agent is not allowed here — "
+                        "open that agent in the builder instead."
+                    ),
+                    error="builder_session_graph_mismatch",
+                    session_id=session_id,
+                )
+
+        guide_gate = require_guide_read(session, "edit_agent")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_id:
             return ErrorResponse(
                 message="Please provide the agent ID to edit.",
-                error="Missing agent_id parameter",
+                error="missing_agent_id",
                 session_id=session_id,
             )
 
-        if not changes:
+        agent_json = coerce_agent_json(agent_json)
+        if not agent_json:
             return ErrorResponse(
-                message="Please describe what changes you want to make.",
-                error="Missing changes parameter",
+                message=(
+                    "Please provide agent_json with the complete updated agent "
+                    "graph as a JSON object, or as the string "
+                    '"@@agptfile:<path>" referencing a JSON file.'
+                ),
+                error="missing_agent_json",
                 session_id=session_id,
             )
 
-        current_agent = await get_agent_as_json(agent_id, user_id)
+        nodes = agent_json.get("nodes", [])
+        if not nodes:
+            return ErrorResponse(
+                message="The agent JSON has no nodes.",
+                error="empty_agent",
+                session_id=session_id,
+            )
 
+        # Preserve original agent's ID
+        current_agent = await get_agent_as_json(agent_id, user_id)
         if current_agent is None:
             return ErrorResponse(
                 message=f"Could not find agent with ID '{agent_id}' in your library.",
@@ -135,142 +138,81 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Fetch library agents by IDs if provided
-        library_agents = None
-        if user_id and library_agent_ids:
-            try:
-                from .agent_generator import get_library_agents_by_ids
-
-                graph_id = current_agent.get("id")
-                # Filter out the current agent being edited
-                filtered_ids = [id for id in library_agent_ids if id != graph_id]
-
-                library_agents = await get_library_agents_by_ids(
-                    user_id=user_id,
-                    agent_ids=filtered_ids,
-                )
-                logger.debug(
-                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to fetch library agents by IDs: {e}")
-
-        update_request = changes
-        if context:
-            update_request = f"{changes}\n\nAdditional context:\n{context}"
-
-        try:
-            result = await generate_agent_patch(
-                update_request,
-                current_agent,
-                library_agents,
-            )
-        except AgentGeneratorNotConfiguredError:
+        changed_trigger_fields = _changed_trigger_config_fields(
+            current_agent.get("nodes", []), nodes
+        )
+        if changed_trigger_fields:
             return ErrorResponse(
                 message=(
-                    "Agent editing is not available. "
-                    "The Agent Generator service is not configured."
+                    "This edit changes the webhook trigger block's configuration "
+                    f"({', '.join(changed_trigger_fields)}), which can't be set "
+                    "by editing the graph — that would change the agent's global "
+                    "default for everyone who uses it. A trigger's configuration "
+                    "lives on a per-trigger preset: use the "
+                    "setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "trigger block's config unchanged."
                 ),
-                error="service_not_configured",
+                error="trigger_config_edit_blocked",
                 session_id=session_id,
             )
 
-        if result is None:
-            return ErrorResponse(
-                message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
-                error="update_generation_failed",
-                details={"agent_id": agent_id, "changes": changes[:100]},
-                session_id=session_id,
-            )
+        agent_json["id"] = current_agent.get("id", agent_id)
+        agent_json["version"] = current_agent.get("version", 1)
+        agent_json.setdefault("is_active", True)
 
-        # Check if the result is an error from the external service
-        if isinstance(result, dict) and result.get("type") == "error":
-            error_msg = result.get("error", "Unknown error")
-            error_type = result.get("error_type", "unknown")
-            user_message = get_user_message_for_error(
-                error_type,
-                operation="generate the changes",
-                llm_parse_message="The AI had trouble generating the changes. Please try again or simplify your request.",
-                validation_message="The generated changes failed validation. Please try rephrasing your request.",
-                error_details=error_msg,
-            )
-            return ErrorResponse(
-                message=user_message,
-                error=f"update_generation_failed:{error_type}",
-                details={
-                    "agent_id": agent_id,
-                    "changes": changes[:100],
-                    "service_error": error_msg,
-                    "error_type": error_type,
-                },
-                session_id=session_id,
-            )
+        # Fetch library agents for AgentExecutorBlock validation
+        library_agents = await fetch_library_agents(user_id, library_agent_ids)
 
-        if result.get("type") == "clarifying_questions":
-            questions = result.get("questions", [])
-            return ClarificationNeededResponse(
-                message=(
-                    "I need some more information about the changes. "
-                    "Please answer the following questions:"
-                ),
-                questions=[
-                    ClarifyingQuestion(
-                        question=q.get("question", ""),
-                        keyword=q.get("keyword", ""),
-                        example=q.get("example"),
-                    )
-                    for q in questions
-                ],
-                session_id=session_id,
-            )
+        return await fix_validate_and_save(
+            agent_json,
+            user_id=user_id,
+            session_id=session_id,
+            save=save,
+            is_update=True,
+            default_name="Updated Agent",
+            library_agents=library_agents,
+        )
 
-        updated_agent = result
 
-        agent_name = updated_agent.get("name", "Updated Agent")
-        agent_description = updated_agent.get("description", "")
-        node_count = len(updated_agent.get("nodes", []))
-        link_count = len(updated_agent.get("links", []))
+def _changed_trigger_config_fields(
+    current_nodes: list[dict[str, Any]], new_nodes: list[dict[str, Any]]
+) -> list[str]:
+    """Trigger-config field names whose value this edit would change.
 
-        if not save:
-            return AgentPreviewResponse(
-                message=(
-                    f"I've updated the agent. "
-                    f"The agent now has {node_count} blocks. "
-                    f"Review it and call edit_agent with save=true to save the changes."
-                ),
-                agent_json=updated_agent,
-                agent_name=agent_name,
-                description=agent_description,
-                node_count=node_count,
-                link_count=link_count,
-                session_id=session_id,
-            )
+    A webhook trigger block's config inputs (e.g. ``repo``/``events``) belong on
+    a per-trigger preset via ``setup_agent_webhook_trigger``; editing them in the
+    graph mutates the agent's global default and is the wrong path. Credentials
+    are ignored (they're not trigger config). Returns ``[]`` when there is no
+    trigger node, the node was removed wholesale (a structural edit, not a config
+    tweak), or nothing changed.
+    """
+    webhook_block_ids = set(get_webhook_block_ids())
+    current_trigger = next(
+        (n for n in current_nodes if n.get("block_id") in webhook_block_ids), None
+    )
+    if current_trigger is None:
+        return []
 
-        if not user_id:
-            return ErrorResponse(
-                message="You must be logged in to save agents.",
-                error="auth_required",
-                session_id=session_id,
-            )
+    block = get_block(current_trigger["block_id"])
+    if block is None:
+        return []
+    config_fields = [
+        name
+        for name in block.input_schema.model_fields
+        if not is_credentials_field_name(name)
+    ]
 
-        try:
-            created_graph, library_agent = await save_agent_to_library(
-                updated_agent, user_id, is_update=True
-            )
+    new_trigger = next(
+        (n for n in new_nodes if n.get("id") == current_trigger.get("id")), None
+    )
+    if new_trigger is None:
+        return []
 
-            return AgentSavedResponse(
-                message=f"Updated agent '{created_graph.name}' has been saved to your library!",
-                agent_id=created_graph.id,
-                agent_name=created_graph.name,
-                library_agent_id=library_agent.id,
-                library_agent_link=f"/library/agents/{library_agent.id}",
-                agent_page_link=f"/build?flowID={created_graph.id}",
-                session_id=session_id,
-            )
-        except Exception as e:
-            return ErrorResponse(
-                message=f"Failed to save the updated agent: {str(e)}",
-                error="save_failed",
-                details={"exception": str(e)},
-                session_id=session_id,
-            )
+    current_defaults = current_trigger.get("input_default") or {}
+    new_defaults = new_trigger.get("input_default") or {}
+    return [
+        name
+        for name in config_fields
+        if new_defaults.get(name) != current_defaults.get(name)
+    ]

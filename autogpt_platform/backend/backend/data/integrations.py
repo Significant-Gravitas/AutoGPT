@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator, Literal, Optional, overload
+from typing import Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
@@ -37,6 +37,10 @@ class Webhook(BaseDbModel):
     events: list[str]
     config: dict = Field(default_factory=dict)
     secret: str
+    # Tenant of the graph/preset this webhook triggers — inherited from the
+    # parent resource at creation, not from the caller's active org.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     provider_webhook_id: str
 
@@ -58,6 +62,8 @@ class Webhook(BaseDbModel):
             config=dict(webhook.config),
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
+            organization_id=webhook.organizationId,
+            team_id=webhook.teamId,
         )
 
 
@@ -95,20 +101,23 @@ class WebhookWithRelations(Webhook):
 
 
 async def create_webhook(webhook: Webhook) -> Webhook:
-    created_webhook = await IntegrationWebhook.prisma().create(
-        data=IntegrationWebhookCreateInput(
-            id=webhook.id,
-            userId=webhook.user_id,
-            provider=webhook.provider.value,
-            credentialsId=webhook.credentials_id,
-            webhookType=webhook.webhook_type,
-            resource=webhook.resource,
-            events=webhook.events,
-            config=SafeJson(webhook.config),
-            secret=webhook.secret,
-            providerWebhookId=webhook.provider_webhook_id,
-        )
+    create_input = IntegrationWebhookCreateInput(
+        id=webhook.id,
+        userId=webhook.user_id,
+        provider=webhook.provider.value,
+        credentialsId=webhook.credentials_id,
+        webhookType=webhook.webhook_type,
+        resource=webhook.resource,
+        events=webhook.events,
+        config=SafeJson(webhook.config),
+        secret=webhook.secret,
+        providerWebhookId=webhook.provider_webhook_id,
     )
+    if webhook.organization_id:
+        create_input["organizationId"] = webhook.organization_id
+    if webhook.team_id:
+        create_input["teamId"] = webhook.team_id
+    created_webhook = await IntegrationWebhook.prisma().create(data=create_input)
     return Webhook.from_db(created_webhook)
 
 
@@ -184,17 +193,17 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
-    events: Optional[list[str]],
+    events: list[str] | None = None,
 ) -> Webhook | None:
-    webhook = await IntegrationWebhook.prisma().find_first(
-        where={
-            "userId": user_id,
-            "credentialsId": credentials_id,
-            "webhookType": webhook_type,
-            "resource": resource,
-            **({"events": {"has_every": events}} if events else {}),
-        },
-    )
+    where: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "credentialsId": credentials_id,
+        "webhookType": webhook_type,
+        "resource": resource,
+    }
+    if events is not None:
+        where["events"] = {"has_every": events}
+    webhook = await IntegrationWebhook.prisma().find_first(where=where)
     return Webhook.from_db(webhook) if webhook else None
 
 
@@ -354,18 +363,10 @@ async def publish_webhook_event(event: WebhookEvent):
     )
 
 
-async def listen_for_webhook_events(
-    webhook_id: str, event_type: Optional[str] = None
-) -> AsyncGenerator[WebhookEvent, None]:
-    async for event in _webhook_event_bus.listen_events(
-        f"{webhook_id}/{event_type or '*'}"
-    ):
-        yield event
-
-
 async def wait_for_webhook_event(
-    webhook_id: str, event_type: Optional[str] = None, timeout: Optional[float] = None
+    webhook_id: str, event_type: str, timeout: Optional[float] = None
 ) -> WebhookEvent | None:
+    # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(
-        f"{webhook_id}/{event_type or '*'}", timeout
+        f"{webhook_id}/{event_type}", timeout
     )

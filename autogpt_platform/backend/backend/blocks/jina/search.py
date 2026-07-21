@@ -15,9 +15,9 @@ from backend.blocks.jina._auth import (
     JinaCredentialsInput,
 )
 from backend.blocks.search import GetRequest
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.request import HTTPClientError, HTTPServerError, validate_url
+from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -70,6 +70,13 @@ class SearchTheWebBlock(Block, GetRequest):
                 block_id=self.id,
             ) from e
 
+        # Jina Reader Search: $0.01/query on the paid tier. Fixed per-query
+        # cost; routed through COST_USD so the platform cost log records
+        # real USD spend (costMicrodollars) alongside the credit charge.
+        self.merge_stats(
+            NodeExecutionStats(provider_cost=0.01, provider_cost_type="cost_usd")
+        )
+
         # Output the search results
         yield "results", results
 
@@ -112,7 +119,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
     ) -> BlockOutput:
         if input_data.raw_content:
             try:
-                parsed_url, _, _ = await validate_url(input_data.url, [])
+                parsed_url, _, _ = await validate_url_host(input_data.url)
                 url = parsed_url.geturl()
             except ValueError as e:
                 yield "error", f"Invalid URL: {e}"
@@ -128,10 +135,16 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         try:
             content = await self.get_request(url, json=False, headers=headers)
         except HTTPClientError as e:
-            yield "error", f"Client error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Client error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except HTTPServerError as e:
-            yield "error", f"Server error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Server error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except Exception as e:
             yield "error", f"Failed to fetch {input_data.url}: {e}"
