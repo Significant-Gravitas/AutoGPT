@@ -240,11 +240,10 @@ async def test_revert_leaves_manually_repointed_nodes_alone(retirement_env):
     assert result.nodes_migrated == 2
 
     third = "user/hand-picked-model"
-    node = await prisma.models.AgentNode.prisma().find_unique(
-        where={"id": node_b}
-    )
+    node = await prisma.models.AgentNode.prisma().find_unique(where={"id": node_b})
     assert node is not None
-    ci = dict(node.constantInput) if isinstance(node.constantInput, dict) else json.loads(str(node.constantInput))
+    assert isinstance(node.constantInput, dict)
+    ci = dict(node.constantInput)
     ci["model"] = third
     await prisma.models.AgentNode.prisma().update(
         where={"id": node_b}, data={"constantInput": prisma.Json(ci)}
