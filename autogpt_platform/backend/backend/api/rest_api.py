@@ -33,7 +33,6 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
-import backend.api.features.llm.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.orgs.invitation_routes
@@ -369,11 +368,6 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"
-)
-app.include_router(
-    backend.api.features.llm.routes.router,
-    tags=["v2", "llm", "public"],
-    prefix="/api/llm",
 )
 app.include_router(
     backend.api.features.admin.store_admin_routes.router,

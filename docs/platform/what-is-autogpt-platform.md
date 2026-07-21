@@ -58,7 +58,7 @@ You can learn more under: [Build your own Blocks](new_blocks.md)
 
 ## Available Language Models
 
-The live model list is served by the platform itself at `GET /api/llm/catalog` (public, no authentication) — the catalog of models, capabilities, and context windows currently available. The platform comes pre-integrated with cutting-edge LLM providers:
+The full model list — models, capabilities, context windows, and pricing — lives in the model catalog checked into the platform itself (`backend/data/llm_registry/catalog.py`), so every install ships with the exact list its code supports. The platform comes pre-integrated with cutting-edge LLM providers:
 
 * OpenAI - <https://openai.com/>
 * Anthropic - <https://www.anthropic.com/>

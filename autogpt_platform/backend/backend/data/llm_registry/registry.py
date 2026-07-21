@@ -1,9 +1,9 @@
 """In-process view of the LLM catalog.
 
 ``load_catalog()`` builds the L1 lookup structures from the canonical
-``catalog.py`` file at startup; copilot routing and the public catalog
-endpoint read through the functions here, while the block layer projects
-the same file directly (``backend.blocks.llm`` / ``block_cost_config``).
+``catalog.py`` file at startup; copilot routing reads through the
+functions here, while the block layer projects the same file directly
+(``backend.blocks.llm`` / ``block_cost_config``).
 The file only changes at deploy, so a startup load is the whole cache
 story — no Redis layer, no cross-pod invalidation.
 
@@ -115,8 +115,7 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
                 context_window=m.context_window,
                 # None means "unknown/no published cap" — substituting
                 # context_window would overstate the output limit (a 1M-token
-                # context model does not emit 1M output tokens) and publish
-                # wrong data through the catalog endpoint.
+                # context model does not emit 1M output tokens).
                 max_output_tokens=m.max_output_tokens,
                 display_name=m.display_name,
                 provider_name=provider_display,

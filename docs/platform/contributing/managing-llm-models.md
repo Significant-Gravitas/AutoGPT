@@ -113,6 +113,6 @@ python -m backend.data.llm_registry.retire --revert <migration-id>
 
 The replacement must exist in the catalog and be enabled. Every executed retirement writes a revertable `LlmModelMigration` record; only one active migration per source model is allowed at a time.
 
-## The public catalog endpoint
+## Reading the catalog from clients
 
-`GET /api/llm/catalog` serves the catalog's public facts — GA-visibility models with their metadata and capabilities, excluding costs and routing cells (deployment-internal config). It is unauthenticated, per-IP rate-limited, and CDN-cacheable; it exists so clients (and, eventually, the catalog-driven model picker) can read the live model list without a code reference.
+There is deliberately no public catalog API: the catalog ships inside the repo, so every deployment and self-hosted install already has the exact model list its code supports. When a frontend surface needs the live list (e.g. a catalog-driven model picker), add a small authenticated route that reads the in-process registry (`backend.data.llm_registry.registry`) — don't reach for an unauthenticated endpoint; the last one existed only to bootstrap DB-seeded installs, a problem the in-repo catalog no longer has.
