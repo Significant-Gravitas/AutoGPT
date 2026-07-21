@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -131,6 +132,30 @@ describe("SettingsProfilePage - data loading", () => {
     expect(
       await screen.findByRole("heading", { name: /^profile$/i, level: 1 }),
     ).toBeDefined();
+  });
+
+  test("renders an empty form (not an error) when the user has no profile yet", async () => {
+    // A 404 from the profile endpoint means "no profile yet" — the page must
+    // render the empty form so the user can create one, not an error card.
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/store/profile", () =>
+        HttpResponse.json(
+          { detail: "User does not have a profile yet" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<SettingsProfilePage />);
+
+    const nameInput = (await screen.findByLabelText(
+      /display name/i,
+    )) as HTMLInputElement;
+    expect(nameInput.value).toBe("");
+    expect((screen.getByLabelText(/^handle$/i) as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
 });
 

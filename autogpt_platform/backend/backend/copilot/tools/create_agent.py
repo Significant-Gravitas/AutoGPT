@@ -9,7 +9,7 @@ from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
-from .helpers import require_guide_read, require_library_check
+from .helpers import coerce_agent_json, require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,12 @@ class CreateAgentTool(BaseTool):
             "type": "object",
             "properties": {
                 "agent_json": {
-                    "type": "object",
-                    "description": "Agent graph with 'nodes' and 'links' arrays.",
+                    "type": ["object", "string"],
+                    "description": (
+                        "Agent graph with 'nodes' and 'links' arrays, or the "
+                        'string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
+                    ),
                 },
                 "library_agent_ids": {
                     "type": "array",
@@ -80,7 +84,7 @@ class CreateAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
@@ -105,10 +109,13 @@ class CreateAgentTool(BaseTool):
                 user_id=user_id, session_id=session_id, outcome="bypassed_ack"
             )
 
+        agent_json = coerce_agent_json(agent_json)
         if not agent_json:
             return ErrorResponse(
                 message=(
-                    "Please provide agent_json with the complete agent graph. "
+                    "Please provide agent_json with the complete agent graph "
+                    "as a JSON object, or as the string "
+                    '"@@agptfile:<path>" referencing a JSON file. '
                     "Use find_block to discover blocks, then generate the JSON."
                 ),
                 error="missing_agent_json",

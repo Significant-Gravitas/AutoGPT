@@ -8,7 +8,9 @@
     "instructions": null,
     "is_active": true,
     "name": "Test Graph",
+    "organization_id": null,
     "recommended_schedule_cron": null,
+    "team_id": null,
     "user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
     "version": 1
   }

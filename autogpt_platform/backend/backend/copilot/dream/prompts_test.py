@@ -87,6 +87,16 @@ def test_consolidate_prompt_has_system_and_user_messages():
     assert "[scope=project:x]" in user_body
 
 
+def test_consolidate_prompt_instructs_merge_and_no_restate():
+    """#13387: the consolidate prompt must tell the model to merge
+    paraphrases into one statement and not re-emit existing active facts."""
+    sys = build_consolidate_prompt(_build_bundle())[0]["content"].lower()
+    assert "one statement per distinct fact" in sys
+    assert "paraphrases" in sys
+    # No-restate-existing rule present.
+    assert "already appears in the active-facts" in sys
+
+
 def test_recombine_prompt_includes_consolidated_output_and_active_facts():
     bundle = _build_bundle()
     consolidated_json = '{"facts": [{"content": "consolidated"}]}'

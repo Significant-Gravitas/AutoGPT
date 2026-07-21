@@ -12,7 +12,9 @@ export const OAUTH_ERROR_WINDOW_CLOSED = "Sign-in window was closed";
 export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
 export const OAUTH_ERROR_FLOW_TIMED_OUT = "OAuth flow timed out";
 export const OAUTH_ERROR_POPUP_BLOCKED =
-  "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.";
+  "Popup blocked — the sign-in window opened in a new tab instead. If you don't see it, allow popups for this site and retry.";
+export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
+  "Popup blocked — allow popups for this site and try again.";
 
 export type OAuthPopupResult = {
   code: string;
@@ -22,6 +24,17 @@ export type OAuthPopupResult = {
 export type OAuthPopupOptions = {
   /** State token to validate against incoming messages */
   stateToken: string;
+  /**
+   * A window pre-opened via {@link preOpenOAuthPopup} synchronously inside the
+   * user-gesture handler, before any `await`. iOS Safari discards the gesture
+   * context at the first async break, so a `window.open()` issued after an
+   * `await` (e.g. after fetching the login URL) is always blocked — callers
+   * that need to do async work before knowing the login URL must pre-open the
+   * window and pass it here. `null` means the browser blocked even the
+   * synchronous open; the new-tab fallback is used. When omitted, the window
+   * is opened inline as before.
+   */
+  preOpenedWindow?: Window | null;
   /**
    * Use BroadcastChannel + localStorage polling on top of postMessage. Needed
    * whenever `window.opener` may not survive (cross-origin OAuth providers
@@ -46,10 +59,29 @@ type Cleanup = {
 };
 
 /**
+ * Opens the blank OAuth window synchronously and returns its handle (null when
+ * the browser blocks it). Must be called directly from a user-gesture handler
+ * (click/tap), before any `await` — browsers, most strictly iOS Safari, block
+ * `window.open()` once the gesture context is lost across an async break.
+ */
+export function preOpenOAuthPopup(): Window | null {
+  const width = 500;
+  const height = 700;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+  return window.open(
+    "about:blank",
+    "_blank",
+    `width=${width},height=${height},left=${left},top=${top},popup=true,scrollbars=yes`,
+  );
+}
+
+/**
  * Opens an OAuth popup and sets up listeners for the callback result.
  *
- * Opens a blank popup synchronously (to avoid popup blockers), then navigates
- * it to the login URL. Returns a promise that resolves with the OAuth code/state.
+ * Opens a blank popup synchronously (to avoid popup blockers) — or adopts the
+ * caller's `preOpenedWindow` when given — then navigates it to the login URL.
+ * Returns a promise that resolves with the OAuth code/state.
  *
  * @param loginUrl - The OAuth authorization URL to navigate to
  * @param options - Configuration for message handling
@@ -67,9 +99,17 @@ export function openOAuthPopup(
    * tab can be easy to miss) and offer a retry path.
    */
   popupBlocked: boolean;
+  /**
+   * True iff the new-tab fallback was refused too — no window exists at all
+   * and the promise has already rejected. Callers must NOT show the
+   * popupBlocked "opened in a new tab" hint in this case; the rejection
+   * already carries the correct allow-popups-and-retry message.
+   */
+  fallbackBlocked: boolean;
 } {
   const {
     stateToken,
+    preOpenedWindow,
     useCrossOriginListeners = false,
     broadcastChannelName = "oauth_popup",
     localStorageKey = "oauth_popup_result",
@@ -79,25 +119,28 @@ export function openOAuthPopup(
 
   const controller = new AbortController();
 
-  // Open popup synchronously (before any async work) to avoid browser popup blockers
-  const width = 500;
-  const height = 700;
-  const left = window.screenX + (window.outerWidth - width) / 2;
-  const top = window.screenY + (window.outerHeight - height) / 2;
-  const popup = window.open(
-    "about:blank",
-    "_blank",
-    `width=${width},height=${height},left=${left},top=${top},popup=true,scrollbars=yes`,
-  );
+  // Adopt the caller's pre-opened window when given (required on iOS Safari,
+  // where window.open only works synchronously inside the gesture handler);
+  // otherwise open it now — still synchronous from the caller's perspective,
+  // so the gesture context is intact when openOAuthPopup itself is called
+  // straight from a click handler.
+  const popup =
+    preOpenedWindow !== undefined ? preOpenedWindow : preOpenOAuthPopup();
 
   let popupBlocked = false;
+  let fallbackBlocked = false;
   if (popup && !popup.closed) {
     popup.location.href = loginUrl;
   } else {
     // Popup was blocked — open in new tab as fallback so the OAuth flow can
     // still complete via postMessage / BroadcastChannel / localStorage poll.
     popupBlocked = true;
-    window.open(loginUrl, "_blank");
+    const fallback = window.open(loginUrl, "_blank");
+    // The fallback open can be blocked too — iOS Safari blocks every
+    // window.open() after an async break, so when the caller pre-opened
+    // (and lost) the window, this open has no gesture context either. No
+    // window exists at all then, so no result can ever arrive.
+    fallbackBlocked = !fallback || fallback.closed;
   }
 
   // Close popup on abort
@@ -120,6 +163,17 @@ export function openOAuthPopup(
 
   const promise = new Promise<OAuthPopupResult>((resolve, reject) => {
     let handled = false;
+
+    // Both the popup and the new-tab fallback were blocked — no window
+    // exists, so no result can ever arrive. Fail fast instead of hanging
+    // until the timeout while the UI claims a tab opened. Retrying from a
+    // fresh tap (the connect button is re-enabled once this rejects) gets a
+    // new user-gesture context.
+    if (fallbackBlocked) {
+      handled = true;
+      reject(new Error(OAUTH_ERROR_POPUP_BLOCKED_NO_TAB));
+      return;
+    }
 
     const handleResult = (data: any) => {
       if (handled) return; // Prevent double-handling
@@ -301,5 +355,6 @@ export function openOAuthPopup(
       signal: controller.signal,
     },
     popupBlocked,
+    fallbackBlocked,
   };
 }
