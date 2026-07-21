@@ -25,6 +25,7 @@ import {
   SquaresFourIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
@@ -34,8 +35,8 @@ import { ComponentProps, ReactNode, Suspense } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
-import { SidebarOrgSwitcher } from "./components/SidebarOrgSwitcher/SidebarOrgSwitcher";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
+import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 
 type NavLink = {
   name: string;
@@ -137,7 +138,10 @@ function CollapsibleNavGroup({
       <SidebarGroup
         className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
       >
-        <SidebarGroupLabel asChild className="text-[13px] font-medium">
+        <SidebarGroupLabel
+          asChild
+          className="text-[13px] font-medium text-zinc-500"
+        >
           <CollapsibleTrigger>
             {label}
             <CaretDownIcon
@@ -191,20 +195,27 @@ export function AppSidebar(props: Props) {
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip="New Task"
-                      className="justify-center rounded-lg bg-zinc-800 font-medium text-white group-data-[collapsible=icon]:justify-start hover:!bg-zinc-900 hover:!text-white"
-                    >
-                      <Link href="/copilot">
-                        <NewTaskIcon />
-                        <span className="truncate">New Task</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
+                <Button
+                  as="NextLink"
+                  href="/copilot"
+                  variant="primary"
+                  size="small"
+                  aria-label="New Task"
+                  leftIcon={<NewTaskIcon />}
+                  className={cn(
+                    "relative h-10 w-full overflow-hidden",
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-6px_rgba(139,92,246,0.45)]",
+                    "transition-all duration-300",
+                    "hover:-translate-y-px hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_22px_-6px_rgba(139,92,246,0.7)]",
+                    "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:transition-transform before:duration-700 before:ease-out hover:before:translate-x-full",
+                    "motion-reduce:transition-none motion-reduce:before:hidden motion-reduce:hover:translate-y-0",
+                    "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-0",
+                  )}
+                >
+                  <span className="truncate group-data-[collapsible=icon]:hidden">
+                    New Task
+                  </span>
+                </Button>
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
@@ -239,7 +250,7 @@ export function AppSidebar(props: Props) {
         </motion.div>
       </SidebarContent>
 
-      <SidebarOrgSwitcher />
+      <SidebarUserActions />
 
       <SidebarRail />
     </Sidebar>
