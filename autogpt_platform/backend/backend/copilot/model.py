@@ -105,18 +105,19 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
-    # Which LLM served this assistant turn and which routing layer picked it
+    # Which LLM served this assistant turn ("model" — visible to clients,
+    # the model-badge UX) and which routing layer picked it
     # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
     # overload fallback served a different model than the routed one).
     # Product-intelligence mirrors these to segment quality judgments by
     # model. None on user/tool rows.
     #
-    # Deliberately NOT exclude=True: the persistence layer serializes
-    # messages via model_dump (insert + back-fill both read these keys),
-    # and surfacing the serving model to clients is intended (model badge
-    # UX). routing_source rides along; it names a layer, not a secret.
+    # routing_source is excluded from serialized payloads: "ld" vs "env"
+    # would let a client infer LaunchDarkly cohort membership. It still
+    # persists — the DB save path maps fields explicitly (not via
+    # model_dump) and the back-fill reads attributes.
     model: str | None = None
-    routing_source: str | None = None
+    routing_source: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already

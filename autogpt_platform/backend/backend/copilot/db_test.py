@@ -1008,3 +1008,19 @@ async def test_update_chat_message_stamps_maps_prisma_columns():
         "routingSource": "fallback",
     }
     assert kwargs["where"]["sessionId_sequence"]["sequence"] == 7
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_stamps_not_found_returns_false():
+    """No matching row → False (the back-fill loop logs and keeps going)."""
+    from backend.copilot.db import update_chat_message_stamps
+
+    with patch.object(PrismaChatMessage, "prisma") as mock_msg:
+        mock_msg.return_value.update = AsyncMock(return_value=None)
+        ok = await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=99,
+            model="claude-sonnet-4-6",
+            routing_source="env",
+        )
+    assert ok is False

@@ -1,6 +1,7 @@
 """Tests for the LD-aware model resolver."""
 
 import logging
+import textwrap
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,6 +9,24 @@ import pytest
 import backend.data.llm_registry.registry as reg
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_router import _config_default, resolve_model_route
+
+
+def _function_calls(module_name: str, obj_name: str, callee: str) -> bool:
+    """AST-verified: *obj_name* in *module_name* contains a real CALL of
+    *callee* — a commented-out call cannot pass (unlike source grep)."""
+    import ast
+    import importlib
+    import inspect
+
+    module = importlib.import_module(module_name)
+    src = textwrap.dedent(inspect.getsource(getattr(module, obj_name)))
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Call):
+            f = node.func
+            name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
+            if name == callee:
+                return True
+    return False
 
 
 async def resolve_model(mode, tier, user_id, *, config):
@@ -23,10 +42,10 @@ def _empty_catalog_by_default():
     the real catalog into the module globals and legitimately leave it there.
     Snapshot, clear, restore, so suite order can never change outcomes.
     TestRegistryGating's own fixture layers its populated state on top."""
-    old = (reg._dynamic_models, reg._routes)
-    reg._dynamic_models, reg._routes = {}, {}
+    old = (reg._dynamic_models, reg._date_stripped_models, reg._routes)
+    reg._dynamic_models, reg._date_stripped_models, reg._routes = {}, {}, {}
     yield
-    reg._dynamic_models, reg._routes = old
+    reg._dynamic_models, reg._date_stripped_models, reg._routes = old
 
 
 def _make_config() -> ChatConfig:
@@ -380,6 +399,14 @@ class TestRegistryGating:
             "claude-opus-4-7": make("claude-opus-4-7"),
         }
         reg._routes = {}
+        # Mirror load_catalog's derived index for the seeded models.
+        from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
+        reg._date_stripped_models = {
+            stripped: m
+            for slug, m in reg._dynamic_models.items()
+            if (stripped := MODEL_DATE_SUFFIX_RE.sub("", slug)) != slug
+        }
         # Cell tests exercise the cloud path — the test env's default
         # behave_as is LOCAL, which (correctly) skips cells entirely.
         import backend.copilot.model_router as router_mod
@@ -444,6 +471,9 @@ class TestRegistryGating:
         self.reg._dynamic_models["claude-haiku-4-5-20251001"] = self.make(
             "claude-haiku-4-5-20251001"
         )
+        self.reg._date_stripped_models["claude-haiku-4-5"] = self.reg._dynamic_models[
+            "claude-haiku-4-5-20251001"
+        ]
         self._ld(mocker, "anthropic/claude-haiku-4-5")
         resolved = await resolve_model_route(
             "fast", "standard", "user-1", config=_make_config()
@@ -672,11 +702,9 @@ class TestExecutorCatalogLoad:
             manager._load_catalog()
 
     def test_executor_run_invokes_the_loader(self):
-        import inspect
-
-        from backend.copilot.executor.manager import CoPilotExecutor
-
-        assert "_load_catalog" in inspect.getsource(CoPilotExecutor.run), (
+        assert _function_calls(
+            "backend.copilot.executor.manager", "CoPilotExecutor", "_load_catalog"
+        ), (
             "CoPilotExecutor.run must load the LLM catalog — turns execute in "
             "this process, and without the load every routing cell and "
             "serve-time gate silently no-ops"
@@ -822,12 +850,9 @@ class TestRestApiCatalogLoad:
     the executor gets)."""
 
     def test_lifespan_invokes_the_loader(self):
-        import inspect
-
-        import backend.api.rest_api as rest_api
-
-        src = inspect.getsource(rest_api.lifespan_context)
-        assert "load_catalog" in src, (
+        assert _function_calls(
+            "backend.api.rest_api", "lifespan_context", "load_catalog"
+        ), (
             "rest_api's lifespan must load the LLM catalog — without it "
             "routing cells and serve-time gating silently no-op in the "
             "API process"

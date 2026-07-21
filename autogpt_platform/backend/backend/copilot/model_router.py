@@ -49,7 +49,6 @@ import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
-from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -91,11 +90,11 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
             return model
     # Anthropic's API slugs carry a -YYYYMMDD snapshot suffix that the
     # OpenRouter canonical form drops (anthropic/claude-haiku-4-5 ↔ catalog
-    # claude-haiku-4-5-20251001) — match on the date-stripped catalog slug
-    # so LD experiments can route to snapshot-suffixed models.
-    candidate_set = set(candidates)
-    for model in llm_registry.get_all_models():
-        if MODEL_DATE_SUFFIX_RE.sub("", model.slug) in candidate_set:
+    # claude-haiku-4-5-20251001) — resolve via the date-stripped index
+    # built at catalog load (O(1), no per-turn scan).
+    for candidate in candidates:
+        model = llm_registry.get_model_by_date_stripped_slug(candidate)
+        if model is not None:
             return model
     return None
 

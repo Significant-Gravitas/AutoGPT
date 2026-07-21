@@ -26,6 +26,7 @@ from backend.data.llm_registry.catalog_model import (
     ModelVisibility,
     SubscriptionTierName,
 )
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,9 @@ class RegistryModel(BaseModel):
 # swaps are atomic, and the file can't change under a running process, so no
 # locking is needed.
 _dynamic_models: dict[str, RegistryModel] = {}
+# Date-stripped slug → model (claude-haiku-4-5 → the -20251001 entry), so
+# the router's snapshot-suffix fallback is an O(1) lookup, not a scan.
+_date_stripped_models: dict[str, RegistryModel] = {}
 _routes: dict[tuple[str, str, str], str] = {}
 _loaded = False
 
@@ -142,7 +146,7 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     empty registry (which would silently disable routing cells and
     serve-time gating).
     """
-    global _dynamic_models, _routes, _loaded
+    global _dynamic_models, _date_stripped_models, _routes, _loaded
     if payload is None:
         payload = get_catalog()
     models = _build_models(payload)
@@ -153,6 +157,11 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
         for tier, slug in tiers.items()
     }
     _dynamic_models = models
+    _date_stripped_models = {
+        stripped: model
+        for slug, model in models.items()
+        if (stripped := MODEL_DATE_SUFFIX_RE.sub("", slug)) != slug
+    }
     _routes = routes
     _loaded = True
     logger.info(
@@ -175,6 +184,12 @@ def is_loaded() -> bool:
 def get_model(slug: str) -> RegistryModel | None:
     """Get a model by slug from the catalog."""
     return _dynamic_models.get(slug)
+
+
+def get_model_by_date_stripped_slug(slug: str) -> RegistryModel | None:
+    """Resolve a date-suffix-less spelling to its snapshot-suffixed catalog
+    entry (``claude-haiku-4-5`` → the ``-20251001`` model)."""
+    return _date_stripped_models.get(slug)
 
 
 def get_all_models() -> list[RegistryModel]:

@@ -1590,10 +1590,12 @@ class TestStampTurnMessages:
 
 
 class TestChatMessageStampRoundTrip:
-    """model/routing_source survive the ChatMessage serialization cycle the
-    persistence layer uses."""
+    """model survives client-facing serialization; routing_source is
+    deliberately EXCLUDED from payloads (clients could infer LD cohort
+    membership from "ld" vs "env") while persisting via the explicit
+    field-mapped DB path."""
 
-    def test_round_trip(self):
+    def test_model_serializes_routing_source_excluded(self):
         from backend.copilot.model import ChatMessage
 
         msg = ChatMessage(
@@ -1603,9 +1605,11 @@ class TestChatMessageStampRoundTrip:
             model="claude-sonnet-4-6",
             routing_source="catalog",
         )
-        restored = ChatMessage.model_validate(msg.model_dump())
-        assert restored.model == "claude-sonnet-4-6"
-        assert restored.routing_source == "catalog"
+        dumped = msg.model_dump()
+        assert dumped["model"] == "claude-sonnet-4-6"
+        assert "routing_source" not in dumped
+        # The DB path reads the attribute, not the dump.
+        assert msg.routing_source == "catalog"
 
 
 class TestSameModelCanonicalization:
