@@ -69,8 +69,7 @@ export function SidebarRunsList({
     isFetchingMoreRuns,
     tabValue,
   } = useSidebarRunsList({
-    graphId: agent.graph_id,
-    libraryAgentID: agent.id,
+    agent,
     onSelectRun,
     onCountsChange,
   });

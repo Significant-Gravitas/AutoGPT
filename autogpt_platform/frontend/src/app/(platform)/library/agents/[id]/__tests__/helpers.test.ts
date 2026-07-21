@@ -50,6 +50,9 @@ describe("retryUnlessClientError", () => {
     });
     expect(isClientError(notFound)).toBe(true);
     expect(retryUnlessClientError(0, notFound)).toBe(false);
+    expect(retryUnlessClientError(0, { status: 401 })).toBe(false);
+    expect(retryUnlessClientError(0, { status: 403 })).toBe(false);
+    expect(retryUnlessClientError(0, { status: 422 })).toBe(false);
   });
 
   test("retries server errors and unknown error shapes up to 3 times", () => {

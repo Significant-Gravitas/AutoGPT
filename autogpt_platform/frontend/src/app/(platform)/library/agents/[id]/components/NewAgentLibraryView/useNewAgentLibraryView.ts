@@ -84,7 +84,7 @@ export function useNewAgentLibraryView() {
     data: _template,
     isSuccess: isTemplateLoaded,
     isLoading: isTemplateLoading,
-    error: templateError,
+    error: rawTemplateError,
   } = useGetV2GetASpecificPreset(activeItemId ?? "", {
     query: {
       enabled: Boolean(activeTab === "templates" && activeItemId),
@@ -92,6 +92,11 @@ export function useNewAgentLibraryView() {
       retry: retryUnlessClientError,
     },
   });
+  // This query shares its cache key with SelectedTriggerView's preset
+  // detail query, so its error state is only meaningful on the Templates
+  // tab — a 404 on the Triggers tab is handled inline there and must not
+  // surface as a page-level error.
+  const templateError = activeTab === "templates" ? rawTemplateError : null;
   const activeTemplate =
     isTemplateLoaded &&
     activeTab === "templates" &&
@@ -301,11 +306,7 @@ export function useNewAgentLibraryView() {
     ready: isSuccess,
     activeTemplate,
     isTemplateLoading,
-    // The template query shares its cache key with the trigger detail
-    // view's preset query, so its error state must only surface on the
-    // Templates tab — otherwise a 404 on the Triggers tab (handled inline
-    // there) would blank the whole page.
-    error: error || (activeTab === "templates" ? templateError : null),
+    error: error || templateError,
     hasAnyItems,
     showSidebarLayout,
     activeItemId,

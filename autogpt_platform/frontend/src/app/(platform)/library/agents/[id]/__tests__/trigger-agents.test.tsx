@@ -68,12 +68,16 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 // flag-off branch is covered by a dedicated test that overrides this
 // per-call.
 const mockUseGetFlag = vi.hoisted(() => vi.fn(() => true));
+const mockFlagReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     GENERIC_TRIGGER_AGENTS: "generic-trigger-agents",
   },
   useGetFlag: mockUseGetFlag,
-  useFlagStatus: () => ({ enabled: mockUseGetFlag(), ready: true }),
+  useFlagStatus: () => ({
+    enabled: mockUseGetFlag(),
+    ready: mockFlagReady.current,
+  }),
 }));
 
 // Per-test render wrapper so we can set the nuqs initial URL state
@@ -172,6 +176,7 @@ describe("Library agent view — trigger agents", () => {
     server.resetHandlers();
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
+    mockFlagReady.current = true;
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
@@ -491,7 +496,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger Details");
-    expect(screen.getByDisplayValue("Webhook Trigger")).toBeDefined();
+    screen.getByDisplayValue("Webhook Trigger");
   });
 
   test("agent:-prefixed activeItem renders the trigger agent detail view", async () => {
@@ -535,7 +540,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger Details");
-    expect(screen.getByDisplayValue("Hinted Webhook Trigger")).toBeDefined();
+    screen.getByDisplayValue("Hinted Webhook Trigger");
   });
 
   test("stale trigger id shows a graceful not-found state without fetching a preset", async () => {
@@ -676,7 +681,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger Details");
-    expect(screen.getByDisplayValue("Actually A Preset")).toBeDefined();
+    screen.getByDisplayValue("Actually A Preset");
   });
 
   test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
@@ -701,7 +706,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger Details");
-    expect(screen.getByDisplayValue("Beyond Page Trigger")).toBeDefined();
+    screen.getByDisplayValue("Beyond Page Trigger");
     expect(screen.queryByText("Trigger not found")).toBeNull();
   });
 
@@ -767,6 +772,47 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText(/when retrieving triggers/i);
+  });
+
+  test("error card 'Try Again' refetches the failed list and recovers", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler422(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=some-bare-id",
+    );
+
+    await screen.findByText(/when retrieving triggers/i);
+
+    server.use(emptyPresetsHandler);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await screen.findByText("Trigger not found");
+    expect(screen.queryByText(/when retrieving triggers/i)).toBeNull();
+  });
+
+  test("shows the loading skeleton while the feature flag is still resolving", async () => {
+    mockFlagReady.current = false;
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=some-bare-id",
+    );
+
+    await screen.findByTestId("loading-selected-content");
+    expect(screen.queryByText("Trigger not found")).toBeNull();
   });
 
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {

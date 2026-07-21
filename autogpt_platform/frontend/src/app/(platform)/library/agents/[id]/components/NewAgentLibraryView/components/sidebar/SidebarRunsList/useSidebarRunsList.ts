@@ -10,6 +10,7 @@ import {
 } from "@/app/api/helpers";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   activeItemParamFor,
@@ -37,8 +38,7 @@ function parseTab(
 }
 
 type Args = {
-  graphId: string;
-  libraryAgentID: string;
+  agent: LibraryAgent;
   onSelectRun: (
     runId: string,
     tab?: "runs" | "scheduled" | "templates" | "triggers",
@@ -53,11 +53,15 @@ type Args = {
 };
 
 export function useSidebarRunsList({
-  graphId,
-  libraryAgentID,
+  agent,
   onSelectRun,
   onCountsChange,
 }: Args) {
+  // Derived from the same LibraryAgent object the parent view fetched, so
+  // the presets query here and in useNewAgentLibraryView share one cache
+  // entry by construction.
+  const graphId = agent.graph_id;
+  const libraryAgentID = agent.id;
   const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({
     activeItem: parseAsString,
     activeTab: parseAsString,

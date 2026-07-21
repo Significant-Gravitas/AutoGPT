@@ -1,3 +1,4 @@
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 
 export const AGENT_LIBRARY_SECTION_PADDING_X = "px-4";
@@ -21,6 +22,9 @@ const TRIGGER_KIND_PREFIX: Record<TriggerKind, string> = {
  * presets — so the right detail view can render without waiting for the
  * trigger-agent and preset lists to load. Bare IDs (old links, other tabs)
  * parse with a null hint and are resolved by list membership instead.
+ *
+ * The prefix tokens can't collide with real IDs: item IDs are UUIDs, which
+ * never contain `:` nor start with `agent:`/`preset:`.
  */
 export function parseActiveItemParam(activeItem: string | null): {
   activeItemId: string | null;
@@ -58,7 +62,7 @@ export function isWebhookPreset(preset: LibraryAgentPreset): boolean {
 export function deriveSelectedTriggerKind(args: {
   activeItemId: string | null;
   triggerKindHint: TriggerKind | null;
-  triggerAgents: { id: string }[] | undefined;
+  triggerAgents: Pick<LibraryAgent, "id">[] | undefined;
   presets: LibraryAgentPreset[] | undefined;
   /** Whether the fetched presets page is the complete set for this agent. */
   presetsComplete: boolean;
