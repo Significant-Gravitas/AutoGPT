@@ -47,12 +47,63 @@ export function isWebhookPreset(preset: LibraryAgentPreset): boolean {
   return !!preset.webhook_id;
 }
 
+/**
+ * Resolve what a selected Triggers-tab item actually is. An unknown ID must
+ * never be assumed to be a preset: firing a preset fetch for a trigger-agent
+ * ID (or a stale link) guarantees a 404 error screen. List membership is the
+ * source of truth; the URL's `agent:`/`preset:` hint only short-circuits the
+ * loading state, so a wrong or stale hint still resolves to the right view
+ * (or "not-found") once the lists load.
+ */
+export function deriveSelectedTriggerKind(args: {
+  activeItemId: string | null;
+  triggerKindHint: TriggerKind | null;
+  triggerAgents: { id: string }[] | undefined;
+  presets: LibraryAgentPreset[] | undefined;
+  /** Whether the fetched presets page is the complete set for this agent. */
+  presetsComplete: boolean;
+  /** Whether both list queries have settled successfully. */
+  listsResolved: boolean;
+  anyListFailed: boolean;
+}): SelectedTriggerKind | null {
+  if (!args.activeItemId) return null;
+  if (args.triggerAgents?.some((t) => t.id === args.activeItemId)) {
+    return "trigger-agent";
+  }
+  if (
+    args.presets?.some((p) => isWebhookPreset(p) && p.id === args.activeItemId)
+  ) {
+    return "webhook-trigger";
+  }
+
+  // Membership is only conclusive once both lists have resolved: a pending
+  // or failed fetch says nothing about whether the item exists.
+  if (!args.listsResolved) {
+    if (args.triggerKindHint) return args.triggerKindHint;
+    return args.anyListFailed ? "error" : "loading";
+  }
+  // The fetched presets page may be capped; if it isn't the complete set,
+  // the ID could be a preset beyond the first page — let the preset detail
+  // view resolve it by ID (it fails fast into the not-found card if gone).
+  if (!args.presetsComplete) return "webhook-trigger";
+  return "not-found";
+}
+
 export function isClientError(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("status" in error)) {
     return false;
   }
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" && status >= 400 && status < 500;
+}
+
+export function isNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status?: unknown }).status === 404
+  );
 }
 
 /**

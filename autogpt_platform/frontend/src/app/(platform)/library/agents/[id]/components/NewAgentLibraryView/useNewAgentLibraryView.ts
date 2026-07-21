@@ -10,7 +10,7 @@ import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentP
 import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
-  isWebhookPreset,
+  deriveSelectedTriggerKind,
   parseActiveItemParam,
   retryUnlessClientError,
   SelectedTriggerKind,
@@ -52,7 +52,11 @@ export function useNewAgentLibraryView() {
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
-    query: { enabled: triggerAgentsEnabled && !!agentId, select: okData },
+    query: {
+      enabled: triggerAgentsEnabled && !!agentId,
+      select: okData,
+      retry: retryUnlessClientError,
+    },
   });
   const triggerAgents = triggerAgentsQuery.data;
 
@@ -265,38 +269,21 @@ export function useNewAgentLibraryView() {
     onItemCreated({ item: newSchedule, type: "scheduled" });
   }
 
-  // What the selected item on the Triggers tab actually is. An unknown ID
-  // must never be assumed to be a preset: firing a preset fetch for a
-  // trigger-agent ID (or a stale link) guarantees a 404 error screen.
-  // List membership is the source of truth; the URL's `agent:`/`preset:`
-  // hint only short-circuits the loading state, so a wrong or stale hint
-  // still resolves to the right view (or "not-found") once the lists load.
-  function getSelectedTriggerKind(): SelectedTriggerKind | null {
-    if (activeTab !== "triggers" || !activeItemId) return null;
-    if (triggerAgents?.some((t) => t.id === activeItemId)) {
-      return "trigger-agent";
-    }
-    if (presets?.some((p) => isWebhookPreset(p) && p.id === activeItemId)) {
-      return "webhook-trigger";
-    }
-
-    // Membership is only conclusive once both lists have resolved: a pending
-    // or failed fetch says nothing about whether the item exists.
-    const triggerAgentsUnresolved =
-      !triggerAgentsFlagReady ||
-      (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
-    if (!presetsQuery.isSuccess || triggerAgentsUnresolved) {
-      if (triggerKindHint) return triggerKindHint;
-      const anyListFailed = presetsQuery.isError || triggerAgentsQuery.isError;
-      return anyListFailed ? "error" : "loading";
-    }
-    // The fetched presets page may be capped; if it isn't the complete set,
-    // the ID could be a preset beyond the first page — let the preset detail
-    // view resolve it by ID (it fails fast with an error card if truly gone).
-    if (!presetsComplete) return "webhook-trigger";
-    return "not-found";
-  }
-  const selectedTriggerKind = getSelectedTriggerKind();
+  const triggerAgentsUnresolved =
+    !triggerAgentsFlagReady ||
+    (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
+  const selectedTriggerKind: SelectedTriggerKind | null =
+    activeTab === "triggers"
+      ? deriveSelectedTriggerKind({
+          activeItemId,
+          triggerKindHint,
+          triggerAgents,
+          presets,
+          presetsComplete,
+          listsResolved: presetsQuery.isSuccess && !triggerAgentsUnresolved,
+          anyListFailed: presetsQuery.isError || triggerAgentsQuery.isError,
+        })
+      : null;
   const selectedTriggerError = presetsQuery.error || triggerAgentsQuery.error;
 
   return {
@@ -308,7 +295,6 @@ export function useNewAgentLibraryView() {
     error: error || templateError,
     hasAnyItems,
     showSidebarLayout,
-    activeItem,
     activeItemId,
     selectedTriggerKind,
     selectedTriggerError,

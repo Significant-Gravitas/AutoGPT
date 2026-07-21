@@ -4,6 +4,7 @@ import {
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
+  getGetV2ListTriggerAgentsMockHandler422,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -13,6 +14,7 @@ import {
   getGetV2ListPresetsMockHandler,
   getGetV2ListPresetsMockHandler422,
 } from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
@@ -130,6 +132,40 @@ const emptyPresetsHandler = getGetV2ListPresetsMockHandler({
 const emptySchedulesHandler =
   getGetV1ListExecutionSchedulesForAGraphMockHandler([]);
 
+function makeWebhookPreset(overrides: Partial<LibraryAgentPreset> = {}) {
+  return {
+    id: "preset-1",
+    user_id: "user-1",
+    graph_id: PARENT_GRAPH_ID,
+    graph_version: 1,
+    name: "Webhook Trigger",
+    description: "",
+    inputs: {},
+    credentials: {},
+    is_active: true,
+    webhook_id: "webhook-1",
+    webhook: null,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    updated_at: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function singlePresetListHandler(
+  preset: ReturnType<typeof makeWebhookPreset>,
+  totalItems = 1,
+) {
+  return getGetV2ListPresetsMockHandler({
+    presets: [preset],
+    pagination: {
+      total_items: totalItems,
+      total_pages: Math.ceil(totalItems / 100),
+      current_page: 1,
+      page_size: 100,
+    },
+  });
+}
+
 describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
@@ -188,31 +224,7 @@ describe("Library agent view — trigger agents", () => {
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
-      getGetV2ListPresetsMockHandler({
-        presets: [
-          {
-            id: "preset-1",
-            user_id: "user-1",
-            graph_id: PARENT_GRAPH_ID,
-            graph_version: 1,
-            name: "Webhook Trigger",
-            description: "",
-            inputs: {},
-            credentials: {},
-            is_active: true,
-            webhook_id: "webhook-1",
-            webhook: null,
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            updated_at: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(makeWebhookPreset()),
     );
 
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
@@ -460,35 +472,15 @@ describe("Library agent view — trigger agents", () => {
   });
 
   test("selecting a webhook trigger renders its preset detail view", async () => {
-    const webhookPreset = {
-      id: "preset-1",
-      user_id: "user-1",
-      graph_id: PARENT_GRAPH_ID,
-      graph_version: 1,
-      name: "Webhook Trigger",
+    const webhookPreset = makeWebhookPreset({
       description: "Fires on webhook",
-      inputs: {},
-      credentials: {},
-      is_active: true,
-      webhook_id: "webhook-1",
-      webhook: null,
-      created_at: new Date("2026-01-01T00:00:00.000Z"),
-      updated_at: new Date("2026-01-01T00:00:00.000Z"),
-    };
+    });
 
     server.use(
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
-      getGetV2ListPresetsMockHandler({
-        presets: [webhookPreset],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(webhookPreset),
       getGetV2GetASpecificPresetMockHandler(webhookPreset),
     );
 
@@ -526,35 +518,13 @@ describe("Library agent view — trigger agents", () => {
   });
 
   test("preset:-prefixed activeItem renders the webhook trigger detail view", async () => {
-    const webhookPreset = {
-      id: "preset-1",
-      user_id: "user-1",
-      graph_id: PARENT_GRAPH_ID,
-      graph_version: 1,
-      name: "Hinted Webhook Trigger",
-      description: "",
-      inputs: {},
-      credentials: {},
-      is_active: true,
-      webhook_id: "webhook-1",
-      webhook: null,
-      created_at: new Date("2026-01-01T00:00:00.000Z"),
-      updated_at: new Date("2026-01-01T00:00:00.000Z"),
-    };
+    const webhookPreset = makeWebhookPreset({ name: "Hinted Webhook Trigger" });
 
     server.use(
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
-      getGetV2ListPresetsMockHandler({
-        presets: [webhookPreset],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(webhookPreset),
       getGetV2GetASpecificPresetMockHandler(webhookPreset),
     );
 
@@ -595,7 +565,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger not found");
-    await screen.findByText(/no longer exists/i);
+    await screen.findByText(/doesn't exist or is no longer available/i);
     expect(presetGetCalls).toBe(0);
   });
 
@@ -608,12 +578,17 @@ describe("Library agent view — trigger agents", () => {
       is_hidden: true,
     });
 
+    let releaseTriggerAgents!: () => void;
+    const listGate = new Promise<void>((resolve) => {
+      releaseTriggerAgents = resolve;
+    });
+
     server.use(
       ...baseHandlers(),
       emptyPresetsHandler,
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await listGate;
         return [triggerAgent];
       }),
     );
@@ -626,6 +601,7 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByTestId("loading-selected-content");
     expect(screen.queryByText("Loaded after a delay")).toBeNull();
 
+    releaseTriggerAgents();
     await screen.findByText("Loaded after a delay");
   });
 
@@ -675,6 +651,68 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByRole("button", { name: /clear selection/i });
   });
 
+  test("membership self-corrects a wrong agent: hint to the webhook trigger view", async () => {
+    const webhookPreset = makeWebhookPreset({ name: "Actually A Preset" });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      singlePresetListHandler(webhookPreset),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=agent:${webhookPreset.id}`,
+    );
+
+    await screen.findByText("Trigger Details");
+    expect(screen.getByDisplayValue("Actually A Preset")).toBeDefined();
+  });
+
+  test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
+    const beyondPagePreset = makeWebhookPreset({
+      id: "beyond-page-1",
+      name: "Beyond Page Trigger",
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      // The first page doesn't contain the selected ID, but total_items says
+      // the page is incomplete — membership must NOT conclude "not-found".
+      singlePresetListHandler(makeWebhookPreset(), 150),
+      getGetV2GetASpecificPresetMockHandler(beyondPagePreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=beyond-page-1",
+    );
+
+    await screen.findByText("Trigger Details");
+    expect(screen.getByDisplayValue("Beyond Page Trigger")).toBeDefined();
+    expect(screen.queryByText("Trigger not found")).toBeNull();
+  });
+
+  test("failed trigger-agents fetch shows an error card even when presets load fine", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler422(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=some-bare-id",
+    );
+
+    await screen.findByText(/when retrieving triggers/i);
+  });
+
   test("failed presets fetch shows an error card instead of an endless skeleton", async () => {
     server.use(
       ...baseHandlers(),
@@ -712,31 +750,7 @@ describe("Library agent view — trigger agents", () => {
         return [triggerAgent];
       }),
       // Webhook trigger so the Triggers tab still has reason to exist.
-      getGetV2ListPresetsMockHandler({
-        presets: [
-          {
-            id: "preset-1",
-            user_id: "user-1",
-            graph_id: PARENT_GRAPH_ID,
-            graph_version: 1,
-            name: "Webhook Trigger",
-            description: "",
-            inputs: {},
-            credentials: {},
-            is_active: true,
-            webhook_id: "webhook-1",
-            webhook: null,
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            updated_at: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(makeWebhookPreset()),
     );
 
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");

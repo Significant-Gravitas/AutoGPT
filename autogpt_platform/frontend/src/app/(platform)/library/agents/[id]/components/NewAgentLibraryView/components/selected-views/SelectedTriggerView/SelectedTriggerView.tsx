@@ -4,6 +4,8 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { isNotFoundError } from "../../../helpers";
+import { TriggerNotFound } from "../../other/TriggerNotFound";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
@@ -55,6 +57,16 @@ export function SelectedTriggerView({
   const agentCredentialsFields = getAgentCredentialsFields(agent);
   const inputFields = Object.entries(agentInputFields);
   const credentialFields = Object.entries(agentCredentialsFields);
+
+  if (isNotFoundError(error)) {
+    return (
+      <TriggerNotFound
+        agent={agent}
+        banner={banner}
+        onClearSelection={onClearSelectedRun}
+      />
+    );
+  }
 
   if (error) {
     return (

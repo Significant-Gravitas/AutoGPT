@@ -18,8 +18,7 @@ export function TriggerNotFound({ agent, banner, onClearSelection }: Props) {
       <RunDetailCard title="Trigger not found">
         <div className="flex flex-col items-start gap-4">
           <Text variant="body" className="!text-zinc-500">
-            This trigger no longer exists. It may have been removed or replaced
-            when the agent was updated.
+            This trigger doesn&apos;t exist or is no longer available.
           </Text>
           {onClearSelection && (
             <Button variant="secondary" size="small" onClick={onClearSelection}>

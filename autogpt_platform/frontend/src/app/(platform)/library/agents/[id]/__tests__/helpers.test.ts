@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
+import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import {
   activeItemParamFor,
+  deriveSelectedTriggerKind,
   isClientError,
   parseActiveItemParam,
   retryUnlessClientError,
@@ -58,5 +60,86 @@ describe("retryUnlessClientError", () => {
     expect(retryUnlessClientError(0, new Error("network down"))).toBe(true);
     expect(retryUnlessClientError(0, null)).toBe(true);
     expect(retryUnlessClientError(0, { status: "404" })).toBe(true);
+  });
+});
+
+describe("deriveSelectedTriggerKind", () => {
+  const webhookPreset = {
+    id: "preset-1",
+    webhook_id: "webhook-1",
+  } as LibraryAgentPreset;
+  const template = { id: "template-1", webhook_id: null } as LibraryAgentPreset;
+  const settled = {
+    triggerAgents: [{ id: "agent-1" }],
+    presets: [webhookPreset, template],
+    presetsComplete: true,
+    listsResolved: true,
+    anyListFailed: false,
+    triggerKindHint: null,
+  };
+
+  test("returns null without a selection", () => {
+    expect(
+      deriveSelectedTriggerKind({ ...settled, activeItemId: null }),
+    ).toBeNull();
+  });
+
+  test("resolves membership, ignoring a contradicting hint", () => {
+    expect(
+      deriveSelectedTriggerKind({
+        ...settled,
+        activeItemId: "agent-1",
+        triggerKindHint: "webhook-trigger",
+      }),
+    ).toBe("trigger-agent");
+    expect(
+      deriveSelectedTriggerKind({
+        ...settled,
+        activeItemId: "preset-1",
+        triggerKindHint: "trigger-agent",
+      }),
+    ).toBe("webhook-trigger");
+  });
+
+  test("does not classify a non-webhook template as a trigger", () => {
+    expect(
+      deriveSelectedTriggerKind({ ...settled, activeItemId: "template-1" }),
+    ).toBe("not-found");
+  });
+
+  test("uses the hint while lists are unresolved, else loading/error", () => {
+    const unresolved = {
+      ...settled,
+      activeItemId: "unknown-id",
+      triggerAgents: undefined,
+      presets: undefined,
+      listsResolved: false,
+    };
+    expect(
+      deriveSelectedTriggerKind({
+        ...unresolved,
+        triggerKindHint: "trigger-agent",
+      }),
+    ).toBe("trigger-agent");
+    expect(deriveSelectedTriggerKind(unresolved)).toBe("loading");
+    expect(
+      deriveSelectedTriggerKind({ ...unresolved, anyListFailed: true }),
+    ).toBe("error");
+  });
+
+  test("falls back to the preset detail view when the presets page is incomplete", () => {
+    expect(
+      deriveSelectedTriggerKind({
+        ...settled,
+        activeItemId: "unknown-id",
+        presetsComplete: false,
+      }),
+    ).toBe("webhook-trigger");
+  });
+
+  test("concludes not-found only when both lists are complete and resolved", () => {
+    expect(
+      deriveSelectedTriggerKind({ ...settled, activeItemId: "unknown-id" }),
+    ).toBe("not-found");
   });
 });

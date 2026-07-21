@@ -163,7 +163,7 @@ export function NewAgentLibraryView() {
             />
           </SelectedViewLayout>
         );
-      default:
+      case "not-found":
         return (
           <TriggerNotFound
             agent={agent}
@@ -171,6 +171,8 @@ export function NewAgentLibraryView() {
             onClearSelection={handleClearSelectedRun}
           />
         );
+      default:
+        return null;
     }
   }
 

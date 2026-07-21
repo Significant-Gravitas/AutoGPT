@@ -11,7 +11,11 @@ import {
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { activeItemParamFor, isWebhookPreset } from "../../../helpers";
+import {
+  activeItemParamFor,
+  isWebhookPreset,
+  retryUnlessClientError,
+} from "../../../helpers";
 import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -88,6 +92,7 @@ export function useSidebarRunsList({
     query: {
       enabled: triggerAgentsEnabled && !!libraryAgentID,
       select: okData,
+      retry: retryUnlessClientError,
     },
   });
 

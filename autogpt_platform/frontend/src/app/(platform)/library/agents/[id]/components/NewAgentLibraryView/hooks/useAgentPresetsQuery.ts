@@ -1,5 +1,6 @@
 import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
 import { okData } from "@/app/api/helpers";
+import { retryUnlessClientError } from "../helpers";
 
 const PRESETS_PAGE_SIZE = 100;
 
@@ -19,6 +20,7 @@ export function useAgentPresetsQuery(graphId: string | undefined) {
       query: {
         enabled: !!graphId,
         select: okData,
+        retry: retryUnlessClientError,
       },
     },
   );
