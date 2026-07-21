@@ -490,9 +490,8 @@ class GithubListPRReviewersBlock(Block):
 
         reviewer: ReviewerItem = SchemaField(
             title="Reviewer",
-            description="Reviewers with their username, profile URL, and review "
-            "status. Note: `has_reviewed` is always false unless "
-            "'Include Past Reviewers' is enabled.",
+            description="Reviewers with their username, profile URL, "
+            "and review status.",
         )
         reviewers: list[ReviewerItem] = SchemaField(
             description="List of reviewers with their username, profile URL, "
