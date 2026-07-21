@@ -474,18 +474,29 @@ class GithubListPRReviewersBlock(Block):
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
         )
+        include_past_reviewers: bool = SchemaField(
+            description="Also include users who have already submitted a review, "
+            "in addition to users whose review request is pending",
+            default=False,
+        )
 
     class Output(BlockSchemaOutput):
         class ReviewerItem(TypedDict):
             username: str
             url: str
+            review_requested: bool
+            has_reviewed: bool
+            review_state: str
 
         reviewer: ReviewerItem = SchemaField(
             title="Reviewer",
-            description="Reviewers with their username and profile URL",
+            description="Reviewers with their username, profile URL, and review "
+            "status. `has_reviewed` and `review_state` are only populated if "
+            "'Include Past Reviewers' is enabled.",
         )
         reviewers: list[ReviewerItem] = SchemaField(
-            description="List of reviewers with their username and profile URL"
+            description="List of reviewers with their username, profile URL, "
+            "and review status"
         )
         error: str = SchemaField(
             description="Error message if listing reviewers failed"
@@ -494,7 +505,9 @@ class GithubListPRReviewersBlock(Block):
     def __init__(self):
         super().__init__(
             id="2646956e-96d5-4754-a3df-034017e7ed96",
-            description="This block lists all reviewers for a specified GitHub pull request.",
+            description="This block lists the requested reviewers for a specified "
+            "GitHub pull request, optionally including users who have already "
+            "submitted a review.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListPRReviewersBlock.Input,
             output_schema=GithubListPRReviewersBlock.Output,
@@ -510,6 +523,9 @@ class GithubListPRReviewersBlock(Block):
                         {
                             "username": "reviewer1",
                             "url": "https://github.com/reviewer1",
+                            "review_requested": True,
+                            "has_reviewed": False,
+                            "review_state": "",
                         }
                     ],
                 ),
@@ -518,6 +534,9 @@ class GithubListPRReviewersBlock(Block):
                     {
                         "username": "reviewer1",
                         "url": "https://github.com/reviewer1",
+                        "review_requested": True,
+                        "has_reviewed": False,
+                        "review_state": "",
                     },
                 ),
             ],
@@ -526,6 +545,9 @@ class GithubListPRReviewersBlock(Block):
                     {
                         "username": "reviewer1",
                         "url": "https://github.com/reviewer1",
+                        "review_requested": True,
+                        "has_reviewed": False,
+                        "review_state": "",
                     }
                 ]
             },
@@ -533,16 +555,47 @@ class GithubListPRReviewersBlock(Block):
 
     @staticmethod
     async def list_reviewers(
-        credentials: GithubCredentials, pr_url: str
+        credentials: GithubCredentials, pr_url: str, include_past_reviewers: bool
     ) -> list[Output.ReviewerItem]:
         api = get_api(credentials)
         reviewers_url = prepare_pr_api_url(pr_url=pr_url, path="requested_reviewers")
         response = await api.get(reviewers_url)
         data = response.json()
         reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
-            {"username": reviewer["login"], "url": reviewer["html_url"]}
+            {
+                "username": reviewer["login"],
+                "url": reviewer["html_url"],
+                "review_requested": True,
+                "has_reviewed": False,
+                "review_state": "",
+            }
             for reviewer in data.get("users", [])
         ]
+        if not include_past_reviewers:
+            return reviewers
+
+        reviews_url = prepare_pr_api_url(pr_url=pr_url, path="reviews")
+        response = await api.get(reviews_url)
+        reviewers_by_username = {r["username"]: r for r in reviewers}
+        for review in response.json():
+            # PENDING reviews are drafts that haven't been submitted yet
+            if review["state"] == "PENDING":
+                continue
+            user = review["user"]
+            if user["login"] not in reviewers_by_username:
+                reviewer: GithubListPRReviewersBlock.Output.ReviewerItem = {
+                    "username": user["login"],
+                    "url": user["html_url"],
+                    "review_requested": False,
+                    "has_reviewed": True,
+                    "review_state": review["state"],
+                }
+                reviewers.append(reviewer)
+                reviewers_by_username[user["login"]] = reviewer
+            else:
+                reviewers_by_username[user["login"]].update(
+                    has_reviewed=True, review_state=review["state"]
+                )
         return reviewers
 
     async def run(
@@ -555,6 +608,7 @@ class GithubListPRReviewersBlock(Block):
         reviewers = await self.list_reviewers(
             credentials,
             input_data.pr_url,
+            input_data.include_past_reviewers,
         )
         yield "reviewers", reviewers
         for reviewer in reviewers:
