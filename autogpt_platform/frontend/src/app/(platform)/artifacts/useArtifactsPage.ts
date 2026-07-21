@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import {
-  type InfiniteData,
-  keepPreviousData,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
-export type OriginFilter = "all" | "builder" | "autopilot";
+export type OriginFilter = "all" | "uploaded" | "generated";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
@@ -19,6 +15,7 @@ type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 export function useArtifactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -27,11 +24,22 @@ export function useArtifactsPage() {
 
   const q = debouncedSearch || undefined;
   const origin = originFilter === "all" ? undefined : originFilter;
+  // No folder selected → show only root-level files; a folder is selected →
+  // scope the listing to that folder.
+  const folderId = selectedFolderId ?? undefined;
+  // While searching, span the whole workspace (including files inside folders)
+  // so global search isn't limited to root-level files.
+  const rootOnly = selectedFolderId === null && !q;
 
   const query = useInfiniteQuery({
     queryKey: [
       ...ARTIFACTS_LIST_QUERY_KEY,
-      { q: q ?? null, origin: origin ?? null },
+      {
+        q: q ?? null,
+        origin: origin ?? null,
+        folderId: folderId ?? null,
+        rootOnly,
+      },
     ] as const,
     queryFn: ({ pageParam }) =>
       listWorkspaceFiles({
@@ -39,6 +47,8 @@ export function useArtifactsPage() {
         offset: pageParam,
         q,
         origin,
+        folder_id: folderId,
+        root_only: rootOnly,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -46,7 +56,10 @@ export function useArtifactsPage() {
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
-    placeholderData: keepPreviousData,
+    // No keepPreviousData: switching tabs/search must not flash the previous
+    // filter's files. Without it, an uncached filter shows the loading
+    // skeleton (isLoading) until its real results arrive; a cached filter
+    // still renders instantly from cache.
   });
 
   return {
@@ -59,6 +72,8 @@ export function useArtifactsPage() {
     debouncedSearch,
     originFilter,
     setOriginFilter,
+    selectedFolderId,
+    setSelectedFolderId,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {

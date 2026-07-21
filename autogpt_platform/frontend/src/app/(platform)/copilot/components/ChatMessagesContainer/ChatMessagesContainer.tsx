@@ -11,6 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
@@ -26,6 +27,7 @@ import {
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
@@ -35,8 +37,11 @@ import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
+import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
+import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -98,6 +103,14 @@ function renderSegments(
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    if (seg.kind === "reasoning-group") {
+      return (
+        <ReasoningGroup
+          key={`${messageID}-reasoning-${seg.index}`}
+          parts={seg.parts}
+        />
+      );
     }
     return (
       <MessagePartRenderer
@@ -310,6 +323,19 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  // The in-chat "progress in the sidebar" notice only applies to the old
+  // sidebar surface — hide it entirely when the task bar is on.
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isChatStreaming = status === "streaming" || status === "submitted";
+  const hasActiveTaskList =
+    !isTaskBarEnabled &&
+    shouldShowTaskListNotice({
+      isContextPanelEnabled,
+      isChatStreaming,
+      latestTaskList: getLatestTaskList(messages),
+    });
+
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -466,7 +492,7 @@ export function ChatMessagesContainer({
   return (
     <Conversation
       key={sessionID ?? "new"}
-      resize={settled ? "smooth" : "instant"}
+      resize="instant"
       className={
         "min-h-0 flex-1 " +
         (hideForScroll
@@ -475,7 +501,7 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6"
+        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-4"
         style={
           bottomContentPadding
             ? { paddingBottom: bottomContentPadding + 24 }
@@ -558,7 +584,12 @@ export function ChatMessagesContainer({
             : null;
 
           return (
-            <Message from={message.role} key={message.id}>
+            <Message
+              from={message.role}
+              key={message.id}
+              data-message-id={message.id}
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+            >
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
@@ -667,8 +698,16 @@ export function ChatMessagesContainer({
             </Message>
           );
         })}
+        {!readOnly && hasActiveTaskList && (
+          <div className="px-1">
+            <TaskListNotice />
+          </div>
+        )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
+          <Message
+            from="assistant"
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+          >
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>

@@ -171,15 +171,24 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
     Single DB call — cached at the helper level for the duration of
     one ``ensure_dream_system_scheduled`` invocation so registering
     multiple crons doesn't take multiple round-trips.
+
+    Routes through the ``user_db()`` accessor, NOT ``User.prisma()``:
+    this runs in the copilot-executor and scheduler processes, which
+    never connect a local Prisma client. A direct Prisma call raises
+    ``ClientNotConnectedError`` on every invocation there — a
+    *permanent* failure the keep-existing-schedules fallback was never
+    designed for, which silently prevented dream crons from ever being
+    registered. The accessor falls back to the DatabaseManager RPC in
+    Prisma-less processes (same pattern as ``dream/apply.py``).
     """
     try:
-        from prisma import Prisma  # noqa: F401 — ensures registry
-        from prisma.models import User
-
+        from backend.data.db_accessors import user_db
         from backend.data.model import USER_TIMEZONE_NOT_SET
 
-        user = await User.prisma().find_unique(where={"id": user_id})
-        if user is None:
+        try:
+            user = await user_db().get_user_by_id(user_id)
+        except ValueError:
+            # Authoritative: the user row doesn't exist.
             return "UTC"
         tz = (user.timezone or "").strip()
         if not tz or tz == USER_TIMEZONE_NOT_SET:

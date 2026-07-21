@@ -5,27 +5,24 @@ This script creates test data for E2E tests by using API functions instead of di
 This approach ensures compatibility with future model changes by using the API layer.
 
 Image/Video URL Domains Used:
-- Images: picsum.photos (for all image URLs - avatars, store listing images, etc.)
+- Images: none. Avatars and store listing images are seeded empty so the
+  frontend renders its built-in solid-color/boring-avatars fallback. This
+  avoids any external image dependency (e.g. picsum.photos) that intermittently
+  504'd through Next's /_next/image optimizer and stalled E2E navigations.
 - Videos: youtube.com (for store listing video URLs)
-
-Add these domains to your Next.js config:
-```javascript
-// next.config.js
-images: {
-  domains: ['picsum.photos'],
-}
-```
 """
 
 import asyncio
 import json
 import random
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
 import prisma.enums as prisma_enums
 import prisma.models as prisma_models
 from faker import Faker
+from pydantic import SecretStr
 
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
@@ -40,8 +37,11 @@ from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
+from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
+from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 
 faker = Faker()
 
@@ -91,14 +91,6 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.a@example.com",
     "e2e.qa.parallel.b@example.com",
 ]
-
-
-def get_image():
-    """Generate a consistent image URL using picsum.photos service."""
-    width = random.choice([200, 300, 400, 500, 600, 800])
-    height = random.choice([200, 300, 400, 500, 600, 800])
-    seed = random.randint(1, 1000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 def get_video_url():
@@ -162,6 +154,31 @@ class TestDataCreator:
         self.api_keys: List[Dict[str, Any]] = []
         self.presets: List[Dict[str, Any]] = []
         self.profiles: List[Dict[str, Any]] = []
+        # Org/workspace context per user (populated after migration runs)
+        self._user_org_cache: Dict[str, tuple[str | None, str | None]] = {}
+
+    async def _get_user_org_ws(self, user_id: str) -> tuple[str | None, str | None]:
+        """Get (organization_id, team_id) for a user, with caching."""
+        if user_id not in self._user_org_cache:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(user_id)
+            self._user_org_cache[user_id] = (org_id, ws_id)
+        return self._user_org_cache[user_id]
+
+    async def _bootstrap_personal_orgs_for_seeded_users(self) -> None:
+        """Run the personal-org bootstrap so seeded users have an org/team.
+
+        ``create_orgs_for_existing_users`` is idempotent — it finds users
+        without a personal Organization owner-membership and creates one
+        plus a default Team. We invoke it directly (rather than the full
+        ``run_migration``) because credit/transaction/store backfills
+        aren't relevant to fresh test users.
+        """
+        from backend.data.org_migration import create_orgs_for_existing_users
+
+        created = await create_orgs_for_existing_users()
+        print(f"Bootstrapped personal orgs for {created} seeded user(s)")
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -416,8 +433,14 @@ class TestDataCreator:
                 )
 
                 try:
-                    # Use the API function to create graph
-                    created_graph = await create_graph(graph, user["id"])
+                    # Use the API function to create graph with org context
+                    org_id, ws_id = await self._get_user_org_ws(user["id"])
+                    created_graph = await create_graph(
+                        graph,
+                        user["id"],
+                        organization_id=org_id,
+                        team_id=ws_id,
+                    )
                     graph_dict = created_graph.model_dump()
                     # Ensure userId is included for store submissions
                     graph_dict["userId"] = user["id"]
@@ -522,6 +545,9 @@ class TestDataCreator:
             from backend.data.auth.api_key import APIKeyPermission
 
             try:
+                # Tag the key with the user's personal org (mirrors the real
+                # request path, which always passes ctx.org_id).
+                org_id, _ws_id = await self._get_user_org_ws(user["id"])
                 # Use the API function to create API key
                 api_key, _ = await create_api_key(
                     name=faker.word(),
@@ -531,6 +557,7 @@ class TestDataCreator:
                         APIKeyPermission.READ_GRAPH,
                     ],
                     description=faker.text(),
+                    organization_id=org_id,
                 )
                 api_keys.append(api_key.model_dump())
             except Exception as e:
@@ -585,7 +612,10 @@ class TestDataCreator:
                         + str(random.randint(100, 999)),  # Ensure uniqueness
                         "description": faker.text(max_nb_chars=200),
                         "links": [faker.url() for _ in range(random.randint(1, 3))],
-                        "avatarUrl": get_image(),
+                        # Empty (not None): the Creator view types avatar_url as
+                        # non-nullable, so null breaks /api/store/creators. Empty
+                        # string renders the frontend's fallback avatar.
+                        "avatarUrl": "",
                         "isFeatured": is_featured,
                     },
                 )
@@ -623,7 +653,8 @@ class TestDataCreator:
                             "username": E2E_MARKETPLACE_CREATOR_USERNAME,
                             "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
                             "links": ["https://example.com/e2e-marketplace"],
-                            "avatarUrl": get_image(),
+                            # Empty (not None) — Creator view requires non-null avatar_url.
+                            "avatarUrl": "",
                             "isFeatured": True,
                         },
                     )
@@ -729,11 +760,7 @@ class TestDataCreator:
                     "name": E2E_MARKETPLACE_AGENT_NAME,
                     "sub_heading": "A deterministic calculator agent for PR E2E coverage",
                     "video_url": "https://www.youtube.com/watch?v=test123",
-                    "image_urls": [
-                        "https://picsum.photos/seed/e2e-marketplace-1/200/300",
-                        "https://picsum.photos/seed/e2e-marketplace-2/200/301",
-                        "https://picsum.photos/seed/e2e-marketplace-3/200/302",
-                    ],
+                    "image_urls": [],
                     "description": (
                         "A deterministic marketplace calculator agent that adds "
                         f"{E2E_MARKETPLACE_AGENT_INPUT_VALUE} and 34 to produce "
@@ -860,7 +887,7 @@ class TestDataCreator:
                         name=graph.get("name", faker.sentence(nb_words=3)),
                         sub_heading=faker.sentence(),
                         video_url=get_video_url() if random.random() < 0.3 else None,
-                        image_urls=[get_image() for _ in range(3)],
+                        image_urls=[],
                         description=faker.text(),
                         categories=[get_category()],
                         changes_summary="Initial E2E test submission",
@@ -998,12 +1025,196 @@ class TestDataCreator:
                 )
                 continue
 
+    async def create_kitchen_sink_data(self) -> None:
+        """Populate EVERY remaining tenancy-scoped model for the deterministic
+        login users, so a QA login is a "user with literally everything".
+
+        The other create_* methods cover graphs / library agents / presets /
+        API keys / store listings. This fills the gap: chats, executions,
+        webhooks, folders, search history, notification batches, human
+        reviews, and a real (non-system) connected credential — each tagged
+        with the user's personal org/team, mirroring the create-path scoping
+        so the fixture matches production shape.
+        """
+        print("Creating kitchen-sink data (all tenancy models) for login users...")
+
+        power_users = [u for u in self.users if u["email"] in SEEDED_TEST_EMAILS]
+        notif_type = list(prisma_enums.NotificationType)[0]
+
+        async def _try(label: str, coro) -> None:
+            # Per-model isolation: one model failing must not skip the rest.
+            try:
+                await coro
+            except Exception as e:
+                print(f"  kitchen-sink {label} failed for {user['email']}: {e}")
+
+        for user in power_users:
+            user_id = user["id"]
+            org_id, team_id = await self._get_user_org_ws(user_id)
+            org_team = {"organizationId": org_id, "teamId": team_id}
+            org_only = {"organizationId": org_id}
+            user_graphs = [g for g in self.agent_graphs if g.get("userId") == user_id]
+            graph = user_graphs[0] if user_graphs else None
+
+            # Chat session (+ one message) — the copilot conversation shell.
+            session_id = str(uuid.uuid4())
+            await _try(
+                "chat_session",
+                prisma.chatsession.create(
+                    data={
+                        "id": session_id,
+                        "userId": user_id,
+                        "title": "Kitchen-sink chat",
+                        **org_team,
+                    }
+                ),
+            )
+            await _try(
+                "chat_message",
+                prisma.chatmessage.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "sessionId": session_id,
+                        "role": "user",
+                        "content": "Seed message",
+                        "sequence": 1,
+                    }
+                ),
+            )
+
+            await _try(
+                "library_folder",
+                prisma.libraryfolder.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "name": "Kitchen-sink folder",
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "search_history",
+                prisma.buildersearchhistory.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "searchQuery": "kitchen sink",
+                        **org_only,
+                    }
+                ),
+            )
+
+            await _try(
+                "notification_batch",
+                prisma.usernotificationbatch.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "type": notif_type,
+                        **org_team,
+                    }
+                ),
+            )
+
+            await _try(
+                "webhook",
+                prisma.integrationwebhook.create(
+                    data={
+                        "id": str(uuid.uuid4()),
+                        "userId": user_id,
+                        "provider": "github",
+                        "credentialsId": str(uuid.uuid4()),
+                        "webhookType": "repo",
+                        "resource": "owner/repo",
+                        "events": ["push"],
+                        "config": SafeJson({}),
+                        "secret": uuid.uuid4().hex,
+                        "providerWebhookId": str(uuid.uuid4()),
+                        **org_team,
+                    }
+                ),
+            )
+
+            # Real (non-system) connected credential — encrypt a proper
+            # Credentials model exactly like set_user_credentials, so the
+            # decrypt/validate read path (get_user_credentials) accepts it.
+            # (A raw/plaintext payload is silently rejected and never shows.)
+            cred_id = str(uuid.uuid4())
+            gh_cred = APIKeyCredentials(
+                id=cred_id,
+                provider="github",
+                api_key=SecretStr("ghp_kitchensink_seed"),
+                title="Kitchen-sink GitHub",
+            )
+            await _try(
+                "credential",
+                prisma.integrationcredential.create(
+                    data={
+                        "id": cred_id,
+                        "organizationId": org_id or "",
+                        "ownerType": prisma_enums.CredentialOwnerType.USER,
+                        "ownerId": user_id,
+                        "teamId": team_id,
+                        "provider": gh_cred.provider,
+                        "credentialType": gh_cred.type,
+                        "displayName": gh_cred.title or gh_cred.provider,
+                        "encryptedPayload": JSONCryptor().encrypt(gh_cred.model_dump()),
+                        "createdByUserId": user_id,
+                    }
+                ),
+            )
+
+            # Execution + a pending human review, if the user has a graph.
+            if graph:
+                exec_id = str(uuid.uuid4())
+                await _try(
+                    "execution",
+                    prisma.agentgraphexecution.create(
+                        data={
+                            "id": exec_id,
+                            "agentGraphId": graph["id"],
+                            "agentGraphVersion": graph.get("version", 1),
+                            "userId": user_id,
+                            "executionStatus": prisma_enums.AgentExecutionStatus.COMPLETED,
+                            **org_team,
+                        }
+                    ),
+                )
+                await _try(
+                    "human_review",
+                    prisma.pendinghumanreview.create(
+                        data={
+                            "nodeExecId": str(uuid.uuid4()),
+                            "userId": user_id,
+                            "graphExecId": exec_id,
+                            "graphId": graph["id"],
+                            "graphVersion": graph.get("version", 1),
+                            "payload": SafeJson({"input": "seed"}),
+                            "status": prisma_enums.ReviewStatus.WAITING,
+                            "instructions": "Seed review",
+                            **org_only,
+                        }
+                    ),
+                )
+
+        print(f"Kitchen-sink data created for {len(power_users)} login users")
+
     async def create_all_test_data(self):
         """Create all test data."""
         print("Starting E2E test data creation...")
 
         # Create users first
         await self.create_test_users()
+
+        # Backfill personal orgs/teams for the users we just inserted.
+        # The app's lifespan-context migration already ran at backend
+        # startup, so it only knows about users that existed back then —
+        # seeded users created above wouldn't have orgs without this,
+        # and every route that now requires ctx.org_id (API keys,
+        # builder save/run, library run, copilot session) would fail.
+        await self._bootstrap_personal_orgs_for_seeded_users()
 
         # Get available blocks
         await self.get_available_blocks()
@@ -1025,6 +1236,10 @@ class TestDataCreator:
 
         # Create store submissions
         await self.create_test_store_submissions()
+
+        # Populate every remaining tenancy model for the login users so a
+        # QA login is a "user with literally everything".
+        await self.create_kitchen_sink_data()
 
         # Add user credits
         await self.add_user_credits()

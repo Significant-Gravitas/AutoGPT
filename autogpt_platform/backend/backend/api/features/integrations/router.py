@@ -568,6 +568,23 @@ async def webhook_ingress_generic(
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    # Run provider signature verification (no-op for providers whose protocol
+    # has no signing scheme). 403 on failure; not 404 — that would leak
+    # webhook existence.
+    try:
+        await webhook_manager.verify_signature(webhook, request)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -613,6 +630,12 @@ async def webhook_ping(
     user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
+    if webhook.user_id != user_id:
+        # Treat a webhook the caller doesn't own as if it doesn't exist, so this
+        # endpoint can't be used to enumerate webhook IDs or ping others' webhooks.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+        )
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
@@ -647,11 +670,23 @@ async def _execute_webhook_node_trigger(
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
+        # Resource-follows-parent: the webhook is tagged with its graph's
+        # org/team at creation (and backfilled by the org migration), so
+        # triggered runs attribute there — not the owner's personal org.
+        # Untagged legacy webhooks fall back to the owner's default team.
+        if webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
             nodes_input_masks={node.id: {"payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -682,6 +717,14 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
+    # A webhook only ever runs triggers owned by the webhook owner
+    if preset.user_id != webhook.user_id:
+        logger.warning(
+            f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
+            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+        )
+        return
+
     graph = await get_graph(
         preset.graph_id, preset.graph_version, user_id=webhook.user_id
     )
@@ -708,6 +751,17 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     try:
+        # Resource-follows-parent: attribute to the preset's org/team (set
+        # from its parent graph), falling back to the webhook's own tag,
+        # then to the owner's default team for untagged legacy rows.
+        if preset.organization_id:
+            org_id, ws_id = preset.organization_id, preset.team_id
+        elif webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
@@ -715,6 +769,8 @@ async def _execute_webhook_preset_trigger(
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
             nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(

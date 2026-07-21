@@ -1,6 +1,11 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
 import {
@@ -16,9 +21,18 @@ const { setFlagStatusMock } = vi.hoisted(() => {
   };
 });
 
+// usePlatformChrome re-renders once on mount (isMounted guard), so per-test
+// flag overrides must persist across renders; restore the default afterward.
+afterEach(() => {
+  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
+  Flag: {
+    ARTIFACTS_PAGE: "artifacts-page",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+  },
+  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
 }));
 
@@ -61,6 +75,7 @@ function makeFile(
     mime_type: "text/plain",
     size_bytes: 1024,
     metadata: {},
+    origin: "generated",
     created_at: "2026-05-01T00:00:00Z",
     ...overrides,
   };
@@ -182,11 +197,35 @@ describe("ArtifactsPage - search filter", () => {
     // Wait for the filtered list to appear (debounced ~250ms).
     expect(await screen.findByText("beta.txt")).toBeDefined();
   });
+
+  test("searching at root spans folders instead of forcing root_only", async () => {
+    useStorageHandler();
+    const rootOnlyParams: (string | null)[] = [];
+    server.use(
+      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+        rootOnlyParams.push(new URL(request.url).searchParams.get("root_only"));
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    // Initial root listing is scoped to root-level files.
+    await waitFor(() => expect(rootOnlyParams).toContain("true"));
+
+    const search = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(search, { target: { value: "beta" } });
+
+    // A global search must not be limited to root — files inside folders count.
+    await waitFor(() => {
+      expect(rootOnlyParams[rootOnlyParams.length - 1]).toBe("false");
+    });
+  });
 });
 
 describe("ArtifactsPage - feature flag gating", () => {
   test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
-    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: false });
+    setFlagStatusMock.mockReturnValue({ enabled: false, ready: false });
 
     render(<ArtifactsPage />);
 
@@ -230,6 +269,27 @@ describe("ArtifactsPage - card menu", () => {
 
     expect(await screen.findByText("menu-target.txt")).toBeDefined();
     expect(screen.getByTestId("artifacts-card-menu")).toBeDefined();
+  });
+
+  test("clicking the card opens the file viewer modal", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [makeFile({ id: "open-me", name: "open-me.txt" })],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/open-me/download", () =>
+        HttpResponse.text("hello world"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    const opener = await screen.findByTestId("artifacts-card-open");
+    fireEvent.click(opener);
+
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
   });
 });
 
@@ -349,5 +409,143 @@ describe("ArtifactsPage - rich previews", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("Ada Lovelace")).toBeDefined();
+  });
+
+  test("markdown cards render their formatted content", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "md1", name: "notes.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/md1/preview", () =>
+        HttpResponse.text("# Heading One\n\nbody paragraph"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("Heading One")).toBeDefined();
+    expect(await screen.findByText("body paragraph")).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - file viewer modal", () => {
+  test("opening a markdown file shows a Source toggle that flips to Preview", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "md2", name: "doc.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/md2/preview", () =>
+        HttpResponse.text("# Title"),
+      ),
+      http.get("/api/proxy/api/workspace/files/md2/download", () =>
+        HttpResponse.text("# Title"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
+
+    const sourceButton = await screen.findByRole("button", {
+      name: /source/i,
+    });
+    fireEvent.click(sourceButton);
+
+    expect(
+      await screen.findByRole("button", { name: /preview/i }),
+    ).toBeDefined();
+  });
+
+  test("opening a non-previewable file shows the download-only message", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({
+            id: "zip1",
+            name: "archive.zip",
+            mime_type: "application/zip",
+          }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+
+    expect(await screen.findByText(/can't be previewed/i)).toBeDefined();
+  });
+
+  test("opening an uploaded file resolves its source ref", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({
+            id: "up1",
+            name: "uploaded.md",
+            mime_type: "text/markdown",
+            origin: "uploaded",
+          }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/up1/preview", () =>
+        HttpResponse.text("# uploaded"),
+      ),
+      http.get("/api/proxy/api/workspace/files/up1/download", () =>
+        HttpResponse.text("# uploaded"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
+  });
+
+  test("the viewer download button recovers after a failed fetch", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "dl1", name: "doc.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/dl1/preview", () =>
+        HttpResponse.text("# doc"),
+      ),
+      http.get(
+        "/api/proxy/api/workspace/files/dl1/download",
+        () => new HttpResponse("nope", { status: 500 }),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    fireEvent.click(await screen.findByTestId("file-viewer-download"));
+
+    // After the failed download settles, the button returns to its idle label.
+    expect(
+      await screen.findByRole("button", { name: /^download$/i }),
+    ).toBeDefined();
   });
 });

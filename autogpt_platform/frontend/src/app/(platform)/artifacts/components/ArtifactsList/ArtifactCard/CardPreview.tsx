@@ -6,7 +6,7 @@ import { getPreviewKind, type PreviewKind } from "../helpers";
 import { ImagePreview, VideoPreview } from "./MediaPreview";
 import { Fallback } from "./PreviewParts";
 import { IcsPreview, VcardPreview } from "./StructuredPreviews";
-import { CsvPreview, JsonPreview, TextSnippetPreview } from "./TextPreviews";
+import { CsvPreview, MarkdownPreview } from "./TextPreviews";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -45,13 +45,15 @@ function PreviewBody({
       return <VideoPreview file={file} onError={handleError} />;
     case "csv":
       return <CsvPreview file={file} onError={handleError} />;
-    case "json":
-      return <JsonPreview file={file} onError={handleError} />;
+    case "markdown":
+      return <MarkdownPreview file={file} onError={handleError} />;
     case "ics":
       return <IcsPreview file={file} onError={handleError} />;
     case "vcard":
       return <VcardPreview file={file} onError={handleError} />;
+    // json / text / code render as a generic file card (with a language
+    // badge) — the grid is for scanning, not reading raw source.
     default:
-      return <TextSnippetPreview file={file} onError={handleError} />;
+      return <Fallback file={file} />;
   }
 }

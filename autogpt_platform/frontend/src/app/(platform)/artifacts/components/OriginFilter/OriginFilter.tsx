@@ -2,9 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import {
-  HouseLineIcon,
   ListBulletsIcon,
   SparkleIcon,
+  UploadSimpleIcon,
   type Icon,
 } from "@phosphor-icons/react";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
@@ -23,8 +23,8 @@ interface Option {
 
 const OPTIONS: Option[] = [
   { value: "all", label: "All", Icon: ListBulletsIcon },
-  { value: "builder", label: "Builder", Icon: HouseLineIcon },
-  { value: "autopilot", label: "Autopilot", Icon: SparkleIcon },
+  { value: "uploaded", label: "Uploaded", Icon: UploadSimpleIcon },
+  { value: "generated", label: "Generated", Icon: SparkleIcon },
 ];
 
 const snappySpring: Transition = {

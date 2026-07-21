@@ -9,6 +9,10 @@ import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
+import {
   getAccordionMeta,
   getAnimationText,
   getRunBlockToolOutput,
@@ -41,8 +45,14 @@ export function RunBlockTool({ part }: Props) {
   const output = getRunBlockToolOutput(part);
   const inputData = (part.input as RunBlockInput | undefined)?.input_data;
   const hasInputData = inputData != null && Object.keys(inputData).length > 0;
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput(part.output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
   const isError =
     part.state === "output-error" ||
+    isCorrupted ||
     (!!output && isRunBlockErrorOutput(output));
   const setupRequirementsOutput =
     part.state === "output-available" &&
@@ -69,10 +79,17 @@ export function RunBlockTool({ part }: Props) {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
-          text={text}
+          text={isCorrupted ? "Block result could not be displayed" : text}
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-red-500">
+          The result data arrived corrupted, so any sign-in or setup card it
+          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+        </p>
+      )}
 
       {setupRequirementsOutput && (
         <div className="mt-2">

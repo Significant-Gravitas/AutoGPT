@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from prisma.enums import ResourceVisibility
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import ChatSessionCreateInput
 
@@ -50,10 +51,12 @@ def _make_prisma_session(session_id: str = "sess-1") -> PrismaChatSession:
         totalPromptTokens=0,
         totalCompletionTokens=0,
         chatStatus="idle",
+        isPinned=False,
         isShared=False,
         shareToken=None,
         sharedAt=None,
         autoShareExecutions=False,
+        visibility=ResourceVisibility.PRIVATE,
     )
 
 

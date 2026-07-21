@@ -7,8 +7,48 @@ import {
   hasInProgressAssistantParts,
   resolveInterruptedMessage,
 } from "./helpers";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 
 const PROMOTED_BUBBLE_ID_PREFIX = "promoted-";
+
+/**
+ * The hydrated payload is only the backend's most-recent tail window (the
+ * `GET /sessions` endpoint returns the latest ~50 messages). That window
+ * slides forward as the conversation grows, so a blind force-replace would
+ * drop every in-memory message older than the new window's oldest sequence —
+ * tearing a hole between the live state and any older history the user
+ * already scrolled back to (`pagedMessages`), which scroll-back can't refill
+ * (it only fetches messages older than what's loaded). See SECRT-2424.
+ *
+ * Keep the `prev` messages whose DB sequence predates the window so the
+ * force-hydrated result stays contiguous with the older history. Both arrays
+ * are in ascending DB-sequence order, so the window's oldest sequence is the
+ * first `-seq-N` row in `hydrated`, and the older `prev` messages are the
+ * leading run before that boundary — a single slice. Streaming / idx-fallback
+ * rows (no `-seq-N` id) carry no sequence and mark the end of that run; they
+ * are excluded because they already live inside the refetched window.
+ */
+function retainOlderHistory(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  let oldestHydratedSeq: number | null = null;
+  for (const message of hydrated) {
+    oldestHydratedSeq = extractDbSequence(message);
+    if (oldestHydratedSeq !== null) break;
+  }
+  if (oldestHydratedSeq === null) return hydrated;
+  const windowStart = oldestHydratedSeq;
+
+  const windowStartIndex = prev.findIndex((message) => {
+    const seq = extractDbSequence(message);
+    return seq === null || seq >= windowStart;
+  });
+  const olderCount = windowStartIndex === -1 ? prev.length : windowStartIndex;
+  if (olderCount === 0) return hydrated;
+
+  return [...prev.slice(0, olderCount), ...hydrated];
+}
 
 function getMessageText(message: UIMessage): string {
   return message.parts
@@ -182,7 +222,9 @@ export function useHydrateOnStreamEnd({
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
-      setMessages((prev) => preservePromotedUserBubbles(prev, finalized));
+      setMessages((prev) =>
+        preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
+      );
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
       return;
