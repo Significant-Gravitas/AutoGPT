@@ -39,6 +39,10 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamReasoningStart,
 )
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_FAMILY_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,27 +244,15 @@ _THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
     "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
 )
 
-# The Claude 5 family (sonnet-5 / fable-5 / mythos-5) is deliberately NOT
-# in the list above: it runs ADAPTIVE thinking by default and 400s on the
-# ``budget_tokens`` fragment (the field was removed with 4.7's tokenizer
-# generation). For these models both thinking fragments stay off — the
-# adaptive default is the documented behavior; the operator token budget
-# (kill switch aside) does not apply to them.
-_CLAUDE_5_PREFIXES: tuple[str, ...] = (
-    "claude-sonnet-5",
-    "claude-fable-5",
-    "claude-mythos-5",
-    "claude-opus-5",
-)
 
-
+# The Claude 5 family is deliberately NOT in the list above: it runs
+# ADAPTIVE thinking by default and 400s on the ``budget_tokens`` fragment
+# (the field was removed with 4.7's tokenizer generation). For these
+# models both thinking fragments stay off — the adaptive default is the
+# documented behavior; the operator token budget (kill switch aside)
+# does not apply to them.
 def _is_claude_5_family(model: str) -> bool:
-    lowered = model.lower()
-    for prefix in ("anthropic/", "anthropic."):
-        if lowered.startswith(prefix):
-            lowered = lowered[len(prefix) :]
-            break
-    return lowered.startswith(_CLAUDE_5_PREFIXES)
+    return strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES)
 
 
 def _is_thinking_capable_claude(model: str) -> bool:

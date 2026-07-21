@@ -45,6 +45,7 @@ from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
+from backend.data.llm_registry.llm_models import CLAUDE_5_FAMILY_PREFIXES
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
@@ -109,16 +110,13 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # error, so unknown future models self-heal; this list only matters
 # for batch submissions, whose errors come back hours later in the
 # result rows.
+# 4.7/4.8 verified live; the whole Claude 5 family per litellm
+# supports_sampling_params=false. Load-bearing for batch submissions
+# (dream), which have no retry self-heal.
 _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
     "claude-opus-4-7",
     "claude-opus-4-8",
-    # Whole Claude 5 family: non-default temperature/top_p/top_k are 400s
-    # (litellm: supports_sampling_params=false). Load-bearing for batch
-    # submissions (dream), which have no retry self-heal.
-    "claude-sonnet-5",
-    "claude-fable-5",
-    "claude-mythos-5",
-)
+) + CLAUDE_5_FAMILY_PREFIXES
 
 
 def _anthropic_accepts_temperature(model: str) -> bool:

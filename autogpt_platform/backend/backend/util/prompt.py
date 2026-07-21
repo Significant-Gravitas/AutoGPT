@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from tiktoken import encoding_for_model
 
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_TOKENIZER_GENERATION_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -320,19 +324,10 @@ class CompressResult:
 # underestimating overflows the context window (a 400 at serve time).
 CLAUDE_5_TOKEN_FACTOR = 1.5
 
-_CLAUDE_5_TOKENIZER_MARKERS = (
-    "claude-sonnet-5",
-    "claude-fable-5",
-    "claude-mythos-5",
-    "claude-opus-5",
-    "claude-opus-4-7",
-    "claude-opus-4-8",
-)
-
 
 def _token_estimate_factor(model: str) -> float:
-    tail = model.split("/")[-1].lower()
-    if tail.startswith(_CLAUDE_5_TOKENIZER_MARKERS):
+    tail = strip_anthropic_vendor_prefix(model).split("/")[-1]
+    if tail.startswith(CLAUDE_5_TOKENIZER_GENERATION_PREFIXES):
         return CLAUDE_5_TOKEN_FACTOR
     return 1.0
 

@@ -17,6 +17,37 @@ from backend.data.llm_registry.catalog import get_catalog
 
 logger = logging.getLogger(__name__)
 
+# The Claude 5 model family — one definition, shared by every consumer
+# (temperature stripping, thinking-fragment suppression, tokenizer
+# estimation). Members move TOGETHER; add new 5-family slugs here only.
+CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
+    "claude-sonnet-5",
+    "claude-opus-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+# The tokenizer generation introduced with Opus 4.7 (shared by the whole
+# 5-family): ~30% denser than the 4.x tokenizer for the same text.
+CLAUDE_5_TOKENIZER_GENERATION_PREFIXES: tuple[str, ...] = CLAUDE_5_FAMILY_PREFIXES + (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+)
+
+
+def strip_anthropic_vendor_prefix(model: str) -> str:
+    """``anthropic/claude-x`` and ``anthropic.claude-x`` → ``claude-x``.
+
+    The single normalization used by every family-prefix check, so the
+    dotted Bedrock-style form can never slip past one consumer while
+    matching another.
+    """
+    lowered = model.lower()
+    for prefix in ("anthropic/", "anthropic."):
+        if lowered.startswith(prefix):
+            return lowered[len(prefix) :]
+    return lowered
+
 
 class ModelMetadata(NamedTuple):
     provider: str

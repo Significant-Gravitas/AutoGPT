@@ -320,7 +320,7 @@ async def _llm_call(
                 )
 
     # Calculate available tokens based on context window and input length
-    estimated_input_tokens = estimate_token_count(prompt)
+    estimated_input_tokens = estimate_token_count(prompt, model=llm_model.value)
     model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
