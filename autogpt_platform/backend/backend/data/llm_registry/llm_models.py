@@ -19,10 +19,12 @@ logger = logging.getLogger(__name__)
 
 # The Claude 5 model family — one definition, shared by every consumer
 # (temperature stripping, thinking-fragment suppression, tokenizer
-# estimation). Members move TOGETHER; add new 5-family slugs here only.
+# estimation). SHIPPED members only: family members don't all release at
+# once, and an unreleased slug pre-listed here would skip re-verification
+# when it actually ships. Add each member here as Anthropic releases it,
+# after checking its documented behavior matches the family.
 CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-sonnet-5",
-    "claude-opus-5",
     "claude-fable-5",
     "claude-mythos-5",
 )
