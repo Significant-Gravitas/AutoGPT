@@ -706,8 +706,6 @@ class TestNearDuplicateWriteDedup:
     facts — even about the same entity — are preserved."""
 
     def test_collapses_near_identical_phrasings_keeping_longest(self):
-        from .schemas import ConsolidatedFact
-
         writes = [
             ConsolidatedFact(
                 content="Nick uses Terminus on his iPhone for CLI work",
@@ -728,8 +726,6 @@ class TestNearDuplicateWriteDedup:
         assert "more ASCII characters" in kept[0].content
 
     def test_keeps_distinct_facts_about_same_entity(self):
-        from .schemas import ConsolidatedFact
-
         writes = [
             ConsolidatedFact(content="Nick prefers Python for backend", confidence=0.8),
             ConsolidatedFact(
@@ -743,8 +739,6 @@ class TestNearDuplicateWriteDedup:
     def test_one_distinguishing_word_is_not_a_duplicate(self):
         """Containment guard: two facts differing by a single key word
         (auth vs billing) must NOT be merged despite high overlap."""
-        from .schemas import ConsolidatedFact
-
         writes = [
             ConsolidatedFact(
                 content="Nick deployed the auth service to prod", confidence=0.7
@@ -758,8 +752,6 @@ class TestNearDuplicateWriteDedup:
         assert len(kept) == 2
 
     def test_preserves_original_order_of_survivors(self):
-        from .schemas import ConsolidatedFact
-
         writes = [
             ConsolidatedFact(content="Alpha fact about onboarding", confidence=0.5),
             ConsolidatedFact(content="Beta fact about billing", confidence=0.5),
@@ -831,8 +823,6 @@ class TestNearDuplicateWriteDedup:
         assert len(kept) == 2
 
     def test_clamp_collapses_duplicate_writes(self):
-        from .schemas import ConsolidatedFact, DreamOperations
-
         ops = DreamOperations(
             writes=[
                 ConsolidatedFact(
