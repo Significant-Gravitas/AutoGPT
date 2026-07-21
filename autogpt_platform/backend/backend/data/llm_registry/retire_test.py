@@ -256,3 +256,34 @@ async def test_revert_leaves_manually_repointed_nodes_alone(retirement_env):
     assert revert.nodes_already_changed == 1
     assert await _node_model(node_a) == _node_value(source)
     assert await _node_model(node_b) == third
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_replacement_defaults_from_catalog_fallback(retirement_env, mocker):
+    """--replacement pre-fills from the retired model's fallback_model_slug."""
+    from backend.data.llm_registry import retire as retire_mod
+    from backend.data.llm_registry.retire import _build_parser, _run_cli
+
+    source, replacement = _two_catalog_slugs()
+    node_id = await _seed_node(retirement_env, _node_value(source))
+
+    payload = retire_mod.get_catalog()
+    patched = payload.model_copy(
+        update={
+            "models": [
+                (
+                    m.model_copy(update={"fallback_model_slug": replacement})
+                    if m.slug == source
+                    else m
+                )
+                for m in payload.models
+            ]
+        }
+    )
+    mocker.patch.object(retire_mod, "get_catalog", return_value=patched)
+    mocker.patch("backend.data.db.connect", new=AsyncMock())
+
+    args = _build_parser().parse_args([source])  # no --replacement
+    assert await _run_cli(args) == 1  # dry run banner path
+    assert args.replacement == replacement
+    assert await _node_model(node_id) == _node_value(source)  # nothing written

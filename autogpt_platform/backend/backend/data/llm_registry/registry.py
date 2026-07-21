@@ -154,7 +154,9 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     _dynamic_models = models
     _routes = routes
     _loaded = True
-    logger.info(f"LLM catalog loaded: {len(models)} models, {len(routes)} routing cells")
+    logger.info(
+        f"LLM catalog loaded: {len(models)} models, {len(routes)} routing cells"
+    )
 
 
 def has_models() -> bool:

@@ -701,7 +701,7 @@
     },
     "v0-1.0-md": {
       "context_window": 128000,
-      "creator_name": "V0",
+      "creator_name": "v0 by Vercel",
       "display_name": "v0 1.0 MD",
       "max_output_tokens": 64000,
       "price_tier": 1,
@@ -710,7 +710,7 @@
     },
     "v0-1.5-lg": {
       "context_window": 512000,
-      "creator_name": "V0",
+      "creator_name": "v0 by Vercel",
       "display_name": "v0 1.5 LG",
       "max_output_tokens": 64000,
       "price_tier": 1,
@@ -719,7 +719,7 @@
     },
     "v0-1.5-md": {
       "context_window": 128000,
-      "creator_name": "V0",
+      "creator_name": "v0 by Vercel",
       "display_name": "v0 1.5 MD",
       "max_output_tokens": 64000,
       "price_tier": 1,

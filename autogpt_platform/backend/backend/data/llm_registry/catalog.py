@@ -68,7 +68,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="openai", display_name="OpenAI"),
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
-            CatalogCreator(name="v0", display_name="V0"),
+            CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
             CatalogCreator(name="z.ai", display_name="Z.ai"),
         ],
