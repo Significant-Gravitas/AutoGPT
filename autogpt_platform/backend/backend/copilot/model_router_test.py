@@ -610,14 +610,16 @@ class TestExecutorCatalogLoad:
     """The copilot executor process must load the catalog (turns run there,
     not in the rest API process — an unloaded registry no-ops all routing)."""
 
-    def test_failsoft_loader_calls_load_catalog(self, mocker):
+    def test_loader_calls_load_catalog(self, mocker):
         from backend.copilot.executor import manager
 
         load = mocker.patch.object(manager.backend.data.llm_registry, "load_catalog")
-        manager._load_catalog_failsoft()
+        manager._load_catalog()
         load.assert_called_once()
 
-    def test_failsoft_loader_swallows_errors(self, mocker):
+    def test_loader_fails_hard_on_broken_catalog(self, mocker):
+        """Post-cutover the catalog is load-bearing — a load failure must
+        stop the process, not silently disable routing cells and gating."""
         from backend.copilot.executor import manager
 
         mocker.patch.object(
@@ -625,14 +627,15 @@ class TestExecutorCatalogLoad:
             "load_catalog",
             side_effect=RuntimeError("bad catalog"),
         )
-        manager._load_catalog_failsoft()  # must not raise
+        with pytest.raises(RuntimeError, match="bad catalog"):
+            manager._load_catalog()
 
     def test_executor_run_invokes_the_loader(self):
         import inspect
 
         from backend.copilot.executor.manager import CoPilotExecutor
 
-        assert "_load_catalog_failsoft" in inspect.getsource(CoPilotExecutor.run), (
+        assert "_load_catalog" in inspect.getsource(CoPilotExecutor.run), (
             "CoPilotExecutor.run must load the LLM catalog — turns execute in "
             "this process, and without the load every routing cell and "
             "serve-time gate silently no-ops"
