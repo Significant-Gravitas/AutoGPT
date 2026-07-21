@@ -1606,3 +1606,35 @@ class TestChatMessageStampRoundTrip:
         restored = ChatMessage.model_validate(msg.model_dump())
         assert restored.model == "claude-sonnet-4-6"
         assert restored.routing_source == "catalog"
+
+
+class TestSameModelCanonicalization:
+    """Spelling differences between the requested resolution and the CLI's
+    report must never fake a fallback; real model changes must."""
+
+    def test_spelling_variants_are_same_model(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert _same_model("anthropic/claude-opus-4.7", "claude-opus-4-7")
+        assert _same_model("claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5")
+        assert _same_model("anthropic.claude-sonnet-4-6", "claude-sonnet-4.6")
+
+    def test_different_models_diverge(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert not _same_model("claude-sonnet-4-6", "moonshotai/kimi-k2.6")
+        assert not _same_model("claude-opus-4-7", "claude-sonnet-4-6")
+
+    def test_fallback_not_faked_by_spelling(self):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = [ChatMessage(role="assistant", content="x", sequence=None)]
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-opus-4-7",
+            actual_model="anthropic/claude-opus-4.7",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"  # same model, not "fallback"

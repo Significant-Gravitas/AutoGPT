@@ -730,3 +730,105 @@ class TestSelfHostedSkipsCells:
             reg._dynamic_models, reg._routes = old_models, old_routes
 
         assert resolved == (cfg.fast_standard_model, "env")
+
+
+class TestEnvFloorIncidentPath:
+    """The env default is served even when the catalog refuses it (the last
+    layer cannot fall through), but the refusal must be LOUD."""
+
+    @pytest.mark.asyncio
+    async def test_killed_env_default_serves_but_screams(self, mocker):
+        import backend.copilot.model_router as router_mod
+        import backend.data.llm_registry.registry as reg
+        from backend.copilot.model_router import resolve_model_route
+        from backend.util.settings import BehaveAs
+
+        mocker.patch.object(router_mod.settings.config, "behave_as", BehaveAs.CLOUD)
+        router_mod._sentry_reported.clear()
+        sentry = mocker.patch("backend.copilot.model_router.sentry_sdk.capture_message")
+        mocker.patch(
+            "backend.copilot.model_router.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        )
+
+        cfg = _make_config()
+        # Register the env default as KILL-SWITCHED
+        from backend.data.llm_registry.registry import (
+            RegistryModel,
+            RegistryModelMetadata,
+        )
+
+        def _entry(slug, enabled):
+            return RegistryModel(
+                slug=slug,
+                display_name=slug,
+                metadata=RegistryModelMetadata(
+                    provider="anthropic",
+                    context_window=1000,
+                    max_output_tokens=None,
+                    display_name=slug,
+                    provider_name="Anthropic",
+                    creator_name="Anthropic",
+                    price_tier=1,
+                ),
+                provider_display_name="Anthropic",
+                is_enabled=enabled,
+            )
+
+        old = (reg._dynamic_models, reg._routes)
+        reg._dynamic_models = {"claude-sonnet-4-6": _entry("claude-sonnet-4-6", False)}
+        reg._routes = {}
+        try:
+            resolved = await resolve_model_route(
+                "fast", "standard", "user-1", config=cfg
+            )
+        finally:
+            reg._dynamic_models, reg._routes = old
+
+        # Serves anyway (last resort) but Sentry heard about it.
+        assert resolved == (cfg.fast_standard_model, "env")
+        sentry.assert_called_once()
+
+
+class TestUnloadedRegistryWiring:
+    """Empty-because-never-loaded is a wiring bug and must log loudly once,
+    distinct from a legitimately dormant empty registry."""
+
+    @pytest.mark.asyncio
+    async def test_never_loaded_process_logs_wiring_error_once(self, mocker, caplog):
+        import logging
+
+        import backend.copilot.model_router as router_mod
+        import backend.data.llm_registry.registry as reg
+        from backend.copilot.model_router import _registry_refuses
+
+        old_models, old_loaded = reg._dynamic_models, reg._loaded
+        reg._dynamic_models, reg._loaded = {}, False
+        router_mod._unloaded_reported = False
+        try:
+            with caplog.at_level(logging.ERROR):
+                assert await _registry_refuses("x/y", "ld") is None
+                assert await _registry_refuses("x/y", "ld") is None
+        finally:
+            reg._dynamic_models, reg._loaded = old_models, old_loaded
+            router_mod._unloaded_reported = False
+
+        wiring_errors = [r for r in caplog.records if "never called" in r.message]
+        assert len(wiring_errors) == 1
+
+
+class TestRestApiCatalogLoad:
+    """The REST API lifespan must load the catalog (same wiring guarantee
+    the executor gets)."""
+
+    def test_lifespan_invokes_the_loader(self):
+        import inspect
+
+        import backend.api.rest_api as rest_api
+
+        src = inspect.getsource(rest_api.lifespan_context)
+        assert "load_catalog" in src, (
+            "rest_api's lifespan must load the LLM catalog — without it "
+            "routing cells and serve-time gating silently no-op in the "
+            "API process"
+        )

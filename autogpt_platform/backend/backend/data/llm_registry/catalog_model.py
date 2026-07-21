@@ -104,10 +104,12 @@ class CatalogModel(BaseModel):
     price_tier: Literal[1, 2, 3] = 1
     is_enabled: bool = True
     is_recommended: bool = False
-    # Who can SEE the model in pickers/catalog. Orthogonal to is_enabled:
-    # is_enabled=False is the kill switch (never serves, even when routed);
-    # visibility="HIDDEN" serves when explicitly routed but is never shown —
-    # the pre-launch testing state.
+    # Who can SEE the model. Non-GA models are excluded from block picker
+    # metadata today; per-role tiers (EMPLOYEES/ADMINS) get distinct
+    # treatment when the catalog-driven picker ships. Orthogonal to
+    # is_enabled: is_enabled=False is the kill switch (copilot refuses,
+    # picker hides); visibility="HIDDEN" still SERVES when explicitly
+    # routed — the pre-launch testing state.
     visibility: Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"] = "GA"
     # Null = available on every subscription tier. Enforcement lands with
     # the catalog-driven model picker when that ships.

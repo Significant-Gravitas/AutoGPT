@@ -163,10 +163,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         json_schema = handler(schema)
         llm_model_metadata = {}
         for model in cls:
-            # Kill-switched models (catalog is_enabled=False) drop out of
-            # the picker metadata but remain valid enum values — stored
-            # graphs referencing them keep validating and executing.
-            if model.value in _DISABLED_SLUGS:
+            # Kill-switched and non-GA models drop out of the picker
+            # metadata but remain valid enum values — stored graphs
+            # referencing them keep validating and executing.
+            if model.value in _PICKER_HIDDEN_SLUGS:
                 continue
             model_name = model.value
             metadata = model.metadata
@@ -252,7 +252,13 @@ def _build_model_metadata() -> dict["LlmModel", ModelMetadata]:
 
 MODEL_METADATA = _build_model_metadata()
 
-_DISABLED_SLUGS = frozenset(m.slug for m in get_catalog().models if not m.is_enabled)
+# Hidden from the block picker: kill-switched models AND models not yet GA
+# (EMPLOYEES/ADMINS/HIDDEN visibility) — the catalog's documented "who can
+# SEE this" contract. Enum values stay valid either way, so stored graphs
+# referencing a hidden model keep validating and executing.
+_PICKER_HIDDEN_SLUGS = frozenset(
+    m.slug for m in get_catalog().models if not m.is_enabled or m.visibility != "GA"
+)
 
 
 def _default_model_from_catalog() -> LlmModel:
@@ -318,6 +324,11 @@ LEGACY_MODEL_MAPPINGS: dict[str, LlmModel] = {
     "meta-llama/Llama-3.2-3B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
 }
 
-for model in LlmModel:
-    if model not in MODEL_METADATA:
-        raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
+
+def _assert_metadata_complete() -> None:
+    for member in LlmModel:
+        if member not in MODEL_METADATA:
+            raise ValueError(f"Missing MODEL_METADATA metadata for model: {member}")
+
+
+_assert_metadata_complete()

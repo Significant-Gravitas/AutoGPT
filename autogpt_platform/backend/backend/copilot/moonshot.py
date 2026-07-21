@@ -73,6 +73,8 @@ def _overrides_from_catalog() -> dict[str, tuple[float, float]]:
     }
 
 
+# Import-time snapshot is safe: the catalog is immutable within a process
+# (the file only changes at deploy), same lifecycle as every projection.
 _RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = _overrides_from_catalog()
 
 

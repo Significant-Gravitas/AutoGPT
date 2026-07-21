@@ -5593,6 +5593,22 @@ async def _fetch_graphiti_context(
     return True, ctx
 
 
+_MODEL_DATE_SUFFIX = re.compile(r"-\d{8}$")
+
+
+def _canonical_model(model: str) -> str:
+    """Spelling-insensitive model identity for fallback detection:
+    vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
+    tail = model.lower().split("/")[-1]
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
+    return _MODEL_DATE_SUFFIX.sub("", tail.replace(".", "-"))
+
+
+def _same_model(a: str, b: str | None) -> bool:
+    return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
 def _stamp_turn_messages(
     messages: list[ChatMessage],
     *,
@@ -5611,13 +5627,16 @@ def _stamp_turn_messages(
     overwriting an already-stamped row.
 
     ``actual_model`` is the model observed on ``AssistantMessage.model``
-    (survives retries). When it differs from the requested resolution the
-    CLI's overload fallback served the turn — the stamp records the actual
-    model with ``routing_source="fallback"`` so analytics never attribute
-    a fallback-served turn to the layer that routed a different model.
+    (survives retries). When it names a DIFFERENT MODEL than the requested
+    resolution the CLI's overload fallback served the turn — the stamp
+    records the actual model with ``routing_source="fallback"`` so
+    analytics never attribute a fallback-served turn to the layer that
+    routed a different model. The comparison is canonicalized (vendor
+    prefix, dot/dash, date-suffix spellings) so a spelling difference
+    between the request and the CLI's report never fakes a fallback.
     """
     model = actual_model or requested_model
-    if actual_model is not None and actual_model != requested_model:
+    if actual_model is not None and not _same_model(actual_model, requested_model):
         routing_source = "fallback"
     for msg in messages[start_index:]:
         if msg.role == "assistant" and msg.model is None:

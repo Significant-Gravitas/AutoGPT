@@ -10,6 +10,11 @@ Field defaults keep entries short: visibility=GA, is_enabled=True,
 capabilities empty. See ``catalog_model.py`` for every field and
 ``catalog_test.py`` for the integrity + cost-drift guards that review
 this file so humans don't have to.
+
+
+Deliberate exception to the ~300-line file guideline: this file IS
+the model database (data-as-code); splitting it would scatter the one
+place model facts live.
 """
 
 from datetime import datetime, timezone
