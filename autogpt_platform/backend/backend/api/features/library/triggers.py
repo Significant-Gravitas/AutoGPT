@@ -17,6 +17,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.json import validate_with_jsonschema
 
 from . import db
 from . import model as models
@@ -66,8 +67,9 @@ async def setup_triggered_preset(
 
     Raises:
         NotFoundError: if the graph no longer exists / isn't accessible.
-        InvalidInputError: if the graph has no webhook node, or the webhook
-            backend rejects the trigger config / credentials.
+        InvalidInputError: if the graph has no webhook node, the given
+            ``constant_inputs`` don't match the graph's input schema, or the
+            webhook backend rejects the trigger config / credentials.
     """
     graph = await get_graph(graph_id, version=graph_version, user_id=user_id)
     if not graph:
@@ -76,6 +78,10 @@ async def setup_triggered_preset(
         raise InvalidInputError(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
+
+    constant_inputs = constant_inputs or {}
+    if error := validate_with_jsonschema(graph.input_schema, constant_inputs):
+        raise InvalidInputError(f"Invalid graph inputs: {error}")
 
     trigger_config_with_credentials = {
         **trigger_config,
@@ -95,7 +101,7 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    preset_inputs = dict(constant_inputs or {})
+    preset_inputs = dict(constant_inputs)
     preset_inputs[node_input_mask_key(trigger_node.id)] = (
         trigger_config_with_credentials
     )
@@ -157,6 +163,11 @@ async def update_triggered_preset(
             if trigger_config is None:
                 raise InvalidInputError(
                     f"Missing trigger configuration for node {trigger_node.id}"
+                )
+            if not isinstance(trigger_config, dict):
+                raise InvalidInputError(
+                    f"Trigger configuration for node {trigger_node.id} must be "
+                    "an object"
                 )
             trigger_config_with_credentials = {
                 **trigger_config,

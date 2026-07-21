@@ -17,13 +17,15 @@ _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
 
 
-def _graph():
+def _graph(*, input_schema=None):
     node = MagicMock()
     node.id = "trigger-node"
     graph = MagicMock()
     graph.id = "graph-1"
     graph.version = 1
     graph.webhook_input_node = node
+    # Empty schema by default -> constant_inputs validation is a no-op.
+    graph.input_schema = input_schema if input_schema is not None else {}
     return graph
 
 
@@ -117,6 +119,33 @@ async def test_webhook_setup_rejected_raises():
     create_mock.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_constant_inputs_validated_against_graph_input_schema():
+    """constant_inputs that violate the graph's input schema are rejected before
+    the preset (or webhook) is created."""
+    graph = _graph(
+        input_schema={
+            "type": "object",
+            "properties": {"count": {"type": "number"}},
+            "required": ["count"],
+        }
+    )
+    p_graph, p_creds, p_webhook, p_create = _patches(graph=graph)
+    with p_graph, p_creds, p_webhook, p_create as create_mock:
+        with pytest.raises(InvalidInputError, match="Invalid graph inputs"):
+            await setup_triggered_preset(
+                user_id=_USER,
+                graph_id="graph-1",
+                graph_version=1,
+                name="My Trigger",
+                description="",
+                trigger_config={"repo": "owner/repo"},
+                agent_credentials={},
+                constant_inputs={"count": "not-a-number"},
+            )
+    create_mock.assert_not_awaited()
+
+
 # ---- update_triggered_preset ----
 
 
@@ -207,6 +236,22 @@ async def test_update_reconfigure_missing_input_mask_raises():
                 user_id=_USER,
                 preset_id="preset-1",
                 inputs={"some_input": "value"},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_non_dict_trigger_config_raises():
+    """A non-dict value under the trigger mask key is rejected with a clean
+    InvalidInputError rather than a TypeError from `**trigger_config`."""
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="must be an object"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"_node_input_mask_trigger": "not-a-dict"},
                 credentials={},
             )
     m["setup"].assert_not_awaited()
