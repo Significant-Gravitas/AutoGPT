@@ -1,10 +1,12 @@
 import logging
+import re
 from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.blocks import get_block
+from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockType
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
@@ -15,6 +17,7 @@ from .models import (
     ErrorResponse,
     NoResultsResponse,
 )
+from .utils import is_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,8 @@ _TARGET_RESULTS = 10
 # Over-fetch to compensate for post-hoc filtering of graph-only blocks.
 # 40 is 2x current removed; speed of query 10 vs 40 is minimial
 _OVERFETCH_PAGE_SIZE = 40
+# Cap on registry hits for queries that name a block class directly.
+_MAX_EXACT_NAME_MATCHES = 3
 
 # Block types that only work within graphs and cannot run standalone in CoPilot.
 COPILOT_EXCLUDED_BLOCK_TYPES = {
@@ -37,8 +42,13 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
 COPILOT_EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
+    # OrchestratorBlock - dynamically discovers downstream blocks via graph topology;
+    # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
     "3b191d9f-356f-482d-8238-ba04b6d18381",
+    # AutoPilotBlock - has dedicated run_sub_session tool with async start +
+    # poll lifecycle. Calling it via run_block would block the parent stream
+    # for the sub-AutoPilot's entire runtime (15-45+ min typical).
+    "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
 }
 
 
@@ -52,12 +62,9 @@ class FindBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for available blocks by name or description. "
-            "Blocks are reusable components that perform specific tasks like "
-            "sending emails, making API calls, processing text, etc. "
-            "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, name, and description. "
-            "Call run_block with the block's id **with no inputs** to see detailed inputs/outputs and execute it."
+            "Search blocks by name or description. Returns block IDs for run_block. "
+            "Always call this FIRST to get block IDs before using run_block. "
+            "Then call run_block with the block's id and empty input_data to see its detailed schema."
         )
 
     @property
@@ -67,17 +74,14 @@ class FindBlockTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": (
-                        "Search query to find blocks by name or description. "
-                        "Use keywords like 'email', 'http', 'text', 'ai', etc."
-                    ),
+                    "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
-                "include_schemas": {
+                "for_agent_generation": {
                     "type": "boolean",
                     "description": (
-                        "If true, include full input_schema and output_schema "
-                        "for each block. Use when generating agent JSON that "
-                        "needs block schemas. Default is false."
+                        "Set to true when searching for blocks to use inside an agent graph "
+                        "(e.g. AgentInputBlock, AgentOutputBlock, OrchestratorBlock). "
+                        "Bypasses the CoPilot-only filter so graph-only blocks are visible."
                     ),
                     "default": False,
                 },
@@ -93,6 +97,8 @@ class FindBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
+        for_agent_generation: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         """Search for blocks matching the query.
@@ -101,23 +107,99 @@ class FindBlockTool(BaseTool):
             user_id: User ID (required)
             session: Chat session
             query: Search query
+            for_agent_generation: When True, bypasses the CoPilot exclusion filter
+                so graph-only blocks (INPUT, OUTPUT, ORCHESTRATOR, etc.) are visible.
 
         Returns:
             BlockListResponse: List of matching blocks
             NoResultsResponse: No blocks found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
-        include_schemas = kwargs.get("include_schemas", False)
+        query = (query or "").strip()
         session_id = session.session_id
 
         if not query:
             return ErrorResponse(
-                message="Please provide a search query",
+                message="Please provide a search query or block ID",
                 session_id=session_id,
             )
 
         try:
+            # Direct ID lookup if query looks like a UUID
+            if is_uuid(query):
+                block = get_block(query.lower())
+                if block:
+                    if block.disabled:
+                        return NoResultsResponse(
+                            message=f"Block '{block.name}' (ID: {block.id}) is disabled and cannot be used.",
+                            suggestions=["Search for an alternative block by name"],
+                            session_id=session_id,
+                        )
+                    is_excluded = (
+                        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
+                        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                    )
+                    if is_excluded:
+                        # Graph-only blocks (INPUT, OUTPUT, MCP_TOOL, AGENT, etc.) are
+                        # exposed when building an agent graph so the LLM can inspect
+                        # their schemas and wire them as nodes.  In CoPilot direct use
+                        # they are not executable — guide the LLM to the right tool.
+                        if not for_agent_generation:
+                            if block.block_type == BlockType.MCP_TOOL:
+                                message = (
+                                    f"Block '{block.name}' (ID: {block.id}) cannot be "
+                                    "run directly in CoPilot. Use run_mcp_tool for "
+                                    "interactive MCP execution, or call find_block with "
+                                    "for_agent_generation=true to embed it in an agent graph."
+                                )
+                            else:
+                                message = (
+                                    f"Block '{block.name}' (ID: {block.id}) is not available "
+                                    "in CoPilot. It can only be used within agent graphs."
+                                )
+                            return NoResultsResponse(
+                                message=message,
+                                suggestions=[
+                                    "Search for an alternative block by name",
+                                    "Use this block in an agent graph instead",
+                                ],
+                                session_id=session_id,
+                            )
+
+                    # Check block-level permissions — hide denied blocks entirely
+                    perms = get_current_permissions()
+                    if perms is not None and not perms.is_block_allowed(
+                        block.id, block.name
+                    ):
+                        return NoResultsResponse(
+                            message=f"No blocks found for '{query}'",
+                            suggestions=[
+                                "Search for an alternative block by name",
+                            ],
+                            session_id=session_id,
+                        )
+
+                    summary = BlockInfoSummary(
+                        id=block.id,
+                        name=block.name,
+                        description=(
+                            block.optimized_description or block.description or ""
+                        ),
+                        categories=[c.value for c in block.categories],
+                    )
+                    return BlockListResponse(
+                        message=(
+                            f"Found block '{block.name}' by ID. "
+                            "To see inputs/outputs and execute it, use "
+                            "run_block with the block's 'id' - providing "
+                            "no inputs."
+                        ),
+                        blocks=[summary],
+                        count=1,
+                        query=query,
+                        session_id=session_id,
+                    )
+
             # Search for blocks using hybrid search
             results, total = await search().unified_hybrid_search(
                 query=query,
@@ -125,6 +207,18 @@ class FindBlockTool(BaseTool):
                 page=1,
                 page_size=_OVERFETCH_PAGE_SIZE,
             )
+
+            # Prepend exact class-name matches from the live registry. The
+            # hybrid search can miss or bury exact block names: CamelCase
+            # queries get no lexical signal (the index stores the split
+            # form), and index rows can lag behind block renames. Queries
+            # like "OrchestratorBlock" must always resolve.
+            exact_ids = _find_block_ids_by_name(query)
+            if exact_ids:
+                seen = set(exact_ids)
+                results = [{"content_id": bid} for bid in exact_ids] + [
+                    r for r in results if r["content_id"] not in seen
+                ]
 
             if not results:
                 return NoResultsResponse(
@@ -137,6 +231,7 @@ class FindBlockTool(BaseTool):
                 )
 
             # Enrich results with block information
+            perms = get_current_permissions()
             blocks: list[BlockInfoSummary] = []
             for result in results:
                 block_id = result["content_id"]
@@ -146,10 +241,17 @@ class FindBlockTool(BaseTool):
                 if not block or block.disabled:
                     continue
 
-                # Skip blocks excluded from CoPilot (graph-only blocks)
-                if (
+                # Graph-only blocks (INPUT, OUTPUT, MCP_TOOL, AGENT, etc.) are
+                # skipped in CoPilot direct use but surfaced for agent graph building.
+                if not for_agent_generation and (
                     block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                     or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                ):
+                    continue
+
+                # Skip blocks denied by execution permissions
+                if perms is not None and not perms.is_block_allowed(
+                    block.id, block.name
                 ):
                     continue
 
@@ -159,12 +261,6 @@ class FindBlockTool(BaseTool):
                     description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
                 )
-
-                if include_schemas:
-                    info = block.get_info()
-                    summary.input_schema = info.inputSchema
-                    summary.output_schema = info.outputSchema
-                    summary.static_output = info.staticOutput
 
                 blocks.append(summary)
 
@@ -208,3 +304,27 @@ class FindBlockTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+
+def _find_block_ids_by_name(query: str) -> list[str]:
+    """Resolve a query that names a block class to its block ID(s).
+
+    Matches case-insensitively, ignoring spaces/punctuation, with an optional
+    "Block" suffix — so "OrchestratorBlock", "orchestrator block" and
+    "orchestrator" all resolve to OrchestratorBlock. Exclusion/permission
+    filtering is the caller's job (same path as regular search results).
+    """
+    normalized = _normalize_block_name(query)
+    if not normalized:
+        return []
+    matches = [
+        block_id
+        for block_id, block_cls in get_blocks().items()
+        if _normalize_block_name(block_cls.__name__)
+        in (normalized, f"{normalized}block")
+    ]
+    return matches[:_MAX_EXACT_NAME_MATCHES]
+
+
+def _normalize_block_name(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())

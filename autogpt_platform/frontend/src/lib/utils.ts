@@ -194,6 +194,24 @@ export function exportAsJSONFile(obj: object, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+export function agentGraphExportFilename(
+  graph: unknown,
+  fallbackName = "agent",
+): string {
+  const { name, version } = (
+    typeof graph === "object" && graph !== null ? graph : {}
+  ) as { name?: unknown; version?: unknown };
+  const rawName = typeof name === "string" && name.trim() ? name : fallbackName;
+  const safeName =
+    rawName
+      .trim()
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+      .replace(/[_ ]+$/, "") || "agent";
+  return typeof version === "number"
+    ? `${safeName}_v${version}.json`
+    : `${safeName}.json`;
+}
+
 export function setNestedProperty(obj: any, path: string, value: any) {
   if (!obj || typeof obj !== "object") {
     throw new Error("Target must be a non-null object");
@@ -425,4 +443,15 @@ export function isValidUUID(value: string): boolean {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
+}
+
+export function getApprovedMarketplaceUrl(args: {
+  creatorUsername: string | null | undefined;
+  slug: string | null | undefined;
+  isApproved: boolean;
+}): string | undefined {
+  if (!args.isApproved || !args.creatorUsername || !args.slug) {
+    return undefined;
+  }
+  return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
 }

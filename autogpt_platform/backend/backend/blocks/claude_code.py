@@ -17,6 +17,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -431,6 +432,7 @@ class ClaudeCodeBlock(Block):
                 # The JSON output contains the result
                 output_data = json.loads(raw_output)
                 response = output_data.get("result", raw_output)
+                self._record_cli_cost(output_data)
 
                 # Build conversation history entry
                 turn_entry = f"User: {prompt}\nClaude: {response}"
@@ -483,6 +485,23 @@ class ClaudeCodeBlock(Block):
         # Use single quotes and escape any single quotes in the prompt
         escaped = prompt.replace("'", "'\"'\"'")
         return f"'{escaped}'"
+
+    def _record_cli_cost(self, output_data: dict) -> None:
+        """Feed Claude Code CLI's `total_cost_usd` to the COST_USD resolver.
+
+        The CLI rolls up Anthropic LLM + internal tool-call spend into
+        ``total_cost_usd`` on its JSON response; piping it through
+        ``merge_stats`` lets the wallet reflect real spend.
+        """
+        total_cost_usd = output_data.get("total_cost_usd")
+        if total_cost_usd is None:
+            return
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(total_cost_usd),
+                provider_cost_type="cost_usd",
+            )
+        )
 
     async def run(
         self,

@@ -7,6 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
+from .helpers import coerce_agent_json, require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
 logger = logging.getLogger(__name__)
@@ -22,17 +23,10 @@ class ValidateAgentGraphTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Validate an agent JSON graph for correctness. Checks:\n"
-            "- All block_ids reference real blocks\n"
-            "- All links reference valid source/sink nodes and fields\n"
-            "- Required input fields are wired or have defaults\n"
-            "- Data types are compatible across links\n"
-            "- Nested sink links use correct notation\n"
-            "- Prompt templates use proper curly brace escaping\n"
-            "- AgentExecutorBlock configurations are valid\n\n"
-            "Call this after generating agent JSON to verify correctness. "
-            "If validation fails, either fix issues manually based on the error "
-            "descriptions, or call fix_agent_graph to auto-fix common problems."
+            "Validate agent JSON for correctness: block_ids, links, required fields, "
+            "type compatibility, nested sink notation, prompt brace escaping, "
+            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix. "
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -45,11 +39,11 @@ class ValidateAgentGraphTool(BaseTool):
             "type": "object",
             "properties": {
                 "agent_json": {
-                    "type": "object",
+                    "type": ["object", "string"],
                     "description": (
-                        "The agent JSON to validate. Must contain 'nodes' and 'links' arrays. "
-                        "Each node needs: id (UUID), block_id, input_default, metadata. "
-                        "Each link needs: id (UUID), source_id, source_name, sink_id, sink_name."
+                        "Agent JSON with 'nodes' and 'links' arrays, or the "
+                        'string "@@agptfile:<path>" to a JSON file '
+                        "(preferred for large graphs)."
                     ),
                 },
             },
@@ -60,14 +54,22 @@ class ValidateAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_json: dict | str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_json = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
-        if not agent_json or not isinstance(agent_json, dict):
+        guide_gate = require_guide_read(session, "validate_agent_graph")
+        if guide_gate is not None:
+            return guide_gate
+
+        agent_json = coerce_agent_json(agent_json)
+        if not agent_json:
             return ErrorResponse(
-                message="Please provide a valid agent JSON object.",
+                message=(
+                    "Please provide a valid agent JSON object, or the string "
+                    '"@@agptfile:<path>" referencing a JSON file.'
+                ),
                 error="Missing or invalid agent_json parameter",
                 session_id=session_id,
             )

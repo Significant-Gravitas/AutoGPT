@@ -37,7 +37,10 @@ const audioMimeTypes = [
   "audio/flac",
 ];
 
-function buildDownloadURL(fileID: string): string {
+function buildDownloadURL(fileID: string, shareToken?: string): string {
+  if (shareToken) {
+    return `/api/proxy/api/public/shared/${shareToken}/files/${fileID}/download`;
+  }
   return `/api/proxy/api/workspace/files/${fileID}/download`;
 }
 
@@ -124,7 +127,7 @@ function renderWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
   const mimeType = uri.mimeType || metadata?.mimeType || null;
 
   if (mimeType && imageMimeTypes.includes(mimeType)) {
@@ -174,7 +177,7 @@ function getCopyContentWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
   const mimeType =
     uri.mimeType || metadata?.mimeType || "application/octet-stream";
 
@@ -205,7 +208,7 @@ function getDownloadContentWorkspaceFile(
   const filename = metadata?.filename || `file.${ext}`;
 
   return {
-    data: buildDownloadURL(uri.fileID),
+    data: buildDownloadURL(uri.fileID, metadata?.shareToken),
     filename,
     mimeType,
   };

@@ -1121,3 +1121,225 @@ class TestSharedCache:
         # Cleanup
         shared_perf_function.cache_clear()
         local_perf_function.cache_clear()
+
+
+class TestCacheHMAC:
+    """Tests for HMAC integrity verification on Redis-backed cache."""
+
+    def test_hmac_signed_roundtrip(self):
+        """Values written to Redis can be read back via HMAC verification."""
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def hmac_roundtrip_fn(x: int) -> dict:
+            nonlocal call_count
+            call_count += 1
+            return {"value": x, "nested": [1, 2, 3]}
+
+        hmac_roundtrip_fn.cache_clear()
+
+        result1 = hmac_roundtrip_fn(42)
+        assert result1 == {"value": 42, "nested": [1, 2, 3]}
+        assert call_count == 1
+
+        # Second call should hit cache (HMAC verification passes)
+        result2 = hmac_roundtrip_fn(42)
+        assert result2 == {"value": 42, "nested": [1, 2, 3]}
+        assert call_count == 1
+
+        hmac_roundtrip_fn.cache_clear()
+
+    def test_tampered_cache_entry_rejected(self):
+        """A tampered Redis entry is rejected and treated as a cache miss."""
+        from backend.util.cache import _get_redis
+
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def tamper_test_fn(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x * 2
+
+        tamper_test_fn.cache_clear()
+
+        # Populate the cache
+        result = tamper_test_fn(7)
+        assert result == 14
+        assert call_count == 1
+
+        # Find and tamper with the Redis key
+        redis = _get_redis()
+        keys = list(redis.scan_iter("cache:tamper_test_fn:*"))
+        assert len(keys) >= 1, "Expected at least one cache key"
+
+        for key in keys:
+            raw: bytes | None = redis.get(key)  # type: ignore[assignment]
+            assert raw is not None
+            # Flip a byte in the signature portion to simulate tampering
+            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]  # type: ignore[index]
+            redis.set(key, tampered)
+
+        # Next call should detect tampering and recompute
+        result2 = tamper_test_fn(7)
+        assert result2 == 14
+        assert call_count == 2  # Had to recompute
+
+        tamper_test_fn.cache_clear()
+
+    def test_unsigned_legacy_entry_rejected(self):
+        """A raw pickled value (no HMAC prefix) is rejected as a cache miss."""
+        import pickle as _pickle
+
+        from backend.util.cache import _get_redis
+
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def legacy_test_fn(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            return x + 100
+
+        legacy_test_fn.cache_clear()
+
+        # Manually write an unsigned (legacy) pickled value directly to Redis
+        redis = _get_redis()
+        # We need to figure out the cache key format; populate first then overwrite
+        result = legacy_test_fn(5)
+        assert result == 105
+        assert call_count == 1
+
+        keys = list(redis.scan_iter("cache:legacy_test_fn:*"))
+        assert len(keys) >= 1
+
+        # Overwrite with raw unsigned pickle (simulating a legacy entry)
+        for key in keys:
+            redis.set(key, _pickle.dumps(999))
+
+        # Next call should reject the unsigned value and recompute
+        result2 = legacy_test_fn(5)
+        assert result2 == 105
+        assert call_count == 2
+
+        legacy_test_fn.cache_clear()
+
+
+class TestCacheNoneHandling:
+    """Tests for the ``cache_none`` parameter on the @cached decorator.
+
+    Sentry bug PRRT_kwDOJKSTjM56RTEu (HIGH): the cache previously could not
+    distinguish "no entry" from "entry is None", so any function returning
+    ``None`` was effectively re-executed on every call. The fix is a
+    sentinel-based check inside the wrappers, plus an opt-out
+    ``cache_none=False`` flag for callers that *want* errors to retry.
+    """
+
+    @pytest.mark.asyncio
+    async def test_async_none_is_cached_by_default(self):
+        """With ``cache_none=True`` (default), cached ``None`` is returned
+        from the cache instead of triggering re-execution."""
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        async def maybe_none(x: int) -> int | None:
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        assert await maybe_none(1) is None
+        assert call_count == 1
+
+        # Second call should hit the cache, not re-execute.
+        assert await maybe_none(1) is None
+        assert call_count == 1
+
+        # Different argument is a different cache key — re-executes.
+        assert await maybe_none(2) is None
+        assert call_count == 2
+
+    def test_sync_none_is_cached_by_default(self):
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        def maybe_none(x: int) -> int | None:
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        assert maybe_none(1) is None
+        assert maybe_none(1) is None
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_cache_none_false_skips_storing_none(self):
+        """``cache_none=False`` skips storing ``None`` so transient errors
+        are retried on the next call instead of poisoning the cache."""
+        call_count = 0
+        results: list[int | None] = [None, None, 42]
+
+        @cached(ttl_seconds=300, cache_none=False)
+        async def maybe_none(x: int) -> int | None:
+            nonlocal call_count
+            result = results[call_count]
+            call_count += 1
+            return result
+
+        # First call: returns None, NOT stored.
+        assert await maybe_none(1) is None
+        assert call_count == 1
+
+        # Second call with same key: re-executes (None wasn't cached).
+        assert await maybe_none(1) is None
+        assert call_count == 2
+
+        # Third call: returns 42, this time it IS stored.
+        assert await maybe_none(1) == 42
+        assert call_count == 3
+
+        # Fourth call: cache hit on the stored 42.
+        assert await maybe_none(1) == 42
+        assert call_count == 3
+
+    def test_sync_cache_none_false_skips_storing_none(self):
+        call_count = 0
+        results: list[int | None] = [None, 99]
+
+        @cached(ttl_seconds=300, cache_none=False)
+        def maybe_none(x: int) -> int | None:
+            nonlocal call_count
+            result = results[call_count]
+            call_count += 1
+            return result
+
+        assert maybe_none(1) is None
+        assert call_count == 1
+
+        # None was not stored — re-executes.
+        assert maybe_none(1) == 99
+        assert call_count == 2
+
+        # 99 IS stored — no re-execution.
+        assert maybe_none(1) == 99
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_none_is_cached_by_default(self):
+        """Shared (Redis) cache also properly returns cached ``None`` values."""
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def maybe_none_redis(x: int) -> int | None:
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        maybe_none_redis.cache_clear()
+
+        assert await maybe_none_redis(1) is None
+        assert call_count == 1
+
+        assert await maybe_none_redis(1) is None
+        assert call_count == 1
+
+        maybe_none_redis.cache_clear()

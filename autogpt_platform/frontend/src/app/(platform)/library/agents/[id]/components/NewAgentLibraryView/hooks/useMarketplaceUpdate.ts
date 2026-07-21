@@ -47,7 +47,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       {
         query: {
           // Only fetch if user is the creator
-          enabled: !!(user?.id && agent?.owner_user_id === user.id),
+          enabled: !!(user?.id && agent?.can_access_graph),
         },
       },
     );
@@ -90,7 +90,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       };
     }
 
-    const isUserCreator = agent?.owner_user_id === user?.id;
+    const isUserCreator = !!(agent?.can_access_graph && user?.id);
 
     const submissionsResponse = okData(submissionsData) as any;
     const agentSubmissions =

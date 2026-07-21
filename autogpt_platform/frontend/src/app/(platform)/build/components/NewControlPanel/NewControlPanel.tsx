@@ -1,13 +1,20 @@
 import { cn } from "@/lib/utils";
-import React, { memo } from "react";
+import { memo } from "react";
 import { BlockMenu } from "./NewBlockMenu/BlockMenu/BlockMenu";
-import { useNewControlPanel } from "./useNewControlPanel";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/ui/separator";
 import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
+import { GraphSearchMenu } from "./NewSearchGraph/GraphMenu/GraphMenu";
 import { UndoRedoButtons } from "./UndoRedoButtons";
+import { useGraphSearchShortcut } from "./useGraphSearchShortcut";
 
-export const NewControlPanel = memo(() => {
-  useNewControlPanel({});
+interface Props {
+  isReadOnly?: boolean;
+}
+
+export const NewControlPanel = memo(function NewControlPanel({
+  isReadOnly = false,
+}: Props) {
+  useGraphSearchShortcut();
 
   return (
     <section
@@ -16,16 +23,22 @@ export const NewControlPanel = memo(() => {
       )}
     >
       <div className="flex flex-col items-center justify-center rounded-[1rem] p-0">
-        <BlockMenu />
-        <Separator className="text-[#E1E1E1]" />
-        <NewSaveControl />
-        <Separator className="text-[#E1E1E1]" />
-        <UndoRedoButtons />
+        {isReadOnly ? (
+          <GraphSearchMenu />
+        ) : (
+          <>
+            <BlockMenu />
+            <Separator className="text-[#E1E1E1]" />
+            <GraphSearchMenu />
+            <Separator className="text-[#E1E1E1]" />
+            <NewSaveControl />
+            <Separator className="text-[#E1E1E1]" />
+            <UndoRedoButtons />
+          </>
+        )}
       </div>
     </section>
   );
 });
 
 export default NewControlPanel;
-
-NewControlPanel.displayName = "NewControlPanel";

@@ -1,41 +1,26 @@
-import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
+import { useControlPanelStore } from "@/app/(platform)/build/stores/controlPanelStore";
 import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
+import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 
 interface UseGraphMenuProps {
   nodes: CustomNode[];
-  blockMenuSelected: "save" | "block" | "search" | "";
-  setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block" | "search">
-  >;
-  onNodeSelect: (nodeId: string) => void;
+  onNodeSelect: (nodeID: string) => void;
 }
 
-export const useGraphMenu = ({
-  nodes,
-  setBlockMenuSelected,
-  onNodeSelect,
-}: UseGraphMenuProps) => {
-  const { open, setOpen, searchQuery, setSearchQuery, filteredNodes } =
-    useGraphSearch(nodes);
+export function useGraphMenu({ nodes, onNodeSelect }: UseGraphMenuProps) {
+  const { setGraphSearchOpen } = useControlPanelStore();
+  const { searchQuery, setSearchQuery, filteredNodes } = useGraphSearch(nodes);
 
-  const handleNodeSelect = (nodeId: string) => {
-    onNodeSelect(nodeId);
-    setOpen(false);
+  function handleNodeSelect(nodeID: string) {
+    onNodeSelect(nodeID);
+    setGraphSearchOpen(false);
     setSearchQuery("");
-    setBlockMenuSelected("");
-  };
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    setBlockMenuSelected(newOpen ? "search" : "");
-  };
+  }
 
   return {
-    open,
     searchQuery,
     setSearchQuery,
     filteredNodes,
     handleNodeSelect,
-    handleOpenChange,
   };
-};
+}

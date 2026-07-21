@@ -1,7 +1,13 @@
-import Image from "next/image";
+"use client";
+
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
+import { Text } from "@/components/atoms/Text/Text";
 import { backgroundColor } from "./helper";
 
-interface CreatorCardProps {
+interface Props {
   creatorName: string;
   creatorImage: string | null;
   bio: string;
@@ -10,47 +16,44 @@ interface CreatorCardProps {
   index: number;
 }
 
-export const CreatorCard = ({
+export function CreatorCard({
   creatorName,
   creatorImage,
   bio,
   agentsUploaded,
   onClick,
   index,
-}: CreatorCardProps) => {
+}: Props) {
   return (
-    <div
-      className={`h-[264px] w-full px-[18px] pb-5 pt-6 ${backgroundColor(index)} inline-flex cursor-pointer flex-col items-start justify-start gap-3.5 rounded-[26px] transition-all duration-200 hover:brightness-95`}
+    <button
+      type="button"
+      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-md transition-all duration-300 hover:shadow-lg ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"
     >
-      <div className="relative h-[64px] w-[64px]">
-        <div className="absolute inset-0 overflow-hidden rounded-full">
-          {creatorImage ? (
-            <Image
-              src={creatorImage}
-              alt={creatorName}
-              width={64}
-              height={64}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="h-full w-full bg-neutral-300 dark:bg-neutral-600" />
-          )}
+      {/* Avatar */}
+      <Avatar className="h-14 w-14 shrink-0">
+        {creatorImage && (
+          <AvatarImage src={creatorImage} alt={`${creatorName} avatar`} />
+        )}
+        <AvatarFallback size={56}>{creatorName.charAt(0)}</AvatarFallback>
+      </Avatar>
+
+      <div className="mt-3 flex w-full flex-1 flex-col">
+        <Text variant="h4" className="leading-tight">
+          {creatorName}
+        </Text>
+        <div className="mt-2 flex w-full flex-col">
+          <Text variant="body" className="line-clamp-3 leading-normal">
+            {bio}
+          </Text>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <h3 className="font-poppins text-2xl font-semibold leading-tight text-neutral-900 dark:text-neutral-100">
-          {creatorName}
-        </h3>
-        <p className="text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
-          {bio}
-        </p>
-        <div className="text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-          {agentsUploaded} agents
-        </div>
-      </div>
-    </div>
+      {/* Stats */}
+      <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
+        {agentsUploaded} {agentsUploaded === 1 ? "agent" : "agents"}
+      </Text>
+    </button>
   );
-};
+}

@@ -6,14 +6,15 @@ export const metadata: Metadata = {
   robots: "noindex, nofollow",
 };
 
+// Passthrough.  Brand chrome lives in ``./components/ShareHeader``
+// which both share pages import — consistency comes from the shared
+// component, not from this file.  Pages own their own viewport/scroll
+// behaviour so the chat viewer can be full-bleed while the execution
+// viewer scrolls inside its own container.
 export default function ShareLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">{children}</div>
-    </div>
-  );
+  return <>{children}</>;
 }

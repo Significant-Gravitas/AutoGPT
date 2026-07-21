@@ -1,8 +1,12 @@
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
+
+from backend.data.execution import ExecutionStatus
+from backend.executor.utils import is_credential_validation_error_message
+from backend.util.exceptions import GraphValidationError
 
 from ._test_data import (
     make_session,
@@ -10,7 +14,8 @@ from ._test_data import (
     setup_llm_test_data,
     setup_test_data,
 )
-from .run_agent import RunAgentTool
+from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
+from .run_agent import RunAgentInput, RunAgentTool
 
 # This is so the formatter doesn't remove the fixture imports
 setup_llm_test_data = setup_llm_test_data
@@ -53,6 +58,7 @@ async def test_run_agent(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"test_input": "Hello World"},
+        dry_run=False,
         session=session,
     )
 
@@ -93,6 +99,7 @@ async def test_run_agent_missing_inputs(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={},  # Missing required input
+        dry_run=False,
         session=session,
     )
 
@@ -125,6 +132,7 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="invalid/agent-id",
         inputs={"test_input": "Hello World"},
+        dry_run=False,
         session=session,
     )
 
@@ -165,6 +173,7 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"user_prompt": "What is 2+2?"},
+        dry_run=False,
         session=session,
     )
 
@@ -203,6 +212,7 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
         username_agent_slug=agent_marketplace_id,
         inputs={},
         use_defaults=False,
+        dry_run=False,
         session=session,
     )
 
@@ -238,6 +248,7 @@ async def test_run_agent_with_use_defaults(setup_test_data):
         username_agent_slug=agent_marketplace_id,
         inputs={},
         use_defaults=True,
+        dry_run=False,
         session=session,
     )
 
@@ -268,6 +279,7 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"url": "https://example.com"},
+        dry_run=False,
         session=session,
     )
 
@@ -300,6 +312,7 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="no-slash-here",
         inputs={},
+        dry_run=False,
         session=session,
     )
 
@@ -327,6 +340,7 @@ async def test_run_agent_unauthenticated():
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="test/test-agent",
         inputs={},
+        dry_run=False,
         session=session,
     )
 
@@ -359,6 +373,7 @@ async def test_run_agent_schedule_without_cron(setup_test_data):
         inputs={"test_input": "test"},
         schedule_name="My Schedule",
         cron="",  # Empty cron
+        dry_run=False,
         session=session,
     )
 
@@ -391,6 +406,7 @@ async def test_run_agent_schedule_without_name(setup_test_data):
         inputs={"test_input": "test"},
         schedule_name="",  # Empty name
         cron="0 9 * * *",
+        dry_run=False,
         session=session,
     )
 
@@ -424,6 +440,7 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
             "unknown_field": "some value",
             "another_unknown": "another value",
         },
+        dry_run=False,
         session=session,
     )
 
@@ -441,3 +458,901 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
     }
     assert "inputs" in result_data  # Contains the valid schema
     assert "Agent was not executed" in result_data["message"]
+
+
+# ---------------------------------------------------------------------------
+# Credential-race-condition handling
+#
+# ``_check_prerequisites`` already catches the common "missing creds" case
+# at the top of ``_execute``, but the scheduler / executor re-validates and
+# can raise ``GraphValidationError`` if creds were deleted between the
+# prereq check and the actual call.  The tool turns these credential
+# errors back into the inline ``SetupRequirementsResponse`` so the user
+# still gets the credential setup card instead of a generic error.
+# ---------------------------------------------------------------------------
+
+
+def test_is_credential_validation_error_message_recognises_credential_strings():
+    """Shared helper should match all credential error strings emitted by
+    ``backend.executor.utils._validate_node_input_credentials``."""
+    assert is_credential_validation_error_message("These credentials are required")
+    assert is_credential_validation_error_message("THESE CREDENTIALS ARE REQUIRED")
+    assert is_credential_validation_error_message("Invalid credentials: not found")
+    assert is_credential_validation_error_message("Credentials not available: github")
+    assert is_credential_validation_error_message("Unknown credentials #abc-123")
+
+
+def test_is_credential_validation_error_message_rejects_non_credential_strings():
+    """Shared helper should ignore unrelated graph validation messages."""
+    assert not is_credential_validation_error_message("Input field 'url' is required")
+    assert not is_credential_validation_error_message("Block configuration invalid")
+    assert not is_credential_validation_error_message("")
+    assert not is_credential_validation_error_message("credentials are fine")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_from_credential_validation_error(
+    setup_firecrawl_test_data,
+):
+    """When the scheduler raises a credential-flavoured GraphValidationError,
+    the helper should rebuild the inline setup card from the graph schema."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+
+    # Construct an error in the same shape the executor produces.
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+
+    # Race path: all credential fields shown as missing.
+    response = tool._build_setup_requirements_from_validation_error(
+        graph=graph,
+        error=error,
+        session_id="test-session",
+    )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.graph_id == graph.id
+    assert response.graph_version == graph.version
+    assert response.setup_info.user_readiness.has_all_credentials is False
+    assert response.setup_info.user_readiness.ready_to_run is False
+    # The firecrawl fixture defines exactly one credential field (firecrawl
+    # API key).  Pin the count so fixture drift is caught immediately.
+    missing_credentials = response.setup_info.user_readiness.missing_credentials
+    assert len(missing_credentials) == 1, (
+        f"Expected exactly 1 credential from the firecrawl fixture, "
+        f"got {len(missing_credentials)}: {list(missing_credentials.keys())}"
+    )
+    assert "credentials" in response.message.lower()
+    # Message must be action-neutral: this helper is shared by the run
+    # path and the schedule path, so hardcoding "scheduling again" would
+    # mislead users on the run path.
+    assert "scheduling again" not in response.message.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_shows_all_creds_missing_in_race(
+    setup_firecrawl_test_data,
+):
+    """In the race scenario (prereq passed → creds deleted → executor raised),
+    the helper must show ALL credential fields as missing so the user knows
+    which accounts need to be reconnected — not an empty missing_credentials map."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+
+    response = tool._build_setup_requirements_from_validation_error(
+        graph=graph,
+        error=error,
+        session_id="test-session",
+    )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    # missing_credentials and requirements["credentials"] must both be non-empty
+    # and share the same field keys (both come from build_missing_credentials_from_graph).
+    missing = response.setup_info.user_readiness.missing_credentials
+    requirements_creds = response.setup_info.requirements["credentials"]
+    assert len(missing) > 0
+    assert set(missing.keys()) == {c["id"] for c in requirements_creds}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_returns_none_for_empty_node_errors(
+    setup_firecrawl_test_data,
+):
+    """Empty node_errors={} should fall through (helper returns None) because
+    there are no messages to classify as credential-related."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={},
+    )
+
+    response = tool._build_setup_requirements_from_validation_error(
+        graph=graph,
+        error=error,
+        session_id="test-session",
+    )
+
+    assert response is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_returns_none_for_non_credential_error(
+    setup_firecrawl_test_data,
+):
+    """Non-credential validation errors should fall through to the plain
+    ErrorResponse path (helper returns None)."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"url": "Input field 'url' is required"}},
+    )
+
+    response = tool._build_setup_requirements_from_validation_error(
+        graph=graph,
+        error=error,
+        session_id="test-session",
+    )
+
+    assert response is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_returns_none_for_mixed_errors(
+    setup_firecrawl_test_data,
+):
+    """Mixed credential + structural errors must fall through to the plain
+    ErrorResponse path so structural errors are not hidden from the user."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={
+            "node-a": {"credentials": "These credentials are required"},
+            "node-b": {"url": "Input field 'url' is required"},
+        },
+    )
+
+    response = tool._build_setup_requirements_from_validation_error(
+        graph=graph,
+        error=error,
+        session_id="test-session",
+    )
+
+    assert response is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_schedule_credential_race_returns_setup_card(
+    setup_test_data,
+):
+    """End-to-end: if the scheduler raises a credential GraphValidationError
+    after _check_prerequisites passed, the user should still see the
+    inline credentials-setup card (not a generic error)."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.side_effect = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+
+    with patch(
+        "backend.copilot.tools.run_agent.get_scheduler_client",
+        return_value=fake_scheduler,
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 9 * * *",
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    # Should surface the inline credential card, NOT a generic error or a
+    # link redirecting to the Builder.
+    assert result_data.get("type") == "setup_requirements"
+    assert "setup_info" in result_data
+    assert result_data["setup_info"]["user_readiness"]["ready_to_run"] is False
+    # Verify that missing_credentials is present (may be empty for graphs
+    # where the DB-stored credential schema doesn't surface input-embedded
+    # credentials — the important thing is that the card renders instead of
+    # a generic error or Builder redirect).
+    assert "missing_credentials" in result_data["setup_info"]["user_readiness"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_schedule_structural_error_returns_error_response(
+    setup_test_data,
+):
+    """End-to-end: if the scheduler raises a GraphValidationError with purely
+    structural (non-credential) errors after _check_prerequisites passed, the
+    tool must return an ErrorResponse with error='graph_validation_failed' —
+    not a setup_requirements card."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.side_effect = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"url": "Input field 'url' is required"}},
+    )
+
+    with patch(
+        "backend.copilot.tools.run_agent.get_scheduler_client",
+        return_value=fake_scheduler,
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 9 * * *",
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    # Structural errors must fall through to the plain error path — the
+    # user should see the validation error, not the credential setup card.
+    assert result_data.get("error") == "graph_validation_failed"
+    assert result_data.get("type") != "setup_requirements"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_execution_credential_race_returns_setup_card(
+    setup_test_data,
+):
+    """End-to-end: if the executor raises a credential GraphValidationError
+    after _check_prerequisites passed, the user should still see the
+    inline credentials-setup card (not a generic error)."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    with patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=GraphValidationError(
+            message="Graph is invalid",
+            node_errors={
+                "some-node-id": {"credentials": "These credentials are required"}
+            },
+        ),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    # Should surface the inline credential card, NOT a generic error or a
+    # link redirecting to the Builder.
+    assert result_data.get("type") == "setup_requirements"
+    assert "setup_info" in result_data
+    assert result_data["setup_info"]["user_readiness"]["ready_to_run"] is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_execution_structural_error_returns_error_response(
+    setup_test_data,
+):
+    """End-to-end: if the executor raises a GraphValidationError with purely
+    structural (non-credential) errors after _check_prerequisites passed, the
+    tool must return an ErrorResponse with error='graph_validation_failed' —
+    not a setup_requirements card and not a silent swallow."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    with patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=GraphValidationError(
+            message="Graph is invalid",
+            node_errors={
+                "some-node-id": {"url": "Input field 'url' is required"},
+            },
+        ),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    # Structural errors must fall through to the plain error path — the
+    # user should see the validation error, not the credential setup card.
+    assert result_data.get("error") == "graph_validation_failed"
+    assert result_data.get("type") != "setup_requirements"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_attributes_execution_to_session_org(mocker):
+    """An agent launched from an org-scoped chat must attribute the execution
+    to the SESSION's org/team, not the user's default (personal) org.
+    Regression: ``_run_agent`` previously always resolved
+    ``get_user_default_team`` → runs/credits from an org chat were
+    misattributed to the personal org."""
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-from-session"
+    session.team_id = "team-from-session"
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    default_team = AsyncMock(return_value=("personal-org", "personal-team"))
+    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+
+    captured: dict = {}
+
+    async def fake_add(**kwargs):
+        captured.update(kwargs)
+        execution = MagicMock()
+        execution.id = "exec-1"
+        return execution
+
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+
+    response = await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+    )
+
+    assert response is not None
+    assert captured["organization_id"] == "org-from-session"
+    assert captured["team_id"] == "team-from-session"
+    default_team.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
+    """Sessions created before org tagging carry no org — the run must fall
+    back to the user's default team instead of executing tenant-blind."""
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    assert session.organization_id is None
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    default_team = AsyncMock(return_value=("personal-org", "personal-team"))
+    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+
+    captured: dict = {}
+
+    async def fake_add(**kwargs):
+        captured.update(kwargs)
+        execution = MagicMock()
+        execution.id = "exec-1"
+        return execution
+
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+
+    response = await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+    )
+
+    assert response is not None
+    assert captured["organization_id"] == "personal-org"
+    assert captured["team_id"] == "personal-team"
+    default_team.assert_awaited_once()
+
+
+async def test_run_agent_redirects_webhook_trigger_agent():
+    """A webhook-trigger agent can't be run/scheduled — run_agent returns an
+    AgentDetailsResponse (carrying trigger_info) that points AutoPilot to
+    setup_agent_webhook_trigger instead of attempting to execute it."""
+    from backend.data.graph import GraphTriggerInfo
+
+    from .models import AgentDetailsResponse
+
+    tool = RunAgentTool()
+    session = make_session(user_id="webhook-user")
+
+    lib_agent = MagicMock()
+    lib_agent.id = "lib-wh"
+    lib_agent.graph_id = "graph-wh"
+    lib_agent.graph_version = 1
+
+    graph = MagicMock()
+    graph.id = "graph-wh"
+    graph.name = "PR Notifier"
+    graph.description = "Notifies on PRs"
+    graph.version = 1
+    graph.has_external_trigger = True
+    graph.input_schema = {}
+    graph.credentials_input_schema = {}
+    graph.trigger_setup_info = GraphTriggerInfo(
+        provider="github",
+        config_schema={
+            "type": "object",
+            "properties": {"repo": {"type": "string"}},
+            "required": ["repo"],
+        },
+        credentials_input_name="payload_credentials",
+    )
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(return_value=lib_agent)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._execute(
+            user_id="webhook-user",
+            session=session,
+            library_agent_id="lib-wh",
+        )
+
+    assert isinstance(result, AgentDetailsResponse)
+    assert result.agent.trigger_info is not None
+    assert result.agent.execution_options.webhook is True
+    assert result.agent.execution_options.manual is False
+    assert "setup_agent_webhook_trigger" in result.message
+    # It must NOT have attempted to execute the graph.
+    mock_graph_db.get_graph.assert_awaited_once()
+    add_exec.assert_not_awaited()
+
+
+# ---- preset_id (run on demand) + save_as_preset (create) ----
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_rejects_agent_identifier():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    result = await tool._handle_preset_run(
+        "preset-user",
+        session,
+        RunAgentInput(preset_id="p1", library_agent_id="lib1"),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "not both" in result.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_rejects_save_as_preset():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    result = await tool._handle_preset_run(
+        "preset-user",
+        session,
+        RunAgentInput(preset_id="p1", save_as_preset=True),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "already exists" in result.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_not_found():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=None)
+    with patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="missing")
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_not_found"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_executes_with_merged_inputs():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+
+    preset = MagicMock()
+    preset.id = "p1"
+    preset.graph_id = "g1"
+    preset.graph_version = 2
+    preset.inputs = {"a": 1, "b": 2}
+    preset.credentials = {}
+
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 2
+    graph.has_external_trigger = False
+
+    library_agent = MagicMock()
+    library_agent.id = "lib1"
+    library_agent.graph_id = "g1"
+    library_agent.graph_version = 2
+    library_agent.name = "My Agent"
+
+    execution = MagicMock()
+    execution.id = "exec1"
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock(return_value=execution)
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            new=AsyncMock(return_value=library_agent),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+            new=AsyncMock(),
+        ),
+        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
+        )
+
+    assert isinstance(result, ExecutionStartedResponse)
+    kwargs = add_exec.await_args.kwargs
+    assert kwargs["preset_id"] == "p1"
+    assert kwargs["inputs"] == {"a": 1, "b": 99}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_rejects_webhook_trigger():
+    """A webhook-triggered preset can't be run on demand (it fires on its
+    event); reject cleanly without attempting execution."""
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+
+    preset = MagicMock()
+    preset.id = "p-wh"
+    preset.graph_id = "g-wh"
+    preset.graph_version = 1
+    preset.inputs = {"repo": "owner/repo"}
+    preset.credentials = {}
+
+    graph = MagicMock()
+    graph.id = "g-wh"
+    graph.has_external_trigger = True
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p-wh")
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_is_webhook_trigger"
+    add_exec.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_maybe_save_preset_returns_none_when_flag_off():
+    tool = RunAgentTool()
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 1
+    result = await tool._maybe_save_preset(
+        user_id="u1", graph=graph, graph_credentials={}, params=RunAgentInput()
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_maybe_save_preset_creates_with_default_name():
+    tool = RunAgentTool()
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 1
+
+    created = MagicMock()
+    created.id = "preset-new"
+    mock_lib_db = MagicMock()
+    mock_lib_db.create_preset = AsyncMock(return_value=created)
+
+    with patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db):
+        result = await tool._maybe_save_preset(
+            user_id="u1",
+            graph=graph,
+            graph_credentials={},
+            params=RunAgentInput(save_as_preset=True, inputs={"x": 1}),
+        )
+
+    assert result == "preset-new"
+    preset_arg = mock_lib_db.create_preset.await_args.kwargs["preset"]
+    assert preset_arg.name == "My Agent"
+    assert preset_arg.inputs == {"x": 1}
+    assert preset_arg.graph_id == "g1"
+
+
+def _completed_run_mocks(
+    mocker,
+    *,
+    outputs: dict,
+    node_executions: list | None = None,
+    detailed_fetch_error: Exception | None = None,
+):
+    """Wire the waited-COMPLETED path: library agent, execution, waiter,
+    outputs, and the detailed per-node trace fetch."""
+    from unittest.mock import MagicMock
+
+    from backend.data.execution import GraphExecutionWithNodes
+
+    lib = MagicMock()
+    lib.graph_id = "graph-1"
+    lib.graph_version = 1
+    lib.name = "Test Agent"
+    lib.id = "lib-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-1", "team-1")),
+    )
+    execution = MagicMock()
+    execution.id = "exec-1"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=execution),
+    )
+    completed = MagicMock()
+    completed.status = ExecutionStatus.COMPLETED
+    completed.started_at = None
+    completed.ended_at = None
+    mocker.patch(
+        "backend.copilot.tools.run_agent.wait_for_execution",
+        AsyncMock(return_value=completed),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_execution_outputs",
+        return_value=outputs,
+    )
+    detailed = MagicMock(spec=GraphExecutionWithNodes)
+    detailed.node_executions = node_executions or []
+    db = MagicMock()
+    if detailed_fetch_error is not None:
+        db.get_graph_execution = AsyncMock(side_effect=detailed_fetch_error)
+    else:
+        db.get_graph_execution = AsyncMock(return_value=detailed)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.execution_db",
+        return_value=db,
+    )
+    return lib
+
+
+def _failed_node(node_id: str = "n1") -> "MagicMock":
+    from unittest.mock import MagicMock
+
+    ne = MagicMock()
+    ne.status = ExecutionStatus.FAILED
+    ne.node_id = node_id
+    ne.block_id = "block-x"
+    ne.output_data = {"error": ["boom exploded"]}
+    ne.input_data = {}
+    ne.start_time = None
+    ne.end_time = None
+    return ne
+
+
+async def _run_waited(mocker, *, dry_run: bool):
+    from unittest.mock import MagicMock
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
+    graph = MagicMock()
+    graph.id = "graph-1"
+    graph.version = 1
+    graph.name = "Test Agent"
+    return await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=dry_run,
+        wait_for_result=30,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_completed_run_with_failed_node_warns_and_reports(mocker):
+    """A COMPLETED run with a FAILED node must NOT read as success: the
+    message carries the warning and the response carries nodes_failed."""
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "finished with status COMPLETED" in response.message
+    assert "FAILED despite the COMPLETED" in response.message
+    assert "completed successfully" not in response.message
+    assert response.execution.nodes_failed is not None
+    assert response.execution.nodes_failed[0]["error"] == "boom exploded"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_completed_run_with_empty_outputs_warns(mocker):
+    _completed_run_mocks(mocker, outputs={}, node_executions=[])
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "produced no outputs" in response.message
+    assert "completed successfully" not in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_healthy_completed_run_reports_success(mocker):
+    _completed_run_mocks(mocker, outputs={"result": ["ok"]}, node_executions=[])
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "completed successfully" in response.message
+    assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_wet_run_omits_node_trace_dry_run_inlines_it(mocker):
+    """The full per-node trace is inlined only on dry runs (LLM debugging);
+    wet-run responses stay small."""
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    wet = await _run_waited(mocker, dry_run=False)
+    assert wet.execution.node_executions is None
+
+    _completed_run_mocks(
+        mocker, outputs={"result": ["ok"]}, node_executions=[_failed_node()]
+    )
+    dry = await _run_waited(mocker, dry_run=True)
+    assert dry.execution.node_executions is not None
+    assert dry.execution.node_executions[0]["status"] == "FAILED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_detailed_fetch_failure_degrades_to_summary(mocker):
+    """When the per-node trace fetch raises, the run response still returns
+    (summary only) instead of crashing."""
+    _completed_run_mocks(
+        mocker,
+        outputs={"result": ["ok"]},
+        detailed_fetch_error=RuntimeError("db down"),
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "completed successfully" in response.message
+    assert response.execution.nodes_failed is None

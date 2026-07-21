@@ -42,6 +42,7 @@ export interface RunBlockInput {
   block_id?: string;
   block_name?: string;
   input_data?: Record<string, unknown>;
+  dry_run?: boolean;
 }
 
 export type RunBlockToolOutput =
@@ -98,7 +99,19 @@ export function isRunBlockReviewRequiredOutput(
 export function isRunBlockErrorOutput(
   output: RunBlockToolOutput,
 ): output is ErrorResponse {
-  return output.type === ResponseType.error || "error" in output;
+  // Only match actual error responses (type=error), not block outputs that
+  // happen to have an "error" key in their outputs dict.  The old
+  // `"error" in output` check was too broad and caused BlockOutputResponse
+  // to be mis-identified as errors, showing dry-run results as failed.
+  if (output.type === ResponseType.error) return true;
+  // Fallback for untyped payloads: match only if "error" exists at the top
+  // level AND there is no "block_id" (which distinguishes BlockOutputResponse
+  // from ErrorResponse).  Note: `type` is optional in both interfaces, so
+  // correctness here depends on `block_id` presence (always set on
+  // BlockOutputResponse), not on `type` presence.
+  if (!("type" in output) && "error" in output && !("block_id" in output))
+    return true;
+  return false;
 }
 
 function parseOutput(output: unknown): RunBlockToolOutput | null {
@@ -121,7 +134,9 @@ function parseOutput(output: unknown): RunBlockToolOutput | null {
     if ("block_id" in output) return output as BlockOutputResponse;
     if ("block" in output) return output as BlockDetailsResponse;
     if ("setup_info" in output) return output as SetupRequirementsResponse;
-    if ("error" in output || "details" in output)
+    // Only match error responses that have an "error" key but NOT "block_id"
+    // (which would indicate a BlockOutputResponse, not an error).
+    if (("error" in output || "details" in output) && !("block_id" in output))
       return output as ErrorResponse;
   }
   return null;
@@ -142,6 +157,7 @@ export function getAnimationText(part: {
   const input = part.input as RunBlockInput | undefined;
   const blockName = input?.block_name?.trim();
   const blockId = input?.block_id?.trim();
+  const isDryRun = input?.dry_run === true;
   // Prefer block_name if available, otherwise fall back to block_id
   const blockText = blockName
     ? ` "${blockName}"`
@@ -152,11 +168,16 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `Running${blockText}`;
+      return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return `Running${blockText}`;
-      if (isRunBlockBlockOutput(output)) return `Ran "${output.block_name}"`;
+      if (!output)
+        return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
+      if (isRunBlockBlockOutput(output)) {
+        return output.is_dry_run
+          ? `Simulated "${output.block_name}"`
+          : `Ran "${output.block_name}"`;
+      }
       if (isRunBlockDetailsOutput(output))
         return `Details for "${output.block.name}"`;
       if (isRunBlockSetupRequirementsOutput(output)) {
@@ -165,12 +186,12 @@ export function getAnimationText(part: {
       if (isRunBlockReviewRequiredOutput(output)) {
         return `Review needed for "${output.block_name}"`;
       }
-      return "Error running block";
+      return "Action failed";
     }
     case "output-error":
-      return "Error running block";
+      return "Action failed";
     default:
-      return "Running the block";
+      return isDryRun ? "Simulating" : "Running";
   }
 }
 
@@ -215,13 +236,16 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
 
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
+    const outputCount =
+      keys.length > 0
+        ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
+        : output.message;
     return {
       icon,
       title: output.block_name,
-      description:
-        keys.length > 0
-          ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
-          : output.message,
+      description: output.is_dry_run
+        ? `Simulated · ${outputCount}`
+        : outputCount,
     };
   }
 

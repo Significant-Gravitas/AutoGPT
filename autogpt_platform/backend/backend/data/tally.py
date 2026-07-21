@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionUserMessageParam
 
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
@@ -14,7 +14,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import get_openai_client
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -39,6 +39,15 @@ _MAX_PAGES = 100
 
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
+
+# Cloud-transport model for ``extract_business_understanding``. Frozen at the
+# historical pick so existing OpenRouter / direct-Anthropic deployments don't
+# see a silent model swap (and cost change) when the local-transport plumbing
+# rolls out — local transport routes through ``chat_cfg.title_model`` instead.
+_EXTRACTION_MODEL_CLOUD = "openai/gpt-4o-mini"
+
+SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
+PROMPTS_PER_THEME = 5
 
 
 def _mask_email(email: str) -> str:
@@ -332,6 +341,11 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
+- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
+provide a list of 5 short action prompts (each under 20 words) that would help this person. \
+"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
+"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
+Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -345,25 +359,67 @@ async def extract_business_understanding(
     """Use an LLM to extract structured business understanding from form text.
 
     Raises on timeout or unparseable response so the caller can handle it.
-    """
-    settings = Settings()
-    api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+    Routes through ``get_openai_client(prefer_openrouter=True)`` so a
+    self-hosted ``CHAT_USE_LOCAL=true`` deployment hits the operator's
+    Ollama / vLLM / LiteLLM endpoint instead of unauthenticated OpenRouter
+    (the previous direct ``AsyncOpenAI(api_key=settings.secrets.open_router_api_key,
+    base_url=OPENROUTER_BASE_URL)`` returned a 401 on the very first signup
+    of any no-API-key install).
 
+    Model picks ``ChatConfig.title_model`` only under the local transport so
+    the auto-derivation from ``fast_standard_model`` flows through here too —
+    one less env to remember for self-hosted operators. Cloud transports
+    (OpenRouter / direct-Anthropic) keep the historical ``openai/gpt-4o-mini``
+    pick so existing deployments don't see a silent model swap (different
+    pricing, different output shape). Reuses the module-level ``ChatConfig``
+    singleton from ``copilot.sdk.env`` to avoid a fresh ``.env``-parse on
+    every Tally submission.
+    """
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    client = get_openai_client(prefer_openrouter=True)
+    if client is None:
+        raise RuntimeError(
+            "Tally extraction needs an LLM client but none is configured. "
+            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
+            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
+            "docs/platform/copilot-local-llm.md."
+        )
+    model = (
+        chat_cfg.title_model
+        if chat_cfg.transport.name == "local"
+        else _EXTRACTION_MODEL_CLOUD
+    )
+
+    # ``_LLM_TIMEOUT`` was sized for OpenRouter latency. Local CPU-only
+    # Ollama can take 30–120+ seconds for even a small JSON extraction
+    # (`qwen3:0.6b` on a 4-core VM is typical of the no-API-key install
+    # target), so the fixed cloud timeout fires before the model finishes
+    # and every Tally submission raises ``TimeoutError`` under local
+    # transport. Track the operator's already-tuned
+    # ``local_request_timeout_s`` instead — the same knob that gates the
+    # AsyncOpenAI client timeout, so the two stay aligned.
+    timeout_s = (
+        chat_cfg.local_request_timeout_s
+        if chat_cfg.transport.name == "local"
+        else _LLM_TIMEOUT
+    )
+
+    messages: list[ChatCompletionUserMessageParam] = [
+        {
+            "role": "user",
+            "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
+        }
+    ]
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="openai/gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
-                    }
-                ],
+                model=model,
+                messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0.0,
             ),
-            timeout=_LLM_TIMEOUT,
+            timeout=timeout_s,
         )
     except asyncio.TimeoutError:
         logger.warning("Tally: LLM extraction timed out")
@@ -378,6 +434,29 @@ async def extract_business_understanding(
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
+
+    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
+    raw_prompts = cleaned.get("suggested_prompts", {})
+    if isinstance(raw_prompts, dict):
+        themed: dict[str, list[str]] = {}
+        for theme in SUGGESTION_THEMES:
+            theme_prompts = raw_prompts.get(theme, [])
+            if not isinstance(theme_prompts, list):
+                continue
+            valid = [
+                s
+                for p in theme_prompts
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
+            ]
+            if valid:
+                themed[theme] = valid[:PROMPTS_PER_THEME]
+        if themed:
+            cleaned["suggested_prompts"] = themed
+        else:
+            cleaned.pop("suggested_prompts", None)
+    else:
+        cleaned.pop("suggested_prompts", None)
+
     return BusinessUnderstandingInput(**cleaned)
 
 
@@ -395,15 +474,31 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             )
             return
 
-        # Check API key is configured
+        # Check required config is present
         settings = Settings()
-        if not settings.secrets.tally_api_key:
-            logger.debug("Tally: no API key configured, skipping")
+        if not settings.secrets.tally_api_key or not settings.secrets.tally_form_id:
+            logger.debug("Tally: Tally config incomplete, skipping")
+            return
+        # Tally extraction needs an LLM. ``extract_business_understanding``
+        # routes through ``get_openai_client(prefer_openrouter=True)``,
+        # which returns the local-transport client when
+        # ``CHAT_USE_LOCAL=true`` (no OpenRouter key required) and the
+        # OpenRouter / direct-Anthropic client otherwise. The guard only
+        # bails when no LLM client is available at all — gating on
+        # ``open_router_api_key`` alone would silently skip Tally for
+        # every local install even though the local client is wired up.
+        from backend.copilot.sdk.env import config as chat_cfg
+
+        if (
+            chat_cfg.transport.name != "local"
+            and not settings.secrets.open_router_api_key
+        ):
+            logger.debug("Tally: no LLM client configured, skipping")
             return
 
         # Look up submission by email
         masked = _mask_email(email)
-        result = await find_submission_by_email(TALLY_FORM_ID, email)
+        result = await find_submission_by_email(settings.secrets.tally_form_id, email)
         if result is None:
             logger.debug(f"Tally: no submission found for {masked}")
             return

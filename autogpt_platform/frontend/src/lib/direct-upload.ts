@@ -28,6 +28,7 @@ export async function uploadFileDirect(
   if (sessionID) {
     url.searchParams.set("session_id", sessionID);
   }
+  url.searchParams.set("overwrite", "true");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -39,8 +40,18 @@ export async function uploadFileDirect(
   });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => res.statusText);
-    throw new Error(`Upload failed (${res.status}): ${detail}`);
+    let message: string;
+    try {
+      const body = await res.json();
+      // Backend returns { detail: "..." } or { detail: { message: "..." } }
+      message =
+        typeof body.detail === "string"
+          ? body.detail
+          : (body.detail?.message ?? res.statusText);
+    } catch {
+      message = res.statusText;
+    }
+    throw new Error(message);
   }
 
   return res.json();

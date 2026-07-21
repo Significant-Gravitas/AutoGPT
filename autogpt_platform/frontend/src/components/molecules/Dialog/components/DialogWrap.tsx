@@ -102,7 +102,7 @@ export function DialogWrap({
         }}
       >
         <div
-          className={`flex items-center justify-between ${
+          className={`flex items-center justify-between px-2 ${
             title ? "pb-6" : "pb-0"
           }`}
         >
@@ -111,13 +111,10 @@ export function DialogWrap({
               {title}
             </RXDialog.Title>
           ) : (
-            <span className="sr-only">
-              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
-              <RXDialog.Title>{title}</RXDialog.Title>
-            </span>
+            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
           )}
 
-          {isForceOpen && !handleClose ? null : (
+          {isForceOpen ? null : (
             <Button
               variant="icon"
               size="icon"
@@ -134,12 +131,12 @@ export function DialogWrap({
           <div
             ref={scrollRef}
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,
             )}
             style={{
               scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
             }}
           >
             {children}

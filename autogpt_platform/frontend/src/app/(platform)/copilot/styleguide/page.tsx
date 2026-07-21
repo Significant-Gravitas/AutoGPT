@@ -706,8 +706,8 @@ export default function StyleguidePage() {
                     input: { block_id: "weather-block-123" },
                     output: {
                       type: ResponseType.error,
-                      message: "Failed to run the block.",
-                      error: "Block execution timed out after 30 seconds.",
+                      message: "Something went wrong while running this step.",
+                      error: "Execution timed out after 30 seconds.",
                       details: {
                         block_id: "weather-block-123",
                         timeout_ms: 30000,
@@ -762,9 +762,7 @@ export default function StyleguidePage() {
                       block_name: "Image Generator",
                       message: "Generated image successfully.",
                       outputs: {
-                        image: [
-                          "https://picsum.photos/seed/styleguide/600/400",
-                        ],
+                        image: ["/placeholder.png"],
                       },
                     },
                   }}
@@ -1426,9 +1424,7 @@ export default function StyleguidePage() {
                               ],
                             },
                           ],
-                          chart: [
-                            "https://picsum.photos/seed/chart-demo/500/300",
-                          ],
+                          chart: ["/placeholder.png"],
                         },
                       },
                     },

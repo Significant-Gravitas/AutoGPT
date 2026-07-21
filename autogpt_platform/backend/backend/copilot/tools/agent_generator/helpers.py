@@ -4,6 +4,8 @@ import re
 import uuid
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .blocks import get_blocks_as_dicts
 
 __all__ = [
@@ -12,6 +14,7 @@ __all__ = [
     "AGENT_OUTPUT_BLOCK_ID",
     "AgentDict",
     "MCP_TOOL_BLOCK_ID",
+    "TOOL_ORCHESTRATOR_BLOCK_ID",
     "UUID_REGEX",
     "are_types_compatible",
     "generate_uuid",
@@ -33,6 +36,7 @@ UUID_REGEX = re.compile(r"^" + UUID_RE_STR + r"$")
 
 AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
 MCP_TOOL_BLOCK_ID = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4"
+TOOL_ORCHESTRATOR_BLOCK_ID = "3b191d9f-356f-482d-8238-ba04b6d18381"
 AGENT_INPUT_BLOCK_ID = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
 AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4"
 
@@ -49,8 +53,8 @@ def generate_uuid() -> str:
 
 def get_defined_property_type(schema: dict[str, Any], name: str) -> str | None:
     """Get property type from a schema, handling nested `_#_` notation."""
-    if "_#_" in name:
-        parent, child = name.split("_#_", 1)
+    if DICT_SPLIT in name:
+        parent, child = name.split(DICT_SPLIT, 1)
         parent_schema = schema.get(parent, {})
         if "properties" in parent_schema and isinstance(
             parent_schema["properties"], dict

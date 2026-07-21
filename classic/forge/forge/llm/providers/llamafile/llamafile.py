@@ -2,7 +2,7 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import Any, Iterator, Optional, Sequence
+from typing import Any, Iterator, Literal, Optional, Sequence, cast
 
 import requests
 from openai.types.chat import (
@@ -138,7 +138,7 @@ class LlamafileProvider(
         self._logger.debug(f"Cleaned llamafile model IDs: {clean_model_ids}")
 
         return [
-            LLAMAFILE_CHAT_MODELS[id]
+            LLAMAFILE_CHAT_MODELS[cast(LlamafileModelName, id)]
             for id in clean_model_ids
             if id in LLAMAFILE_CHAT_MODELS
         ]
@@ -199,12 +199,18 @@ class LlamafileProvider(
         model: LlamafileModelName,
         functions: list[CompletionModelFunction] | None = None,
         max_output_tokens: int | None = None,
+        reasoning_effort: Optional[Literal["low", "medium", "high"]] = None,
         **kwargs,
     ) -> tuple[
         list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
     ]:
         messages, completion_kwargs, parse_kwargs = super()._get_chat_completion_args(
-            prompt_messages, model, functions, max_output_tokens, **kwargs
+            prompt_messages,
+            model,
+            functions,
+            max_output_tokens,
+            reasoning_effort,
+            **kwargs,
         )
 
         if model == LlamafileModelName.MISTRAL_7B_INSTRUCT:
@@ -237,7 +243,8 @@ class LlamafileProvider(
         See details here:
         https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2#instruction-format
         """
-        adapted_messages: list[ChatCompletionMessageParam] = []
+        # Use Any for working list since we do runtime type transformations
+        adapted_messages: list[Any] = []
         for message in messages:
             # convert 'system' role to 'user' role as mistral-7b-instruct does
             # not support 'system'
@@ -268,13 +275,14 @@ class LlamafileProvider(
                         else [{"type": "text", "text": message["content"]}]
                     )
                 elif message["role"] != "user" and last_message["role"] != "user":
+                    # Non-user messages have string content
+                    prev_content = str(last_message.get("content") or "")
+                    curr_content = str(message.get("content") or "")
                     last_message["content"] = (
-                        (last_message.get("content") or "")
-                        + "\n\n"
-                        + (message.get("content") or "")
+                        prev_content + "\n\n" + curr_content
                     ).strip()
 
-        return adapted_messages
+        return cast(list[ChatCompletionMessageParam], adapted_messages)
 
     def _parse_assistant_tool_calls(
         self,

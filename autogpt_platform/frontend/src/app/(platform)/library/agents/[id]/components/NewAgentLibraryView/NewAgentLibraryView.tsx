@@ -21,6 +21,7 @@ import { LoadingSelectedContent } from "./components/selected-views/LoadingSelec
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
+import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTriggerAgentView/SelectedTriggerAgentView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
@@ -38,6 +39,7 @@ export function NewAgentLibraryView() {
     error,
     hasAnyItems,
     activeItem,
+    isActiveItemTriggerAgent,
     sidebarLoading,
     activeTab,
     setActiveTab,
@@ -175,12 +177,12 @@ export function NewAgentLibraryView() {
             <RunAgentModal
               triggerSlot={
                 <Button
-                  variant="primary"
-                  size="large"
+                  variant="outline"
+                  size="small"
                   className="w-full"
                   disabled={isTemplateLoading && activeTab === "templates"}
                 >
-                  <PlusIcon size={20} /> New task
+                  <PlusIcon size={16} /> New agent task
                 </Button>
               }
               agent={agent}
@@ -209,6 +211,7 @@ export function NewAgentLibraryView() {
               agent={agent}
               scheduleId={activeItem}
               onScheduleDeleted={handleScheduleDeleted}
+              onSelectRun={(id) => handleSelectRun(id, "runs")}
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "templates" ? (
@@ -223,13 +226,22 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "triggers" ? (
-            <SelectedTriggerView
-              agent={agent}
-              triggerId={activeItem}
-              onClearSelectedRun={handleClearSelectedRun}
-              onSwitchToRunsTab={() => setActiveTab("runs")}
-              banner={renderMarketplaceUpdateBanner()}
-            />
+            isActiveItemTriggerAgent ? (
+              <SelectedTriggerAgentView
+                agent={agent}
+                triggerAgentId={activeItem}
+                onClearSelectedRun={handleClearSelectedRun}
+                banner={renderMarketplaceUpdateBanner()}
+              />
+            ) : (
+              <SelectedTriggerView
+                agent={agent}
+                triggerId={activeItem}
+                onClearSelectedRun={handleClearSelectedRun}
+                onSwitchToRunsTab={() => setActiveTab("runs")}
+                banner={renderMarketplaceUpdateBanner()}
+              />
+            )
           ) : (
             <SelectedRunView
               agent={agent}

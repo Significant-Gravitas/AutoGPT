@@ -4,9 +4,12 @@ import logging
 import re
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    TOOL_ORCHESTRATOR_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     generate_uuid,
@@ -29,6 +32,25 @@ _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID = "95d1b990-ce13-4d88-9737-ba5c2070c97b"
 _GET_CURRENT_DATE_BLOCK_ID = "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1"
 _GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
 _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
+
+# Default OrchestratorBlock model/mode — kept in sync with ChatConfig.model.
+# ChatConfig uses the OpenRouter format ("anthropic/claude-opus-4.6");
+# OrchestratorBlock uses the native Anthropic model name.
+ORCHESTRATOR_DEFAULT_MODEL = "claude-opus-4-6"
+ORCHESTRATOR_DEFAULT_EXECUTION_MODE = "extended_thinking"
+
+# Defaults applied to OrchestratorBlock nodes by the fixer.
+# execution_mode and model match the copilot's default (extended thinking
+# with Opus) so generated agents inherit the same reasoning capabilities.
+# If the user explicitly sets these fields, the fixer won't override them.
+_SDM_DEFAULTS: dict[str, int | bool | str] = {
+    "agent_mode_max_iterations": 10,
+    "conversation_compaction": True,
+    "retry": 3,
+    "multiple_tool_calls": False,
+    "execution_mode": ORCHESTRATOR_DEFAULT_EXECUTION_MODE,
+    "model": ORCHESTRATOR_DEFAULT_MODEL,
+}
 
 
 class AgentFixer:
@@ -829,8 +851,12 @@ class AgentFixer:
 
         For nodes whose block has category "AI", this function ensures that the
         input_default has a "model" parameter set to one of the allowed models.
-        If missing or set to an unsupported value, it is replaced with
-        default_model.
+        If missing or set to an unsupported value, it is replaced with the
+        appropriate default.
+
+        Blocks that define their own ``enum`` constraint on the ``model`` field
+        in their inputSchema (e.g. PerplexityBlock) are validated against that
+        enum instead of the generic allowed set.
 
         Args:
             agent: The agent dictionary to fix
@@ -840,7 +866,7 @@ class AgentFixer:
         Returns:
             The fixed agent dictionary
         """
-        allowed_models = {"gpt-4o", "claude-opus-4-6"}
+        generic_allowed_models = {"gpt-4o", "claude-opus-4-6"}
 
         # Create a mapping of block_id to block for quick lookup
         block_map = {block.get("id"): block for block in blocks}
@@ -864,24 +890,44 @@ class AgentFixer:
             )
 
             if is_ai_block:
+                # Skip AI blocks that don't expose a "model" input property
+                # (some AI-category blocks have no model selector at all).
+                input_properties = block.get("inputSchema", {}).get("properties", {})
+                if "model" not in input_properties:
+                    continue
+
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
                 current_model = input_default.get("model")
+
+                # Determine allowed models and default from the block's schema.
+                # Blocks with a block-specific enum on the model field (e.g.
+                # PerplexityBlock) use their own enum values; others use the
+                # generic set.
+                model_schema = input_properties.get("model", {})
+                block_model_enum = model_schema.get("enum")
+
+                if block_model_enum:
+                    allowed_models = set(block_model_enum)
+                    fallback_model = model_schema.get("default", block_model_enum[0])
+                else:
+                    allowed_models = generic_allowed_models
+                    fallback_model = default_model
 
                 if current_model not in allowed_models:
                     block_name = block.get("name", "Unknown AI Block")
                     if current_model is None:
                         self.add_fix_log(
-                            f"Added model parameter '{default_model}' to AI "
+                            f"Added model parameter '{fallback_model}' to AI "
                             f"block node {node_id} ({block_name})"
                         )
                     else:
                         self.add_fix_log(
                             f"Replaced unsupported model '{current_model}' "
-                            f"with '{default_model}' on AI block node "
+                            f"with '{fallback_model}' on AI block node "
                             f"{node_id} ({block_name})"
                         )
-                    input_default["model"] = default_model
+                    input_default["model"] = fallback_model
                     node["input_default"] = input_default
                     fixed_count += 1
 
@@ -1279,7 +1325,7 @@ class AgentFixer:
         """
         if not library_agents:
             logger.debug(
-                "fix_agent_executor_blocks: No library_agents provided, " "skipping"
+                "fix_agent_executor_blocks: No library_agents provided, skipping"
             )
             return agent
 
@@ -1344,7 +1390,7 @@ class AgentFixer:
             if "user_id" not in input_default:
                 input_default["user_id"] = ""
                 self.add_fix_log(
-                    f"Fixed AgentExecutorBlock {node_id}: Added missing " f"user_id"
+                    f"Fixed AgentExecutorBlock {node_id}: Added missing user_id"
                 )
 
             # Ensure inputs is present
@@ -1507,8 +1553,8 @@ class AgentFixer:
         for link in links:
             sink_name = link.get("sink_name", "")
 
-            if "_#_" in sink_name:
-                parent, child = sink_name.split("_#_", 1)
+            if DICT_SPLIT in sink_name:
+                parent, child = sink_name.split(DICT_SPLIT, 1)
 
                 # Check if child is a numeric index (invalid for _#_ notation)
                 if child.isdigit():
@@ -1610,6 +1656,44 @@ class AgentFixer:
 
         return agent
 
+    def fix_orchestrator_blocks(self, agent: AgentDict) -> AgentDict:
+        """Fix OrchestratorBlock nodes to ensure agent-mode defaults.
+
+        Ensures:
+        1. ``agent_mode_max_iterations`` defaults to ``10`` (bounded agent mode)
+        2. ``conversation_compaction`` defaults to ``True``
+        3. ``retry`` defaults to ``3``
+        4. ``multiple_tool_calls`` defaults to ``False``
+        5. ``execution_mode`` defaults to ``"extended_thinking"``
+        6. ``model`` defaults to ``"claude-opus-4-6"``
+
+        Args:
+            agent: The agent dictionary to fix
+
+        Returns:
+            The fixed agent dictionary
+        """
+        nodes = agent.get("nodes", [])
+
+        for node in nodes:
+            if node.get("block_id") != TOOL_ORCHESTRATOR_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            input_default = node.get("input_default")
+            if not isinstance(input_default, dict):
+                input_default = {}
+                node["input_default"] = input_default
+
+            for field, default_value in _SDM_DEFAULTS.items():
+                if field not in input_default or input_default[field] is None:
+                    input_default[field] = default_value
+                    self.add_fix_log(
+                        f"OrchestratorBlock {node_id}: Set {field}={default_value!r}"
+                    )
+
+        return agent
+
     def fix_dynamic_block_sink_names(self, agent: AgentDict) -> AgentDict:
         """Fix links that use _#_ notation for dynamic block sink names.
 
@@ -1679,6 +1763,12 @@ class AgentFixer:
         node_lookup = self._build_node_lookup(agent)
         agent = self.fix_node_x_coordinates(agent, node_lookup=node_lookup)
         agent = self.fix_getcurrentdate_offset(agent)
+
+        # Apply OrchestratorBlock defaults BEFORE fix_ai_model_parameter so that
+        # the orchestrator-specific model (claude-opus-4-6) is set first and
+        # fix_ai_model_parameter sees it as a valid allowed model instead of
+        # overwriting it with the generic default (gpt-4o).
+        agent = self.fix_orchestrator_blocks(agent)
 
         # Apply fixes that require blocks information
         if blocks:

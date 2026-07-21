@@ -12,17 +12,17 @@ const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 interface Args {
   setValue: React.Dispatch<React.SetStateAction<string>>;
   disabled?: boolean;
-  isStreaming?: boolean;
   value: string;
   inputId?: string;
+  isStreaming?: boolean;
 }
 
 export function useVoiceRecording({
   setValue,
   disabled = false,
-  isStreaming = false,
   value,
   inputId,
+  isStreaming = false,
 }: Args) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -223,8 +223,9 @@ export function useVoiceRecording({
           event.preventDefault();
           stopRecording();
           return;
-        } else if (!value.trim()) {
-          // Start recording on space when input is empty
+        } else if (!value.trim() && !isStreaming) {
+          // Start recording on space when input is empty and not streaming
+          // (mirrors the visual disabled state of the mic button during streaming)
           event.preventDefault();
           void startRecording();
           return;
@@ -237,13 +238,15 @@ export function useVoiceRecording({
       }
       // Let PromptInputTextarea handle remaining keys (Enter → submit, etc.)
     },
-    [value, isTranscribing, stopRecording, startRecording],
+    [value, isTranscribing, isStreaming, stopRecording, startRecording],
   );
 
   const showMicButton = isSupported;
   // Don't include isRecording in disabled state - we need key events to work
-  // Text input is blocked via handleKeyDown instead
-  const isInputDisabled = disabled || isStreaming || isTranscribing;
+  // Text input is blocked via handleKeyDown instead.
+  // isStreaming is intentionally excluded: users can type and queue messages
+  // while a stream is in-flight; the stop button handles the streaming state.
+  const isInputDisabled = disabled || isTranscribing;
 
   // Cleanup on unmount
   useEffect(() => {
