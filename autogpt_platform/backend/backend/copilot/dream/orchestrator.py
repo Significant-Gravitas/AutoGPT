@@ -111,27 +111,39 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
 # is left to the sanitize prompt: it needs LLM judgment (is the subject
 # the user?) that a regex can't do without false-positives.
 #
-# ``learn`` is the sharp edge: "wants to learn Spanish" / "interested in
-# learning Rust" are durable skill GOALS, not questions, so ``learn`` only
-# counts as transient when followed by an interrogative ("wants to learn
-# HOW X works"). ``know``/``understand``/``find out`` need no complement —
-# they read as transient on their own.
+# Interrogative complements are the sharp edge — several verbs are durable
+# aspirations on their own but transient questions once they take a
+# question word:
+#   * ``asking`` — "asking FOR weekly reports" / "asking the agent TO
+#     monitor PRs" are durable requests (semantically like "wants X"), so
+#     only interrogative ``asking HOW/WHAT/…`` counts as transient.
+#   * ``learn``/``understand``/``find out`` — "wants to learn Spanish",
+#     "wants to understand distributed systems", "wants to find out about
+#     new markets" are durable skill/aspiration GOALS; they only read as
+#     transient with an interrogative ("wants to learn HOW X works").
+#   * ``curious`` — "curious ABOUT X" is transient, but "curious by nature"
+#     is a durable personality trait, so a ``curious about`` complement is
+#     required (mirroring ``confused about``/``unsure about``).
+# ``know`` stays complement-free: "wants to know X" is transient curiosity
+# regardless of phrasing (there is no durable "wants to know" aspiration —
+# that role is served by ``learn``).
 # Known limitation (nice-to-have, low frequency): a standing notification
 # preference phrased "wants to know when X happens" is dropped; separating
 # it from a one-off "wants to know when the deploy is" isn't reliably
 # regex-able, so it's left to the sanitize prompt + human review.
 _TRANSIENT_INTENT_RE = re.compile(
     r"^(the\s+)?user\s+(is\s+|has\s+|was\s+)?"
-    r"(asking\b"
+    r"(asking\s+(how|what|why|whether|if|when|where|who|which|about)\b"
     r"|wondering\b"
-    r"|curious\b"
+    r"|curious\s+about\b"
     r"|confused\s+about\b"
     r"|unsure\s+about\b"
     r"|trying\s+to\s+understand\b"
     r"|interested\s+in\s+(knowing|understanding)\b"
-    r"|interested\s+in\s+learning\s+(how|what|why|whether|when|where|about)\b"
-    r"|wants?\s+to\s+(know|understand|find\s+out)\b"
-    r"|wants?\s+to\s+learn\s+(how|what|why|whether|when|where|about)\b"
+    r"|interested\s+in\s+learning\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+know\b"
+    r"|wants?\s+to\s+(understand|find\s+out)\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+learn\s+(how|what|why|whether|if|when|where)\b"
     r"|asked\s+(how|what|why|whether|if|when|where|about)\b)",
     re.IGNORECASE,
 )

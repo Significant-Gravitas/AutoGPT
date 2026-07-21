@@ -709,16 +709,22 @@ class TestTransientIntentFilter:
         "content",
         [
             "User is asking how Kubernetes works",
+            # 'asking' is transient only for interrogative questions, not
+            # durable 'asking FOR/TO' requests (#3622917532).
+            "User is asking how to deploy",
             "User is interested in knowing which Pull Requests they currently have open",
             "The user is wondering about the deploy timeline",
             "user wants to know the markup on credits",
             "User asked whether the migration is risky",
             "User is curious about lighthouse restorations",
             "User is trying to understand the auth flow",
-            # 'learn'/'interested in learning' ARE transient when followed by
-            # an interrogative (a question, not a durable skill goal).
+            # 'learn'/'understand'/'find out'/'interested in learning' ARE
+            # transient when followed by an interrogative (a question, not a
+            # durable skill goal / aspiration).
             "User wants to learn how Kubernetes networking works",
             "User is interested in learning what the credit markup is",
+            "User wants to understand how the auth flow works",
+            "User wants to find out what the credit markup is",
         ],
     )
     def test_flags_transient_intent(self, content):
@@ -731,10 +737,20 @@ class TestTransientIntentFilter:
             "User wants to create Bluesky blocks",
             "User is migrating auth to Better Auth",
             "User is building a leaf-blower-simulator game",
-            # Durable SKILL goals — 'learn <thing>' with no interrogative is
-            # an aspiration, not a question (review FP fix).
+            # Durable SKILL goals / aspirations — 'learn/understand/find out
+            # <thing>' with no interrogative is an aspiration, not a question
+            # (review FP fixes #3622917532 / #3622917546).
             "User wants to learn Spanish",
             "User is interested in learning Rust as their next language",
+            "User wants to understand distributed systems",
+            "User wants to find out about new markets to expand into",
+            # Durable REQUESTS — 'asking for/to' is semantically 'wants X',
+            # not a knowledge-seeking question (#3622917532).
+            "User is asking for weekly reports",
+            "User is asking the agent to monitor open PRs",
+            # Durable personality trait — 'curious by nature' needs no
+            # 'about' complement, so it must survive (#3622917543).
+            "User is curious by nature",
             # Bare 'interested in <noun>' must never match — pins the carve-out
             # so a future broadening of the regex fails loudly here.
             "User is interested in lighthouses",
