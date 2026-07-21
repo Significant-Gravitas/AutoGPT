@@ -24,6 +24,9 @@ router = APIRouter(
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
@@ -69,6 +72,7 @@ async def list_library_agents(
         folder_id=folder_id,
         include_root_only=include_root_only,
         is_hidden=is_hidden,
+        organization_id=getattr(ctx, "org_id", None),
     )
 
 

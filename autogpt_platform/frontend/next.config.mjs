@@ -62,7 +62,6 @@ const nextConfig = {
       "storage.googleapis.com",
 
       "ideogram.ai", // for generated images
-      "picsum.photos", // for placeholder images
       "example.com", // for local test data images
     ],
     remotePatterns: [

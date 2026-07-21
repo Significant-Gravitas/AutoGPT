@@ -117,11 +117,20 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
-    # NOTE: this disables ALL experimental betas including context-1m-2025-08-07
-    # (1M context window) and context-management-2025-06-27.  This is intentional:
-    # OpenRouter compatibility takes priority, and Anthropic direct mode ignores
-    # this flag harmlessly (those betas are not enabled there either by default).
+    # NOTE: this disables ALL experimental betas including
+    # context-management-2025-06-27.  This is intentional: OpenRouter
+    # compatibility takes priority, and Anthropic direct mode ignores this
+    # flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+
+    # Pin the CLI's perceived context window at the 200K default.  1M context
+    # is GA (no beta header) on Sonnet 4.6+/5 and newer CLIs enable it by
+    # default via their model capability table (native_1m) or server-side
+    # flags; this kill-switch gates every 1M branch in the CLI's window
+    # resolution, so the autocompact trigger below stays anchored to 200K
+    # across SDK upgrades.  (The experimental-betas flag above no longer
+    # covers 1M — it stopped being a beta.)
+    env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
 
     # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
     # The override caps Anthropic cache-creation cost; Moonshot routes skip it
@@ -133,9 +142,7 @@ def build_sdk_env(
         not is_moonshot_model(model)
         and config.claude_agent_autocompact_pct_override > 0
     ):
-        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
-            config.claude_agent_autocompact_pct_override
-        )
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(_autocompact_pct_for_model(model))
 
     # Disable gzip on API responses to prevent ZlibError decompression
     # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
@@ -148,3 +155,24 @@ def build_sdk_env(
     )
 
     return env
+
+
+# Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
+# so the same 50%-of-200K trigger would compact at ~77% of the *text* budget
+# 4.x sessions get.  Scaling the trigger by the inflation factor keeps the
+# effective text-equivalent context at parity (50% -> 65% = 130K tokens
+# ~= 100K 4.x-tokens' worth), without touching the perceived window.
+_SONNET_5_TOKENIZER_INFLATION = 1.3
+
+
+def _autocompact_pct_for_model(model: str | None) -> int:
+    """Auto-compaction trigger percentage for ``model``.
+
+    Base value from config; Sonnet 5 is scaled up by the tokenizer-inflation
+    factor (capped at 90, below the CLI's ~93% internal ceiling) so its
+    compaction fires at the same text-equivalent point as on 4.x models.
+    """
+    pct = config.claude_agent_autocompact_pct_override
+    if model and "claude-sonnet-5" in model:
+        pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
+    return pct

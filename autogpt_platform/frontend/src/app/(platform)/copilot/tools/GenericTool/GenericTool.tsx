@@ -789,6 +789,7 @@ export function GenericTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
+          animate={isStreaming}
           className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>

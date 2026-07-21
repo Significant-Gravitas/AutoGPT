@@ -87,7 +87,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
 # tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
 # of the trigger/preset tools above, so the merged registry needs both deltas.
-_CHAR_BUDGET = 47_000
+# Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
+# the full merged tool set (webhook-trigger + preset lifecycle + docs/building
+# tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
+_CHAR_BUDGET = 47_800
 
 
 @pytest.fixture(scope="module")

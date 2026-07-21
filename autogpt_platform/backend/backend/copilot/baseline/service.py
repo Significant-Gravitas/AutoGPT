@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -75,8 +76,10 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamModeChanged,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -1558,6 +1561,8 @@ async def stream_chat_completion_baseline(
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -1575,6 +1580,12 @@ async def stream_chat_completion_baseline(
         raise NotFoundError(
             f"Session {session_id} not found. Please create a new session first."
         )
+
+    # The session row is the tenancy anchor; the turn entry's org/team only
+    # backfills sessions created before org tagging (pre-migration rows).
+    if session.organization_id is None and organization_id:
+        session.organization_id = organization_id
+        session.team_id = team_id
 
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the new turn starts from a well-formed message list.
@@ -2118,6 +2129,18 @@ async def stream_chat_completion_baseline(
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
+                # Engine switch requested (enter_agent_building_mode): end
+                # the loop at this iteration boundary — the round's tool
+                # results are already folded into the conversation, so the
+                # tool-call rows persist and the processor's derived
+                # building-mode signal holds. The processor dispatches the
+                # SDK continuation turn after the slot is released.
+                if engine_switch.is_pending(session_id):
+                    logger.info(
+                        f"[Baseline] Engine switch pending for "
+                        f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
                 # in-place, so appending here means the model sees the new
@@ -2538,4 +2561,21 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
+    for event in _engine_switch_finish_events(session_id):
+        yield event
     yield StreamFinish()
+
+
+def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
+    """Terminal events for a turn that registered an engine switch.
+
+    Emitted right before StreamFinish so the frontend flips its mode picker
+    (StreamModeChanged) and narrates the handoff (StreamStatus) exactly once,
+    at the turn boundary where the baseline loop stopped.
+    """
+    if not engine_switch.is_pending(session_id):
+        return []
+    return [
+        StreamModeChanged(mode="extended_thinking"),
+        StreamStatus(message="Switching to Thinking mode for agent building…"),
+    ]

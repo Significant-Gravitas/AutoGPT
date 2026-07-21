@@ -14,20 +14,34 @@ import discord
 from discord import app_commands
 
 from backend.copilot.bot import threads
+from backend.copilot.bot.adapters.shared import (
+    InboundFile,
+    budget_history,
+    collect_attachments,
+    should_ignore,
+)
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.copilot.bot.text import split_at_boundary
+from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
     ChannelInfo,
     ChannelType,
     FileAttachment,
+    InboundAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
-    PlatformAdapter,
     PostedRef,
+    ReferencedConversation,
+    SocketAdapter,
 )
 from . import commands, config, intro
+from .references import (
+    ReferenceTarget,
+    extract_referenced_targets,
+    replace_referenced_links,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +53,25 @@ logger = logging.getLogger(__name__)
 # messages when a thread is very long.
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
-_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
+
+# When a message links or @-mentions other threads/channels, the bot fetches
+# their recent content up-front (same guild only) so the model can read it
+# instead of trying to web-fetch a JS-rendered Discord page. Bounded so a
+# link-heavy message can't fan out into many large reads.
+MAX_REFERENCED_CONVERSATIONS = 3
+REFERENCED_HISTORY_LIMIT = 200
+REFERENCED_CHAR_BUDGET = 8000
+
+# When a link names a specific message, fetch that message plus a little of the
+# conversation leading up to it (rather than the channel's latest activity).
+REFERENCED_MESSAGE_CONTEXT = 15
+
+# Discord IDs are numeric snowflakes — used to tell a raw channel ID from a
+# channel name in the proactive-post resolver (see ``looks_like_channel_id``).
+_SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
 
-class DiscordAdapter(PlatformAdapter):
+class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
@@ -76,6 +105,17 @@ class DiscordAdapter(PlatformAdapter):
     @property
     def max_attachment_bytes(self) -> int:
         return config.MAX_ATTACHMENT_BYTES
+
+    @property
+    def max_thread_name_length(self) -> int:
+        return config.MAX_THREAD_NAME_LENGTH
+
+    @property
+    def typing_refresh_interval(self) -> float:
+        return config.TYPING_REFRESH_SECONDS
+
+    def looks_like_channel_id(self, ref: str) -> bool:
+        return bool(_SNOWFLAKE.match(ref))
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
@@ -293,12 +333,8 @@ class DiscordAdapter(PlatformAdapter):
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
-        remaining = text.strip()
         first: Optional[discord.Message] = None
-        while remaining:
-            chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
-            if not chunk:
-                break
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 msg = await channel.send(chunk, tts=False)
             except discord.HTTPException:
@@ -410,6 +446,24 @@ class DiscordAdapter(PlatformAdapter):
             if channel_type == "thread" and bot_mentioned:
                 thread_history = await self._thread_history(message)
 
+            own_text = self._strip_mentions(message)
+            # Scan ONLY the user's own typed message for references. Links inside
+            # a forwarded or replied-to message are quoted context, not the
+            # user's request, so they must not be auto-fetched or rewritten.
+            referenced = await self._fetch_referenced_conversations(message, own_text)
+            if referenced:
+                # Swap the raw channel links/mentions for readable "#name"
+                # tokens — the fetched content is supplied under those names, so
+                # this stops the model from treating the paste as a URL it must
+                # open (and then claiming it can't access Discord).
+                own_text = replace_referenced_links(
+                    own_text, {c.channel_id: c.title for c in referenced}
+                )
+            # Fold in forwarded content and the replied-to message as quoted
+            # context — both verbatim, with their links left untouched.
+            message_text = self._compose_with_forward(message, own_text)
+            message_text = await self._with_reply_context(message, message_text)
+            attachments, skipped = await self._extract_attachments(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -418,12 +472,40 @@ class DiscordAdapter(PlatformAdapter):
                 message_id=str(message.id),
                 user_id=str(message.author.id),
                 username=message.author.display_name,
-                text=self._message_text(message),
+                text=message_text,
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
+                referenced_conversations=referenced,
+                attachments=attachments,
+                skipped_attachments=skipped,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _extract_attachments(
+        self, message: discord.Message
+    ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
+        """Download the user's file attachments so the handler can upload them.
+
+        Returns ``(downloaded, skipped)`` where ``skipped`` is ``(filename,
+        reason)`` for files we couldn't ingest (over the per-file cap, beyond
+        the per-message count, or a failed download) so the handler can tell
+        the user and the model rather than silently dropping them.
+        """
+        files = [
+            InboundFile(
+                filename=a.filename,
+                size=a.size,
+                mime_type=a.content_type,
+                fetch=a.read,
+            )
+            for a in message.attachments
+        ]
+        return await collect_attachments(
+            files,
+            max_count=MAX_INBOUND_ATTACHMENTS,
+            max_bytes=self.max_attachment_bytes,
+        )
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""
@@ -443,13 +525,12 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to refresh display name for guild %s", guild.id)
 
     def _should_ignore_message(self, message: discord.Message) -> bool:
-        if self._client.user is not None and message.author.id == self._client.user.id:
-            return True
-        # Other bots reach us only by @mentioning us; without this gate two
-        # bots in a shared thread (our own dev + prod included) loop forever.
-        if message.author.bot:
-            return not self._is_mentioned(message)
-        return False
+        me = self._client.user
+        return should_ignore(
+            is_self=me is not None and message.author.id == me.id,
+            author_is_bot=message.author.bot,
+            bot_mentioned=self._is_mentioned(message),
+        )
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
@@ -477,13 +558,60 @@ class DiscordAdapter(PlatformAdapter):
         message entirely, so the LLM acts on just the comment and can badly
         misread the request. Stitch the forwarded content back in here.
         """
-        own = self._strip_mentions(message)
+        return self._compose_with_forward(message, self._strip_mentions(message))
+
+    def _compose_with_forward(self, message: discord.Message, own: str) -> str:
+        """Fold any forwarded snapshot content onto the user's own text.
+
+        Kept separate from reference scanning so forwarded content (quoted, not
+        the user's request) is never mined for channel links to auto-fetch.
+        """
         forwarded = self._forwarded_text(message)
         if not forwarded:
             return own
         if own:
             return f"{own}\n\n[Forwarded message]\n{forwarded}"
         return f"[Forwarded message]\n{forwarded}"
+
+    async def _with_reply_context(
+        self, message: discord.Message, message_text: str
+    ) -> str:
+        """Prepend the replied-to message so the bot sees what's being answered.
+
+        A Discord reply (``message.reference``) only carries the short reply
+        text; the message it replies to holds the actual intent. It's always in
+        the same channel the user is already posting in, so surfacing it leaks
+        nothing they can't already see.
+        """
+        replied = await self._resolve_reply(message)
+        if replied is None:
+            return message_text
+        quoted = self._message_text(replied)
+        if not quoted:
+            return message_text
+        prefix = f"[Replying to {replied.author.display_name}]\n{quoted}"
+        return f"{prefix}\n\n{message_text}" if message_text else prefix
+
+    async def _resolve_reply(
+        self, message: discord.Message
+    ) -> Optional[discord.Message]:
+        ref = message.reference
+        if ref is None:
+            return None
+        # Forwards also use ``reference`` but carry their body in snapshots,
+        # which ``_message_text`` already stitches in — don't re-resolve those.
+        if getattr(message, "message_snapshots", None):
+            return None
+        if isinstance(ref.resolved, discord.Message):
+            return ref.resolved
+        if ref.message_id is None or not isinstance(
+            message.channel, discord.abc.Messageable
+        ):
+            return None
+        try:
+            return await message.channel.fetch_message(ref.message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:
@@ -533,110 +661,167 @@ class DiscordAdapter(PlatformAdapter):
     ) -> tuple[MessageHistoryEntry, ...]:
         if not isinstance(message.channel, discord.Thread):
             return ()
-
-        entries: list[MessageHistoryEntry] = []
-        used_chars = 0
-        bot_user_id = self._client.user.id if self._client.user else None
         try:
-            # Newest-first so that when a long thread exceeds the size budget we
-            # keep the most recent (most relevant) messages instead of the
-            # oldest; we reverse back to chronological order before returning.
-            async for prior in message.channel.history(
-                limit=THREAD_HISTORY_LIMIT,
-                before=message,
-                oldest_first=False,
-            ):
-                # Skip our own outputs — copilot has its own transcript for
-                # that side. Other bots' messages are kept as context.
+            return await self._budgeted_history(
+                message.channel.history(
+                    limit=THREAD_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                THREAD_HISTORY_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord thread history", exc_info=True)
+            return ()
+
+    async def _budgeted_history(
+        self, history, char_budget: int
+    ) -> tuple[MessageHistoryEntry, ...]:
+        """Normalize Discord history into entries, then char-budget them.
+
+        The Discord-specific part is the mapping — skip the bot's own messages
+        (copilot has its own transcript for those) but keep other bots' as
+        context, and strip Discord mention syntax. The budgeting/truncation is
+        shared (``budget_history``).
+        """
+        bot_user_id = self._client.user.id if self._client.user else None
+
+        async def _entries():
+            async for prior in history:
                 if bot_user_id is not None and prior.author.id == bot_user_id:
                     continue
                 text = self._strip_mentions(prior)
                 if not text:
                     continue
-                remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
-                if remaining <= 0:
-                    break
-                oversized = len(text) > remaining
-                if oversized and entries:
-                    # No room for another whole message — stop and keep what we
-                    # have (the more recent messages).
-                    break
-                if oversized:
-                    # Lone most-recent message is itself over budget: keep a
-                    # truncated head of it.
-                    text = _truncate_to_budget(text, remaining)
-                used_chars += len(text)
-                entries.append(
-                    MessageHistoryEntry(
-                        username=prior.author.display_name,
-                        user_id=str(prior.author.id),
-                        text=text,
-                    )
+                yield MessageHistoryEntry(
+                    username=prior.author.display_name,
+                    user_id=str(prior.author.id),
+                    text=text,
                 )
-                if oversized:
-                    # We just truncated the newest message to the budget; older
-                    # messages are both less relevant and would otherwise sneak
-                    # into the whitespace `rstrip` freed up. Stop here.
-                    break
-        except (discord.Forbidden, discord.HTTPException):
-            logger.warning("Could not fetch Discord thread history", exc_info=True)
+
+        return await budget_history(_entries(), char_budget=char_budget)
+
+    async def _fetch_referenced_conversations(
+        self, message: discord.Message, text: str
+    ) -> tuple[ReferencedConversation, ...]:
+        """Fetch the recent content of any thread/channel ``text`` references.
+
+        Read as the *requesting member* would: same-guild only, and only
+        channels they can actually see. The bot's gateway can read more than
+        the user can, so we must never surface a private channel's history to
+        someone who lacks access to it themselves.
+        """
+        if message.guild is None:
             return ()
+        # ``message.author`` IS the guild Member (the gateway attaches it to the
+        # event); ``get_member`` only reads the cache, which is empty without the
+        # privileged members intent — so prefer the author and fall back to the
+        # cache only if it somehow isn't a Member (e.g. a webhook).
+        requester = (
+            message.author
+            if isinstance(message.author, discord.Member)
+            else message.guild.get_member(message.author.id)
+        )
+        if requester is None:
+            return ()
+        targets = extract_referenced_targets(
+            text,
+            exclude_channel_id=str(message.channel.id),
+            limit=MAX_REFERENCED_CONVERSATIONS,
+        )
+        conversations: list[ReferencedConversation] = []
+        for target in targets:
+            convo = await self._fetch_one_referenced(message.guild, requester, target)
+            if convo is not None:
+                conversations.append(convo)
+        return tuple(conversations)
 
-        entries.reverse()  # chronological order for the prompt
-        return tuple(entries)
+    async def _fetch_one_referenced(
+        self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
+    ) -> Optional[ReferencedConversation]:
+        channel = await self._resolve_channel(target.channel_id)
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            return None
+        if channel.guild.id != guild.id:
+            # Cross-guild reference — don't read content from another server.
+            return None
+        if not await self._can_requester_read(channel, requester):
+            return None
+        try:
+            if target.message_id is not None:
+                # A permalink to a specific message: read that message and the
+                # turns leading up to it (``before`` the next snowflake includes
+                # the message itself), so "what was said here <link>" works even
+                # for an older message not in the channel's latest activity.
+                history = channel.history(
+                    limit=REFERENCED_MESSAGE_CONTEXT,
+                    before=discord.Object(id=int(target.message_id) + 1),
+                    oldest_first=False,
+                )
+            else:
+                history = channel.history(
+                    limit=REFERENCED_HISTORY_LIMIT, oldest_first=False
+                )
+            messages = await self._budgeted_history(history, REFERENCED_CHAR_BUDGET)
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning(
+                "Could not fetch referenced channel %s",
+                target.channel_id,
+                exc_info=True,
+            )
+            return None
+        if not messages:
+            return None
+        return ReferencedConversation(
+            title=channel.name, channel_id=target.channel_id, messages=messages
+        )
 
+    async def _can_requester_read(
+        self, channel: "discord.TextChannel | discord.Thread", requester: discord.Member
+    ) -> bool:
+        """Whether ``requester`` may read ``channel`` themselves.
 
-def _truncate_to_budget(text: str, limit: int) -> str:
-    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
-
-    Used only when a single thread message is itself larger than the history
-    budget — keep a head of it (with context that it was cut) rather than emit
-    an oversized payload or drop the message entirely.
-    """
-    if len(text) <= limit:
-        return text
-    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
-    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
+        Channel-level ``view_channel`` + ``read_message_history`` is the base
+        gate. For a *private* thread that is not enough — Discord requires the
+        member to actually be in the thread (``manage_threads`` bypasses, as it
+        does in the client), so check membership explicitly to avoid leaking a
+        private thread the bot happens to be in.
+        """
+        perms = channel.permissions_for(requester)
+        if not (perms.view_channel and perms.read_message_history):
+            return False
+        if isinstance(channel, discord.Thread) and channel.is_private():
+            if perms.manage_threads:
+                return True
+            try:
+                await channel.fetch_member(requester.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return False
+        return True
 
 
 def _resolve_mentions(
     text: str,
     mentionable_users: tuple[tuple[str, str], ...],
 ) -> tuple[str, discord.AllowedMentions]:
-    """Substitute `@DisplayName` in `text` with `<@id>` markup for users on
-    the allowlist, and return an AllowedMentions that pings exactly those
-    users (and nobody else).
+    """Render allowlisted ``@DisplayName`` as Discord ``<@id>`` markup and
+    return an ``AllowedMentions`` that pings exactly those users.
 
-    Anyone not on the allowlist stays as plain text — even if the LLM produces
-    `@everyone`, `@here`, or `@SomeRandomUser`. This keeps the bot from
-    pinging users it learned about elsewhere or hallucinated entirely.
+    The allowlist policy (which names match, longest-first, word-bounded) is
+    shared in ``text.resolve_mentions``; here we only supply Discord's mention
+    token and turn the pinged IDs into Discord's ping-safety object.
     """
-    if not mentionable_users:
-        return text, discord.AllowedMentions.none()
-
-    rendered = text
+    rendered, pinged = resolve_mentions(
+        text, mentionable_users, lambda _name, uid: f"<@{uid}>"
+    )
     pinged_ids: list[int] = []
-    # Longest names first so e.g. "@John Smith" matches before "@John".
-    for display_name, user_id in sorted(
-        mentionable_users, key=lambda pair: -len(pair[0])
-    ):
-        # Word-bounded so "@Name" inside emails/URLs is left alone.
-        pattern = re.compile(
-            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
-            re.IGNORECASE,
-        )
-        if not pattern.search(rendered):
-            continue
-        # Callable replacement avoids backref interpretation of user_id.
-        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
+    for uid in pinged:
         try:
-            pinged_ids.append(int(user_id))
+            pinged_ids.append(int(uid))
         except ValueError:
             continue
-
     if not pinged_ids:
         return rendered, discord.AllowedMentions.none()
-
     return rendered, discord.AllowedMentions(
         everyone=False,
         users=[discord.Object(id=uid) for uid in pinged_ids],

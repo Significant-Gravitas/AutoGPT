@@ -3,13 +3,10 @@ import * as Sentry from "@sentry/nextjs";
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { getApprovedMarketplaceUrl } from "@/lib/utils";
 
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
-  graph_id: string;
-}
+import { buildEditPayload, type EditPayload } from "../../helpers";
 
 interface Args {
   submission: StoreSubmission;
@@ -31,27 +28,18 @@ export function useSubmissionItem({
 
   const canModify = submission.status === SubmissionStatus.PENDING;
   const isApproved = submission.status === SubmissionStatus.APPROVED;
-  const marketplaceUrl =
-    isApproved && creatorUsername && submission.slug
-      ? `/marketplace/agent/${encodeURIComponent(creatorUsername)}/${encodeURIComponent(submission.slug)}`
-      : undefined;
+  const marketplaceUrl = getApprovedMarketplaceUrl({
+    creatorUsername,
+    slug: submission.slug,
+    isApproved,
+  });
 
   function handleView() {
     onView(submission);
   }
 
   function handleEdit() {
-    onEdit({
-      name: submission.name,
-      sub_heading: submission.sub_heading,
-      description: submission.description,
-      image_urls: submission.image_urls,
-      video_url: submission.video_url,
-      categories: submission.categories,
-      changes_summary: submission.changes_summary || "Update Submission",
-      store_listing_version_id: submission.listing_version_id,
-      graph_id: submission.graph_id,
-    });
+    onEdit(buildEditPayload(submission));
   }
 
   async function handleConfirmDelete() {
