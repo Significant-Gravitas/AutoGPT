@@ -1,9 +1,9 @@
-"""Shared token-usage persistence and rate-limit recording.
+"""Shared usage persistence and rate-limit recording.
 
 Both the baseline (OpenRouter) and SDK (Anthropic) service layers need to:
   1. Append a ``Usage`` record to the session.
-  2. Log the turn's token counts.
-  3. Record weighted usage in Redis for rate-limiting.
+  2. Log the turn's token counts and cost.
+  3. Record the real generation cost in Redis for rate-limiting.
   4. Write a PlatformCostLog entry for admin cost tracking.
 
 This module extracts that common logic so both paths stay in sync.
@@ -15,13 +15,36 @@ import math
 import re
 import threading
 
+from openai.types.completion_usage import PromptTokensDetails
+
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
 from .model import ChatSession, Usage
-from .rate_limit import record_token_usage
+from .rate_limit import record_cost_usage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Return cache-write token count from a ``PromptTokensDetails`` object.
+
+    Two provider-specific field names exist:
+    - OpenRouter streams ``cache_write_tokens`` (typed attr on newer SDK,
+      ``model_extra`` on older SDK).
+    - Direct Anthropic API uses ``cache_creation_input_tokens`` in
+      ``model_extra`` (never a typed attr on the OpenAI SDK).
+    """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
+    extras = ptd.model_extra or {}
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
+
 
 # Hold strong references to in-flight cost log tasks to prevent GC.
 _pending_log_tasks: set[asyncio.Task[None]] = set()
@@ -96,9 +119,19 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
-    model_cost_multiplier: float = 1.0,
+    block_name_override: str | None = None,
+    extra_metadata: dict | None = None,
+    graph_exec_id_override: str | None = None,
+    skip_daily: bool = False,
+    execution_path: str = "sync",
 ) -> int:
-    """Persist token usage to session and record for rate limiting.
+    """Persist token usage to session and record generation cost for rate limiting.
+
+    Rate-limit counters are charged in microdollars against the provider's
+    reported cost (``cost_usd``), so cache discounts and cross-model pricing
+    differences are already reflected. When cost is unknown the turn is
+    logged but the rate-limit counter is left alone — the caller logs an
+    error at the point the absence is detected.
 
     Args:
         session: The chat session to append usage to (may be None on error).
@@ -108,11 +141,11 @@ async def persist_and_record_usage(
         cache_read_tokens: Tokens served from prompt cache (Anthropic only).
         cache_creation_tokens: Tokens written to prompt cache (Anthropic only).
         log_prefix: Prefix for log messages (e.g. "[SDK]", "[Baseline]").
-        cost_usd: Optional cost for logging (float from SDK, str otherwise).
+        cost_usd: Real generation cost for the turn (float from SDK or parsed
+            from OpenRouter usage.cost). ``None`` means the provider did not
+            report a cost and rate limiting is skipped for this turn.
+        model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
-        model_cost_multiplier: Relative model cost factor for rate limiting
-            (1.0 = Sonnet/default, 5.0 = Opus). Scales the token counter so
-            more expensive models deplete the rate limit proportionally faster.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -156,38 +189,57 @@ async def persist_and_record_usage(
     else:
         logger.info(
             f"{log_prefix} Turn usage: prompt={prompt_tokens}, completion={completion_tokens},"
-            f" total={total_tokens}"
+            f" total={total_tokens}, cost_usd={cost_usd}"
         )
 
-    if user_id:
+    cost_float: float | None = None
+    if cost_usd is not None:
         try:
-            await record_token_usage(
-                user_id=user_id,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_creation_tokens=cache_creation_tokens,
-                model_cost_multiplier=model_cost_multiplier,
+            val = float(cost_usd)
+        except (ValueError, TypeError):
+            logger.error(
+                "%s cost_usd is not numeric: %r — rate limit skipped",
+                log_prefix,
+                cost_usd,
             )
-        except Exception as usage_err:
-            logger.warning("%s Failed to record token usage: %s", log_prefix, usage_err)
+        else:
+            if not math.isfinite(val):
+                logger.error(
+                    "%s cost_usd is non-finite: %r — rate limit skipped",
+                    log_prefix,
+                    val,
+                )
+            elif val < 0:
+                logger.warning(
+                    "%s cost_usd %s is negative — skipping rate-limit + cost log",
+                    log_prefix,
+                    val,
+                )
+            else:
+                cost_float = val
+
+    cost_microdollars = usd_to_microdollars(cost_float)
+
+    if user_id and cost_microdollars is not None and cost_microdollars > 0:
+        # record_cost_usage() owns its fail-open handling for Redis/network
+        # errors. Don't wrap with a broad except here — unexpected accounting
+        # bugs should surface instead of being silently logged as warnings.
+        await record_cost_usage(
+            user_id=user_id,
+            cost_microdollars=cost_microdollars,
+            skip_daily=skip_daily,
+        )
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
-    if user_id and (total_tokens > 0 or cost_usd is not None):
-        cost_float = None
-        if cost_usd is not None:
-            try:
-                val = float(cost_usd)
-                if math.isfinite(val) and val >= 0:
-                    cost_float = val
-            except (ValueError, TypeError):
-                pass
-
-        cost_microdollars = usd_to_microdollars(cost_float)
-        session_id = session.session_id if session else None
+    if user_id and (total_tokens > 0 or cost_float is not None):
+        session_id = (
+            graph_exec_id_override
+            if graph_exec_id_override is not None
+            else (session.session_id if session else None)
+        )
 
         if cost_float is not None:
             tracking_type = "cost_usd"
@@ -196,12 +248,35 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
+        metadata: dict = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
+        }
+        if extra_metadata:
+            # Caller-supplied keys override base keys (dream pass uses this
+            # to mark source="dream_pass"); base keys it doesn't touch stay.
+            metadata.update(extra_metadata)
+
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,
                 block_id=COPILOT_BLOCK_ID,
-                block_name=_copilot_block_name(log_prefix),
+                block_name=(
+                    block_name_override
+                    if block_name_override is not None
+                    else _copilot_block_name(log_prefix)
+                ),
                 provider=provider,
                 credential_id=COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
@@ -212,13 +287,7 @@ async def persist_and_record_usage(
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+                metadata=metadata,
             )
         )
 

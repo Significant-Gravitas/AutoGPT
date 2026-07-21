@@ -973,3 +973,145 @@ class TestInjectUserContextEnvCtx:
         assert "env_context" not in stripped
         assert "/home/user/project" not in stripped
         assert "user query" in stripped
+
+
+class TestInjectUserContextSessionCtx:
+    """Tests for the session_ctx parameter of inject_user_context.
+
+    Mirrors the env_ctx / warm_ctx contract: server-injected block is
+    prepended AFTER sanitization, survives the sanitizer, and the
+    stripping regex stays in sync with the injection format.
+
+    Cache-safety note: the session_ctx lives in the per-turn user message
+    (after the last cache_control breakpoint), so injection does not bust
+    the cross-session prefix cache — these tests pin that placement.
+    """
+
+    @pytest.mark.asyncio
+    async def test_session_ctx_prepended_on_first_turn(self):
+        """Non-empty session_ctx → <session_context> block appears in the result."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+
+        msg = ChatMessage(role="user", content="hello", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
+        ):
+            result = await inject_user_context(
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                session_ctx="session_id: sess-1; pending_followups: 0",
+            )
+
+        assert result is not None
+        assert "<session_context>" in result
+        assert "session_id: sess-1; pending_followups: 0" in result
+        assert result.endswith("hello")
+
+    @pytest.mark.asyncio
+    async def test_empty_session_ctx_omits_block(self):
+        """Empty session_ctx → no <session_context> block is added."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+
+        msg = ChatMessage(role="user", content="hello", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
+        ):
+            result = await inject_user_context(
+                None, "hello", "sess-1", [msg], session_ctx=""
+            )
+
+        assert result is not None
+        assert "session_context" not in result
+        assert result == "hello"
+
+    @pytest.mark.asyncio
+    async def test_session_ctx_not_stripped_by_sanitizer(self):
+        """Server-injected <session_context> block must survive
+        sanitize_user_supplied_context.
+
+        Order-of-operations guarantee: inject_user_context prepends
+        <session_context> AFTER sanitization, so the trusted block is
+        never removed by the sanitizer that strips user-supplied tags.
+        """
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context, strip_user_context_tags
+
+        msg = ChatMessage(role="user", content="hello", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
+        ):
+            result = await inject_user_context(
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                session_ctx="session_id: trusted-id; pending_followups: 0",
+            )
+
+        assert result is not None
+        assert "<session_context>" in result
+        # strip_user_context_tags = sanitize_user_supplied_context — running
+        # it on the injected result must strip the session_context block.
+        stripped = strip_user_context_tags(result)
+        assert "session_context" not in stripped
+        assert "trusted-id" not in stripped
+
+    @pytest.mark.asyncio
+    async def test_session_ctx_injection_format_matches_stripping_regex(self):
+        """Contract test: format injected by inject_user_context and the regex
+        used by strip_injected_context_for_display must be consistent — a full
+        round-trip must remove exactly the <session_context> block and leave
+        the rest intact."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import (
+            inject_user_context,
+            strip_injected_context_for_display,
+        )
+
+        msg = ChatMessage(role="user", content="user query", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
+        ):
+            result = await inject_user_context(
+                None,
+                "user query",
+                "sess-1",
+                [msg],
+                session_ctx="session_id: sess-1; pending_followups: 2",
+            )
+
+        assert result is not None
+        assert "<session_context>" in result
+
+        stripped = strip_injected_context_for_display(result)
+        assert "session_context" not in stripped
+        assert "pending_followups" not in stripped
+        assert "user query" in stripped

@@ -12,8 +12,9 @@ import {
 import { RefundModal } from "./RefundModal";
 import { SubscriptionTierSection } from "./components/SubscriptionTierSection/SubscriptionTierSection";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
-import { UsagePanelContent } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { StorageBar } from "@/app/(platform)/copilot/components/UsageLimits/StorageBar";
+import { UsageBar } from "@/app/(platform)/copilot/components/UsageLimits/UsageBar";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
@@ -27,22 +28,36 @@ import {
 
 function CoPilotUsageSection() {
   const router = useRouter();
-  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
   });
 
-  if (isLoading || !usage?.daily || !usage?.weekly) return null;
-  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
+  if (!isSuccess || !usage) return null;
+  if (!usage.daily && !usage.weekly) return null;
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">AutoPilot Usage Limits</h3>
-      <div className="rounded-lg border border-neutral-200 p-4">
-        <UsagePanelContent usage={usage} showBillingLink={false} />
+      <h3 className="text-lg font-medium">AutoPilot Usage & Storage</h3>
+      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+        {usage.daily && (
+          <UsageBar
+            label="Today"
+            percentUsed={usage.daily.percent_used}
+            resetsAt={usage.daily.resets_at}
+          />
+        )}
+        {usage.weekly && (
+          <UsageBar
+            label="This week"
+            percentUsed={usage.weekly.percent_used}
+            resetsAt={usage.weekly.resets_at}
+          />
+        )}
+        <StorageBar />
       </div>
       <Button className="w-full" onClick={() => router.push("/copilot")}>
         Open AutoPilot
@@ -294,10 +309,6 @@ export default function CreditsPage() {
 
           {/* Transaction History */}
           <h3 className="text-lg font-medium">Transaction History</h3>
-          <p className="text-neutral-600">
-            Running balance might not be ordered accurately when concurrent
-            executions are happening.
-          </p>
           {transactionHistory.transactions.length === 0 && (
             <p className="text-neutral-600">No transactions found.</p>
           )}
@@ -311,7 +322,6 @@ export default function CreditsPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Balance</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -337,9 +347,6 @@ export default function CreditsPage() {
                     }
                   >
                     <b>{formatCredits(transaction.amount)}</b>
-                  </TableCell>
-                  <TableCell>
-                    {formatCredits(transaction.running_balance)}
                   </TableCell>
                 </TableRow>
               ))}

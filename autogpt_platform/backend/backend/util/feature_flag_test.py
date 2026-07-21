@@ -1,3 +1,7 @@
+import datetime
+import logging
+import uuid
+
 import pytest
 from fastapi import HTTPException
 from ldclient import LDClient
@@ -5,6 +9,7 @@ from ldclient import LDClient
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
+    _fetch_user_context_data,
     feature_flag,
     is_feature_enabled,
     mock_flag_variation,
@@ -168,3 +173,123 @@ class TestEnvFlagOverride:
     def test_case_insensitive_value(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("FORCE_FLAG_CHAT", "TRUE")
         assert _env_flag_override(Flag.CHAT) is True
+
+
+class TestUserContext:
+    @staticmethod
+    def _stub_supabase(mocker, *, created_at, role="authenticated", email="x@y.com"):
+        user = mocker.MagicMock(role=role, email=email, created_at=created_at)
+        response = mocker.MagicMock(user=user)
+        supabase = mocker.MagicMock()
+        supabase.auth.admin.get_user_by_id.return_value = response
+        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
+        return supabase
+
+    @pytest.mark.asyncio
+    async def test_context_includes_created_at_iso_string(self, mocker):
+        created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        supabase = self._stub_supabase(mocker, created_at=created)
+        user_id = str(uuid.uuid4())
+
+        ctx = await _fetch_user_context_data(user_id)
+
+        assert ctx.get("created_at") == created.isoformat()
+        assert ctx.get("email") == "x@y.com"
+        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+
+    @pytest.mark.asyncio
+    async def test_context_skips_created_at_when_missing(self, mocker):
+        supabase = self._stub_supabase(mocker, created_at=None)
+        user_id = str(uuid.uuid4())
+
+        ctx = await _fetch_user_context_data(user_id)
+
+        assert "created_at" not in ctx.custom_attributes
+        assert ctx.get("email") == "x@y.com"
+        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+
+
+class TestUserContextCacheDegradation:
+    """A failed Supabase lookup must not poison the 24h context cache.
+
+    If the degraded anonymous (email-less) context were cached, one
+    Supabase blip would make this process evaluate email/role-targeted
+    flags differently from its peers for a full day, silently.
+    """
+
+    @staticmethod
+    def _stub_failing_supabase(mocker):
+        supabase = mocker.MagicMock()
+        supabase.auth.admin.get_user_by_id.side_effect = ConnectionError(
+            "supabase unreachable"
+        )
+        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
+        return supabase
+
+    @pytest.mark.asyncio
+    async def test_degraded_anonymous_context_is_not_cached(self, mocker):
+        supabase = self._stub_failing_supabase(mocker)
+        user_id = str(uuid.uuid4())
+
+        first = await _fetch_user_context_data(user_id)
+        second = await _fetch_user_context_data(user_id)
+
+        assert first.anonymous is True
+        assert second.anonymous is True
+        assert supabase.auth.admin.get_user_by_id.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_successful_context_is_cached_across_calls(self, mocker):
+        supabase = TestUserContext._stub_supabase(mocker, created_at=None)
+        user_id = str(uuid.uuid4())
+
+        first = await _fetch_user_context_data(user_id)
+        second = await _fetch_user_context_data(user_id)
+
+        assert first.get("email") == "x@y.com"
+        assert second.get("email") == "x@y.com"
+        assert supabase.auth.admin.get_user_by_id.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_context_lookup_recovers_after_transient_failure(self, mocker):
+        user = mocker.MagicMock(role="authenticated", email="x@y.com", created_at=None)
+        response = mocker.MagicMock(user=user)
+        supabase = mocker.MagicMock()
+        supabase.auth.admin.get_user_by_id.side_effect = [
+            ConnectionError("supabase blip"),
+            response,
+        ]
+        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
+        user_id = str(uuid.uuid4())
+
+        degraded = await _fetch_user_context_data(user_id)
+        recovered = await _fetch_user_context_data(user_id)
+
+        assert degraded.anonymous is True
+        assert degraded.get("email") is None
+        assert recovered.anonymous is False
+        assert recovered.get("email") == "x@y.com"
+
+    @pytest.mark.asyncio
+    async def test_degraded_lookup_logs_degradation_warning(self, mocker, caplog):
+        self._stub_failing_supabase(mocker)
+        user_id = str(uuid.uuid4())
+
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            await _fetch_user_context_data(user_id)
+
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno >= logging.WARNING
+        ]
+        assert any(user_id in message and "degraded" in message for message in warnings)
+
+    @pytest.mark.asyncio
+    async def test_non_uuid_key_skips_supabase_lookup(self, mocker):
+        get_supabase = mocker.patch("backend.util.clients.get_supabase")
+
+        ctx = await _fetch_user_context_data("system")
+
+        assert ctx.anonymous is True
+        get_supabase.assert_not_called()

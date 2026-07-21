@@ -13,12 +13,25 @@ import { environment } from "@/services/environment";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
+import { OrgTeamSwitcher } from "./components/OrgTeamSwitcher/OrgTeamSwitcher";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
 import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
+
+const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
+  "/marketplace": IconType.Marketplace,
+  "/build": IconType.Builder,
+  "/copilot": IconType.Chat,
+  "/library": IconType.Library,
+  "/monitor": IconType.Library,
+};
+
+function pickMobileNavIcon(href: string): IconType {
+  return MOBILE_NAV_ICONS[href] ?? IconType.LayoutDashboard;
+}
 
 export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
@@ -43,6 +56,8 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
+  // Files is reached via the icon in the CoPilot sidebar (gated by
+  // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
@@ -55,12 +70,17 @@ export function Navbar() {
 
   return (
     <>
+      {/* Drives banner-aware offsets in fixed-position siblings (e.g. ChatSidebar)
+          that can't read the navbar's natural height through normal layout. */}
+      <style>{`:root { --preview-banner-height: ${
+        shouldShowPreviewBanner ? "2.25rem" : "0px"
+      }; }`}</style>
       <div className="sticky top-0 z-40 w-full">
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="inline-flex w-full items-center bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
+          className="inline-flex w-full items-center border-b border-[#f1f1f1] bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}
@@ -93,12 +113,13 @@ export function Navbar() {
           {isLoggedIn && !isSmallScreen ? (
             <div className="flex flex-1 items-center justify-end gap-4">
               <div className="flex items-center gap-4">
+                <OrgTeamSwitcher />
                 <FeedbackButton />
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu
-                  userName={profile?.username}
-                  userEmail={profile?.name}
+                  userName={profile?.name || profile?.username}
+                  userEmail={user?.email}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}
                   isLoading={isLoadingProfile}
@@ -123,30 +144,11 @@ export function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: actualLoggedInLinks
-                    .map((link) => {
-                      return {
-                        icon:
-                          link.href === "/marketplace"
-                            ? IconType.Marketplace
-                            : link.href === "/build"
-                              ? IconType.Builder
-                              : link.href === "/copilot"
-                                ? IconType.Chat
-                                : link.href === "/library"
-                                  ? IconType.Library
-                                  : link.href === "/monitor"
-                                    ? IconType.Library
-                                    : IconType.LayoutDashboard,
-                        text: link.name,
-                        href: link.href,
-                      };
-                    })
-                    .filter((item) => item !== null) as Array<{
-                    icon: IconType;
-                    text: string;
-                    href: string;
-                  }>,
+                  items: actualLoggedInLinks.map((link) => ({
+                    icon: pickMobileNavIcon(link.href),
+                    text: link.name,
+                    href: link.href,
+                  })),
                 },
                 ...dynamicMenuItems,
               ]}

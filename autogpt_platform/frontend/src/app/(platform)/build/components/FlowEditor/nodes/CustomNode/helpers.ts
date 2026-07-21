@@ -1,6 +1,55 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeResolutionData } from "@/app/(platform)/build/stores/types";
+import { beautifyString } from "@/lib/utils";
 import { RJSFSchema } from "@rjsf/utils";
+import { CustomNodeData } from "./CustomNode";
+
+/**
+ * Resolves the display title for a node using a 3-tier fallback:
+ *
+ * 1. `customized_name` — the user's manual rename (highest priority)
+ * 2. `agent_name` (+ version) from `hardcodedValues` — the selected agent's
+ *    display name, persisted by blocks like AgentExecutorBlock
+ * 3. `data.title` — the generic block name (e.g. "Agent Executor")
+ *
+ * `customized_name` is the user's explicit rename via double-click; it lives in
+ * node metadata. `agent_name` is the programmatic name of the agent graph
+ * selected in the block's input form; it lives in `hardcodedValues` alongside
+ * `graph_version`. These are distinct sources of truth — customized_name always
+ * wins because it reflects deliberate user intent.
+ */
+export function getNodeDisplayTitle(data: CustomNodeData): string {
+  if (data.metadata?.customized_name) {
+    return data.metadata.customized_name as string;
+  }
+
+  const agentName = data.hardcodedValues?.agent_name as string | undefined;
+  const graphVersion = data.hardcodedValues?.graph_version as
+    | number
+    | undefined;
+  if (agentName) {
+    return graphVersion != null ? `${agentName} v${graphVersion}` : agentName;
+  }
+
+  return data.title;
+}
+
+/**
+ * Returns the formatted display title for rendering.
+ * Agent names and custom names are shown as-is; generic block names get
+ * beautified and have the trailing " Block" suffix stripped.
+ */
+export function formatNodeDisplayTitle(data: CustomNodeData): string {
+  const title = getNodeDisplayTitle(data);
+  const isAgentOrCustom = !!(
+    data.metadata?.customized_name || data.hardcodedValues?.agent_name
+  );
+  return isAgentOrCustom
+    ? title
+    : beautifyString(title)
+        .replace(/ Block$/, "")
+        .trim();
+}
 
 export const nodeStyleBasedOnStatus: Record<AgentExecutionStatus, string> = {
   INCOMPLETE: "ring-slate-300 bg-slate-300",

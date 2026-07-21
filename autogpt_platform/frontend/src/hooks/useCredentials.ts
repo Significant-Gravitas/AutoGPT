@@ -7,9 +7,62 @@ import {
 } from "@/providers/agent-credentials/credentials-provider";
 import {
   BlockIOCredentialsSubSchema,
+  CredentialsMetaResponse,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
+
+export function classifyCredentials(
+  allSaved: readonly CredentialsMetaResponse[],
+  credsInputSchema: BlockIOCredentialsSubSchema,
+  discriminatorValue: string | undefined,
+): {
+  savedCredentials: CredentialsMetaResponse[];
+  upgradeableCredentials: CredentialsMetaResponse[];
+} {
+  const savedCredentials: CredentialsMetaResponse[] = [];
+  const upgradeableCredentials: CredentialsMetaResponse[] = [];
+  const supportedTypes = credsInputSchema.credentials_types;
+
+  for (const c of allSaved) {
+    if (!supportedTypes.includes(c.type)) continue;
+
+    // MCP OAuth2 credentials filter by server URL — not upgradeable
+    if (c.type === "oauth2" && c.provider === "mcp") {
+      if (discriminatorValue != null && c.host === discriminatorValue) {
+        savedCredentials.push(c);
+      }
+      continue;
+    }
+
+    if (c.type === "oauth2") {
+      const requiredScopes = credsInputSchema.credentials_scopes;
+      // Set.prototype.isSupersetOf is ES2025 and this project targets
+      // ES2022 — fall back to an array every() check so the picker's
+      // scope filter runs cleanly on current Node/browser baselines.
+      const credScopes = new Set(c.scopes);
+      const hasAllScopes =
+        !requiredScopes || requiredScopes.every((s) => credScopes.has(s));
+      if (hasAllScopes) {
+        savedCredentials.push(c);
+      } else {
+        upgradeableCredentials.push(c);
+      }
+      continue;
+    }
+
+    if (c.type === "host_scoped") {
+      if (discriminatorValue && getHostFromUrl(discriminatorValue) == c.host) {
+        savedCredentials.push(c);
+      }
+      continue;
+    }
+
+    savedCredentials.push(c);
+  }
+
+  return { savedCredentials, upgradeableCredentials };
+}
 
 export type CredentialsData =
   | {
@@ -30,6 +83,7 @@ export type CredentialsData =
       supportsHostScoped: boolean;
       isLoading: false;
       discriminatorValue?: string;
+      upgradeableCredentials: CredentialsMetaResponse[];
     });
 
 export default function useCredentials(
@@ -83,45 +137,14 @@ export default function useCredentials(
 
   // No provider means maybe it's still loading
   if (!provider) {
-    // return {
-    //   provider: credsInputSchema.credentials_provider,
-    //   schema: credsInputSchema,
-    //   supportsApiKey,
-    //   supportsOAuth2,
-    //   isLoading: true,
-    // };
     return null;
   }
 
-  const savedCredentials = provider.savedCredentials.filter((c) => {
-    // First, check if the credential type is supported by this block
-    const supportedTypes = credsInputSchema.credentials_types;
-    if (!supportedTypes.includes(c.type)) {
-      return false;
-    }
-
-    // Filter MCP OAuth2 credentials by server URL matching
-    if (c.type === "oauth2" && c.provider === "mcp") {
-      return discriminatorValue != null && c.host === discriminatorValue;
-    }
-
-    // Filter by OAuth credentials that have sufficient scopes for this block
-    if (c.type === "oauth2") {
-      const requiredScopes = credsInputSchema.credentials_scopes;
-      return (
-        !requiredScopes ||
-        new Set(c.scopes).isSupersetOf(new Set(requiredScopes))
-      );
-    }
-
-    // Filter host_scoped credentials by host matching
-    if (c.type === "host_scoped") {
-      return discriminatorValue && getHostFromUrl(discriminatorValue) == c.host;
-    }
-
-    // Include all other credential types that passed the type check
-    return true;
-  });
+  const { savedCredentials, upgradeableCredentials } = classifyCredentials(
+    provider.savedCredentials,
+    credsInputSchema,
+    discriminatorValue,
+  );
 
   return {
     ...provider,
@@ -132,6 +155,7 @@ export default function useCredentials(
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
+    upgradeableCredentials,
     discriminatorValue,
     isLoading: false,
   };

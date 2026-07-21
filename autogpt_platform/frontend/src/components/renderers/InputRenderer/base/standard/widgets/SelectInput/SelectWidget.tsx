@@ -1,4 +1,8 @@
-import { WidgetProps } from "@rjsf/utils";
+import {
+  enumOptionsIndexForValue,
+  enumOptionsValueForIndex,
+  WidgetProps,
+} from "@rjsf/utils";
 import {
   InputType,
   mapJsonSchemaTypeToInputType,
@@ -13,7 +17,7 @@ import {
   MultiSelectorTrigger,
 } from "@/components/__legacy__/ui/multiselect";
 
-export const SelectWidget = (props: WidgetProps) => {
+export function SelectWidget(props: WidgetProps) {
   const {
     options,
     value,
@@ -27,16 +31,49 @@ export const SelectWidget = (props: WidgetProps) => {
   const enumOptions = options.enumOptions || [];
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
+  const selectedIndexes = enumOptionsIndexForValue(
+    value,
+    enumOptions,
+    type === InputType.MULTI_SELECT,
+  );
 
   // Determine select size based on context
   const selectSize = size === "large" ? "medium" : "small";
 
   const renderInput = () => {
     if (type === InputType.MULTI_SELECT) {
+      const enumOptionIndexesByLabel = new Map<string, string>();
+      enumOptions.forEach((option, index) => {
+        if (!enumOptionIndexesByLabel.has(option.label)) {
+          enumOptionIndexesByLabel.set(option.label, String(index));
+        }
+      });
+
+      const selectedValues: string[] = [];
+      if (Array.isArray(selectedIndexes)) {
+        for (const index of selectedIndexes) {
+          const label = enumOptions[Number(index)]?.label;
+          if (typeof label === "string") {
+            selectedValues.push(label);
+          }
+        }
+      }
+
       return (
         <MultiSelector
-          values={Array.isArray(value) ? value : []}
-          onValuesChange={onChange}
+          values={selectedValues}
+          onValuesChange={(newValues) => {
+            const selectedOptionIndexes: string[] = [];
+            for (const label of newValues) {
+              const optionIndex = enumOptionIndexesByLabel.get(label);
+              if (optionIndex !== undefined) {
+                selectedOptionIndexes.push(optionIndex);
+              }
+            }
+            onChange(
+              enumOptionsValueForIndex(selectedOptionIndexes, enumOptions),
+            );
+          }}
           className="w-full"
         >
           <MultiSelectorTrigger>
@@ -44,8 +81,11 @@ export const SelectWidget = (props: WidgetProps) => {
           </MultiSelectorTrigger>
           <MultiSelectorContent>
             <MultiSelectorList>
-              {enumOptions?.map((option: any) => (
-                <MultiSelectorItem key={option.value} value={option.value}>
+              {enumOptions.map((option) => (
+                <MultiSelectorItem
+                  key={`${String(option.value)}-${option.label}`}
+                  value={option.label}
+                >
                   {option.label}
                 </MultiSelectorItem>
               ))}
@@ -54,6 +94,9 @@ export const SelectWidget = (props: WidgetProps) => {
         </MultiSelector>
       );
     }
+    const selectedValue =
+      typeof selectedIndexes === "string" ? selectedIndexes : "";
+
     return (
       <Select
         label=""
@@ -61,14 +104,16 @@ export const SelectWidget = (props: WidgetProps) => {
         hideLabel={true}
         disabled={disabled || readonly}
         size={selectSize as any}
-        value={value ?? ""}
-        onValueChange={onChange}
-        options={
-          enumOptions?.map((option: any) => ({
-            value: option.value,
-            label: option.label,
-          })) || []
+        value={selectedValue}
+        onValueChange={(newValue) =>
+          onChange(
+            enumOptionsValueForIndex(newValue, enumOptions, options.emptyValue),
+          )
         }
+        options={enumOptions.map((option, index) => ({
+          value: String(index),
+          label: option.label,
+        }))}
         wrapperClassName="!mb-0 "
         className={className}
       />
@@ -76,4 +121,4 @@ export const SelectWidget = (props: WidgetProps) => {
   };
 
   return renderInput();
-};
+}

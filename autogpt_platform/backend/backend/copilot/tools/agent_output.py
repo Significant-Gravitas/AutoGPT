@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
+from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import execution_db, library_db
 from backend.data.execution import (
@@ -18,7 +19,13 @@ from backend.data.execution import (
 )
 
 from .base import BaseTool
-from .execution_utils import TERMINAL_STATUSES, wait_for_execution
+from .execution_utils import (
+    TERMINAL_STATUSES,
+    NodeFailureSummary,
+    build_run_health_warning,
+    summarize_node_failures,
+    wait_for_execution,
+)
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -39,7 +46,7 @@ class AgentOutputInput(BaseModel):
     store_slug: str = ""
     execution_id: str = ""
     run_time: str = "latest"
-    wait_if_running: int = Field(default=0, ge=0, le=300)
+    wait_if_running: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     show_execution_details: bool = False
 
     @field_validator(
@@ -148,9 +155,13 @@ class AgentOutputTool(BaseTool):
                 },
                 "wait_if_running": {
                     "type": "integer",
-                    "description": "Max seconds to wait if still running (0-300). Returns current state on timeout.",
+                    "description": (
+                        "Max seconds to wait if still running "
+                        f"(0-{MAX_TOOL_WAIT_SECONDS}). "
+                        "Returns current state on timeout."
+                    ),
                     "minimum": 0,
-                    "maximum": 300,
+                    "maximum": MAX_TOOL_WAIT_SECONDS,
                 },
                 "show_execution_details": {
                     "type": "boolean",
@@ -329,7 +340,9 @@ class AgentOutputTool(BaseTool):
             )
 
         node_executions_data = None
+        node_failures: list[NodeFailureSummary] = []
         if isinstance(execution, GraphExecutionWithNodes):
+            node_failures = summarize_node_failures(execution.node_executions)
             node_executions_data = [
                 {
                     "node_id": ne.node_id,
@@ -351,6 +364,7 @@ class AgentOutputTool(BaseTool):
             outputs=dict(execution.outputs),
             inputs_summary=execution.inputs if execution.inputs else None,
             node_executions=node_executions_data,
+            nodes_failed=node_failures or None,
         )
 
         available_list = None
@@ -367,6 +381,14 @@ class AgentOutputTool(BaseTool):
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
             message = f"Found execution outputs for agent '{agent.name}'"
+            health_warning = build_run_health_warning(execution.outputs, node_failures)
+            if health_warning:
+                if not isinstance(execution, GraphExecutionWithNodes):
+                    health_warning += (
+                        " Re-call with show_execution_details=true to see the "
+                        "per-node trace."
+                    )
+                message += f". {health_warning}"
         elif execution.status == ExecutionStatus.FAILED:
             message = f"Execution for agent '{agent.name}' failed"
         elif execution.status == ExecutionStatus.TERMINATED:

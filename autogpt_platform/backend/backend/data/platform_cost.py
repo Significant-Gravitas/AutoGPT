@@ -103,6 +103,21 @@ async def log_platform_cost_safe(entry: PlatformCostEntry) -> None:
         )
 
 
+def _md_str(row: Any, key: str) -> str | None:
+    """Read a string-valued key out of PlatformCostLog.metadata.
+
+    Returns ``None`` when metadata is absent, isn't a dict, or the key
+    is missing/non-string. PlatformCostLog.metadata is a Prisma ``Json``
+    column so it deserializes to whatever the writer put in; we defend
+    against everything but the happy path.
+    """
+    md = getattr(row, "metadata", None)
+    if not isinstance(md, dict):
+        return None
+    val = md.get(key)
+    return val if isinstance(val, str) else None
+
+
 def _mask_email(email: str | None) -> str | None:
     """Mask an email address to reduce PII exposure in admin API responses.
 
@@ -163,6 +178,13 @@ class CostLogRow(BaseModel):
     model: str | None = None
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    # ``execution_path`` and ``source`` ride in the JSON ``metadata``
+    # column on PlatformCostLog. Surfacing them as first-class fields
+    # lets the admin LogsTable render a "BATCH"/"FLEX"/"SYNC" badge and
+    # the filter dropdown narrow rows without admins needing to query
+    # the JSON directly. Empty when the writer didn't tag the row.
+    execution_path: str | None = None
+    source: str | None = None
 
 
 class CostBucket(BaseModel):
@@ -247,6 +269,97 @@ def _build_prisma_where(
         where["graphExecId"] = graph_exec_id
 
     return where
+
+
+async def _ids_matching_metadata_filter(
+    *,
+    start: datetime | None,
+    end: datetime | None,
+    provider: str | None,
+    user_id: str | None,
+    model: str | None,
+    block_name: str | None,
+    tracking_type: str | None,
+    graph_exec_id: str | None,
+    execution_path: str | None,
+    source: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[str], int]:
+    """Return ``(ids, total)`` matching all filters via raw SQL.
+
+    Prisma Python's typed ``count`` (implemented as
+    ``aggregate { _count }``) and ``find_many`` both reject
+    JSON-path filters on the ``metadata`` JSONB column — the engine
+    surfaces ``Could not find field at
+    aggregatePlatformCostLog.where.metadata.string_equals``. Raw SQL
+    sidesteps the typed-WhereInput validation entirely. The caller
+    hydrates the full row + User join via
+    ``find_many({"id": {"in": ids}})``.
+
+    Only used when ``execution_path`` or ``source`` is set. The
+    happy-path query without metadata filters stays on the typed
+    Prisma helpers for speed + type-safety.
+    """
+    clauses: list[str] = []
+    params: list = []
+
+    def _add(clause_tpl: str, *vals) -> None:
+        # Append values then format the clause with sequential $N
+        # placeholders matching the params order.
+        placeholders = [f"${len(params) + i + 1}" for i in range(len(vals))]
+        for v in vals:
+            params.append(v)
+        clauses.append(clause_tpl.format(*placeholders))
+
+    # Prisma's raw_query serializes ``datetime`` arguments as ISO
+    # strings. PlatformCostLog.createdAt is ``timestamp without time
+    # zone`` (Prisma's default DateTime mapping), so without an
+    # explicit ``::timestamp`` cast on the placeholder, Postgres
+    # rejects the comparison with ``operator does not exist:
+    # timestamp without time zone >= text``. The cast does the same
+    # work the typed Prisma helper does silently.
+    if start is not None:
+        _add('"createdAt" >= {0}::timestamp', start)
+    if end is not None:
+        _add('"createdAt" <= {0}::timestamp', end)
+    if provider:
+        _add("provider = {0}", provider.lower())
+    if user_id:
+        _add('"userId" = {0}', user_id)
+    if model:
+        _add("model = {0}", model)
+    if block_name:
+        # Match _build_prisma_where's case-insensitive blockName filter.
+        _add('LOWER("blockName") = LOWER({0})', block_name)
+    if tracking_type:
+        _add('"trackingType" = {0}', tracking_type)
+    if graph_exec_id:
+        _add('"graphExecId" = {0}', graph_exec_id)
+    if execution_path:
+        _add("metadata->>'execution_path' = {0}", execution_path)
+    if source:
+        _add("metadata->>'source' = {0}", source)
+
+    where_sql = " AND ".join(clauses) if clauses else "TRUE"
+
+    count_rows = await query_raw_with_schema(
+        f'SELECT COUNT(*)::bigint AS c FROM {{schema_prefix}}"PlatformCostLog" '
+        f"WHERE {where_sql}",
+        *params,
+    )
+    total = int(count_rows[0]["c"]) if count_rows else 0
+
+    id_rows = await query_raw_with_schema(
+        f'SELECT id FROM {{schema_prefix}}"PlatformCostLog" '
+        f"WHERE {where_sql} "
+        f'ORDER BY "createdAt" DESC, id DESC '
+        f"LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}",
+        *params,
+        limit,
+        offset,
+    )
+    return [r["id"] for r in id_rows], total
 
 
 def _build_raw_where(
@@ -673,25 +786,65 @@ async def get_platform_cost_logs(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    execution_path: str | None = None,
+    source: str | None = None,
 ) -> tuple[list[CostLogRow], int]:
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
-    )
     offset = (page - 1) * page_size
 
-    total, rows = await asyncio.gather(
-        PrismaLog.prisma().count(where=where),
-        PrismaLog.prisma().find_many(
-            where=where,
-            include={"User": True},
-            order=[{"createdAt": "desc"}, {"id": "desc"}],
-            take=page_size,
-            skip=offset,
-        ),
-    )
+    if execution_path or source:
+        # Metadata-filtered path: typed Prisma ``count`` (an aggregate
+        # under the hood) and ``find_many`` both reject JSON-column
+        # filters with ``Could not find field at
+        # aggregatePlatformCostLog.where.metadata.string_equals``.
+        # Use raw SQL to identify the matching IDs + total, then
+        # hydrate via ``find_many({"id": {"in": ids}})`` so the User
+        # join + return-shape match the unfiltered path.
+        ids, total = await _ids_matching_metadata_filter(
+            start=start,
+            end=end,
+            provider=provider,
+            user_id=user_id,
+            model=model,
+            block_name=block_name,
+            tracking_type=tracking_type,
+            graph_exec_id=graph_exec_id,
+            execution_path=execution_path,
+            source=source,
+            limit=page_size,
+            offset=offset,
+        )
+        if ids:
+            rows = await PrismaLog.prisma().find_many(
+                where={"id": {"in": ids}},
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+            )
+        else:
+            rows = []
+    else:
+        where = _build_prisma_where(
+            start,
+            end,
+            provider,
+            user_id,
+            model,
+            block_name,
+            tracking_type,
+            graph_exec_id,
+        )
+        total, rows = await asyncio.gather(
+            PrismaLog.prisma().count(where=where),
+            PrismaLog.prisma().find_many(
+                where=where,
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+                take=page_size,
+                skip=offset,
+            ),
+        )
 
     logs = [
         CostLogRow(
@@ -711,6 +864,8 @@ async def get_platform_cost_logs(
             cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
             duration=r.duration,
             model=r.model,
+            execution_path=_md_str(r, "execution_path"),
+            source=_md_str(r, "source"),
         )
         for r in rows
     ]
@@ -718,6 +873,145 @@ async def get_platform_cost_logs(
 
 
 EXPORT_MAX_ROWS = 100_000
+
+# Caps for the copilot weekly-usage CSV export.  Window cap matches the credit
+# transactions export (CREDIT_EXPORT_MAX_DAYS in backend/data/credit.py) so
+# finance has a consistent shape across both exports — keep them in sync.
+COPILOT_USAGE_EXPORT_MAX_DAYS = 90
+COPILOT_USAGE_EXPORT_MAX_ROWS = 100_000
+
+
+class CopilotWeeklyUsageRow(BaseModel):
+    user_id: str
+    user_email: str | None = None
+    week_start: datetime
+    week_end: datetime
+    copilot_cost_microdollars: int
+    tier: str
+    weekly_limit_microdollars: int
+    percent_used: float
+
+
+async def get_copilot_weekly_usage_for_export(
+    start: datetime,
+    end: datetime,
+) -> list[CopilotWeeklyUsageRow]:
+    """Aggregate copilot:* PlatformCostLog rows by (user, ISO week) for export.
+
+    Joins User to surface the email and subscription tier in a single query,
+    then computes the per-tier weekly limit from `get_tier_multipliers()` so
+    `percent_used` reflects what's actually enforced (LD overrides included).
+
+    Caveats:
+    - Tier is the user's **current** tier — `PlatformCostLog` has no historical
+      tier snapshot, so a recent upgrade/downgrade will retroactively reweight
+      old weeks' `percent_used`. Filter by `week_start` and join with billing
+      events outside this CSV if you need historically-correct attribution.
+    - `NO_TIER` users have no enforced rate limit; their `percent_used` will
+      report `0.0` (no denominator) — interpret these rows as "unmetered".
+    """
+    # Normalize naive datetimes to UTC so direct API callers that send
+    # `2026-01-01T00:00:00` (no tz) don't trip a TypeError when subtracted
+    # against an aware `2026-01-31T00:00:00Z` partner.
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if end < start:
+        raise ValueError("end must be >= start")
+    # Compare timedeltas directly so 90d + any sub-day remainder still trips
+    # the cap (.days truncates fractional days and was letting ~91d through).
+    if (end - start) > timedelta(days=COPILOT_USAGE_EXPORT_MAX_DAYS):
+        raise ValueError(
+            f"Export window must be <= {COPILOT_USAGE_EXPORT_MAX_DAYS} days "
+            f"(got {(end - start).total_seconds() / 86400:.2f} days)"
+        )
+
+    # date_trunc('week', timestamptz) uses the session time zone by default,
+    # which makes the per-week buckets non-deterministic across replicas in
+    # different time zones.  Convert to UTC explicitly via AT TIME ZONE so
+    # the boundary is always Monday 00:00 UTC.
+    rows = await query_raw_with_schema(
+        'SELECT log."userId" AS user_id,'
+        '  u."email" AS user_email,'
+        '  u."subscriptionTier" AS tier,'
+        "  (date_trunc('week', log.\"createdAt\" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')"
+        " AS week_start,"
+        '  SUM(COALESCE(log."costMicrodollars", 0))::bigint AS cost_microdollars'
+        ' FROM {schema_prefix}"PlatformCostLog" log'
+        ' LEFT JOIN {schema_prefix}"User" u ON u."id" = log."userId"'
+        ' WHERE log."createdAt" >= $1::timestamptz'
+        '   AND log."createdAt" <= $2::timestamptz'
+        "   AND log.\"blockName\" ILIKE 'copilot:%'"
+        ' GROUP BY log."userId", u."email", u."subscriptionTier",'
+        "   (date_trunc('week', log.\"createdAt\" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')"
+        " ORDER BY week_start ASC, cost_microdollars DESC"
+        f" LIMIT {COPILOT_USAGE_EXPORT_MAX_ROWS + 1}",
+        start,
+        end,
+    )
+
+    if len(rows) > COPILOT_USAGE_EXPORT_MAX_ROWS:
+        raise ValueError(
+            f"Export would return {len(rows)} rows (cap is "
+            f"{COPILOT_USAGE_EXPORT_MAX_ROWS}); narrow the window."
+        )
+
+    # Lazy import: backend.copilot.config and rate_limit pull settings which
+    # transitively imports back into this module at startup.
+    from backend.copilot.config import ChatConfig
+    from backend.copilot.rate_limit import (
+        DEFAULT_TIER,
+        SubscriptionTier,
+        get_tier_multipliers,
+    )
+
+    base_weekly = ChatConfig().weekly_cost_limit_microdollars
+    # Use the LD-aware multipliers so percent_used reflects the limit that's
+    # actually enforced for each user, not the static default.
+    tier_multipliers = await get_tier_multipliers()
+
+    out: list[CopilotWeeklyUsageRow] = []
+    for r in rows:
+        # Prisma's query_raw returns timestamptz columns as ISO strings, not
+        # datetimes — parse defensively so either shape works.
+        raw_week_start = r["week_start"]
+        if isinstance(raw_week_start, str):
+            week_start = datetime.fromisoformat(raw_week_start.replace("Z", "+00:00"))
+        else:
+            week_start = raw_week_start
+        if week_start.tzinfo is None:
+            week_start = week_start.replace(tzinfo=timezone.utc)
+        # Inclusive end-of-week (Sunday 23:59:59.999999 UTC); "the week" is
+        # Mon–Sun, not Mon–next Mon.
+        week_end = week_start + timedelta(days=7, microseconds=-1)
+        cost = int(r.get("cost_microdollars") or 0)
+        tier_str = r.get("tier") or DEFAULT_TIER.value
+        try:
+            tier_enum = SubscriptionTier(tier_str)
+        except ValueError:
+            tier_enum = DEFAULT_TIER
+        multiplier = tier_multipliers.get(tier_enum.value, 1.0)
+        # Clamp to >= 0 so a misconfigured/negative multiplier never emits
+        # negative limits in the CSV.
+        weekly_limit = max(0, int(base_weekly * multiplier))
+        if weekly_limit > 0:
+            percent_used = round(100.0 * cost / weekly_limit, 2)
+        else:
+            percent_used = 0.0
+        out.append(
+            CopilotWeeklyUsageRow(
+                user_id=r["user_id"],
+                user_email=r.get("user_email"),
+                week_start=week_start,
+                week_end=week_end,
+                copilot_cost_microdollars=cost,
+                tier=tier_enum.value,
+                weekly_limit_microdollars=weekly_limit,
+                percent_used=percent_used,
+            )
+        )
+    return out
 
 
 async def get_platform_cost_logs_for_export(
@@ -729,6 +1023,8 @@ async def get_platform_cost_logs_for_export(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    execution_path: str | None = None,
+    source: str | None = None,
 ) -> tuple[list[CostLogRow], bool]:
     """Return all matching rows up to EXPORT_MAX_ROWS.
 
@@ -738,16 +1034,46 @@ async def get_platform_cost_logs_for_export(
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
-    )
-
-    rows = await PrismaLog.prisma().find_many(
-        where=where,
-        include={"User": True},
-        order=[{"createdAt": "desc"}, {"id": "desc"}],
-        take=EXPORT_MAX_ROWS + 1,
-    )
+    if execution_path or source:
+        ids, _ = await _ids_matching_metadata_filter(
+            start=start,
+            end=end,
+            provider=provider,
+            user_id=user_id,
+            model=model,
+            block_name=block_name,
+            tracking_type=tracking_type,
+            graph_exec_id=graph_exec_id,
+            execution_path=execution_path,
+            source=source,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+        )
+        if ids:
+            rows = await PrismaLog.prisma().find_many(
+                where={"id": {"in": ids}},
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+            )
+        else:
+            rows = []
+    else:
+        where = _build_prisma_where(
+            start,
+            end,
+            provider,
+            user_id,
+            model,
+            block_name,
+            tracking_type,
+            graph_exec_id,
+        )
+        rows = await PrismaLog.prisma().find_many(
+            where=where,
+            include={"User": True},
+            order=[{"createdAt": "desc"}, {"id": "desc"}],
+            take=EXPORT_MAX_ROWS + 1,
+        )
 
     truncated = len(rows) > EXPORT_MAX_ROWS
     rows = rows[:EXPORT_MAX_ROWS]
@@ -770,6 +1096,8 @@ async def get_platform_cost_logs_for_export(
             cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
             duration=r.duration,
             model=r.model,
+            execution_path=_md_str(r, "execution_path"),
+            source=_md_str(r, "source"),
         )
         for r in rows
     ], truncated

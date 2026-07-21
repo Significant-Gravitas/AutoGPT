@@ -169,6 +169,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
                   target="_blank"
                   className="flex items-center gap-2"
+                  data-testid="library-agent-card-open-in-builder-link"
                   onClick={(e) => e.stopPropagation()}
                 >
                   Edit agent

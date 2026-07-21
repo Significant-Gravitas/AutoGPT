@@ -83,13 +83,16 @@ export function AddToLibraryButton({
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
-  const { data: libraryAgents } = useGetV2ListLibraryAgents(undefined, {
-    query: {
-      enabled: isLoggedIn && isInLibrary === undefined,
-      select: (res) =>
-        res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+  const { data: libraryAgents } = useGetV2ListLibraryAgents(
+    { is_hidden: false },
+    {
+      query: {
+        enabled: isLoggedIn && isInLibrary === undefined,
+        select: (res) =>
+          res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+      },
     },
-  });
+  );
 
   const { mutateAsync: addToLibrary, isPending } =
     usePostV2AddMarketplaceAgent();

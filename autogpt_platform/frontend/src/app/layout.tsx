@@ -12,6 +12,7 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
 import { environment } from "@/services/environment";
+import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 
@@ -27,8 +28,10 @@ const faviconPath = isDev
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: faviconPath,
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -77,6 +80,7 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <CookieConsentBanner />
+            {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

@@ -262,13 +262,19 @@ export class LibraryPage extends BasePage {
   async clickOpenInBuilder(agent: Agent): Promise<void> {
     console.log(`clicking open in builder for agent: ${agent.name}`);
 
-    const { getId } = getSelectors(this.page);
-    const agentCard = getId("library-agent-card").filter({
-      hasText: agent.name,
+    const agentCard = this.page
+      .getByTestId("library-agent-card")
+      .filter({ hasText: agent.name });
+
+    // The "Edit agent" link is inside the three-dot dropdown menu.
+    // Open the menu first, then click the builder link.
+    const menuTrigger = agentCard.getByRole("button", {
+      name: "More actions",
     });
-    const builderLink = getId(
+    await menuTrigger.first().click();
+
+    const builderLink = this.page.getByTestId(
       "library-agent-card-open-in-builder-link",
-      agentCard,
     );
     await builderLink.first().click();
   }
@@ -484,7 +490,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New task$/i });
+  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -804,7 +810,10 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
       "setup-task",
       page.getByRole("button", { name: /^Setup your task$/i }).first(),
     ],
-    ["new-task", page.getByRole("button", { name: /^New task$/i }).first()],
+    [
+      "new-task",
+      page.getByRole("button", { name: /^New agent task$/i }).first(),
+    ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
 

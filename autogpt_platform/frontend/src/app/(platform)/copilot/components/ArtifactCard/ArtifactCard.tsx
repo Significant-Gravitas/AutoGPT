@@ -3,6 +3,7 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
@@ -10,6 +11,17 @@ import { classifyArtifact } from "../ArtifactPanel/helpers";
 
 interface Props {
   artifact: ArtifactRef;
+  /** Read-only mode: opt out of the side-effects that only make sense
+   *  for the owner (auto-registering with the artifact panel so a
+   *  newly arriving file can pop the panel open).
+   *
+   *  Click behaviour is unchanged from the owner case: an openable
+   *  artifact still calls ``openArtifact`` and renders inside
+   *  ``ArtifactPanel`` (the public share viewer mounts the panel too),
+   *  while a non-openable asset falls back to a direct download.  In
+   *  other words, ``readOnly`` does NOT force every click to download
+   *  — that's only true for non-openable assets, regardless of mode. */
+  readOnly?: boolean;
 }
 
 function formatSize(bytes?: number): string {
@@ -19,12 +31,26 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ArtifactCard({ artifact }: Props) {
-  const activeID = useCopilotUIStore((s) => s.artifactPanel.activeArtifact?.id);
-  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+export function ArtifactCard({ artifact, readOnly }: Props) {
+  const isActive = useCopilotUIStore(
+    (s) => s.artifactPanel.activeArtifact?.id === artifact.id,
+  );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const registerArtifactForAutoOpen = useCopilotUIStore(
+    (s) => s.registerArtifactForAutoOpen,
+  );
 
-  const isActive = isOpen && activeID === artifact.id;
+  // Register this artifact on mount — the store decides whether to auto-open.
+  // Fires once per artifact ID; subsequent renders with the same ID are no-ops
+  // in the store (knownIds check).
+  // Skipped in readOnly mode — the share viewer has no panel for auto-open
+  // to target, and registering would just pollute the store.
+  useEffect(() => {
+    if (readOnly) return;
+    registerArtifactForAutoOpen(artifact);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
+  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen, readOnly]);
+
   const classification = classifyArtifact(
     artifact.mimeType,
     artifact.title,
@@ -47,7 +73,7 @@ export function ArtifactCard({ artifact }: Props) {
       <button
         type="button"
         onClick={handleDownloadOnly}
-        className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-zinc-50"
+        className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50"
       >
         <Icon size={20} className="shrink-0 text-zinc-400" />
         <div className="min-w-0 flex-1">
@@ -71,7 +97,7 @@ export function ArtifactCard({ artifact }: Props) {
       type="button"
       onClick={() => openArtifact(artifact)}
       className={cn(
-        "my-1 flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors hover:bg-zinc-50",
+        "my-1 flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
         isActive ? "border-violet-300 bg-violet-50/50" : "border-zinc-200",
       )}
     >

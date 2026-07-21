@@ -25,10 +25,19 @@ export function useChatInput({
   useEffect(
     function consumeInitialPrompt() {
       if (!initialPrompt) return;
-      setValue((prev) => (prev.length === 0 ? initialPrompt : prev));
+      // Guided flows always replace the draft — picking "New skill" after
+      // "New scheduled task" must swap the prompt, not keep the stale one.
+      setValue(initialPrompt);
       setInitialPrompt(null);
+      // Guided flows can prefill while the composer is already mounted
+      // (e.g. from a copilot modal) — put the caret in the input so the
+      // draft is immediately editable/sendable.
+      const textarea = document.getElementById(
+        inputId,
+      ) as HTMLTextAreaElement | null;
+      textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt],
+    [initialPrompt, setInitialPrompt, inputId],
   );
 
   useEffect(
@@ -48,14 +57,15 @@ export function useChatInput({
     [disabled, inputId],
   );
 
-  async function handleSend() {
-    if (disabled || isSending || (!value.trim() && !canSendEmpty)) return;
+  async function handleSend(message = value) {
+    const trimmedMessage = message.trim();
+    if (disabled || isSending || (!trimmedMessage && !canSendEmpty)) return;
     if (isSubmittingRef.current) return;
 
     isSubmittingRef.current = true;
     setIsSending(true);
     try {
-      await onSend(value.trim());
+      await onSend(trimmedMessage);
       setValue("");
     } finally {
       isSubmittingRef.current = false;
@@ -65,7 +75,9 @@ export function useChatInput({
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void handleSend();
+    const formData = new FormData(e.currentTarget);
+    const message = formData.get("message");
+    void handleSend(typeof message === "string" ? message : value);
   }
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {

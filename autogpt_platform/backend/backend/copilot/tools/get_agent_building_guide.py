@@ -5,11 +5,18 @@ from pathlib import Path
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+# Heading title (without the ``### ``) used to drop the trigger-agents
+# section when the generic-trigger-agents feature flag is off. Keep
+# this string in sync with the heading in agent_generation_guide.md —
+# the guide-gating test locks both branches.
+_TRIGGER_AGENTS_HEADING = "Building Trigger Agents"
 
 _GUIDE_CACHE: str | None = None
 
@@ -43,8 +50,9 @@ class GetAgentBuildingGuideTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Get the agent JSON building guide (nodes, links, AgentExecutorBlock, MCPToolBlock usage, "
-            "and the create->dry-run->fix iterative workflow). Call before generating agent JSON."
+            "Returns the agent JSON building guide (incl. dry-run loop) "
+            "inline. Fallback — prefer enter_agent_building_mode "
+            "(compaction-proof)."
         )
 
     @property
@@ -66,8 +74,22 @@ class GetAgentBuildingGuideTool(BaseTool):
         **kwargs,  # no tool-specific params; accepts kwargs for forward-compat
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+        if session is not None and session.guide_in_system_prompt:
+            # The guide already rides in this turn's (cached) system prompt —
+            # returning it again would duplicate ~9K tokens in the
+            # compactable conversation tail.
+            return AgentBuildingGuideResponse(
+                message="Agent building guide already loaded.",
+                content=(
+                    "The complete agent-building guide is already included in "
+                    "your system prompt (see <building_guide>). Refer to it "
+                    "directly — it stays available for the rest of this "
+                    "session, including after context compaction."
+                ),
+                session_id=session_id,
+            )
         try:
-            content = _load_guide()
+            content = await load_guide_for_user(user_id)
             return AgentBuildingGuideResponse(
                 message="Agent building guide loaded.",
                 content=content,
@@ -80,3 +102,44 @@ class GetAgentBuildingGuideTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+
+def _strip_h3_section(guide: str, heading: str) -> str:
+    """Remove a single ``### {heading}`` section from the guide.
+
+    The section runs from its ``### `` heading up to (but not
+    including) the next H2/H3 heading, or end-of-file if it's the
+    last section. Sections after the stripped one are preserved —
+    future additions to the guide aren't silently dropped.
+    """
+    lines = guide.split("\n")
+    target = f"### {heading}"
+    out: list[str] = []
+    skipping = False
+    for line in lines:
+        if line == target:
+            skipping = True
+            continue
+        if skipping and line.startswith(("# ", "## ", "### ")):
+            skipping = False
+        if not skipping:
+            out.append(line)
+    return "\n".join(out)
+
+
+async def load_guide_for_user(user_id: str | None) -> str:
+    """Load the guide with per-user feature gating applied.
+
+    Shared by get_agent_building_guide and enter_agent_building_mode (its
+    SDK-less inline fallback) so the trigger-section gating and heading
+    sentinel cannot drift between the two.
+    """
+    content = _load_guide()
+    triggers_enabled = (
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False)
+        if user_id
+        else False
+    )
+    if not triggers_enabled:
+        content = _strip_h3_section(content, _TRIGGER_AGENTS_HEADING)
+    return content

@@ -33,13 +33,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -91,13 +93,15 @@ jobs:
 
       # ------------------------ Frontend setup ------------------------
 
-      - name: Set up Frontend - Enable corepack
-        run: corepack enable
+      - name: Set up Frontend - Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Frontend - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -279,13 +283,15 @@ jobs:
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
-      - name: Set up tests - Enable corepack
-        run: corepack enable
+      - name: Set up tests - Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up tests - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
