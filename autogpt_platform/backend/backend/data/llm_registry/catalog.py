@@ -644,7 +644,11 @@ def _build_catalog() -> CatalogPayload:
                 provider="open_router",
                 creator="moonshot-ai",
                 context_window=1048576,
-                max_output_tokens=32768,
+                # OpenRouter publishes no completion cap for K3 (verified
+                # live: top_provider.max_completion_tokens = null) — None
+                # means "unknown/no published cap"; block runtime falls
+                # back to its own 32K default.
+                max_output_tokens=None,
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
