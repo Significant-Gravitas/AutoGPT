@@ -61,6 +61,7 @@ function runForceHydrate({
     sessionId: SESSION_ID,
     isReconnectScheduled: false,
     hasActiveStream: false,
+    isFinishProbing: false,
     setMessages,
   };
 
@@ -164,5 +165,121 @@ describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424
       ...range(1, 40).map(seqOf),
       ...freshWindow.map(seqOf),
     ]);
+  });
+});
+
+describe("useHydrateOnStreamEnd — continuation-turn flash guard", () => {
+  type Props = Parameters<typeof useHydrateOnStreamEnd>[0];
+
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function setup() {
+    let captured: Messages | null = null;
+    const setMessages = vi.fn(
+      (updater: Messages | ((p: Messages) => Messages)) => {
+        captured = typeof updater === "function" ? updater([]) : updater;
+      },
+    );
+    const baseProps = {
+      sessionId: SESSION_ID,
+      isReconnectScheduled: false,
+      hasActiveStream: false,
+      isFinishProbing: false,
+      setMessages,
+    };
+    const hook = renderHook<void, Props>(
+      (props) => useHydrateOnStreamEnd(props),
+      {
+        initialProps: {
+          ...baseProps,
+          status: "streaming",
+          hydratedMessages: range(51, 100),
+        },
+      },
+    );
+    // Stream ends → arms the force-hydrate against the stale pre-turn window.
+    hook.rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(51, 100),
+    } satisfies Props);
+    return { ...hook, baseProps, setMessages, getCaptured: () => captured };
+  }
+
+  it("defers the force-hydrate while the post-finish probe is in flight", () => {
+    const { rerender, baseProps, setMessages, getCaptured } = setup();
+
+    // Fresh post-turn window lands while `handleFinish` is still probing for
+    // a continuation turn — the replace must NOT apply (it would swap every
+    // message id, remount the list and flash the panel).
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Probe settles with no continuation → the replace lands.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(getCaptured()!.map(seqOf)).toEqual(range(53, 102).map(seqOf));
+  });
+
+  it("holds the force-hydrate while the backend still has an active stream", () => {
+    const { rerender, baseProps, setMessages, getCaptured } = setup();
+
+    // Refetched session data shows a continuation turn already live — the
+    // resume flow takes over, so the replace must wait.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      hasActiveStream: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Backend goes idle → the replace lands.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      hasActiveStream: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(getCaptured()!.map(seqOf)).toEqual(range(53, 102).map(seqOf));
+  });
+
+  it("still applies length-gated top-ups while a stream is active (session restore)", () => {
+    // Reopening a session with an active backend stream relies on the top-up
+    // branch to render history before the resume replay starts — only the
+    // force-hydrate path is gated on `hasActiveStream`.
+    let captured: Messages | null = null;
+    const setMessages = vi.fn(
+      (updater: Messages | ((p: Messages) => Messages)) => {
+        captured = typeof updater === "function" ? updater([]) : updater;
+      },
+    );
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        sessionId: SESSION_ID,
+        status: "ready",
+        hydratedMessages: range(1, 10),
+        isReconnectScheduled: false,
+        hasActiveStream: true,
+        isFinishProbing: false,
+        setMessages,
+      }),
+    );
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(captured!.map(seqOf)).toEqual(range(1, 10).map(seqOf));
   });
 });

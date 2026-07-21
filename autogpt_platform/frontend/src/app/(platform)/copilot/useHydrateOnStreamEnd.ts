@@ -120,6 +120,15 @@ interface Args {
    * resend.
    */
   hasActiveStream: boolean;
+  /**
+   * True while the post-finish probe (`handleFinish` in `useCopilotStream`)
+   * is still deciding whether the backend is starting a continuation turn.
+   * Applying the force-hydrate in that window swaps every message id (AI-SDK
+   * uuid → DB `-seq-N`), remounting the whole list and replaying the entrance
+   * animation — the visible mid-conversation flash — only for the resume to
+   * immediately take over. Hold the replace until the probe settles.
+   */
+  isFinishProbing: boolean;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -160,6 +169,7 @@ export function useHydrateOnStreamEnd({
   hydratedMessages,
   isReconnectScheduled,
   hasActiveStream,
+  isFinishProbing,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
@@ -184,6 +194,7 @@ export function useHydrateOnStreamEnd({
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
+    if (isFinishProbing) return;
 
     const deduped = deduplicateMessages(hydratedMessages);
     const needsZombieRecovery =
@@ -222,6 +233,12 @@ export function useHydrateOnStreamEnd({
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
+      // The fresh session data shows the backend still has a live stream
+      // (continuation turn dispatching, or a resume about to start). The
+      // resume flow will pick it up; replacing messages now would only
+      // remount the list mid-conversation. The replace lands once the
+      // backend goes idle.
+      if (hasActiveStream) return;
       setMessages((prev) =>
         preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
       );
@@ -238,5 +255,6 @@ export function useHydrateOnStreamEnd({
     status,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
   ]);
 }
