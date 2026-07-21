@@ -29,6 +29,7 @@ from backend.sdk import (
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -222,7 +223,7 @@ class ExaCreateImportBlock(Block):
     def _create_test_mock():
         """Create test mocks for the AsyncExa SDK."""
         from datetime import datetime
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock SDK import object
         mock_import = MagicMock()
@@ -247,7 +248,7 @@ class ExaCreateImportBlock(Block):
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
                 websets=MagicMock(
-                    imports=MagicMock(create=lambda *args, **kwargs: mock_import)
+                    imports=MagicMock(create=AsyncMock(return_value=mock_import))
                 )
             )
         }
@@ -294,9 +295,10 @@ class ExaCreateImportBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        sdk_import = aexa.websets.imports.create(
+        sdk_import = await aexa.websets.imports.create(
             params=payload, csv_data=input_data.csv_data
         )
+        merge_exa_cost(self, sdk_import)
 
         import_obj = ImportModel.from_sdk(sdk_import)
 
@@ -360,7 +362,8 @@ class ExaGetImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_import = aexa.websets.imports.get(import_id=input_data.import_id)
+        sdk_import = await aexa.websets.imports.get(import_id=input_data.import_id)
+        merge_exa_cost(self, sdk_import)
 
         import_obj = ImportModel.from_sdk(sdk_import)
 
@@ -426,10 +429,11 @@ class ExaListImportsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = aexa.websets.imports.list(
+        response = await aexa.websets.imports.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
         )
+        merge_exa_cost(self, response)
 
         # Convert SDK imports to our stable models
         imports = [ImportModel.from_sdk(i) for i in response.data]
@@ -474,7 +478,10 @@ class ExaDeleteImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_import = aexa.websets.imports.delete(import_id=input_data.import_id)
+        deleted_import = await aexa.websets.imports.delete(
+            import_id=input_data.import_id
+        )
+        merge_exa_cost(self, deleted_import)
 
         yield "import_id", deleted_import.id
         yield "success", "true"
@@ -573,14 +580,14 @@ class ExaExportWebsetBlock(Block):
             }
         )
 
-        # Create mock iterator
-        mock_items = [mock_item1, mock_item2]
+        # Create async iterator for list_all
+        async def async_item_iterator(*args, **kwargs):
+            for item in [mock_item1, mock_item2]:
+                yield item
 
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
-                websets=MagicMock(
-                    items=MagicMock(list_all=lambda *args, **kwargs: iter(mock_items))
-                )
+                websets=MagicMock(items=MagicMock(list_all=async_item_iterator))
             )
         }
 
@@ -597,12 +604,12 @@ class ExaExportWebsetBlock(Block):
         try:
             all_items = []
 
-            # Use SDK's list_all iterator to fetch items
+            # list_all paginates internally; cost_dollars is not surfaced per-page
             item_iterator = aexa.websets.items.list_all(
                 webset_id=input_data.webset_id, limit=input_data.max_items
             )
 
-            for sdk_item in item_iterator:
+            async for sdk_item in item_iterator:
                 if len(all_items) >= input_data.max_items:
                     break
 

@@ -1,16 +1,15 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { getHomepageRoute } from "@/lib/constants";
-import BackendAPI from "@/lib/autogpt-server-api";
-import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
 import { getOnboardingStatus } from "@/app/api/helpers";
+import BackendAPI from "@/lib/autogpt-server-api";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { revalidatePath } from "next/cache";
+import { NextResponse } from "next/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
-  let next = "/";
+  let next = "/copilot";
 
   if (code) {
     const supabase = await getServerSupabase();
@@ -26,16 +25,9 @@ export async function GET(request: Request) {
         const api = new BackendAPI();
         await api.createUser();
 
-        // Get onboarding status from backend (includes chat flag evaluated for this user)
-        const { shouldShowOnboarding, isChatEnabled } =
-          await getOnboardingStatus();
-        if (shouldShowOnboarding) {
-          next = "/onboarding";
-          revalidatePath("/onboarding", "layout");
-        } else {
-          next = getHomepageRoute(isChatEnabled);
-          revalidatePath(next, "layout");
-        }
+        const { shouldShowOnboarding } = await getOnboardingStatus();
+        next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+        revalidatePath(next, "layout");
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
 

@@ -5,7 +5,7 @@ import { colors } from "./src/components/styles/colors";
 
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
     container: {
@@ -64,6 +64,16 @@ const config = {
           "500": "#474747",
           "600": "#282828",
           "700": "#272727",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
         },
       },
       spacing: {
@@ -141,6 +151,36 @@ const config = {
             height: "0",
           },
         },
+        // Bridge the height change with an opacity fade so the content
+        // doesn't clip in/out abruptly (Emil Kowalski: fade to soften
+        // state transitions). Opacity resolves over the first/last ~60%
+        // so text is fully legible before the height finishes settling.
+        "collapsible-down": {
+          from: {
+            height: "0",
+            opacity: "0",
+          },
+          "60%": {
+            opacity: "1",
+          },
+          to: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+        },
+        "collapsible-up": {
+          from: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+          "40%": {
+            opacity: "0",
+          },
+          to: {
+            height: "0",
+            opacity: "0",
+          },
+        },
         "fade-in": {
           "0%": {
             opacity: "0",
@@ -165,13 +205,43 @@ const config = {
             boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
           },
         },
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-4px)" },
+          "40%": { transform: "translateX(4px)" },
+          "60%": { transform: "translateX(-3px)" },
+          "80%": { transform: "translateX(3px)" },
+        },
+        aurora: {
+          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
+          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
+        },
+        "marquee-x": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
+        "progress-bar": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // easeOutCubic for a smooth, decelerating settle; asymmetric
+        // timing (open a touch slower than close) per Emil Kowalski.
+        // Both stay under the 300ms UI budget.
+        "collapsible-down":
+          "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
+        "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
-        shimmer: "shimmer 2s ease-in-out infinite",
+        shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
+        shake: "shake 0.5s ease-in-out",
+        aurora: "aurora 60s linear infinite",
+        "marquee-x": "marquee-x 40s linear infinite",
+        "progress-bar":
+          "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
       },
       transitionDuration: {
         "2000": "2000ms",

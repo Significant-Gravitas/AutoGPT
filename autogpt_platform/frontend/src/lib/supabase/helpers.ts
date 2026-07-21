@@ -1,4 +1,3 @@
-import { getHomepageRoute } from "@/lib/constants";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { type CookieOptions } from "@supabase/ssr";
@@ -7,12 +6,13 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
   "/profile",
   "/library",
-  "/monitoring",
+  "/settings",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
@@ -71,7 +71,7 @@ export function getRedirectPath(
   }
 
   if (isAdminPage(path) && userRole !== "admin") {
-    return getHomepageRoute();
+    return "/";
   }
 
   return null;
@@ -84,7 +84,6 @@ export interface EventListeners {
 
 export function setupSessionEventListeners(
   onVisibilityChange: () => void,
-  onFocus: () => void,
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
   if (environment.isServerSide()) {
@@ -92,13 +91,11 @@ export function setupSessionEventListeners(
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.addEventListener("focus", onFocus);
   window.addEventListener("storage", onStorageChange);
 
   return {
     cleanup: () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorageChange);
     },
   };

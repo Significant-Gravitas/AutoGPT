@@ -11,6 +11,7 @@ import pytest
 from backend.util.models import Pagination
 
 from . import cache as store_cache
+from .db import StoreAgentsSortOptions
 from .model import StoreAgent, StoreAgentsResponse
 
 
@@ -215,7 +216,7 @@ class TestCacheDeletion:
             await store_cache._get_cached_store_agents(
                 featured=True,
                 creator="testuser",
-                sorted_by="rating",
+                sorted_by=StoreAgentsSortOptions.RATING,
                 search_query="AI assistant",
                 category="productivity",
                 page=2,
@@ -227,7 +228,7 @@ class TestCacheDeletion:
             deleted = store_cache._get_cached_store_agents.cache_delete(
                 featured=True,
                 creator="testuser",
-                sorted_by="rating",
+                sorted_by=StoreAgentsSortOptions.RATING,
                 search_query="AI assistant",
                 category="productivity",
                 page=2,
@@ -239,7 +240,7 @@ class TestCacheDeletion:
             deleted = store_cache._get_cached_store_agents.cache_delete(
                 featured=True,
                 creator="testuser",
-                sorted_by="rating",
+                sorted_by=StoreAgentsSortOptions.RATING,
                 search_query="AI assistant",
                 category="productivity",
                 page=2,

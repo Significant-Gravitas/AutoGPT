@@ -10,13 +10,13 @@ import {
   TableBody,
 } from "@/components/__legacy__/ui/table";
 import { Badge } from "@/components/__legacy__/ui/badge";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye } from "lucide-react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import {
-  type StoreListingWithVersions,
-  type StoreSubmission,
-  SubmissionStatus,
-} from "@/lib/autogpt-server-api/types";
+import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
+import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { Button } from "@/components/__legacy__/ui/button";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
@@ -38,8 +38,8 @@ export function ExpandableRow({
   listing,
   latestVersion,
 }: {
-  listing: StoreListingWithVersions;
-  latestVersion: StoreSubmission | null;
+  listing: StoreListingWithVersionsAdminView;
+  latestVersion: StoreSubmissionAdminView | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -69,18 +69,28 @@ export function ExpandableRow({
           {latestVersion?.status && getStatusBadge(latestVersion.status)}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
-          {latestVersion?.date_submitted
-            ? formatDistanceToNow(new Date(latestVersion.date_submitted), {
+          {latestVersion?.submitted_at
+            ? formatDistanceToNow(new Date(latestVersion.submitted_at), {
                 addSuffix: true,
               })
             : "Unknown"}
         </TableCell>
         <TableCell className="text-right">
           <div className="flex justify-end gap-2">
-            {latestVersion?.store_listing_version_id && (
-              <DownloadAgentAdminButton
-                storeListingVersionId={latestVersion.store_listing_version_id}
-              />
+            {latestVersion?.listing_version_id && (
+              <>
+                <Link
+                  href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
+                >
+                  <Button size="sm" variant="outline">
+                    <Eye className="mr-2 h-4 w-4" />
+                    Preview
+                  </Button>
+                </Link>
+                <DownloadAgentAdminButton
+                  storeListingVersionId={latestVersion.listing_version_id}
+                />
+              </>
             )}
 
             {(latestVersion?.status === SubmissionStatus.PENDING ||
@@ -110,19 +120,22 @@ export function ExpandableRow({
                     <TableHead>Name</TableHead>
                     <TableHead>Sub Heading</TableHead>
                     <TableHead>Description</TableHead>
-                    {/* <TableHead>Categories</TableHead> */}
+                    <TableHead>Categories</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {listing.versions
-                    .sort((a, b) => (b.version ?? 1) - (a.version ?? 0))
+                  {(listing.versions ?? [])
+                    .sort(
+                      (a, b) =>
+                        (b.listing_version ?? 1) - (a.listing_version ?? 0),
+                    )
                     .map((version) => (
-                      <TableRow key={version.store_listing_version_id}>
+                      <TableRow key={version.listing_version_id}>
                         <TableCell>
-                          v{version.version || "?"}
-                          {version.store_listing_version_id ===
-                            listing.active_version_id && (
+                          v{version.listing_version || "?"}
+                          {version.listing_version_id ===
+                            listing.active_listing_version_id && (
                             <Badge className="ml-2 bg-blue-500">Active</Badge>
                           )}
                         </TableCell>
@@ -131,9 +144,9 @@ export function ExpandableRow({
                           {version.changes_summary || "No summary"}
                         </TableCell>
                         <TableCell>
-                          {version.date_submitted
+                          {version.submitted_at
                             ? formatDistanceToNow(
-                                new Date(version.date_submitted),
+                                new Date(version.submitted_at),
                                 { addSuffix: true },
                               )
                             : "Unknown"}
@@ -179,15 +192,29 @@ export function ExpandableRow({
                         <TableCell>{version.name}</TableCell>
                         <TableCell>{version.sub_heading}</TableCell>
                         <TableCell>{version.description}</TableCell>
-                        {/* <TableCell>{version.categories.join(", ")}</TableCell> */}
+                        <TableCell>
+                          {version.categories.length > 0
+                            ? version.categories.join(", ")
+                            : "None"}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            {version.store_listing_version_id && (
-                              <DownloadAgentAdminButton
-                                storeListingVersionId={
-                                  version.store_listing_version_id
-                                }
-                              />
+                            {version.listing_version_id && (
+                              <>
+                                <Link
+                                  href={`/admin/marketplace/preview/${version.listing_version_id}`}
+                                >
+                                  <Button size="sm" variant="outline">
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Preview
+                                  </Button>
+                                </Link>
+                                <DownloadAgentAdminButton
+                                  storeListingVersionId={
+                                    version.listing_version_id
+                                  }
+                                />
+                              </>
                             )}
                             {(version.status === SubmissionStatus.PENDING ||
                               version.status === SubmissionStatus.APPROVED) && (

@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from backend.data.block import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.settings import BehaveAs, Settings
 
@@ -72,6 +72,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                 "_make_request": lambda *args, **kwargs: {"orderId": "314144241"},
                 "_convert_to_color": lambda *args, **kwargs: "black",
             },
+            is_sensitive_action=True,
         )
 
     async def run(

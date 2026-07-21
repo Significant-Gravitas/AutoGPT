@@ -23,20 +23,23 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    overload,
 )
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
-from prisma.errors import DataError
+from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
-from backend.util.retry import conn_retry, create_retry_decorator
+from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -155,9 +158,30 @@ class BaseAppService(AppProcess, ABC):
         super().cleanup()
 
 
+class RemoteCallExtras(BaseModel):
+    """Structured extras that can ride alongside a ``RemoteCallError``.
+
+    Each field here must be JSON-safe and explicitly typed — ``Any`` is
+    deliberately avoided so non-serializable payloads fail at model
+    validation time instead of inside FastAPI's JSON encoder. Add new
+    fields here (rather than re-typing to ``Any``) when a new exception
+    type needs to preserve structured state across RPC.
+    """
+
+    # GraphValidationError.node_errors — dict[node_id, dict[field, error_msg]]
+    node_errors: Optional[dict[str, dict[str, str]]] = None
+
+
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
     args: Optional[Tuple[Any, ...]] = None
+    # Optional extras for exception types that carry structured attributes
+    # beyond ``exc.args``. When set, the client-side handler uses these to
+    # reconstruct the exception with the original attributes.
+    # Currently used by ``GraphValidationError.node_errors`` so the
+    # copilot's credential-race fallback can distinguish credential
+    # failures from other graph validation errors over RPC.
+    extras: Optional[RemoteCallExtras] = None
 
 
 class UnhealthyServiceError(ValueError):
@@ -201,6 +225,7 @@ EXCEPTION_MAPPING = {
         UnhealthyServiceError,
         HTTPClientError,
         HTTPServerError,
+        UniqueViolationError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
@@ -226,15 +251,40 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                logger.error(
-                    f"{request.method} {request.url.path} failed: {exc}",
-                    exc_info=exc if status_code == 500 else None,
+                if status_code >= 500:
+                    logger.error(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
+                else:
+                    logger.warning(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
+            extras: Optional[RemoteCallExtras] = None
+            if isinstance(exc, exceptions.GraphValidationError):
+                # ``exc.args`` only preserves the top-level message; the
+                # structured ``node_errors`` mapping needs to ride along
+                # in ``extras`` so the client can rebuild the original
+                # exception state (used by the copilot credential-race
+                # fallback to distinguish credential failures from other
+                # validation errors).
+                # Normalise to plain ``dict[str, dict[str, str]]`` so
+                # Pydantic validation enforces the JSON-safe shape —
+                # any non-serializable sneak-in fails here instead of
+                # inside the JSON encoder.
+                extras = RemoteCallExtras(
+                    node_errors={
+                        node_id: dict(errors)
+                        for node_id, errors in exc.node_errors.items()
+                    },
                 )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
                     type=str(exc.__class__.__name__),
                     args=exc.args or (str(exc),),
+                    extras=extras,
                 ).model_dump(),
             )
 
@@ -317,6 +367,7 @@ class AppService(BaseAppService, ABC):
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
+        stop_retry_loops()
         signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True
@@ -360,9 +411,23 @@ class AppService(BaseAppService, ABC):
                 await db.disconnect()
         ```
         """
-        # Startup - this runs before Uvicorn starts accepting connections
+        # Startup - this runs before Uvicorn starts accepting connections.
+        # Eager connect so we fail-fast if Redis is unreachable, mirroring
+        # the db.connect()/db.disconnect() pattern subclasses use below.
+        await redis_client.get_redis_async()
 
         yield
+
+        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+        # ClusterNode" warnings at interpreter shutdown. Wrapped so a wedged
+        # socket close doesn't block subclass-level db.disconnect calls.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning(
+                f"[{self.service_name}] redis_client.disconnect_async failed",
+                exc_info=True,
+            )
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
@@ -415,6 +480,9 @@ class AppService(BaseAppService, ABC):
         )
         self.fastapi_app.add_exception_handler(
             DataError, self._handle_internal_http_error(400)
+        )
+        self.fastapi_app.add_exception_handler(
+            UniqueViolationError, self._handle_internal_http_error(400)
         )
         self.fastapi_app.add_exception_handler(
             Exception, self._handle_internal_http_error(500)
@@ -478,6 +546,7 @@ def get_service_client(
                 # Don't retry these specific exceptions that won't be fixed by retrying
                 ValueError,  # Invalid input/parameters
                 DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                UniqueViolationError,  # Unique constraint violations
                 KeyError,  # Missing required data
                 TypeError,  # Wrong data types
                 AttributeError,  # Missing attributes
@@ -558,7 +627,6 @@ def get_service_client(
                 self._connection_failure_count >= 3
                 and current_time - self._last_client_reset > 30
             ):
-
                 logger.warning(
                     f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
                 )
@@ -594,6 +662,34 @@ def get_service_client(
                 if error_response and error_response.type in EXCEPTION_MAPPING:
                     exception_class = EXCEPTION_MAPPING[error_response.type]
                     args = error_response.args or [str(e)]
+
+                    # Prisma DataError subclasses expect a dict `data` arg,
+                    # but RPC serialization only preserves the string message
+                    # from exc.args.  Wrap it in the expected structure so
+                    # the constructor doesn't crash on `.get()`.
+                    if issubclass(exception_class, DataError):
+                        msg = str(args[0]) if args else str(e)
+                        raise exception_class({"user_facing_error": {"message": msg}})
+
+                    # GraphValidationError carries a structured ``node_errors``
+                    # attribute that ``exc.args`` alone doesn't preserve.
+                    # If the server included it in ``extras``, thread it
+                    # back into the reconstructed exception.
+                    #
+                    # Identity check (``is``) is deliberate here — unlike the
+                    # DataError path above which uses ``issubclass`` to catch
+                    # all subclasses, GraphValidationError subclasses should
+                    # fall through to the generic ``raise exception_class(*args)``
+                    # below rather than silently losing their custom attributes.
+                    if exception_class is exceptions.GraphValidationError:
+                        msg = str(args[0]) if args else str(e)
+                        node_errors = (
+                            error_response.extras.node_errors
+                            if error_response.extras
+                            else None
+                        )
+                        raise exception_class(msg, node_errors=node_errors)
+
                     raise exception_class(*args)
 
                 # Otherwise categorize by HTTP status code
@@ -690,8 +786,19 @@ def get_service_client(
             return kwargs
 
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
+            """Validate and coerce the RPC result to the expected return type.
+
+            Falls back to the raw result with a warning and Sentry capture if validation fails.
+            """
             if expected_return:
-                return expected_return.validate_python(result)
+                try:
+                    return expected_return.validate_python(result)
+                except Exception as e:
+                    logger.warning(
+                        f"RPC return type validation failed for {type(e).__name__}: {e}"
+                    )
+                    _sentry_capture_exception(e)
+                    return result
             return result
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
@@ -745,15 +852,28 @@ def endpoint_to_sync(
     return cast(Callable[Concatenate[Any, P], R], _stub)
 
 
+@overload
+def endpoint_to_async(
+    func: Callable[Concatenate[Any, P], Coroutine[Any, Any, R]],
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+@overload
 def endpoint_to_async(
     func: Callable[Concatenate[Any, P], R],
-) -> Callable[Concatenate[Any, P], Awaitable[R]]:
-    """
-    The async mirror of `to_sync`.
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+def endpoint_to_async(func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    """Typed async stub for a service endpoint.
+
+    The first overload unwraps `Coroutine[Any, Any, R]` (for `async def`
+    service methods); the second keeps sync server methods returning `R`.
+    Both resolve to `Awaitable[R]` on the client.
     """
 
-    async def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+    async def _stub(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise RuntimeError("should be intercepted by __getattr__")
 
     update_wrapper(_stub, func)
-    return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
+    return _stub

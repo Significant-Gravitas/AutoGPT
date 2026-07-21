@@ -22,7 +22,7 @@ export function DrawerWrap({
   handleClose,
   isForceOpen,
 }: Props) {
-  const accessibleTitle = title ?? "Dialog";
+  const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
 
   const closeBtn = (

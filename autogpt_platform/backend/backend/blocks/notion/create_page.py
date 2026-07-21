@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import model_validator
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

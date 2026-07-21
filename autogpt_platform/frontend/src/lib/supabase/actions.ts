@@ -1,7 +1,7 @@
 "use server";
 import * as Sentry from "@sentry/nextjs";
 import type { User } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { getRedirectPath } from "./helpers";
 import { getServerSupabase } from "./server/getServerSupabase";
 
@@ -164,24 +164,38 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
           scope: options.globalLogout ? "global" : "local",
         });
 
-        revalidatePath("/");
-
         if (error) {
           console.error("Error logging out:", error);
-          return { success: false, error: error.message };
         }
       } catch (error) {
         console.error("Logout error:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
       }
 
-      revalidatePath("/", "layout");
+      // Always expire the auth cookies, even when signOut() fails (revoked or
+      // already-rotated refresh token, Supabase API hiccup). If they survive,
+      // the middleware still sees a session and bounces the user from /login
+      // straight back into the app with a half-dead session: the paywall
+      // re-mounts while every API call fails with a 401.
+      await clearSupabaseAuthCookies();
+
+      // No `revalidatePath`: `/` is a client-only spinner that redirects to
+      // `/copilot`, so there is no RSC payload to invalidate. The cross-tab
+      // storage listener calls `router.refresh()` for any visible page, and
+      // the React Query cache is cleared client-side.
       return { success: true };
     },
   );
+}
+
+// Supabase SSR stores the session in `sb-<project-ref>-auth-token` cookies
+// (chunked as `.0`, `.1`, ... when large), all `sb-`-prefixed.
+async function clearSupabaseAuthCookies() {
+  const cookieStore = await cookies();
+  for (const cookie of cookieStore.getAll()) {
+    if (cookie.name.startsWith("sb-")) {
+      cookieStore.delete(cookie.name);
+    }
+  }
 }
 
 export async function refreshSession() {
@@ -210,9 +224,6 @@ export async function refreshSession() {
             error: error.message,
           };
         }
-
-        // Revalidate the layout to update server components
-        revalidatePath("/", "layout");
 
         return { user };
       } catch (error) {

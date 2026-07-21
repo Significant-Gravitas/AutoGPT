@@ -1,6 +1,5 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta as GeneratedGraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 
 // Time constants
@@ -62,33 +61,6 @@ export interface NotificationState {
   recentCompletions: AgentExecutionWithInfo[];
   recentFailures: AgentExecutionWithInfo[];
   totalCount: number;
-}
-
-export function createAgentInfoMap(
-  agents: MyAgent[],
-): Map<
-  string,
-  { name: string; description: string; library_agent_id?: string }
-> {
-  const agentMap = new Map<
-    string,
-    { name: string; description: string; library_agent_id?: string }
-  >();
-
-  agents.forEach((agent) => {
-    // Ensure we have valid agent data
-    const agentName =
-      agent.agent_name || `Agent ${agent.agent_id?.slice(0, 8)}`;
-    const agentDescription = agent.description || "";
-
-    agentMap.set(agent.agent_id, {
-      name: agentName,
-      description: agentDescription,
-      library_agent_id: undefined, // MyAgent doesn't have library_agent_id
-    });
-  });
-
-  return agentMap;
 }
 
 export function enrichExecutionWithAgentInfo(

@@ -4,7 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
@@ -26,12 +26,22 @@ export const useRunGraph = () => {
     useShallow((state) => state.setIsGraphRunning),
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+  const [runTarget, setRunTarget] = useState<{
+    graphID: string;
+    graphVersion: number | null;
+  } | null>(null);
 
   const setNodeErrorsForBackendId = useNodeStore(
     useShallow((state) => state.setNodeErrorsForBackendId),
   );
   const clearAllNodeErrors = useNodeStore(
     useShallow((state) => state.clearAllNodeErrors),
+  );
+  const cleanNodesStatuses = useNodeStore(
+    useShallow((state) => state.cleanNodesStatuses),
+  );
+  const clearAllNodeExecutionResults = useNodeStore(
+    useShallow((state) => state.clearAllNodeExecutionResults),
   );
 
   // Tutorial integration - force open dialog when tutorial requests it
@@ -129,18 +139,37 @@ export const useRunGraph = () => {
       },
     });
 
-  const handleRunGraph = async () => {
-    await saveGraph(undefined);
+  const handleRunGraph = async ({
+    dryRun = false,
+  }: { dryRun?: boolean } = {}) => {
+    // Use the version returned by the save, not the one captured in this
+    // closure — saving creates a new graph version and the stale closure value
+    // would run the previous (pre-edit) version. See the delete-node-then-run bug.
+    const savedGraph = await saveGraph(undefined);
 
-    if (hasInputs() || hasCredentials()) {
+    if (!dryRun && (hasInputs() || hasCredentials())) {
+      // Hand the freshly-saved version to the dialog so it runs THIS version,
+      // not the stale one still in the URL (setQueryStates updates it async).
+      setRunTarget({
+        graphID: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
+      });
       setOpenRunInputDialog(true);
     } else {
+      // Clear stale results so the UI shows fresh output from this execution
+      clearAllNodeExecutionResults();
+      cleanNodesStatuses();
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({
-        graphId: flowID ?? "",
-        graphVersion: flowVersion || null,
-        data: { inputs: {}, credentials_inputs: {}, source: "builder" },
+        graphId: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
+        data: {
+          inputs: {},
+          credentials_inputs: {},
+          source: "builder",
+          ...(dryRun && { dry_run: true }),
+        },
       });
     }
   };
@@ -163,5 +192,6 @@ export const useRunGraph = () => {
     isTerminatingGraph,
     openRunInputDialog,
     setOpenRunInputDialog: handleSetOpenRunInputDialog,
+    runTarget,
   };
 };

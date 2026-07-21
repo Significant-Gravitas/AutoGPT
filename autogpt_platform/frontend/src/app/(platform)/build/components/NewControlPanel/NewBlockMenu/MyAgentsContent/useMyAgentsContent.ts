@@ -24,6 +24,7 @@ export const useMyAgentsContent = () => {
     {
       page: 1,
       page_size: 10,
+      is_hidden: false,
     },
     {
       query: { getNextPageParam: getPaginationNextPageNumber },

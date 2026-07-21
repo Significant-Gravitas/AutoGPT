@@ -7,6 +7,7 @@ import React from "react";
 interface Props {
   title: string;
   description?: string;
+  descriptionTitle?: string;
   icon?: React.ReactNode;
   selected?: boolean;
   onClick?: () => void;
@@ -16,6 +17,7 @@ interface Props {
 export function SidebarItemCard({
   title,
   description,
+  descriptionTitle,
   icon,
   selected,
   onClick,
@@ -38,7 +40,11 @@ export function SidebarItemCard({
           >
             {title}
           </Text>
-          <Text variant="body" className="leading-tight !text-zinc-500">
+          <Text
+            variant="body"
+            className="leading-tight !text-zinc-500"
+            title={descriptionTitle}
+          >
             {description}
           </Text>
         </div>

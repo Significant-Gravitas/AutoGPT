@@ -1,9 +1,14 @@
-import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  useGetV2GetLibraryAgent,
+  useGetV2ListTriggerAgents,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
+import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,11 +31,21 @@ export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
 
+  // TODO(#12740 / autogpt-pr-reviewer): when agent.is_hidden is true,
+  // surface a banner that this is a trigger agent and link to its parent.
+  // Needs a back-derivation path (parent has no FK to its triggers) —
+  // either a new endpoint or scanning AgentExecutorBlock constantInput
+  // across the user's library.
   const {
     data: agent,
     isSuccess,
     error,
   } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
+
+  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
+  const { data: triggerAgents } = useGetV2ListTriggerAgents(agentId, {
+    query: { enabled: triggerAgentsEnabled && !!agentId, select: okData },
+  });
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
     useQueryStates({
@@ -122,6 +137,37 @@ export function useNewAgentLibraryView() {
     });
   }
 
+  const { data: schedules } = useGetV1ListExecutionSchedulesForAGraph(
+    agent?.graph_id || "",
+    {
+      query: {
+        enabled: !!agent?.graph_id,
+        select: okData,
+      },
+    },
+  );
+
+  function handleScheduleDeleted(deletedScheduleId: string) {
+    if (activeItem !== deletedScheduleId) {
+      return;
+    }
+
+    if (!schedules) {
+      handleClearSelectedRun();
+      return;
+    }
+
+    const remainingSchedules = schedules.filter(
+      (s) => s.id !== deletedScheduleId,
+    );
+
+    if (remainingSchedules.length > 0) {
+      handleSelectRun(remainingSchedules[0].id, "scheduled");
+    } else {
+      handleClearSelectedRun();
+    }
+  }
+
   function handleSetActiveTab(
     tab: "runs" | "scheduled" | "templates" | "triggers",
   ) {
@@ -191,6 +237,12 @@ export function useNewAgentLibraryView() {
     onItemCreated({ item: newSchedule, type: "scheduled" });
   }
 
+  const isActiveItemTriggerAgent =
+    triggerAgentsEnabled &&
+    activeTab === "triggers" &&
+    !!activeItem &&
+    !!triggerAgents?.some((t) => t.id === activeItem);
+
   return {
     agentId: id,
     agent,
@@ -201,10 +253,12 @@ export function useNewAgentLibraryView() {
     hasAnyItems,
     showSidebarLayout,
     activeItem,
+    isActiveItemTriggerAgent,
     sidebarLoading,
     activeTab,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
+    handleScheduleDeleted,
     handleCountsChange,
     handleSelectRun,
     handleSelectSettings,

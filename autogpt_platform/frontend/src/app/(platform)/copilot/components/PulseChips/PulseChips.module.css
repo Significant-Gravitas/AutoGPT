@@ -1,0 +1,93 @@
+.glassPanel {
+  position: relative;
+  isolation: isolate;
+}
+
+.glassPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--border-angle, 0deg),
+    rgba(129, 120, 228, 0.08),
+    rgba(129, 120, 228, 0.28),
+    rgba(168, 130, 255, 0.18),
+    rgba(129, 120, 228, 0.08),
+    rgba(99, 102, 241, 0.24),
+    rgba(129, 120, 228, 0.08)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rotate-border 6s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes rotate-border {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+.chip {
+  overflow: hidden;
+}
+
+@media (hover: hover) {
+  .chip {
+    padding-bottom: 0.9rem;
+  }
+}
+
+@media (hover: none) {
+  .chip {
+    padding-bottom: 2.25rem;
+  }
+}
+
+.chipActions {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@media (hover: hover) {
+  .chipActions {
+    opacity: 0;
+    transform: translateY(100%);
+    transition:
+      opacity 0.2s ease-out,
+      transform 0.2s ease-out;
+  }
+
+  .chip:hover .chipActions {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .chipContent {
+    transition: filter 0.2s ease-out;
+  }
+
+  .chip:hover .chipContent {
+    filter: blur(2px);
+    opacity: 0.5;
+  }
+}

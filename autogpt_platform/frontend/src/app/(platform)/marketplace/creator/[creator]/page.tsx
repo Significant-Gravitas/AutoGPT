@@ -7,7 +7,7 @@ import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
-import { MainCreatorPage } from "../../components/MainCreatorPage/MainCreatorPage";
+import { MainCreatorPage } from "./components/MainCreatorPage/MainCreatorPage";
 
 export const dynamic = "force-dynamic";
 

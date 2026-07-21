@@ -49,6 +49,7 @@ interface SupabaseStoreState {
   apiRef: BackendAPI | null;
   currentPath: string;
   initialize: (params: InitializeParams) => Promise<void>;
+  setCurrentRequestContext: (params: InitializeParams) => void;
   logOut: (params?: LogOutParams) => Promise<void>;
   validateSession: (params?: ValidateParams) => Promise<boolean>;
   refreshSession: () => ReturnType<typeof refreshSessionHelper>;
@@ -56,12 +57,24 @@ interface SupabaseStoreState {
 }
 
 export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
-  async function initialize(params: InitializeParams): Promise<void> {
+  function setCurrentRequestContext(params: InitializeParams): void {
+    const state = get();
+    if (
+      state.routerRef === params.router &&
+      state.apiRef === params.api &&
+      state.currentPath === params.path
+    ) {
+      return;
+    }
     set({
       routerRef: params.router,
       apiRef: params.api,
       currentPath: params.path,
     });
+  }
+
+  async function initialize(params: InitializeParams): Promise<void> {
+    setCurrentRequestContext(params);
 
     const supabaseClient = ensureSupabaseClient();
     if (supabaseClient !== get().supabase) {
@@ -106,7 +119,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
         const cleanup = setupSessionEventListeners(
           handleVisibilityChange,
-          handleFocus,
           handleStorageEventInternal,
         );
         set({ listenersCleanup: cleanup.cleanup });
@@ -215,10 +227,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     void validateSessionInternal();
   }
 
-  function handleFocus(): void {
-    void validateSessionInternal();
-  }
-
   function handleStorageEventInternal(event: StorageEvent): void {
     const result = handleStorageEventHelper({
       event,
@@ -285,6 +293,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     apiRef: null,
     currentPath: "",
     initialize,
+    setCurrentRequestContext,
     logOut,
     validateSession: validateSessionInternal,
     refreshSession: refreshSessionInternal,

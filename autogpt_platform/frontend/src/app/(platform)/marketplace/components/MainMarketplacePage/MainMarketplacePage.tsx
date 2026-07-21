@@ -1,13 +1,13 @@
 "use client";
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
-import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { HeroSection } from "../HeroSection/HeroSection";
-import { AgentsSection } from "../AgentsSection/AgentsSection";
-import { useMainMarketplacePage } from "./useMainMarketplacePage";
-import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
-import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { AgentsSection } from "../AgentsSection/AgentsSection";
+import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
+import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
+import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
+import { HeroSection } from "../HeroSection/HeroSection";
+import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
+import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
 export const MainMarkeplacePage = () => {
   const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
@@ -38,22 +38,22 @@ export const MainMarkeplacePage = () => {
   return (
     // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
     <div className="mx-auto w-full max-w-[1360px]">
-      <main className="px-4">
+      <main className="px-4 pb-12">
         <HeroSection />
         {featuredAgents && (
           <FeaturedSection featuredAgents={featuredAgents.agents} />
         )}
         {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24" />
+        <Separator className="mb-6 mt-24 bg-transparent" />
 
         {topAgents && (
-          <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
+          <AgentsSection sectionTitle="All Agents" agents={topAgents.agents} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {featuredCreators && (
           <FeaturedCreators featuredCreators={featuredCreators.creators} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"

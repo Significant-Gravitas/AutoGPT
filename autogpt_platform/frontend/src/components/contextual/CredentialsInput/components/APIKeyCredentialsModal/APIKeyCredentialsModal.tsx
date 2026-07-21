@@ -30,6 +30,7 @@ export function APIKeyCredentialsModal({
   const {
     form,
     isLoading,
+    isSubmitting,
     supportsApiKey,
     providerName,
     schemaDescription,
@@ -138,7 +139,12 @@ export function APIKeyCredentialsModal({
                 />
               )}
             />
-            <Button type="submit" className="min-w-68">
+            <Button
+              type="submit"
+              className="min-w-68"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+            >
               Add API Key
             </Button>
           </form>

@@ -15,9 +15,9 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools import find_agent_tool, run_agent_tool
-from backend.api.features.chat.tools.models import ToolResponseBase
+from backend.copilot.model import ChatSession
+from backend.copilot.tools import find_agent_tool, run_agent_tool
+from backend.copilot.tools.models import ToolResponseBase
 from backend.data.auth.base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
@@ -70,9 +70,16 @@ class RunAgentRequest(BaseModel):
     )
 
 
-def _create_ephemeral_session(user_id: str) -> ChatSession:
-    """Create an ephemeral session for stateless API requests."""
-    return ChatSession.new(user_id)
+def _create_ephemeral_session(
+    user_id: str, organization_id: str | None = None
+) -> ChatSession:
+    """Create an ephemeral session for stateless API requests.
+
+    ``organization_id`` should be the API key's org so tools launched
+    through this session attribute to the key's tenant (mirrors the
+    external ``execute_graph`` route).
+    """
+    return ChatSession.new(user_id, dry_run=False, organization_id=organization_id)
 
 
 @tools_router.post(
@@ -93,7 +100,7 @@ async def find_agent(
     Returns:
         List of matching agents or no results response
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await find_agent_tool._execute(
         user_id=auth.user_id,
         session=session,
@@ -133,7 +140,7 @@ async def run_agent(
         - execution_started: If agent was run or scheduled successfully
         - error: If something went wrong
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await run_agent_tool._execute(
         user_id=auth.user_id,
         session=session,

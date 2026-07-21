@@ -3,7 +3,7 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { FileTextIcon } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TemplateActionsDropdown } from "./TemplateActionsDropdown";
@@ -31,7 +31,9 @@ export function TemplateListItem({
         </IconWrapper>
       }
       title={template.name}
-      description={moment(template.updated_at).fromNow()}
+      description={formatDistanceToNow(template.updated_at, {
+        addSuffix: true,
+      })}
       onClick={onClick}
       selected={selected}
       actions={
