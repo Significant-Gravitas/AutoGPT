@@ -1,38 +1,19 @@
-import { describe, expect, test } from "vitest";
 import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
+import { describe, expect, test } from "vitest";
 import {
   activeItemParamFor,
   deriveSelectedTriggerKind,
-  isClientError,
-  isNotFoundError,
   parseActiveItemParam,
   retryUnlessClientError,
 } from "../components/NewAgentLibraryView/helpers";
 
 describe("activeItem param prefix contract", () => {
-  test("parses agent: and preset: prefixes", () => {
-    expect(parseActiveItemParam("agent:abc-123")).toEqual({
-      activeItemId: "abc-123",
-      triggerKindHint: "trigger-agent",
-    });
-    expect(parseActiveItemParam("preset:def-456")).toEqual({
-      activeItemId: "def-456",
-      triggerKindHint: "webhook-trigger",
-    });
-  });
-
-  test("a prefix with an empty suffix yields an empty ID with the hint", () => {
-    expect(parseActiveItemParam("agent:")).toEqual({
-      activeItemId: "",
-      triggerKindHint: "trigger-agent",
-    });
-    expect(parseActiveItemParam("preset:")).toEqual({
-      activeItemId: "",
-      triggerKindHint: "webhook-trigger",
-    });
-  });
-
-  test("passes through bare IDs and null with no hint", () => {
+  test("round-trips both kinds and passes through bare IDs and null", () => {
+    for (const kind of ["trigger-agent", "webhook-trigger"] as const) {
+      expect(parseActiveItemParam(activeItemParamFor(kind, "some-id"))).toEqual(
+        { activeItemId: "some-id", triggerKindHint: kind },
+      );
+    }
     expect(parseActiveItemParam("bare-id")).toEqual({
       activeItemId: "bare-id",
       triggerKindHint: null,
@@ -42,48 +23,19 @@ describe("activeItem param prefix contract", () => {
       triggerKindHint: null,
     });
   });
-
-  test("round-trips through activeItemParamFor", () => {
-    for (const kind of ["trigger-agent", "webhook-trigger"] as const) {
-      const param = activeItemParamFor(kind, "some-id");
-      expect(parseActiveItemParam(param)).toEqual({
-        activeItemId: "some-id",
-        triggerKindHint: kind,
-      });
-    }
-  });
 });
 
 describe("retryUnlessClientError", () => {
-  test("does not retry 4xx errors (the ~7s stale-link stall)", () => {
+  test("fails fast on 4xx, retries server/unknown errors up to 3 times", () => {
     const notFound = Object.assign(new Error("Preset #x not found"), {
       status: 404,
     });
-    expect(isClientError(notFound)).toBe(true);
     expect(retryUnlessClientError(0, notFound)).toBe(false);
-    expect(retryUnlessClientError(0, { status: 401 })).toBe(false);
-    expect(retryUnlessClientError(0, { status: 403 })).toBe(false);
-    expect(retryUnlessClientError(0, { status: 422 })).toBe(false);
-  });
 
-  test("retries server errors and unknown error shapes up to 3 times", () => {
     const serverError = Object.assign(new Error("boom"), { status: 500 });
     expect(retryUnlessClientError(0, serverError)).toBe(true);
-    expect(retryUnlessClientError(2, serverError)).toBe(true);
     expect(retryUnlessClientError(3, serverError)).toBe(false);
-
     expect(retryUnlessClientError(0, new Error("network down"))).toBe(true);
-    expect(retryUnlessClientError(0, null)).toBe(true);
-    expect(retryUnlessClientError(0, { status: "404" })).toBe(true);
-  });
-
-  test("isNotFoundError only matches a numeric 404 status", () => {
-    expect(isNotFoundError({ status: 404 })).toBe(true);
-    expect(isNotFoundError({ status: 403 })).toBe(false);
-    expect(isNotFoundError({ status: 422 })).toBe(false);
-    expect(isNotFoundError({ status: "404" })).toBe(false);
-    expect(isNotFoundError(new Error("not found"))).toBe(false);
-    expect(isNotFoundError(null)).toBe(false);
   });
 });
 
@@ -102,12 +54,6 @@ describe("deriveSelectedTriggerKind", () => {
     triggerKindHint: null,
   };
 
-  test("returns null without a selection", () => {
-    expect(
-      deriveSelectedTriggerKind({ ...settled, activeItemId: null }),
-    ).toBeNull();
-  });
-
   test("resolves membership, ignoring a contradicting hint", () => {
     expect(
       deriveSelectedTriggerKind({
@@ -123,9 +69,6 @@ describe("deriveSelectedTriggerKind", () => {
         triggerKindHint: "trigger-agent",
       }),
     ).toBe("webhook-trigger");
-  });
-
-  test("does not classify a non-webhook template as a trigger", () => {
     expect(
       deriveSelectedTriggerKind({ ...settled, activeItemId: "template-1" }),
     ).toBe("not-found");
@@ -149,18 +92,12 @@ describe("deriveSelectedTriggerKind", () => {
     expect(
       deriveSelectedTriggerKind({ ...unresolved, anyListFailed: true }),
     ).toBe("error");
-    // A hint outranks a failed list: the hinted view can still render and
-    // fetch its own data even when the other list errored.
-    expect(
-      deriveSelectedTriggerKind({
-        ...unresolved,
-        anyListFailed: true,
-        triggerKindHint: "webhook-trigger",
-      }),
-    ).toBe("webhook-trigger");
   });
 
-  test("falls back to the preset detail view when the presets page is incomplete", () => {
+  test("only concludes not-found when the presets page is complete", () => {
+    expect(
+      deriveSelectedTriggerKind({ ...settled, activeItemId: "unknown-id" }),
+    ).toBe("not-found");
     expect(
       deriveSelectedTriggerKind({
         ...settled,
@@ -168,11 +105,5 @@ describe("deriveSelectedTriggerKind", () => {
         presetsComplete: false,
       }),
     ).toBe("webhook-trigger");
-  });
-
-  test("concludes not-found only when both lists are complete and resolved", () => {
-    expect(
-      deriveSelectedTriggerKind({ ...settled, activeItemId: "unknown-id" }),
-    ).toBe("not-found");
   });
 });

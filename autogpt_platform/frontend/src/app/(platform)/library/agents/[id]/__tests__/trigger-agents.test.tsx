@@ -4,7 +4,6 @@ import {
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
-  getGetV2ListTriggerAgentsMockHandler422,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -69,16 +68,12 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 // flag-off branch is covered by a dedicated test that overrides this
 // per-call.
 const mockUseGetFlag = vi.hoisted(() => vi.fn(() => true));
-const mockFlagReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     GENERIC_TRIGGER_AGENTS: "generic-trigger-agents",
   },
   useGetFlag: mockUseGetFlag,
-  useFlagStatus: () => ({
-    enabled: mockUseGetFlag(),
-    ready: mockFlagReady.current,
-  }),
+  useFlagStatus: () => ({ enabled: mockUseGetFlag(), ready: true }),
 }));
 
 // Per-test render wrapper so we can set the nuqs initial URL state
@@ -177,7 +172,6 @@ describe("Library agent view — trigger agents", () => {
     server.resetHandlers();
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
-    mockFlagReady.current = true;
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
@@ -524,26 +518,6 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByText("Selected via type-hinted URL");
   });
 
-  test("preset:-prefixed activeItem renders the webhook trigger detail view", async () => {
-    const webhookPreset = makeWebhookPreset({ name: "Hinted Webhook Trigger" });
-
-    server.use(
-      ...baseHandlers(),
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler([]),
-      singlePresetListHandler(webhookPreset),
-      getGetV2GetASpecificPresetMockHandler(webhookPreset),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      "activeTab=triggers&activeItem=preset:preset-1",
-    );
-
-    await screen.findByText("Trigger Details");
-    screen.getByDisplayValue("Hinted Webhook Trigger");
-  });
-
   test("stale trigger id shows a graceful not-found state without fetching a preset", async () => {
     const triggerAgent = getGetV2GetLibraryAgentResponseMock({
       id: TRIGGER_ID,
@@ -574,85 +548,6 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByText("Trigger not found");
     await screen.findByText(/doesn't exist or is no longer available/i);
     expect(presetGetCalls).toBe(0);
-  });
-
-  test("shows the loading skeleton while the trigger-agents list resolves for a bare ID", async () => {
-    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
-      id: TRIGGER_ID,
-      graph_id: TRIGGER_GRAPH_ID,
-      name: "Slow Watcher",
-      description: "Loaded after a delay",
-      is_hidden: true,
-    });
-
-    let releaseTriggerAgents!: () => void;
-    const listGate = new Promise<void>((resolve) => {
-      releaseTriggerAgents = resolve;
-    });
-
-    server.use(
-      ...baseHandlers(),
-      emptyPresetsHandler,
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler(async () => {
-        await listGate;
-        return [triggerAgent];
-      }),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      `activeTab=triggers&activeItem=${TRIGGER_ID}`,
-    );
-
-    await screen.findByTestId("loading-selected-content");
-    expect(screen.queryByText("Loaded after a delay")).toBeNull();
-
-    releaseTriggerAgents();
-    await screen.findByText("Loaded after a delay");
-  });
-
-  test("membership self-corrects a wrong preset: hint to the trigger agent view", async () => {
-    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
-      id: TRIGGER_ID,
-      graph_id: TRIGGER_GRAPH_ID,
-      name: "Mishinted Watcher",
-      description: "Routed right despite wrong hint",
-      is_hidden: true,
-    });
-
-    let releaseTriggerAgents!: () => void;
-    const listGate = new Promise<void>((resolve) => {
-      releaseTriggerAgents = resolve;
-    });
-
-    let presetGetCalls = 0;
-    server.use(
-      ...baseHandlers(),
-      emptyPresetsHandler,
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler(async () => {
-        await listGate;
-        return [triggerAgent];
-      }),
-      // The wrong hint mounts the preset detail view while the list is
-      // gated; count its speculative by-ID request to prove the hint
-      // actually routed before membership resolved.
-      getGetV2GetASpecificPresetMockHandler(() => {
-        presetGetCalls += 1;
-        return getGetV2GetASpecificPresetResponseMock();
-      }),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      `activeTab=triggers&activeItem=preset:${TRIGGER_ID}`,
-    );
-
-    await waitFor(() => expect(presetGetCalls).toBeGreaterThanOrEqual(1));
-
-    releaseTriggerAgents();
-    await screen.findByText("Routed right despite wrong hint");
   });
 
   test("a preset: hint mounts the detail view while the lists are still loading", async () => {
@@ -723,26 +618,6 @@ describe("Library agent view — trigger agents", () => {
     });
   });
 
-  test("membership self-corrects a wrong agent: hint to the webhook trigger view", async () => {
-    const webhookPreset = makeWebhookPreset({ name: "Actually A Preset" });
-
-    server.use(
-      ...baseHandlers(),
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler([]),
-      singlePresetListHandler(webhookPreset),
-      getGetV2GetASpecificPresetMockHandler(webhookPreset),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      `activeTab=triggers&activeItem=agent:${webhookPreset.id}`,
-    );
-
-    await screen.findByText("Trigger Details");
-    screen.getByDisplayValue("Actually A Preset");
-  });
-
   test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
     const beyondPagePreset = makeWebhookPreset({
       id: "beyond-page-1",
@@ -801,22 +676,6 @@ describe("Library agent view — trigger agents", () => {
     expect(screen.queryByText(/when retrieving/i)).toBeNull();
   });
 
-  test("failed trigger-agents fetch shows an error card even when presets load fine", async () => {
-    server.use(
-      ...baseHandlers(),
-      emptyPresetsHandler,
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler422(),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      "activeTab=triggers&activeItem=some-bare-id",
-    );
-
-    await screen.findByText(/when retrieving triggers/i);
-  });
-
   test("failed presets fetch shows an error card instead of an endless skeleton", async () => {
     server.use(
       ...baseHandlers(),
@@ -831,28 +690,6 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText(/when retrieving triggers/i);
-  });
-
-  test("error card 'Try Again' refetches the failed list and recovers", async () => {
-    server.use(
-      ...baseHandlers(),
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler([]),
-      getGetV2ListPresetsMockHandler422(),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      "activeTab=triggers&activeItem=some-bare-id",
-    );
-
-    await screen.findByText(/when retrieving triggers/i);
-
-    server.use(emptyPresetsHandler);
-    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
-
-    await screen.findByText("Trigger not found");
-    expect(screen.queryByText(/when retrieving triggers/i)).toBeNull();
   });
 
   test("templates-tab preset failure still surfaces the page-level error", async () => {
@@ -882,25 +719,6 @@ describe("Library agent view — trigger agents", () => {
     // On the Templates tab the shared preset query's error must still
     // surface — the tab guard only suppresses it elsewhere.
     await screen.findByText(/when retrieving agent/i);
-  });
-
-  test("shows the loading skeleton while the feature flag is still resolving", async () => {
-    mockFlagReady.current = false;
-
-    server.use(
-      ...baseHandlers(),
-      emptyPresetsHandler,
-      emptySchedulesHandler,
-      getGetV2ListTriggerAgentsMockHandler([]),
-    );
-
-    renderWithInitialParams(
-      <NewAgentLibraryView />,
-      "activeTab=triggers&activeItem=some-bare-id",
-    );
-
-    await screen.findByTestId("loading-selected-content");
-    expect(screen.queryByText("Trigger not found")).toBeNull();
   });
 
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {

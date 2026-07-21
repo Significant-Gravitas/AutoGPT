@@ -57,9 +57,6 @@ export function useSidebarRunsList({
   onSelectRun,
   onCountsChange,
 }: Args) {
-  // Derived from the same LibraryAgent object the parent view fetched, so
-  // the presets query here and in useNewAgentLibraryView share one cache
-  // entry by construction.
   const graphId = agent.graph_id;
   const libraryAgentID = agent.id;
   const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({

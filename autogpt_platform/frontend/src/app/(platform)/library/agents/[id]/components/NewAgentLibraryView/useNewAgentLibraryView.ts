@@ -2,6 +2,7 @@ import {
   useGetV2GetLibraryAgent,
   useGetV2ListTriggerAgents,
 } from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
@@ -17,7 +18,6 @@ import {
   retryUnlessClientError,
   SelectedTriggerKind,
 } from "./helpers";
-import { useActiveTemplateQuery } from "./hooks/useActiveTemplateQuery";
 import { useAgentPresetsQuery } from "./hooks/useAgentPresetsQuery";
 
 function parseTab(
@@ -51,9 +51,7 @@ export function useNewAgentLibraryView() {
 
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
-  // Unlike presets, this list needs no completeness guard: the endpoint is
-  // unpaginated (backend list_trigger_agents does an unbounded find_many),
-  // so membership in it is authoritative.
+  // This list is unpaginated on the backend, so membership is authoritative.
   const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
     query: {
       enabled: triggerAgentsEnabled && !!agentId,
@@ -65,10 +63,6 @@ export function useNewAgentLibraryView() {
 
   const presetsQuery = useAgentPresetsQuery(agent?.graph_id);
   const presets = presetsQuery.data?.presets;
-  // The presets query fetches a single page (capped at 100). For agents
-  // beyond that cap, an unknown ID can't be ruled out as a preset, so the
-  // derivation falls back to the by-ID preset detail view — which fails
-  // fast into the not-found card if the ID is truly gone.
   const presetsComplete =
     !!presetsQuery.data &&
     presetsQuery.data.pagination.total_items <=
@@ -83,8 +77,23 @@ export function useNewAgentLibraryView() {
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const { activeItemId, triggerKindHint } = parseActiveItemParam(activeItem);
 
-  const { activeTemplate, isTemplateLoading, templateError } =
-    useActiveTemplateQuery({ activeItemId, activeTab });
+  const onTemplatesTab = Boolean(activeTab === "templates" && activeItemId);
+  const templateQuery = useGetV2GetASpecificPreset(activeItemId ?? "", {
+    query: {
+      enabled: onTemplatesTab,
+      select: okData,
+      retry: retryUnlessClientError,
+    },
+  });
+  // This query shares its cache key with SelectedTriggerView's preset detail
+  // fetch, so its state must stay scoped to the Templates tab — a preset 404
+  // on the Triggers tab is handled inline there, not as a page-level error.
+  const activeTemplate =
+    onTemplatesTab && templateQuery.data?.id === activeItemId
+      ? templateQuery.data
+      : null;
+  const isTemplateLoading = templateQuery.isLoading;
+  const templateError = onTemplatesTab ? templateQuery.error : null;
 
   useEffect(() => {
     if (!activeTabRaw && !activeItem) {

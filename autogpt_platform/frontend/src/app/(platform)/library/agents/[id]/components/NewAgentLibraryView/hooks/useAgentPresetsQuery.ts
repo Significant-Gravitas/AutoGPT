@@ -2,22 +2,14 @@ import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/p
 import { okData } from "@/app/api/helpers";
 import { retryUnlessClientError } from "../helpers";
 
-/**
- * Single-page cap on the presets fetch. Beyond it, membership-based routing
- * degrades gracefully: `presetsComplete` turns false and unknown IDs fall
- * back to the by-ID preset fetch. Deemed acceptable — >100 presets on one
- * agent is an edge case; the escape hatch is unpaginating the endpoint.
- */
+// Single-page cap; beyond it unknown IDs fall back to a by-ID preset fetch
+// (see deriveSelectedTriggerKind). Unpaginating the endpoint would remove
+// this — tracked in #13633.
 export const PRESETS_PAGE_SIZE = 100;
 
 /**
  * The agent's presets (webhook triggers + templates). Shared by the sidebar
- * list and the detail-pane router so both read the same React Query cache
- * entry — keep all consumers on this hook so the query params can't drift.
- *
- * Returns the full page payload: `data.pagination.total_items` vs
- * `data.presets.length` tells callers whether the fetched page is the
- * complete set.
+ * and the detail-pane router so both read one React Query cache entry.
  */
 export function useAgentPresetsQuery(graphId: string | undefined) {
   return useGetV2ListPresets(
