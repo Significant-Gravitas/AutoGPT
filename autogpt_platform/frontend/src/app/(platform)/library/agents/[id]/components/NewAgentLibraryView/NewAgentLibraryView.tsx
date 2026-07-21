@@ -41,6 +41,7 @@ export function NewAgentLibraryView() {
     hasAnyItems,
     activeItemId,
     selectedTriggerKind,
+    selectedTriggerError,
     sidebarLoading,
     activeTab,
     setActiveTab,
@@ -120,6 +121,59 @@ export function NewAgentLibraryView() {
     );
   }
 
+  function renderSelectedTrigger(triggerItemId: string) {
+    if (!agent) return null;
+
+    switch (selectedTriggerKind) {
+      case "trigger-agent":
+        return (
+          <SelectedTriggerAgentView
+            agent={agent}
+            triggerAgentId={triggerItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "webhook-trigger":
+        return (
+          <SelectedTriggerView
+            agent={agent}
+            triggerId={triggerItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "loading":
+        return <LoadingSelectedContent agent={agent} />;
+      case "error":
+        return (
+          <SelectedViewLayout
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+          >
+            <ErrorCard
+              responseError={{
+                message:
+                  selectedTriggerError instanceof Error
+                    ? selectedTriggerError.message
+                    : "Failed to load triggers",
+              }}
+              context="triggers"
+            />
+          </SelectedViewLayout>
+        );
+      default:
+        return (
+          <TriggerNotFound
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+            onClearSelection={handleClearSelectedRun}
+          />
+        );
+    }
+  }
+
   if (error) {
     return (
       <ErrorCard
@@ -135,7 +189,9 @@ export function NewAgentLibraryView() {
     return <AgentRunsLoading />;
   }
 
-  if (!sidebarLoading && !hasAnyItems) {
+  // Keep the selected-content layout while an item is selected — even with
+  // zero listable items — so a stale selection can show its not-found state.
+  if (!sidebarLoading && !hasAnyItems && !activeItemId) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -227,29 +283,7 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "triggers" ? (
-            selectedTriggerKind === "trigger-agent" ? (
-              <SelectedTriggerAgentView
-                agent={agent}
-                triggerAgentId={activeItemId}
-                onClearSelectedRun={handleClearSelectedRun}
-                banner={renderMarketplaceUpdateBanner()}
-              />
-            ) : selectedTriggerKind === "webhook-trigger" ? (
-              <SelectedTriggerView
-                agent={agent}
-                triggerId={activeItemId}
-                onClearSelectedRun={handleClearSelectedRun}
-                onSwitchToRunsTab={() => setActiveTab("runs")}
-                banner={renderMarketplaceUpdateBanner()}
-              />
-            ) : selectedTriggerKind === "loading" ? (
-              <LoadingSelectedContent agent={agent} />
-            ) : (
-              <TriggerNotFound
-                agent={agent}
-                banner={renderMarketplaceUpdateBanner()}
-              />
-            )
+            renderSelectedTrigger(activeItemId)
           ) : (
             <SelectedRunView
               agent={agent}

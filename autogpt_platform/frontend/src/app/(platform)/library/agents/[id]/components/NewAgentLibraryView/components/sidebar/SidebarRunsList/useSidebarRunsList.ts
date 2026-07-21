@@ -10,8 +10,9 @@ import {
 } from "@/app/api/helpers";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { activeItemParamFor, isWebhookPreset } from "../../../helpers";
+import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
@@ -80,15 +81,7 @@ export function useSidebarRunsList({
     },
   });
 
-  const presetsQuery = useGetV2ListPresets(
-    { graph_id: graphId, page: 1, page_size: 100 },
-    {
-      query: {
-        enabled: !!graphId,
-        select: (r) => okData(r)?.presets,
-      },
-    },
-  );
+  const presetsQuery = useAgentPresetsQuery(graphId || undefined);
 
   const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
   const triggerAgentsQuery = useGetV2ListTriggerAgents(libraryAgentID, {
@@ -104,13 +97,16 @@ export function useSidebarRunsList({
   );
 
   const schedules = schedulesQuery.data || [];
-  const allPresets = presetsQuery.data || [];
+  const allPresets = useMemo(
+    () => presetsQuery.data?.presets ?? [],
+    [presetsQuery.data],
+  );
   const triggers = useMemo(
-    () => allPresets.filter((preset) => preset.webhook_id),
+    () => allPresets.filter(isWebhookPreset),
     [allPresets],
   );
   const templates = useMemo(
-    () => allPresets.filter((preset) => !preset.webhook_id),
+    () => allPresets.filter((preset) => !isWebhookPreset(preset)),
     [allPresets],
   );
   const triggerAgents = triggerAgentsEnabled
@@ -190,9 +186,15 @@ export function useSidebarRunsList({
   useEffect(() => {
     if (tabValue !== "triggers" || activeItem) return;
     if (triggers.length > 0) {
-      onSelectRun(`preset:${triggers[0].id}`, "triggers");
+      onSelectRun(
+        activeItemParamFor("webhook-trigger", triggers[0].id),
+        "triggers",
+      );
     } else if (triggerAgents.length > 0) {
-      onSelectRun(`agent:${triggerAgents[0].id}`, "triggers");
+      onSelectRun(
+        activeItemParamFor("trigger-agent", triggerAgents[0].id),
+        "triggers",
+      );
     }
   }, [triggers, triggerAgents, activeItem, tabValue, onSelectRun]);
 

@@ -13,7 +13,10 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
+import {
+  activeItemParamFor,
+  AGENT_LIBRARY_SECTION_PADDING_X,
+} from "../../../helpers";
 import { ScheduleListItem } from "./components/ScheduleListItem";
 import { TaskListItem } from "./components/TaskListItem";
 import { TemplateListItem } from "./components/TemplateListItem";
@@ -224,7 +227,10 @@ export function SidebarRunsList({
                           agent={agent}
                           selected={selectedRunId === trigger.id}
                           onClick={() =>
-                            onSelectRun(`preset:${trigger.id}`, "triggers")
+                            onSelectRun(
+                              activeItemParamFor("webhook-trigger", trigger.id),
+                              "triggers",
+                            )
                           }
                         />
                       </div>
@@ -248,7 +254,13 @@ export function SidebarRunsList({
                           parentAgent={agent}
                           selected={selectedRunId === triggerAgent.id}
                           onClick={() =>
-                            onSelectRun(`agent:${triggerAgent.id}`, "triggers")
+                            onSelectRun(
+                              activeItemParamFor(
+                                "trigger-agent",
+                                triggerAgent.id,
+                              ),
+                              "triggers",
+                            )
                           }
                         />
                       </div>

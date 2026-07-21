@@ -11,6 +11,7 @@ import {
   getGetV2GetASpecificPresetMockHandler,
   getGetV2GetASpecificPresetResponseMock,
   getGetV2ListPresetsMockHandler,
+  getGetV2ListPresetsMockHandler422,
 } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
@@ -596,6 +597,98 @@ describe("Library agent view — trigger agents", () => {
     await screen.findByText("Trigger not found");
     await screen.findByText(/no longer exists/i);
     expect(presetGetCalls).toBe(0);
+  });
+
+  test("shows the loading skeleton while the trigger-agents list resolves for a bare ID", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Slow Watcher",
+      description: "Loaded after a delay",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return [triggerAgent];
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=${TRIGGER_ID}`,
+    );
+
+    await screen.findByTestId("loading-selected-content");
+    expect(screen.queryByText("Loaded after a delay")).toBeNull();
+
+    await screen.findByText("Loaded after a delay");
+  });
+
+  test("membership self-corrects a wrong preset: hint to the trigger agent view", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Mishinted Watcher",
+      description: "Routed right despite wrong hint",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+      // The wrong hint briefly mounts the preset detail view, which fetches
+      // by ID; serve it a default response so the request isn't unhandled.
+      getGetV2GetASpecificPresetMockHandler(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=preset:${TRIGGER_ID}`,
+    );
+
+    await screen.findByText("Routed right despite wrong hint");
+  });
+
+  test("stale selection of the sole trigger keeps its not-found state with a recovery action", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=agent:deleted-trigger-id",
+    );
+
+    // Without the activeItem guards, the zero-trigger redirect + zero-item
+    // layout replace this with the empty-tasks screen.
+    await screen.findByText("Trigger not found");
+    await screen.findByRole("button", { name: /clear selection/i });
+  });
+
+  test("failed presets fetch shows an error card instead of an endless skeleton", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler422(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=some-bare-id",
+    );
+
+    await screen.findByText(/when retrieving triggers/i);
   });
 
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
