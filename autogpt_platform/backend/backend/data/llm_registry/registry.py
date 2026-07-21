@@ -1,9 +1,10 @@
 """In-process view of the LLM catalog.
 
 ``load_catalog()`` builds the L1 lookup structures from the canonical
-``catalog.py`` file at startup; every consumer (copilot routing, the public
-catalog endpoint, Phase B block options/costs) reads through the functions
-here. The file only changes at deploy, so a startup load is the whole cache
+``catalog.py`` file at startup; copilot routing and the public catalog
+endpoint read through the functions here, while the block layer projects
+the same file directly (``backend.blocks.llm`` / ``block_cost_config``).
+The file only changes at deploy, so a startup load is the whole cache
 story — no Redis layer, no cross-pod invalidation.
 
 The read interface is deliberately stable: it survived the DB-registry →

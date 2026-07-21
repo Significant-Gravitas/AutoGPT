@@ -54,11 +54,12 @@ class CatalogCreator(BaseModel):
 class CatalogModelCost(BaseModel):
     """Per-model credit pricing.
 
-    ``run_credits`` is the flat credits-per-run tier (``MODEL_COST``);
-    the ``*_per_1m`` fields are credits per 1,000,000 tokens
-    (``TOKEN_COST``). Until Phase B3 flips the billing reader to the
-    catalog, ``catalog_test.py``'s drift tripwire keeps these equal to
-    the live dicts in ``block_cost_config``.
+    ``run_credits`` is the flat credits-per-run tier; the ``*_per_1m``
+    fields are credits per 1,000,000 tokens. These ARE the billing
+    source: ``backend/data/block_cost_config.py`` derives its
+    ``MODEL_COST``/``TOKEN_COST`` lookups from them, and
+    ``catalog_test.py`` pins the values billed at cutover via the
+    pre-catalog snapshot.
     """
 
     model_config = ConfigDict(frozen=True)

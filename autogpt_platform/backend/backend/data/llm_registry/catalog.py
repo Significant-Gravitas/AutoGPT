@@ -639,6 +639,25 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="moonshotai/kimi-k3",
+                display_name="Kimi K3",
+                provider="open_router",
+                creator="moonshot-ai",
+                context_window=1048576,
+                max_output_tokens=32768,
+                price_tier=3,
+                supports_tools=True,
+                supports_reasoning=True,
+                # Moonshot's premium tier — $3/$15 per Mtok on OpenRouter,
+                # credit rates at the standard 1.5x margin (Sonnet-class
+                # pricing).
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                ),
+            ),
+            CatalogModel(
                 slug="nousresearch/hermes-3-llama-3.1-405b",
                 display_name="Hermes 3 Llama 3.1 405B",
                 provider="open_router",

@@ -7,7 +7,10 @@ never the test.
 
 from __future__ import annotations
 
-from backend.blocks.llm import LlmModel
+import json
+from pathlib import Path
+
+from backend.blocks.llm import MODEL_METADATA, LlmModel
 from backend.data.block_cost_config import MODEL_COST, TOKEN_COST
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
@@ -76,58 +79,34 @@ def test_routing_cells_reference_enabled_models():
 # DO exist are governed by the reference and spelling tests above/below.
 
 
-def test_cost_drift_tripwire_run_credits():
-    """Catalog costs must equal the live billing dicts.
+_SNAPSHOT_PATH = Path(__file__).parent / "pre_catalog_costs_snapshot.json"
 
-    The catalog centralizes per-model pricing NOW, but billing still reads
-    ``MODEL_COST``/``TOKEN_COST`` until Phase B3 flips the reader and deletes
-    the dicts (this test dies with them). Until then any change to one side
-    without the other fails here instead of silently diverging.
+
+def test_billing_matches_pre_catalog_snapshot():
+    """Cutover-parity proof: the catalog-derived cost dicts reproduce the
+    exact prices billed by the hand-maintained literals they replaced
+    (snapshot captured 2026-07-20). New models add entries freely; changing
+    a pre-cutover model's price is a deliberate two-line diff (catalog +
+    snapshot) so review sees old→new explicitly. Deletable once the
+    cutover has soaked a release.
     """
-    by_slug = {m.slug: m for m in CATALOG.models}
-    for member, credits in MODEL_COST.items():
-        model = by_slug.get(member.value)
-        assert model is not None, f"{member.value} priced in MODEL_COST, not in catalog"
-        assert model.cost is not None, f"{member.value}: catalog entry has no cost"
-        assert model.cost.run_credits == credits, (
-            f"{member.value}: catalog run_credits={model.cost.run_credits} "
-            f"!= MODEL_COST={credits}"
-        )
+    snapshot = json.loads(_SNAPSHOT_PATH.read_text())
+    for slug, credits in snapshot["model_cost"].items():
+        assert MODEL_COST[LlmModel(slug)] == credits, slug
+    for slug, rate in snapshot["token_cost"].items():
+        assert TOKEN_COST[LlmModel(slug)].model_dump() == rate, slug
+    # Absence parity: the cutover itself must not silently move a model
+    # between flat-rate and token billing.
+    pre_cutover = set(snapshot["model_cost"])
+    token_billed = {m.value for m in TOKEN_COST}
+    assert token_billed & pre_cutover == set(snapshot["token_cost"])
 
 
-def test_cost_drift_tripwire_token_rates():
-    """Per-1M token rates must equal TOKEN_COST (see run_credits tripwire)."""
-    by_slug = {m.slug: m for m in CATALOG.models}
-    for member, rate in TOKEN_COST.items():
-        model = by_slug.get(member.value)
-        assert (
-            model is not None and model.cost is not None
-        ), f"{member.value} priced in TOKEN_COST, missing catalog cost"
-        assert model.cost.input_credits_per_1m == rate.input, member.value
-        assert model.cost.output_credits_per_1m == rate.output, member.value
-        assert (
-            model.cost.cache_read_credits_per_1m or 0
-        ) == rate.cache_read, member.value
-        assert (
-            model.cost.cache_creation_credits_per_1m or 0
-        ) == rate.cache_creation, member.value
-
-
-def test_cost_drift_tripwire_reverse_direction():
-    """Every catalog cost corresponds to a real enum model still priced in
-    the dicts — a model removed from code must not keep a ghost price here."""
-    enum_slugs = {m.value for m in LlmModel}
-    priced_slugs = {m.value for m in MODEL_COST}
-    for model in CATALOG.models:
-        if model.cost is None:
-            continue
-        assert (
-            model.slug in enum_slugs
-        ), f"{model.slug} has a cost but is not an LlmModel enum member"
-        if model.cost.run_credits is not None:
-            assert (
-                model.slug in priced_slugs
-            ), f"{model.slug} has run_credits but no MODEL_COST entry"
+def test_metadata_matches_pre_catalog_snapshot():
+    """Same parity proof for the block-facing metadata projection."""
+    snapshot = json.loads(_SNAPSHOT_PATH.read_text())
+    for slug, fields in snapshot["model_metadata"].items():
+        assert MODEL_METADATA[LlmModel(slug)]._asdict() == fields, slug
 
 
 def test_routing_cells_use_transport_ready_spellings():

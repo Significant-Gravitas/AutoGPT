@@ -24,6 +24,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -216,6 +217,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
+    KIMI_K3 = "moonshotai/kimi-k3"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
@@ -291,403 +293,39 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
 }
 
 
-MODEL_METADATA = {
-    # https://platform.openai.com/docs/models
-    LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
-    LlmModel.O3_MINI: ModelMetadata(
-        "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
-    ),  # o3-mini-2025-01-31
-    # GPT-5 models
-    LlmModel.GPT5_2: ModelMetadata(
-        "openai", 400000, 128000, "GPT-5.2", "OpenAI", "OpenAI", 3
-    ),
-    LlmModel.GPT5_1: ModelMetadata(
-        "openai", 400000, 128000, "GPT-5.1", "OpenAI", "OpenAI", 2
-    ),
-    LlmModel.GPT5: ModelMetadata(
-        "openai", 400000, 128000, "GPT-5", "OpenAI", "OpenAI", 1
-    ),
-    LlmModel.GPT5_MINI: ModelMetadata(
-        "openai", 400000, 128000, "GPT-5 Mini", "OpenAI", "OpenAI", 1
-    ),
-    LlmModel.GPT5_NANO: ModelMetadata(
-        "openai", 400000, 128000, "GPT-5 Nano", "OpenAI", "OpenAI", 1
-    ),
-    LlmModel.GPT5_CHAT: ModelMetadata(
-        "openai", 400000, 16384, "GPT-5 Chat Latest", "OpenAI", "OpenAI", 2
-    ),
-    LlmModel.GPT41: ModelMetadata(
-        "openai", 1047576, 32768, "GPT-4.1", "OpenAI", "OpenAI", 1
-    ),
-    LlmModel.GPT41_MINI: ModelMetadata(
-        "openai", 1047576, 32768, "GPT-4.1 Mini", "OpenAI", "OpenAI", 1
-    ),
-    LlmModel.GPT4O_MINI: ModelMetadata(
-        "openai", 128000, 16384, "GPT-4o Mini", "OpenAI", "OpenAI", 1
-    ),  # gpt-4o-mini-2024-07-18
-    LlmModel.GPT4O: ModelMetadata(
-        "openai", 128000, 16384, "GPT-4o", "OpenAI", "OpenAI", 2
-    ),  # gpt-4o-2024-08-06
-    # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
-        "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
-    ),  # claude-opus-4-6
-    LlmModel.CLAUDE_4_7_OPUS: ModelMetadata(
-        "anthropic", 200000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
-    ),  # claude-opus-4-7
-    LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
-    ),  # claude-sonnet-4-6
-    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
-    ),  # claude-opus-4-5-20251101
-    LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Sonnet 4.5", "Anthropic", "Anthropic", 3
-    ),  # claude-sonnet-4-5-20250929
-    LlmModel.CLAUDE_4_5_HAIKU: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Haiku 4.5", "Anthropic", "Anthropic", 2
-    ),  # claude-haiku-4-5-20251001
-    # https://docs.aimlapi.com/api-overview/model-database/text-models
-    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata(
-        "aiml_api", 128000, None, "Llama 3.3 70B Instruct Turbo", "AI/ML", "Meta", 1
-    ),
-    # https://console.groq.com/docs/models
-    LlmModel.LLAMA3_3_70B: ModelMetadata(
-        "groq", 128000, 32768, "Llama 3.3 70B Versatile", "Groq", "Meta", 1
-    ),
-    LlmModel.LLAMA3_1_8B: ModelMetadata(
-        "groq", 128000, 8192, "Llama 3.1 8B Instant", "Groq", "Meta", 1
-    ),
-    # https://ollama.com/library
-    LlmModel.OLLAMA_LLAMA3_3: ModelMetadata(
-        "ollama", 8192, None, "Llama 3.3", "Ollama", "Meta", 1
-    ),
-    LlmModel.OLLAMA_LLAMA3_2: ModelMetadata(
-        "ollama", 8192, None, "Llama 3.2", "Ollama", "Meta", 1
-    ),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata(
-        "ollama", 8192, None, "Llama 3", "Ollama", "Meta", 1
-    ),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata(
-        "ollama", 8192, None, "Llama 3.1 405B", "Ollama", "Meta", 1
-    ),
-    LlmModel.OLLAMA_DOLPHIN: ModelMetadata(
-        "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
-    ),
-    # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 2.5 Pro",
-        "OpenRouter",
-        "Google",
-        2,
-    ),
-    LlmModel.GEMINI_3_1_PRO_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 3.1 Pro Preview",
-        "OpenRouter",
-        "Google",
-        2,
-    ),
-    LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 3 Flash Preview",
-        "OpenRouter",
-        "Google",
-        1,
-    ),
-    LlmModel.GEMINI_2_5_FLASH: ModelMetadata(
-        "open_router", 1048576, 65535, "Gemini 2.5 Flash", "OpenRouter", "Google", 1
-    ),
-    LlmModel.GEMINI_2_0_FLASH: ModelMetadata(
-        "open_router", 1048576, 8192, "Gemini 2.0 Flash 001", "OpenRouter", "Google", 1
-    ),
-    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 3.1 Flash Lite Preview",
-        "OpenRouter",
-        "Google",
-        1,
-    ),
-    LlmModel.GEMINI_2_5_FLASH_LITE: ModelMetadata(
-        "open_router",
-        1048576,
-        65535,
-        "Gemini 2.5 Flash Lite",
-        "OpenRouter",
-        "Google",
-        1,
-    ),
-    LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata(
-        "open_router",
-        1048576,
-        8192,
-        "Gemini 2.0 Flash Lite 001",
-        "OpenRouter",
-        "Google",
-        1,
-    ),
-    LlmModel.MISTRAL_LARGE_3: ModelMetadata(
-        "open_router",
-        262144,
-        None,
-        "Mistral Large 3 2512",
-        "OpenRouter",
-        "Mistral AI",
-        2,
-    ),
-    LlmModel.MISTRAL_MEDIUM_3_1: ModelMetadata(
-        "open_router",
-        131072,
-        None,
-        "Mistral Medium 3.1",
-        "OpenRouter",
-        "Mistral AI",
-        2,
-    ),
-    LlmModel.MISTRAL_SMALL_3_2: ModelMetadata(
-        "open_router",
-        131072,
-        131072,
-        "Mistral Small 3.2 24B",
-        "OpenRouter",
-        "Mistral AI",
-        1,
-    ),
-    LlmModel.CODESTRAL: ModelMetadata(
-        "open_router",
-        256000,
-        None,
-        "Codestral 2508",
-        "OpenRouter",
-        "Mistral AI",
-        1,
-    ),
-    LlmModel.COHERE_COMMAND_A_03_2025: ModelMetadata(
-        "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
-    ),
-    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: ModelMetadata(
-        "open_router",
-        128000,
-        8192,
-        "Command A Translate 08.2025",
-        "OpenRouter",
-        "Cohere",
-        2,
-    ),
-    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: ModelMetadata(
-        "open_router",
-        256000,
-        32768,
-        "Command A Reasoning 08.2025",
-        "OpenRouter",
-        "Cohere",
-        3,
-    ),
-    LlmModel.COHERE_COMMAND_A_VISION_07_2025: ModelMetadata(
-        "open_router",
-        128000,
-        8192,
-        "Command A Vision 07.2025",
-        "OpenRouter",
-        "Cohere",
-        2,
-    ),
-    LlmModel.DEEPSEEK_CHAT: ModelMetadata(
-        "open_router", 64000, 2048, "DeepSeek Chat", "OpenRouter", "DeepSeek", 1
-    ),
-    LlmModel.DEEPSEEK_R1_0528: ModelMetadata(
-        "open_router", 163840, 163840, "DeepSeek R1 0528", "OpenRouter", "DeepSeek", 1
-    ),
-    LlmModel.PERPLEXITY_SONAR: ModelMetadata(
-        "open_router", 127000, 8000, "Sonar", "OpenRouter", "Perplexity", 1
-    ),
-    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata(
-        "open_router", 200000, 8000, "Sonar Pro", "OpenRouter", "Perplexity", 2
-    ),
-    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: ModelMetadata(
-        "open_router",
-        128000,
-        8000,
-        "Sonar Reasoning Pro",
-        "OpenRouter",
-        "Perplexity",
-        2,
-    ),
-    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
-        "open_router",
-        128000,
-        16000,
-        "Sonar Deep Research",
-        "OpenRouter",
-        "Perplexity",
-        3,
-    ),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
-        "open_router",
-        131000,
-        4096,
-        "Hermes 3 Llama 3.1 405B",
-        "OpenRouter",
-        "Nous Research",
-        1,
-    ),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata(
-        "open_router",
-        12288,
-        12288,
-        "Hermes 3 Llama 3.1 70B",
-        "OpenRouter",
-        "Nous Research",
-        1,
-    ),
-    LlmModel.OPENAI_GPT_OSS_120B: ModelMetadata(
-        "open_router", 131072, 131072, "GPT-OSS 120B", "OpenRouter", "OpenAI", 1
-    ),
-    LlmModel.OPENAI_GPT_OSS_20B: ModelMetadata(
-        "open_router", 131072, 32768, "GPT-OSS 20B", "OpenRouter", "OpenAI", 1
-    ),
-    LlmModel.AMAZON_NOVA_LITE_V1: ModelMetadata(
-        "open_router", 300000, 5120, "Nova Lite V1", "OpenRouter", "Amazon", 1
-    ),
-    LlmModel.AMAZON_NOVA_MICRO_V1: ModelMetadata(
-        "open_router", 128000, 5120, "Nova Micro V1", "OpenRouter", "Amazon", 1
-    ),
-    LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata(
-        "open_router", 300000, 5120, "Nova Pro V1", "OpenRouter", "Amazon", 1
-    ),
-    LlmModel.MICROSOFT_PHI_4: ModelMetadata(
-        "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
-    ),
-    LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata(
-        "open_router", 4096, 4096, "MythoMax L2 13B", "OpenRouter", "Gryphe", 1
-    ),
-    LlmModel.META_LLAMA_4_SCOUT: ModelMetadata(
-        "open_router", 131072, 131072, "Llama 4 Scout", "OpenRouter", "Meta", 1
-    ),
-    LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata(
-        "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
-    ),
-    LlmModel.GROK_3: ModelMetadata(
-        "open_router",
-        131072,
-        131072,
-        "Grok 3",
-        "OpenRouter",
-        "xAI",
-        2,
-    ),
-    LlmModel.GROK_4: ModelMetadata(
-        "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
-    ),
-    LlmModel.GROK_4_FAST: ModelMetadata(
-        "open_router", 2000000, 30000, "Grok 4 Fast", "OpenRouter", "xAI", 1
-    ),
-    LlmModel.GROK_4_1_FAST: ModelMetadata(
-        "open_router", 2000000, 30000, "Grok 4.1 Fast", "OpenRouter", "xAI", 1
-    ),
-    LlmModel.GROK_4_20: ModelMetadata(
-        "open_router", 2000000, 100000, "Grok 4.20", "OpenRouter", "xAI", 3
-    ),
-    LlmModel.GROK_4_20_MULTI_AGENT: ModelMetadata(
-        "open_router",
-        2000000,
-        100000,
-        "Grok 4.20 Multi-Agent",
-        "OpenRouter",
-        "xAI",
-        3,
-    ),
-    LlmModel.GROK_CODE_FAST_1: ModelMetadata(
-        "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
-    ),
-    LlmModel.KIMI_K2_5: ModelMetadata(
-        "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
-    ),
-    LlmModel.KIMI_K2_6: ModelMetadata(
-        "open_router", 262144, 262144, "Kimi K2.6", "OpenRouter", "Moonshot AI", 2
-    ),
-    LlmModel.KIMI_K2_THINKING: ModelMetadata(
-        "open_router",
-        262144,
-        262144,
-        "Kimi K2 Thinking",
-        "OpenRouter",
-        "Moonshot AI",
-        2,
-    ),
-    LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata(
-        "open_router",
-        262144,
-        262144,
-        "Qwen 3 235B A22B Thinking 2507",
-        "OpenRouter",
-        "Qwen",
-        1,
-    ),
-    LlmModel.QWEN3_CODER: ModelMetadata(
-        "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
-    ),
-    # https://openrouter.ai/models?q=z-ai
-    LlmModel.ZAI_GLM_4_6: ModelMetadata(
-        "open_router", 204800, 204800, "GLM 4.6", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_6V: ModelMetadata(
-        "open_router", 131072, 131072, "GLM 4.6V", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_7: ModelMetadata(
-        "open_router", 202752, 65535, "GLM 4.7", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_7_FLASH: ModelMetadata(
-        "open_router", 202752, 202752, "GLM 4.7 Flash", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_5: ModelMetadata(
-        "open_router", 80000, 80000, "GLM 5", "OpenRouter", "Z.ai", 2
-    ),
-    LlmModel.ZAI_GLM_5_TURBO: ModelMetadata(
-        "open_router", 202752, 131072, "GLM 5 Turbo", "OpenRouter", "Z.ai", 3
-    ),
-    LlmModel.ZAI_GLM_5V_TURBO: ModelMetadata(
-        "open_router", 202752, 131072, "GLM 5V Turbo", "OpenRouter", "Z.ai", 3
-    ),
-    # Llama API models
-    LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata(
-        "llama_api",
-        128000,
-        4028,
-        "Llama 4 Scout 17B 16E Instruct FP8",
-        "Llama API",
-        "Meta",
-        1,
-    ),
-    LlmModel.LLAMA_API_LLAMA4_MAVERICK: ModelMetadata(
-        "llama_api",
-        128000,
-        4028,
-        "Llama 4 Maverick 17B 128E Instruct FP8",
-        "Llama API",
-        "Meta",
-        1,
-    ),
-    LlmModel.LLAMA_API_LLAMA3_3_8B: ModelMetadata(
-        "llama_api", 128000, 4028, "Llama 3.3 8B Instruct", "Llama API", "Meta", 1
-    ),
-    LlmModel.LLAMA_API_LLAMA3_3_70B: ModelMetadata(
-        "llama_api", 128000, 4028, "Llama 3.3 70B Instruct", "Llama API", "Meta", 1
-    ),
-    # v0 by Vercel models
-    LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
-    LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000, "v0 1.5 LG", "V0", "V0", 1),
-    LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
-}
+def _build_model_metadata() -> dict["LlmModel", ModelMetadata]:
+    """Project catalog facts into the block-facing metadata shape.
+
+    The catalog file (``backend/data/llm_registry/catalog.py``) is the
+    single source of truth for model facts; this module keeps only the
+    ``LlmModel`` identifiers that block schemas serialize. Catalog models
+    without an enum member (copilot-only models routed by slug) simply
+    don't surface in blocks.
+    """
+    payload = get_catalog()
+    providers = {p.name: p.display_name for p in payload.providers}
+    creators = {c.name: c.display_name for c in payload.creators}
+    members = {m.value: m for m in LlmModel}
+    metadata: dict[LlmModel, ModelMetadata] = {}
+    for model in payload.models:
+        member = members.get(model.slug)
+        if member is None:
+            continue
+        metadata[member] = ModelMetadata(
+            provider=model.provider,
+            context_window=model.context_window,
+            max_output_tokens=model.max_output_tokens,
+            display_name=model.display_name,
+            provider_name=providers.get(model.provider, model.provider),
+            creator_name=(
+                creators.get(model.creator, "Unknown") if model.creator else "Unknown"
+            ),
+            price_tier=model.price_tier,
+        )
+    return metadata
+
+
+MODEL_METADATA = _build_model_metadata()
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
