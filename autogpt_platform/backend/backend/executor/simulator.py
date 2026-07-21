@@ -32,10 +32,12 @@ import inspect
 import json
 import logging
 import math
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
+import jsonschema
 from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
@@ -119,6 +121,17 @@ def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
     return {k: _truncate_value(v) for k, v in input_data.items()}
 
 
+_MAX_SCHEMA_JSON_CHARS = 6000
+
+
+def _truncate_schema_json(schema: dict[str, Any]) -> str:
+    """Compact-dump a JSON schema for the prompt, truncating oversized ones."""
+    dumped = json.dumps(schema)
+    if len(dumped) > _MAX_SCHEMA_JSON_CHARS:
+        return dumped[:_MAX_SCHEMA_JSON_CHARS] + "... [TRUNCATED]"
+    return dumped
+
+
 def _describe_schema_pins(schema: dict[str, Any]) -> str:
     """Format output pins as a bullet list for the prompt."""
     properties = schema.get("properties", {})
@@ -142,6 +155,7 @@ async def _call_llm_for_simulation(
     *,
     label: str = "simulate",
     user_id: str | None = None,
+    output_validator: Callable[[dict[str, Any]], list[str]] | None = None,
 ) -> dict[str, Any]:
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
@@ -151,9 +165,14 @@ async def _call_llm_for_simulation(
     recorded against the triggering ``user_id``'s rate-limit counter via
     ``persist_and_record_usage`` (same rails as every copilot turn).
 
+    When *output_validator* is provided, parsed outputs that fail it are fed
+    back to the LLM as a correction message and retried within the same
+    retry budget.  If retries run out, the last parsed output is returned
+    anyway (a structurally imperfect simulation beats failing the dry run).
+
     Raises:
         RuntimeError: If no LLM client is available.
-        ValueError: If all retry attempts are exhausted.
+        ValueError: If all retry attempts are exhausted without parseable JSON.
     """
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
@@ -188,16 +207,18 @@ async def _call_llm_for_simulation(
 
     model = _simulator_model()
     last_error: Exception | None = None
+    last_parsed: dict[str, Any] | None = None
+    messages: list[ChatCompletionMessageParam] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
     for attempt in range(_MAX_JSON_RETRIES):
         try:
             response = await client.chat.completions.create(
                 model=model,
                 temperature=_TEMPERATURE,
                 response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
                 extra_body=extra_body,
             )
             if not response.choices:
@@ -206,6 +227,31 @@ async def _call_llm_for_simulation(
             parsed = json.loads(raw)
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+
+            schema_problems = output_validator(parsed) if output_validator else []
+            if schema_problems:
+                last_parsed = parsed
+                last_error = ValueError(
+                    f"simulated output failed schema validation: {schema_problems}"
+                )
+                logger.warning(
+                    f"simulate({label}): schema mismatch on attempt "
+                    f"{attempt + 1}/{_MAX_JSON_RETRIES}: {schema_problems}"
+                )
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your simulated output does not conform to the "
+                            "block's output schema:\n- "
+                            + "\n- ".join(schema_problems)
+                            + "\nRespond again with a single corrected JSON "
+                            "object that conforms to the output schema."
+                        ),
+                    },
+                ]
+                continue
 
             usage = response.usage
             if usage is not None:
@@ -246,6 +292,15 @@ async def _call_llm_for_simulation(
             last_error = e
             logger.error("simulate(%s): LLM call failed: %s", label, e, exc_info=True)
             break
+
+    if last_parsed is not None:
+        # Schema-conformance retries ran out but we do have parseable output:
+        # a structurally imperfect simulation beats failing the whole dry run.
+        logger.warning(
+            f"simulate({label}): returning schema-non-conformant output "
+            f"after {_MAX_JSON_RETRIES} attempts: {last_error}"
+        )
+        return last_parsed
 
     msg = (
         f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
@@ -371,6 +426,13 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
 
 ## Output Schema (what you must return)
 {output_pins}
+
+Full output JSON Schema — every pin value MUST conform to it, including
+nested keys (downstream nodes extract nested fields like `pin_#_subfield`,
+so getting the inner structure right matters as much as the top level):
+```json
+{_truncate_schema_json(output_schema)}
+```
 {implementation_section}
 Your task: given the current inputs, produce realistic simulated outputs for this block.
 {"Study the block's run() source code above to understand exactly how inputs are transformed to outputs." if run_source else "Use the block description and schemas to infer realistic outputs."}
@@ -667,7 +729,11 @@ async def simulate_block(
 
     try:
         parsed = await _call_llm_for_simulation(
-            system_prompt, user_prompt, label=label, user_id=user_id
+            system_prompt,
+            user_prompt,
+            label=label,
+            user_id=user_id,
+            output_validator=_make_output_validator(output_schema),
         )
 
         # Track which pins were yielded so we can fill in missing required
@@ -703,6 +769,33 @@ async def simulate_block(
 
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)
+
+
+def _make_output_validator(
+    output_schema: dict[str, Any],
+) -> Callable[[dict[str, Any]], list[str]]:
+    """Build a validator that checks simulated outputs against *output_schema*.
+
+    ``required`` is dropped — the simulator legitimately omits pins with no
+    meaningful value, and ``simulate_block`` back-fills missing required pins
+    with defaults.  What this catches is *structurally wrong* fabrications:
+    e.g. a list where the schema declares an object, which silently breaks
+    ``pin_#_subfield`` links downstream.  Returns human-readable problems,
+    empty when the output conforms.
+    """
+    relaxed = {**output_schema, "required": []}
+    validator = jsonschema.Draft202012Validator(relaxed)
+
+    def _validate(parsed: dict[str, Any]) -> list[str]:
+        problems: list[str] = []
+        for err in validator.iter_errors(parsed):
+            path = "/".join(str(p) for p in err.absolute_path) or "(root)"
+            problems.append(f"{path}: {err.message[:200]}")
+            if len(problems) >= 5:
+                break
+        return problems
+
+    return _validate
 
 
 def _default_for_schema(pin_schema: dict[str, Any]) -> Any:

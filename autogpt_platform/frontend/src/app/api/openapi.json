@@ -16363,6 +16363,16 @@
               { "type": "null" }
             ],
             "title": "Node Executions"
+          },
+          "nodes_failed": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/NodeFailureSummary" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Failed"
           }
         },
         "type": "object",
@@ -18381,14 +18391,22 @@
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "params": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Params",
+            "description": "Compact argument summary: top-level input field names, required ones marked with *."
+          },
           "input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input Schema"
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "Full input schema. Omitted in discovery responses to keep them small; the execution error path returns the failed tool's full schema on demand."
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema"],
+        "required": ["name", "description"],
         "title": "MCPToolInfo",
         "description": "Information about a single MCP tool discovered from a server."
       },
@@ -18931,6 +18949,19 @@
           "end_time"
         ],
         "title": "NodeExecutionResult"
+      },
+      "NodeFailureSummary": {
+        "properties": {
+          "node_id": { "type": "string", "title": "Node Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["node_id", "block_name", "error"],
+        "title": "NodeFailureSummary"
       },
       "NodeModel": {
         "properties": {
