@@ -1156,3 +1156,49 @@ class TestClaude5TokenFactor:
         assert estimate_token_count_str(
             text, model="claude-opus-4-7"
         ) == estimate_token_count_str(text, model="claude-sonnet-5")
+
+
+class TestClaude5FactorOnMessagePaths:
+    """The factor must reach the paths that gate real behavior: the
+    messages-based estimator (max_tokens sizing) and compaction totals."""
+
+    def _messages(self):
+        return [
+            {"role": "user", "content": "hello world " * 300},
+            {"role": "assistant", "content": "reply text " * 300},
+        ]
+
+    def test_estimate_token_count_messages_scaled(self):
+        from backend.util.prompt import CLAUDE_5_TOKEN_FACTOR, estimate_token_count
+
+        base = estimate_token_count(self._messages(), model="claude-sonnet-4-6")
+        scaled = estimate_token_count(self._messages(), model="claude-sonnet-5")
+        assert scaled == int(base * CLAUDE_5_TOKEN_FACTOR)
+
+    @pytest.mark.asyncio
+    async def test_compaction_measures_in_corrected_space(self):
+        """A history under the nominal target in raw tiktoken space but
+        over it in corrected space must trigger compaction for Sonnet 5
+        (and must NOT for 4.6)."""
+        from backend.util.prompt import compress_context, estimate_token_count
+
+        msgs = self._messages()
+        raw = estimate_token_count(msgs, model="claude-sonnet-4-6")
+        target = int(raw * 1.2)  # between raw (1.0x) and corrected (1.5x)
+
+        r46 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-4-6",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r46.was_compacted is False
+
+        r5 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-5",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r5.was_compacted is True
+        assert r5.original_token_count > target

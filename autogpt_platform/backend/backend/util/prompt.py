@@ -788,8 +788,17 @@ async def compress_context(
     enc = encoding_for_model(token_model)
     msgs = deepcopy(messages)
 
+    # Compaction must measure in the same (corrected) space as estimation:
+    # for the Claude-5 tokenizer generation, raw tiktoken sums undercount
+    # by ~30-50%, so an uncorrected total can sit under the nominal target
+    # while exceeding the model's real budget.
+    factor = _token_estimate_factor(model)
+
+    def _scaled_msg_tokens(m: dict) -> int:
+        return int(_msg_tokens(m, enc) * factor)
+
     def total_tokens() -> int:
-        return sum(_msg_tokens(m, enc) for m in msgs)
+        return sum(_scaled_msg_tokens(m) for m in msgs)
 
     original_count = total_tokens()
 
@@ -875,12 +884,12 @@ async def compress_context(
     # Steps 3-5 repeatedly check the total size while mutating or deleting one
     # message at a time. Re-summing all messages there re-tokenizes the whole
     # history on each iteration, which is quadratic on long transcripts.
-    counts = [_msg_tokens(m, enc) for m in msgs]
+    counts = [_scaled_msg_tokens(m) for m in msgs]
     total = sum(counts)
 
     def _recount(i: int) -> None:
         nonlocal total
-        new = _msg_tokens(msgs[i], enc)
+        new = _scaled_msg_tokens(msgs[i])
         total += new - counts[i]
         counts[i] = new
 
@@ -950,7 +959,7 @@ async def compress_context(
     # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
     final_msgs = validate_and_remove_orphan_tool_responses(final_msgs)
 
-    final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
+    final_count = sum(_scaled_msg_tokens(m) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:
         error = f"Could not compress below target ({final_count + reserve} > {target_tokens})"
