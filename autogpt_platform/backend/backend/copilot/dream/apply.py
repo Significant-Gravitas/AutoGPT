@@ -62,6 +62,19 @@ logger = logging.getLogger(__name__)
 # fire-and-forget behavior: warn + report ingestion_drained=False.
 INGESTION_DRAIN_TIMEOUT_SECONDS = 300
 
+# Drain bound for the Anthropic batch path. apply runs there inside
+# ``handle_dream_batch_result``, which ``BatchExecutor.walk_once`` awaits
+# SERIALLY in its single poll loop (one pending entry at a time). A 300s
+# in-line drain would stall the poll/dispatch of every OTHER user's pending
+# batch for the whole window — and per the drain math above a full pass
+# almost never drains in 300s anyway, so the cost is paid for near-zero
+# benefit while risking MAX_BATCH_LIFETIME_SECONDS expiry on the batches
+# stuck behind it. The batch path therefore SKIPS the drain (0 = no wait):
+# the enqueued episodes still process fire-and-forget in the executor
+# process, and the pass honestly reports ``ingestion_drained=False`` so the
+# non-drained state is visible downstream instead of masked as success.
+BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS = 0
+
 
 def _provenance(pass_id: str, phase: str) -> str:
     """Provenance string written into the MemoryEnvelope.
@@ -395,7 +408,9 @@ async def _write_dream_summary_message(
     )
 
 
-async def _drain_ingestion(user_id: str, pass_id: str, enqueued: int) -> bool:
+async def _drain_ingestion(
+    user_id: str, pass_id: str, enqueued: int, timeout_seconds: float
+) -> bool:
     """Wait for the dream's enqueued episodes to actually land in the graph.
 
     ``enqueue_episode`` returning True only proves the episode reached the
@@ -410,20 +425,34 @@ async def _drain_ingestion(user_id: str, pass_id: str, enqueued: int) -> bool:
     shared with live-chat ingestion, and blocking on someone else's
     episodes buys the dream pass nothing.
 
+    ``timeout_seconds <= 0`` skips the wait as well and reports
+    ``False`` — the batch path uses this to avoid stalling the shared,
+    serial ``BatchExecutor.walk_once`` loop (see
+    ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``); the episodes still process
+    fire-and-forget in the executor process.
+
     On timeout this reverts to the old fire-and-forget behavior (warn +
     ``False``) rather than failing the pass — partial visibility beats a
     failed pass.
     """
     if not enqueued:
         return True
-    drained = await wait_for_ingestion(user_id, INGESTION_DRAIN_TIMEOUT_SECONDS)
+    if timeout_seconds <= 0:
+        logger.info(
+            "Dream pass %s: ingestion drain skipped (no wait) — %d episode(s) "
+            "processing fire-and-forget; reporting ingestion_drained=False",
+            pass_id,
+            enqueued,
+        )
+        return False
+    drained = await wait_for_ingestion(user_id, timeout_seconds)
     if not drained:
         logger.warning(
-            "Dream pass %s: ingestion queue did not drain within %ds — "
+            "Dream pass %s: ingestion queue did not drain within %.0fs — "
             "reported write/proposal counts include episodes still queued "
             "in-process (lost if this pod restarts)",
             pass_id,
-            INGESTION_DRAIN_TIMEOUT_SECONDS,
+            timeout_seconds,
         )
     return drained
 
@@ -434,6 +463,7 @@ async def apply_operations(
     ops: DreamOperations,
     *,
     known_fact_uuids: set[str] | None = None,
+    ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
 ) -> dict[str, int | str | bool | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -451,6 +481,12 @@ async def apply_operations(
     (see ``_filter_demotions_to_known_facts``). ``None`` means "look
     up the persisted input bundle by pass_id" — the batch path's
     callbacks rely on that fallback.
+
+    ``ingestion_drain_timeout`` bounds the in-line wait for the enqueued
+    episodes to land (see ``_drain_ingestion``). The sync path keeps the
+    full ``INGESTION_DRAIN_TIMEOUT_SECONDS``; the batch path passes
+    ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS`` (0) so it never stalls the
+    shared, serial ``BatchExecutor.walk_once`` loop.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -509,7 +545,9 @@ async def apply_operations(
     # Drain the in-process ingestion queue before anything downstream
     # treats the writes as landed (and before we return and the caller
     # releases the dream lock). See ``_drain_ingestion``.
-    ingestion_drained = await _drain_ingestion(user_id, pass_id, written + proposed)
+    ingestion_drained = await _drain_ingestion(
+        user_id, pass_id, written + proposed, ingestion_drain_timeout
+    )
 
     demotions = await _filter_demotions_to_known_facts(
         pass_id, ops.demotions, known_fact_uuids

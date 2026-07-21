@@ -208,6 +208,10 @@ async def _finalize_stuck_duplicate(
                 proposal_count=len(ops.proposals),
                 demotion_count=len(ops.demotions),
                 entity_invalidation_count=len(ops.entity_invalidations),
+                # Batch apply never drains in-line; the first delivery's writes
+                # (if any) landed fire-and-forget, so this pass was never
+                # confirmed drained.
+                ingestion_drained=False,
                 summary_for_user=note + (ops.summary_for_user or ""),
             ),
         )
@@ -575,7 +579,7 @@ async def _finalize_complete(
 ) -> None:
     """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
-        from .apply import apply_operations
+        from .apply import BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS, apply_operations
         from .orchestrator import _clamp_operations
     except Exception:
         logger.exception("Failed to import dream apply for pass=%s", pass_id)
@@ -669,13 +673,19 @@ async def _finalize_complete(
         await _best_effort_cleanup(pass_id)
         return
 
-    apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
+    apply_stats: dict[str, int | str | bool | DreamOperationsSnapshot] = {}
     try:
         # Thread the demotion allowlist from the bundle already in memory —
         # letting apply re-read it would do a second Redis GET + full JSON
         # deserialize and could fail open if the bundle's TTL lapses between
         # the two reads. None (bundle expired) keeps apply's documented
         # fail-open fallback.
+        #
+        # Skip the ingestion drain on this path: apply runs inside this
+        # handler, which BatchExecutor.walk_once awaits serially in its single
+        # poll loop — a 300s in-line drain would stall the poll/dispatch of
+        # every other user's pending batch. See
+        # ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``.
         apply_stats = await apply_operations(
             user_id,
             pass_id,
@@ -683,6 +693,7 @@ async def _finalize_complete(
             known_fact_uuids=(
                 input_bundle.known_fact_uuids if input_bundle is not None else None
             ),
+            ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         logger.exception(
@@ -734,6 +745,12 @@ async def _finalize_complete(
             raw_session_id = apply_stats.get("session_id")
             session_id = raw_session_id if isinstance(raw_session_id, str) else None
 
+            # The batch path skips the drain, so this is False whenever the
+            # pass enqueued writes (True only for an empty pass). Thread it
+            # through honestly rather than defaulting the field to True.
+            raw_drained = apply_stats.get("ingestion_drained")
+            ingestion_drained = raw_drained if isinstance(raw_drained, bool) else False
+
             pass_result = DreamPassResult(
                 user_id=user_id,
                 pass_id=pass_id,
@@ -743,6 +760,7 @@ async def _finalize_complete(
                 demotion_count=_count("demotion_count"),
                 entity_invalidation_count=_count("entity_invalidation_count"),
                 dream_session_id=session_id,
+                ingestion_drained=ingestion_drained,
                 operations=snapshot,
                 # Carry the user-facing narrative like the sync path does —
                 # without it the Memory Visualizer renders a blank summary for

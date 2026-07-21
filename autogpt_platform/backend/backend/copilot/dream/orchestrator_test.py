@@ -230,6 +230,9 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
                 "demotion_count": 0,
                 "demotion_failed_count": 0,
                 "entity_invalidation_count": 0,
+                # Non-default value so the assertion below proves the flag is
+                # threaded from apply_stats, not left at the schema default.
+                "ingestion_drained": False,
             }
         ),
     )
@@ -242,6 +245,7 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     assert result.proposal_count == 1
     assert result.summary_for_user == "Dream consolidated 1 fact."
     assert result.dream_session_id == "s1"
+    assert result.ingestion_drained is False
     apply_mock.assert_awaited_once()
 
 

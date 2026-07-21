@@ -728,6 +728,9 @@ async def _execute_dream_pass_async(
                 v = apply_stats.get(key, 0)
                 return int(v) if isinstance(v, (int, str)) and v else 0
 
+            raw_drained = apply_stats.get("ingestion_drained", True)
+            ingestion_drained = raw_drained if isinstance(raw_drained, bool) else True
+
             return DreamPassResult(
                 user_id=user_id,
                 pass_id=pass_id,
@@ -740,6 +743,7 @@ async def _execute_dream_pass_async(
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
                 summary_for_user=ops.summary_for_user,
+                ingestion_drained=ingestion_drained,
                 dream_session_id=str(apply_stats.get("session_id") or ""),
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None

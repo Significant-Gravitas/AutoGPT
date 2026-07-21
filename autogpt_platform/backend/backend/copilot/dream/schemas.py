@@ -309,6 +309,17 @@ class DreamPassResult(BaseModel):
     summary_for_user: str = ""
     dream_session_id: str | None = None
 
+    # Whether the dream's enqueued graph writes were confirmed drained from
+    # the in-process ingestion queue before the pass was reported complete.
+    # ``False`` means the counts above were reported while episodes were still
+    # queued in-process — the drain timed out (sync path) or was skipped to
+    # avoid stalling the shared executor loop (batch path). Those writes are
+    # processing fire-and-forget and are lost if the worker's pod restarts, so
+    # an operator can distinguish a fully-landed pass from one whose writes are
+    # still pending. Defaults True so results serialized before this field
+    # existed still validate.
+    ingestion_drained: bool = True
+
     # Detailed per-operation rollup. ``None`` when the pass was skipped
     # or errored before phase 3 produced operations; ``DreamOperationsSnapshot()``
     # with empty lists when the pass ran but produced no operations.

@@ -271,10 +271,17 @@ class TestPhaseChaining:
         # The demotion allowlist is threaded from the bundle already loaded
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
+        # The batch path must NOT run the 300s in-line ingestion drain: apply
+        # executes inside this handler, which BatchExecutor.walk_once awaits
+        # serially — a long drain would stall every other user's batch poll.
+        assert apply.call_args.kwargs["ingestion_drain_timeout"] == 0
         mark_complete.assert_awaited_once()
         # The sanitizer's user-facing narrative must ride on the result so the
         # Memory Visualizer isn't blank for batch-completed dreams.
         assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
+        # Drain was skipped, so the result reports the writes as NOT confirmed
+        # drained rather than masking the fire-and-forget state as success.
+        assert mark_complete.call_args.kwargs["result"].ingestion_drained is False
         # The batch path disowned the dream lock to this callback; the
         # terminal handler must release it with the ownership token the
         # input bundle carried — compare-and-delete, never a blind DEL.

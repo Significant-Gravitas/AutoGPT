@@ -443,6 +443,33 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
 
 
 @pytest.mark.asyncio
+async def test_zero_drain_timeout_skips_wait_and_reports_not_drained(mocker, caplog):
+    """The batch path passes ``ingestion_drain_timeout=0`` so apply never
+    stalls the shared, serial BatchExecutor.walk_once loop: even with writes
+    enqueued, wait_for_ingestion is NOT awaited, and the pass honestly
+    reports ingestion_drained=False (episodes process fire-and-forget)."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    with caplog.at_level(logging.INFO, logger=apply_mod.logger.name):
+        stats = await apply_mod.apply_operations(
+            user_id="u-batch",
+            pass_id="p-batch",
+            ops=ops,
+            ingestion_drain_timeout=apply_mod.BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
+        )
+
+    drain.assert_not_awaited()
+    assert stats["ingestion_drained"] is False
+    assert stats["consolidated_count"] == 1
+    assert any("drain skipped" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_no_enqueued_writes_skips_ingestion_drain(mocker):
     """A dream with no writes/proposals must not block on the shared
     per-user queue (live chat episodes could be in flight) — the drain is
