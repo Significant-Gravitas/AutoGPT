@@ -829,10 +829,12 @@ async def _baseline_llm_caller(
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
         max_tokens_arg: int | Any = openai_omit
         if not is_openrouter_transport and "thinking" in extra_body:
-            model_max = get_max_output_tokens(state.model)
-            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
-            extra_body["thinking"]["budget_tokens"] = budget
-            max_tokens_arg = min(budget + 4096, model_max)
+            # Sonnet 5+ uses adaptive thinking — budget_tokens param removed (returns HTTP 400).
+            if extra_body["thinking"].get("type") not in ("adaptive", "disabled"):
+                model_max = get_max_output_tokens(state.model)
+                budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+                extra_body["thinking"]["budget_tokens"] = budget
+                max_tokens_arg = min(budget + 4096, model_max)
         # Route through the shared providers helper so future provider
         # work (streaming flex tier, new SDK upgrades) propagates here
         # without a parallel migration. The pre-built ``client`` is

@@ -652,5 +652,28 @@
       "supports_xhigh_reasoning_effort": true,
       "tool_use_system_prompt_tokens": 346
     }
+  },
+  "claude-sonnet-5": {
+    "cache_creation_input_token_cost": 2.5e-06,
+    "cache_read_input_token_cost": 2e-07,
+    "input_cost_per_token": 2e-06,
+    "litellm_provider": "anthropic",
+    "max_input_tokens": 260000,
+    "max_output_tokens": 64000,
+    "max_tokens": 64000,
+    "mode": "chat",
+    "output_cost_per_token": 1e-05,
+    "supports_assistant_prefill": true,
+    "supports_computer_use": true,
+    "supports_function_calling": true,
+    "supports_max_reasoning_effort": true,
+    "supports_minimal_reasoning_effort": true,
+    "supports_pdf_input": true,
+    "supports_prompt_caching": true,
+    "supports_reasoning": true,
+    "supports_response_schema": true,
+    "supports_tool_choice": true,
+    "supports_vision": true,
+    "tool_use_system_prompt_tokens": 346
   }
 }

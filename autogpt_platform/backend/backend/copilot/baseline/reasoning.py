@@ -227,6 +227,7 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
 # ``"claude" in model``.
 _THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
     "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7
+    "claude-sonnet-5",  # 5.x — adaptive thinking API
     "claude-sonnet-4",  # 4.0 / 4.5 / 4.6
     "claude-haiku-4",  # 4.5
     "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
@@ -240,6 +241,20 @@ def _is_thinking_capable_claude(model: str) -> bool:
             lowered = lowered[len(prefix) :]
             break
     return lowered.startswith(_THINKING_CAPABLE_PREFIXES)
+
+
+# Sonnet 5+ uses the adaptive thinking API — budget_tokens removed (400s).
+# Pass {type: "adaptive"} to enable; {type: "disabled"} to suppress.
+_ADAPTIVE_THINKING_PREFIXES: tuple[str, ...] = ("claude-sonnet-5",)
+
+
+def _is_adaptive_thinking_claude(model: str) -> bool:
+    lowered = model.lower()
+    for prefix in ("anthropic/", "anthropic."):
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix) :]
+            break
+    return lowered.startswith(_ADAPTIVE_THINKING_PREFIXES)
 
 
 def anthropic_thinking_extra_body(
@@ -258,9 +273,14 @@ def anthropic_thinking_extra_body(
     that isn't in the thinking-capable allowlist (older Claude 3 / 3.5
     variants 400 on the ``thinking`` field).
     """
-    if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
+    if not _is_reasoning_route(model) or not _is_thinking_capable_claude(model):
         return None
-    if not _is_thinking_capable_claude(model):
+    # Sonnet 5+ uses adaptive thinking — budget_tokens param removed (returns HTTP 400).
+    if _is_adaptive_thinking_claude(model):
+        thinking_type = "adaptive" if max_thinking_tokens > 0 else "disabled"
+        return {"thinking": {"type": thinking_type}}
+    # Older thinking-capable models (Claude 4.x, 3.7) use the enabled+budget_tokens API.
+    if max_thinking_tokens <= 0:
         return None
     return {
         "thinking": {

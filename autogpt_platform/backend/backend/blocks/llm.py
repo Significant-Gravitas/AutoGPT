@@ -161,6 +161,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
+    CLAUDE_SONNET_5 = "claude-sonnet-5"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
@@ -338,6 +339,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-sonnet-4-6
+    LlmModel.CLAUDE_SONNET_5: ModelMetadata(
+        "anthropic", 260000, 64000, "Claude Sonnet 5", "Anthropic", "Anthropic", 3
+    ),  # claude-sonnet-5 (260k = 200k * 1.3 tokenizer inflation)
     LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-5-20251101
