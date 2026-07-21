@@ -773,6 +773,63 @@ class TestNearDuplicateWriteDedup:
             "Gamma fact about deploys",
         ]
 
+    def test_identical_content_in_different_scopes_is_kept(self):
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                scope="real:global",
+                confidence=0.7,
+            ),
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                scope="project:foo",
+                confidence=0.7,
+            ),
+        ]
+        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_survivor_absorbs_dropped_writes_provenance(self):
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_episode_uuids=["ep-1", "ep-2"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-2", "ep-3"],
+            ),
+        ]
+        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert len(kept) == 1
+        # Survivor keeps its own uuids first, then the absorbed extras.
+        assert kept[0].source_episode_uuids == ["ep-2", "ep-3", "ep-1"]
+
+    def test_word_order_permutation_is_not_merged(self):
+        writes = [
+            ConsolidatedFact(content="Alice introduced Bob to Carol", confidence=0.7),
+            ConsolidatedFact(content="Alice introduced Carol to Bob", confidence=0.7),
+        ]
+        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_negated_fact_is_not_merged(self):
+        writes = [
+            ConsolidatedFact(content="Nick uses vim", confidence=0.7),
+            ConsolidatedFact(content="Nick never uses vim", confidence=0.7),
+        ]
+        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
     def test_clamp_collapses_duplicate_writes(self):
         from .schemas import ConsolidatedFact, DreamOperations
 
