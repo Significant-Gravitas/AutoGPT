@@ -78,7 +78,10 @@ export function AccountMenuNewLayout({
                 <ul className="flex flex-col gap-0.5">
                   {group.items.map((item, itemIndex) => {
                     const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                    const icon = getAccountMenuPhosphorIcon(item.icon, "regular");
+                    const icon = getAccountMenuPhosphorIcon(
+                      item.icon,
+                      "regular",
+                    );
 
                     if (item.text === "Log out") {
                       return (

@@ -22,8 +22,7 @@ export function AppSidebarHeader() {
         aria-label="AutoGPT"
         className={cn(
           "flex items-center",
-          isCollapsed &&
-            "h-8 group-focus-within:hidden group-hover:hidden",
+          isCollapsed && "h-8 group-focus-within:hidden group-hover:hidden",
         )}
       >
         {isCollapsed ? (

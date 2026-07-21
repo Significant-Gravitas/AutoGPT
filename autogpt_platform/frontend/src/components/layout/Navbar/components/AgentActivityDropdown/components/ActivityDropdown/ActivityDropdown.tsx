@@ -112,9 +112,7 @@ export function ActivityDropdown({
               </div>
             </div>
           ) : (
-            <div
-              className={cn(styles.headerContainer, newLayout && "py-0.5")}
-            >
+            <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
               {newLayout ? (
                 <span className="text-xs font-medium uppercase text-neutral-500">
                   Agent Activity

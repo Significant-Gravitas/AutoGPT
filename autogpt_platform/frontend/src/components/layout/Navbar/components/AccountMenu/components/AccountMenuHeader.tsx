@@ -28,14 +28,10 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors hover:bg-neutral-100 focus-visible:bg-neutral-100 data-[state=open]:bg-neutral-100"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
           data-testid="account-menu-org-trigger"
         >
-          <InitialAvatar
-            src={avatarSrc}
-            name={userName}
-            className="h-8 w-8"
-          />
+          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {isLoading || !userName || !userEmail ? (
               <>

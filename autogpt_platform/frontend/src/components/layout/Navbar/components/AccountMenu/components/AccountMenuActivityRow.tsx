@@ -18,9 +18,7 @@ export function AccountMenuActivityRow() {
     useAgentActivityDropdown();
 
   const totalCount =
-    activeExecutions.length +
-    recentCompletions.length +
-    recentFailures.length;
+    activeExecutions.length + recentCompletions.length + recentFailures.length;
 
   return (
     <Popover>
@@ -35,7 +33,10 @@ export function AccountMenuActivityRow() {
             aria-hidden="true"
           />
           <span className="relative z-10 flex shrink-0 items-center">
-            <PulseIcon className="h-[18px] w-[18px] shrink-0" weight="regular" />
+            <PulseIcon
+              className="h-[18px] w-[18px] shrink-0"
+              weight="regular"
+            />
           </span>
           <span className="relative z-10 truncate">Activity</span>
           {totalCount > 0 && (
