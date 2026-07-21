@@ -1217,6 +1217,78 @@ class TestNestedChainEdgeCases:
         assert v.validate_source_output_existence(agent, blocks) is False
 
 
+class TestDynamicRequiredInputs:
+    """Required arguments declared in a node's dynamic schema (MCP tool /
+    sub-agent input schema) must be enforced by validate_required_inputs —
+    the static block schema says nothing about them."""
+
+    def _mcp_node(self, input_default: dict) -> dict:
+        return _make_node(block_id=MCP_TOOL_BLOCK_ID, input_default=input_default)
+
+    def _mcp_block(self) -> dict:
+        return _make_block(block_id=MCP_TOOL_BLOCK_ID, name="MCPToolBlock")
+
+    def test_missing_required_dynamic_argument_fails(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+            }
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_required_inputs(agent, [self._mcp_block()]) is False
+        assert any("'data'" in e for e in v.errors)
+
+    def test_required_dynamic_argument_via_default_passes(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+                "data": "hello",
+            }
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_required_inputs(agent, [self._mcp_block()]) is True
+
+    def test_required_dynamic_argument_via_link_passes(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+            }
+        )
+        source = _make_node(block_id="block-1")
+        link = _make_link(
+            source_id=source["id"],
+            source_name="output",
+            sink_id=node["id"],
+            sink_name="data",
+        )
+        agent = _make_agent(nodes=[source, node], links=[link])
+
+        assert (
+            v.validate_required_inputs(agent, [self._mcp_block(), _make_block()])
+            is True
+        )
+
+
 class TestAdditionalPropertiesChains:
     """Levels that allow additionalProperties accept the remaining chain —
     the executor delivers arbitrary keys into such dicts at run time."""

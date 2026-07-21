@@ -76,11 +76,6 @@ class FindBlockTool(BaseTool):
                     "type": "string",
                     "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
-                "include_schemas": {
-                    "type": "boolean",
-                    "description": "Include full input/output schemas (for agent JSON generation).",
-                    "default": False,
-                },
                 "for_agent_generation": {
                     "type": "boolean",
                     "description": (
@@ -103,7 +98,6 @@ class FindBlockTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         query: str = "",
-        include_schemas: bool = False,
         for_agent_generation: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
@@ -113,7 +107,6 @@ class FindBlockTool(BaseTool):
             user_id: User ID (required)
             session: Chat session
             query: Search query
-            include_schemas: Whether to include block schemas in results
             for_agent_generation: When True, bypasses the CoPilot exclusion filter
                 so graph-only blocks (INPUT, OUTPUT, ORCHESTRATOR, etc.) are visible.
 
@@ -194,12 +187,6 @@ class FindBlockTool(BaseTool):
                         ),
                         categories=[c.value for c in block.categories],
                     )
-                    if include_schemas:
-                        info = block.get_info()
-                        summary.input_schema = info.inputSchema
-                        summary.output_schema = info.outputSchema
-                        summary.static_output = info.staticOutput
-
                     return BlockListResponse(
                         message=(
                             f"Found block '{block.name}' by ID. "
@@ -274,12 +261,6 @@ class FindBlockTool(BaseTool):
                     description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
                 )
-
-                if include_schemas:
-                    info = block.get_info()
-                    summary.input_schema = info.inputSchema
-                    summary.output_schema = info.outputSchema
-                    summary.static_output = info.staticOutput
 
                 blocks.append(summary)
 
