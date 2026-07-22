@@ -1335,3 +1335,23 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
 }
+
+
+def _validate_codex_costs() -> None:
+    """Keep Codex pricing exhaustive.
+
+    ``LlmModel`` has module-load completeness guards; ``CodexModel`` does not, so
+    a Codex model added without a matching ``BlockCost`` would silently bill as
+    free.
+    """
+    for codex_model in CodexModel:
+        if not any(
+            block_cost.cost_filter.get("model") == codex_model
+            for block_cost in BLOCK_COSTS[CodeGenerationBlock]
+        ):
+            raise ValueError(
+                f"Missing CodeGenerationBlock cost for Codex model: {codex_model}"
+            )
+
+
+_validate_codex_costs()
