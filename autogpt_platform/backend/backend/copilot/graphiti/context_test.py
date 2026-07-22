@@ -39,18 +39,11 @@ class TestFetchWarmContextTimeout:
 class TestFetchWarmContextGeneralError:
     @pytest.mark.asyncio
     async def test_returns_none_on_unexpected_error(self) -> None:
-        with (
-            patch.object(
-                context,
-                "derive_group_id",
-                return_value="user_abc",
-            ),
-            patch.object(
-                context,
-                "get_graphiti_client",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("connection lost"),
-            ),
+        with patch.object(
+            context,
+            "get_graphiti_client",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("connection lost"),
         ):
             result = await fetch_warm_context("abc", "hello")
 
@@ -83,14 +76,11 @@ class TestFetchInternal:
         mock_client.search_.return_value = _search_results([])
         mock_client.retrieve_episodes.return_value = []
 
-        with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
-            patch.object(
-                context,
-                "get_graphiti_client",
-                new_callable=AsyncMock,
-                return_value=mock_client,
-            ),
+        with patch.object(
+            context,
+            "get_graphiti_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
         ):
             result = await context._fetch("test-user", "hello")
 
@@ -108,14 +98,11 @@ class TestFetchInternal:
         mock_client.search_.return_value = _search_results([edge])
         mock_client.retrieve_episodes.return_value = []
 
-        with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
-            patch.object(
-                context,
-                "get_graphiti_client",
-                new_callable=AsyncMock,
-                return_value=mock_client,
-            ),
+        with patch.object(
+            context,
+            "get_graphiti_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
         ):
             result = await context._fetch("test-user", "hello")
 
@@ -133,14 +120,11 @@ class TestFetchInternal:
         mock_client.search_.return_value = _search_results([])
         mock_client.retrieve_episodes.return_value = [ep]
 
-        with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
-            patch.object(
-                context,
-                "get_graphiti_client",
-                new_callable=AsyncMock,
-                return_value=mock_client,
-            ),
+        with patch.object(
+            context,
+            "get_graphiti_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
         ):
             result = await context._fetch("test-user", "hello")
 
@@ -159,21 +143,19 @@ class TestFetchInternal:
         mock_client.search_.return_value = _search_results([])
         mock_client.retrieve_episodes.return_value = []
 
-        with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
-            patch.object(
-                context,
-                "get_graphiti_client",
-                new_callable=AsyncMock,
-                return_value=mock_client,
-            ),
+        with patch.object(
+            context,
+            "get_graphiti_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
         ):
             await context._fetch("test-user", "hello world")
 
         mock_client.search_.assert_awaited_once()
         kwargs = mock_client.search_.await_args.kwargs
         assert kwargs["query"] == "hello world"
-        assert kwargs["group_ids"] == ["user_abc"]
+        # Personal tier group derived directly from the user id ("test-user").
+        assert kwargs["group_ids"] == ["user_test-user"]
         # The config is a copy of EDGE_HYBRID_SEARCH_CROSS_ENCODER with the
         # limit overridden to context_max_facts. Verify the edge-config
         # reranker is still ``cross_encoder`` so the contract is locked.
@@ -195,7 +177,7 @@ class TestFormatContextWithContent:
             valid_at="2025-01-01",
             invalid_at="present",
         )
-        result = _format_context(edges=[edge], episodes=[])
+        result = _format_context([(edge, None)], [])
         assert result is not None
         assert "<FACTS>" in result
         assert "user likes coffee" in result
@@ -206,7 +188,7 @@ class TestFormatContextWithContent:
             content="plain conversation text",
             created_at="2025-01-01T00:00:00Z",
         )
-        result = _format_context(edges=[], episodes=[ep])
+        result = _format_context([], [(ep, None)])
         assert result is not None
         assert "<RECENT_EPISODES>" in result
         assert "plain conversation text" in result
@@ -221,7 +203,7 @@ class TestFormatContextWithContent:
             content="talked about coffee",
             created_at="2025-06-01T00:00:00Z",
         )
-        result = _format_context(edges=[edge], episodes=[ep])
+        result = _format_context([(edge, None)], [(ep, None)])
         assert result is not None
         assert "<FACTS>" in result
         assert "<RECENT_EPISODES>" in result
@@ -232,7 +214,7 @@ class TestFormatContextWithContent:
             content=envelope.model_dump_json(),
             created_at="2025-01-01T00:00:00Z",
         )
-        result = _format_context(edges=[], episodes=[ep])
+        result = _format_context([], [(ep, None)])
         assert result is not None
         assert "<RECENT_EPISODES>" in result
 
@@ -242,7 +224,7 @@ class TestFormatContextWithContent:
             content=envelope.model_dump_json(),
             created_at="2025-01-01T00:00:00Z",
         )
-        result = _format_context(edges=[], episodes=[ep])
+        result = _format_context([], [(ep, None)])
         assert result is None
 
 
@@ -311,7 +293,7 @@ class TestFormatContextEmptyWrapper:
             content=envelope.model_dump_json(),
             created_at="2025-01-01T00:00:00Z",
         )
-        result = _format_context(edges=[], episodes=[ep])
+        result = _format_context([], [(ep, None)])
         assert result is None
 
 
@@ -373,3 +355,173 @@ class TestRatificationHitHookFiresFireAndForget:
         user_id, uuids = captured_calls[0]
         assert user_id == "user-xyz"
         assert uuids == ["edge-a", "edge-b"]
+
+
+# ---------------------------------------------------------------------------
+# Tiered fan-out: personal + org + session-team, provenance labels, budget
+# ---------------------------------------------------------------------------
+
+
+def _fact_edge(fact: str):
+    return SimpleNamespace(
+        fact=fact, name="rel", valid_at="2025-01-01", invalid_at=None
+    )
+
+
+def _tier_client(edges: list[object]) -> AsyncMock:
+    client = AsyncMock()
+    client.search_.return_value = _search_results(edges)
+    client.retrieve_episodes.return_value = []
+    return client
+
+
+class TestWarmContextFanOut:
+    @pytest.mark.asyncio
+    async def test_fans_out_and_labels_shared_tiers(self) -> None:
+        from .tiers import MemoryTier, TierTarget
+
+        targets = [
+            TierTarget("user_u1", MemoryTier.personal, None),
+            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(
+                "team_team-1", MemoryTier.team, "team memory (Platform)", "team-1"
+            ),
+        ]
+        clients = {
+            "user_u1": _tier_client([_fact_edge("personal pref")]),
+            "org_org-1": _tier_client([_fact_edge("org policy")]),
+            "team_team-1": _tier_client([_fact_edge("team convention")]),
+        }
+
+        async def _fake_client(group_id: str):
+            return clients[group_id]
+
+        with (
+            patch.object(
+                context,
+                "resolve_warm_targets",
+                new_callable=AsyncMock,
+                return_value=targets,
+            ),
+            patch.object(context, "get_graphiti_client", side_effect=_fake_client),
+            patch.object(context, "_spawn_ratification_hits"),
+        ):
+            result = await context._fetch("u1", "query", "org-1", "team-1")
+
+        assert result is not None
+        # Personal fact is unlabelled; shared facts carry provenance labels.
+        assert "personal pref" in result
+        assert "[org memory] org policy" in result
+        assert "[team memory (Platform)] team convention" in result
+        # All three tier groups were queried.
+        for client in clients.values():
+            client.search_.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ratification_fires_only_on_personal_edges(self) -> None:
+        from .tiers import MemoryTier, TierTarget
+
+        personal_edge = _fact_edge("personal pref")
+        org_edge = _fact_edge("org policy")
+        targets = [
+            TierTarget("user_u1", MemoryTier.personal, None),
+            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+        ]
+        clients = {
+            "user_u1": _tier_client([personal_edge]),
+            "org_org-1": _tier_client([org_edge]),
+        }
+
+        async def _fake_client(group_id: str):
+            return clients[group_id]
+
+        with (
+            patch.object(
+                context,
+                "resolve_warm_targets",
+                new_callable=AsyncMock,
+                return_value=targets,
+            ),
+            patch.object(context, "get_graphiti_client", side_effect=_fake_client),
+            patch.object(context, "_spawn_ratification_hits") as spawn,
+        ):
+            await context._fetch("u1", "query", "org-1", None)
+
+        # Ratification-on-hit keys off the personal graph — it must receive
+        # ONLY personal edges, never the org edge.
+        spawn.assert_called_once()
+        _, kwargs = spawn.call_args
+        passed_edges = (
+            kwargs.get("edges") if "edges" in kwargs else spawn.call_args[0][1]
+        )
+        assert org_edge not in passed_edges
+        assert personal_edge in passed_edges
+
+    @pytest.mark.asyncio
+    async def test_flaky_shared_tier_does_not_sink_personal_context(self) -> None:
+        from .tiers import MemoryTier, TierTarget
+
+        targets = [
+            TierTarget("user_u1", MemoryTier.personal, None),
+            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+        ]
+        personal_client = _tier_client([_fact_edge("personal pref")])
+
+        async def _fake_client(group_id: str):
+            if group_id == "org_org-1":
+                raise RuntimeError("org graph down")
+            return personal_client
+
+        with (
+            patch.object(
+                context,
+                "resolve_warm_targets",
+                new_callable=AsyncMock,
+                return_value=targets,
+            ),
+            patch.object(context, "get_graphiti_client", side_effect=_fake_client),
+            patch.object(context, "_spawn_ratification_hits"),
+        ):
+            result = await context._fetch("u1", "query", "org-1", None)
+
+        assert result is not None
+        assert "personal pref" in result
+
+    @pytest.mark.asyncio
+    async def test_personal_keeps_at_least_half_the_fact_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from .tiers import MemoryTier, TierTarget
+
+        monkeypatch.setattr(context.graphiti_config, "context_max_facts", 10)
+
+        personal_edges = [_fact_edge(f"personal {i}") for i in range(10)]
+        org_edges = [_fact_edge(f"org {i}") for i in range(10)]
+        targets = [
+            TierTarget("user_u1", MemoryTier.personal, None),
+            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+        ]
+        clients = {
+            "user_u1": _tier_client(personal_edges),
+            "org_org-1": _tier_client(org_edges),
+        }
+
+        async def _fake_client(group_id: str):
+            return clients[group_id]
+
+        with (
+            patch.object(
+                context,
+                "resolve_warm_targets",
+                new_callable=AsyncMock,
+                return_value=targets,
+            ),
+            patch.object(context, "get_graphiti_client", side_effect=_fake_client),
+            patch.object(context, "_spawn_ratification_hits"),
+        ):
+            result = await context._fetch("u1", "query", "org-1", None)
+
+        assert result is not None
+        personal_shown = sum(1 for i in range(10) if f"personal {i}" in result)
+        # Budget 10, floor is 5 — personal must keep at least half.
+        assert personal_shown >= 5

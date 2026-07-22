@@ -90,7 +90,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
 # the full merged tool set (webhook-trigger + preset lifecycle + docs/building
 # tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
-_CHAR_BUDGET = 47_800
+# Bumped 47800 -> 48900 for tiered memory (SECRT-2460/2461): memory_store gains
+# tier + team_id, memory_search gains tier, and both memory_forget tools gain a
+# tier param — ~1.06k chars across four tools at 48520 total; ~380 headroom.
+_CHAR_BUDGET = 48_900
 
 
 @pytest.fixture(scope="module")
