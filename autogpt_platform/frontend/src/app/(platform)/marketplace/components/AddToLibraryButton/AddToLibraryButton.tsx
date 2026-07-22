@@ -2,20 +2,31 @@
 
 import {
   getGetV2ListLibraryAgentsQueryKey,
+  postV2AddMarketplaceAgent,
   useDeleteV2DeleteLibraryAgent,
   useGetV2ListLibraryAgents,
-  usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  SplitButton,
+  SplitButtonItem,
+} from "@/components/atoms/SplitButton/SplitButton";
+import {
+  CreateSurface,
+  getLastUsedTeam,
+  getTeamRequestInit,
+  setLastUsedTeam,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { analytics } from "@/services/analytics";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { PlusIcon } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/nextjs";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 function UndoActions({
@@ -69,6 +80,8 @@ interface Props {
   isInLibrary?: boolean;
 }
 
+const ORG_TARGET_LABEL = "Organization";
+
 export function AddToLibraryButton({
   creatorSlug,
   agentSlug,
@@ -80,6 +93,7 @@ export function AddToLibraryButton({
   const { isLoggedIn } = useSupabase();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const teams = useOrgTeamStore((s) => s.teams);
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
@@ -94,8 +108,21 @@ export function AddToLibraryButton({
     },
   );
 
-  const { mutateAsync: addToLibrary, isPending } =
-    usePostV2AddMarketplaceAgent();
+  // Per-team header is chosen at click time, so add via the raw endpoint fn
+  // (the generated hook binds its request options once, at hook creation).
+  const { mutateAsync: addToLibrary, isPending } = useMutation({
+    mutationFn: async ({ teamId }: { teamId: string | null }) => {
+      const details = await getV2GetSpecificAgent(creatorSlug, agentSlug);
+      if (details.status !== 200) {
+        throw new Error("Failed to fetch agent details");
+      }
+      const res = await postV2AddMarketplaceAgent(
+        { store_listing_version_id: details.data.store_listing_version_id },
+        getTeamRequestInit(teamId),
+      );
+      return res.data as LibraryAgent;
+    },
+  });
 
   const { mutateAsync: removeFromLibrary } = useDeleteV2DeleteLibraryAgent();
 
@@ -110,24 +137,13 @@ export function AddToLibraryButton({
 
   if (isAlreadyInLibrary) return null;
 
-  async function handleClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    e.preventDefault();
+  async function handleAdd(teamId: string | null, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    e?.preventDefault();
 
     try {
-      const details = await getV2GetSpecificAgent(creatorSlug, agentSlug);
-
-      if (details.status !== 200) {
-        throw new Error("Failed to fetch agent details");
-      }
-
-      const { data: response } = await addToLibrary({
-        data: {
-          store_listing_version_id: details.data.store_listing_version_id,
-        },
-      });
-
-      const data = response as LibraryAgent;
+      setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
+      const data = await addToLibrary({ teamId });
       setJustAdded(true);
 
       await queryClient.invalidateQueries({
@@ -181,17 +197,58 @@ export function AddToLibraryButton({
     }
   }
 
+  const ghostButtonClassName = `z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`;
+
+  // Solo users (no teams): original plain button, adds to their org context.
+  if (teams.length === 0) {
+    return (
+      <Button
+        variant="ghost"
+        size="small"
+        loading={isPending}
+        leftIcon={<PlusIcon size={14} weight="bold" />}
+        onClick={(e) => handleAdd(null, e)}
+        className={ghostButtonClassName}
+        aria-label={`Add ${agentName} to library`}
+      >
+        {isPending ? "Adding..." : "Add"}
+      </Button>
+    );
+  }
+
+  // Primary target = last-used, clamped to a still-valid team (else Organization).
+  const lastUsedId = getLastUsedTeam(CreateSurface.MarketplaceAdd);
+  const primaryTeam = teams.find((t) => t.id === lastUsedId) ?? null;
+  const primaryTeamId = primaryTeam?.id ?? null;
+  const primaryLabelName = primaryTeam?.name ?? ORG_TARGET_LABEL;
+
+  const targets: { id: string | null; name: string }[] = [
+    { id: null, name: ORG_TARGET_LABEL },
+    ...teams.map((t) => ({ id: t.id, name: t.name })),
+  ];
+
+  const menuItems: SplitButtonItem[] = targets
+    .filter((target) => target.id !== primaryTeamId)
+    .map((target) => ({
+      key: target.id ?? "org-home",
+      label: `Add to ${target.name}`,
+      onSelect: () => handleAdd(target.id),
+    }));
+
   return (
-    <Button
-      variant="ghost"
-      size="small"
-      loading={isPending}
-      leftIcon={<PlusIcon size={14} weight="bold" />}
-      onClick={handleClick}
-      className={`z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`}
-      aria-label={`Add ${agentName} to library`}
-    >
-      {isPending ? "Adding..." : "Add"}
-    </Button>
+    <span onClick={(e) => e.stopPropagation()} className="z-10 inline-flex">
+      <SplitButton
+        variant="ghost"
+        size="small"
+        loading={isPending}
+        leftIcon={<PlusIcon size={14} weight="bold" />}
+        primaryLabel={isPending ? "Adding..." : `Add to ${primaryLabelName}`}
+        primaryAriaLabel={`Add ${agentName} to ${primaryLabelName}`}
+        menuAriaLabel={`Choose where to add ${agentName}`}
+        onPrimaryClick={(e) => handleAdd(primaryTeamId, e)}
+        items={menuItems}
+        buttonClassName={ghostButtonClassName}
+      />
+    </span>
   );
 }

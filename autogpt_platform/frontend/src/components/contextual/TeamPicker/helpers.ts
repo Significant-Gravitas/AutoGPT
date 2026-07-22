@@ -15,6 +15,7 @@ export const CreateSurface = {
   LibraryUpload: "library-upload",
   ScheduleAgent: "schedule-agent",
   ApiKey: "api-key",
+  MarketplaceAdd: "marketplace-add",
 } as const;
 
 // Stored marker for "org-home was the last-used choice on this surface".
