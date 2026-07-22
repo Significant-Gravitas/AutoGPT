@@ -150,10 +150,11 @@ def test_codex_registered_as_cost_usd_150():
     from backend.blocks.codex import CodeGenerationBlock
 
     entries = BLOCK_COSTS[CodeGenerationBlock]
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.cost_type == BlockCostType.COST_USD
-    assert entry.cost_amount == 150
+    # Both Codex models (GPT5_3_CODEX, GPT5_1_CODEX) are COST_USD 150.
+    assert len(entries) == 2
+    for entry in entries:
+        assert entry.cost_type == BlockCostType.COST_USD
+        assert entry.cost_amount == 150
 
 
 @pytest.mark.parametrize(

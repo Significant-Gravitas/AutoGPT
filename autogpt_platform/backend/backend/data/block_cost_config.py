@@ -110,6 +110,13 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3_DEEP_RESEARCH: 15,
     LlmModel.O1: 16,
     LlmModel.O1_MINI: 4,
+    # GPT-5.6 models
+    LlmModel.GPT5_6_SOL: 10,
+    LlmModel.GPT5_6_TERRA: 5,
+    LlmModel.GPT5_6_LUNA: 2,
+    # GPT-5.5 models
+    LlmModel.GPT5_5: 10,
+    LlmModel.GPT5_5_PRO: 60,
     # GPT-5 models
     LlmModel.GPT5_4: 5,
     LlmModel.GPT5_4_MINI: 2,
@@ -256,6 +263,11 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
         input=150, output=750, cache_read=15, cache_creation=188
     ),
     # OpenAI
+    LlmModel.GPT5_6_SOL: TokenRate(input=750, output=4500),
+    LlmModel.GPT5_6_TERRA: TokenRate(input=375, output=2250),
+    LlmModel.GPT5_6_LUNA: TokenRate(input=150, output=900),
+    LlmModel.GPT5_5: TokenRate(input=750, output=4500),
+    LlmModel.GPT5_5_PRO: TokenRate(input=4500, output=27000),
     LlmModel.GPT5_4: TokenRate(input=300, output=1200),
     LlmModel.GPT5_4_MINI: TokenRate(input=60, output=240),
     LlmModel.GPT5_4_NANO: TokenRate(input=15, output=60),
@@ -594,7 +606,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
             cost_amount=150,
-        )
+        ),
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips

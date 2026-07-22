@@ -149,7 +149,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O3_DEEP_RESEARCH = "o3-deep-research"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5.4 models (current flagship)
+    # GPT-5.6 models (current flagship)
+    GPT5_6_SOL = "gpt-5.6-sol"
+    GPT5_6_TERRA = "gpt-5.6-terra"
+    GPT5_6_LUNA = "gpt-5.6-luna"
+    # GPT-5.5 models
+    GPT5_5 = "gpt-5.5-2026-04-23"
+    GPT5_5_PRO = "gpt-5.5-pro"
+    # GPT-5.4 models
     GPT5_4 = "gpt-5.4-2026-03-05"
     GPT5_4_MINI = "gpt-5.4-mini-2026-03-17"
     GPT5_4_NANO = "gpt-5.4-nano-2026-03-17"
@@ -309,6 +316,7 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
     "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+    "openai/gpt-5.5": LlmModel.GPT5_5,
 }
 
 
@@ -337,7 +345,24 @@ MODEL_METADATA = {
     LlmModel.O1_MINI: ModelMetadata(
         "openai", 128000, 65536, "O1 Mini", "OpenAI", "OpenAI", 2
     ),  # o1-mini-2024-09-12
-    # GPT-5.4 models (current flagship, March 2026)
+    # GPT-5.6 models (current flagship, July 2026)
+    LlmModel.GPT5_6_SOL: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.6 Sol", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_6_TERRA: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.6 Terra", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_6_LUNA: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.6 Luna", "OpenAI", "OpenAI", 1
+    ),
+    # GPT-5.5 models
+    LlmModel.GPT5_5: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.5", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_5_PRO: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.5 Pro", "OpenAI", "OpenAI", 3
+    ),
+    # GPT-5.4 models (March 2026)
     LlmModel.GPT5_4: ModelMetadata(
         "openai", 1050000, 128000, "GPT-5.4", "OpenAI", "OpenAI", 2
     ),
@@ -764,7 +789,7 @@ MODEL_METADATA = {
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
 }
 
-DEFAULT_LLM_MODEL = LlmModel.GPT5_4
+DEFAULT_LLM_MODEL = LlmModel.GPT5_6_TERRA
 
 # Family-aware mapping for legacy model values that have been retired from the
 # `LlmModel` enum. Used by both the Prisma migration that rewrites stored graph
