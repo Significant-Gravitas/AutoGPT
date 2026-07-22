@@ -43,7 +43,8 @@ from __future__ import annotations
 from backend.data.llm_registry.catalog import get_catalog
 
 # Every Kimi K2.x SKU shares these rates — $0.60/$2.80 per million
-# (input/output) via OpenRouter as of April 2026.  Cache-read / cache-write discounts are NOT applied here:
+# (input/output) via OpenRouter as of April 2026.
+# Cache-read / cache-write discounts are NOT applied here:
 # OpenRouter currently exposes only a single input price per Moonshot
 # endpoint; the real billed amount (with cache savings) lands via the
 # reconcile path.  Keep in sync with https://platform.moonshot.ai/docs/pricing.
@@ -72,16 +73,17 @@ def _overrides_from_catalog() -> dict[str, tuple[float, float]]:
     }
 
 
+# Import-time snapshot is safe: the catalog is immutable within a process
+# (the file only changes at deploy), same lifecycle as every projection.
 _RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = _overrides_from_catalog()
 
 
 def is_moonshot_model(model: str | None) -> bool:
     """True when *model* is a Moonshot OpenRouter slug.
 
-    Prefix match against ``moonshotai/`` covers every Kimi SKU Moonshot
-    ships today (``kimi-k2``, ``kimi-k2.5``, ``kimi-k2.6``,
-    ``kimi-k2-thinking``, ``kimi-k3``) plus any future SKU Moonshot
-    publishes under the same namespace.  Used by both pricing and cache-control gating.
+    Prefix match against ``moonshotai/`` covers every Kimi SKU under that
+    namespace — present and future — with no per-SKU roster to maintain.
+    Used by both pricing and cache-control gating.
     """
     return isinstance(model, str) and model.startswith(_MOONSHOT_PREFIX)
 

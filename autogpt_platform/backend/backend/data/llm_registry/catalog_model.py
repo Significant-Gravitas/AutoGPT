@@ -19,17 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CATALOG_SCHEMA_VERSION = 1
 
+ModelVisibility = Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"]
+
 # Guard against a runaway generator expanding into an unreviewable file.
 MAX_CATALOG_MODELS = 2000
 
 _NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,99}$"
 # Model slugs may be provider-prefixed and contain "/" (e.g. "openai/gpt-4o").
 _SLUG_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$"
-
-
-SubscriptionTierName = Literal[
-    "NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
-]
 
 
 class CatalogProvider(BaseModel):
@@ -98,20 +95,18 @@ class CatalogModel(BaseModel):
     description: str | None = None
     provider: str = Field(pattern=_NAME_PATTERN)  # FK by CatalogProvider.name
     creator: str | None = Field(default=None, pattern=_NAME_PATTERN)
-    kind: str = "CHAT"
     context_window: int = Field(gt=0)
     max_output_tokens: int | None = Field(default=None, gt=0)
     price_tier: Literal[1, 2, 3] = 1
     is_enabled: bool = True
     is_recommended: bool = False
-    # Who can SEE the model in pickers/catalog. Orthogonal to is_enabled:
-    # is_enabled=False is the kill switch (never serves, even when routed);
-    # visibility="HIDDEN" serves when explicitly routed but is never shown —
-    # the pre-launch testing state.
-    visibility: Literal["GA", "EMPLOYEES", "ADMINS", "HIDDEN"] = "GA"
-    # Null = available on every subscription tier. Enforcement lands with
-    # the registry-driven picker (Phase B).
-    min_subscription_tier: SubscriptionTierName | None = None
+    # Who can SEE the model. Non-GA models are excluded from block picker
+    # metadata today; per-role tiers (EMPLOYEES/ADMINS) get distinct
+    # treatment when the catalog-driven picker ships. Orthogonal to
+    # is_enabled: is_enabled=False is the kill switch (copilot refuses,
+    # picker hides); visibility="HIDDEN" still SERVES when explicitly
+    # routed — the pre-launch testing state.
+    visibility: ModelVisibility = "GA"
     # Standing replacement pointer: pre-fills the retirement CLI's
     # replacement and is the hook for future runtime failover.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)

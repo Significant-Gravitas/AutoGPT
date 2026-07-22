@@ -32,6 +32,7 @@ def _bridge() -> MagicMock:
     bridge = MagicMock()
     bridge.send_message_to_channel = AsyncMock()
     bridge.create_thread_in_channel = AsyncMock()
+    bridge.send_dm_to_user = AsyncMock()
     bridge.list_channels = AsyncMock()
     return bridge
 
@@ -192,6 +193,70 @@ async def test_post_thread_failed_maps_error(session):
         )
     assert isinstance(result, ErrorResponse)
     assert result.error == "thread_failed"
+
+
+@pytest.mark.asyncio
+async def test_post_dm_happy_path_needs_no_channel(session):
+    bridge = _bridge()
+    bridge.send_dm_to_user.return_value = DeliveryResult(
+        ok=True, kind="dm", channel_id="dm-1", ref_id="m1"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER, session=session, target="dm", content="morning brief"
+        )
+    assert isinstance(result, ChatPlatformPostedResponse)
+    assert result.kind == "dm"
+    assert "DM" in result.message
+    bridge.send_dm_to_user.assert_awaited_once()
+    bridge.send_message_to_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_post_dm_without_link_maps_error(session):
+    bridge = _bridge()
+    bridge.send_dm_to_user.return_value = DeliveryResult(
+        ok=False, kind="dm", error="no_dm_link"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER, session=session, target="dm", content="hi"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "no_dm_link"
+    assert "aren't linked" in result.message
+
+
+@pytest.mark.asyncio
+async def test_post_dm_rejects_thread_mode(session):
+    result = await PostToChatPlatformTool()._execute(
+        user_id=_USER,
+        session=session,
+        target="dm",
+        content="hi",
+        mode="thread",
+        thread_name="Nope",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_mode"
+
+
+@pytest.mark.asyncio
+async def test_post_invalid_target(session):
+    result = await PostToChatPlatformTool()._execute(
+        user_id=_USER, session=session, target="carrier-pigeon", content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_target"
+
+
+@pytest.mark.asyncio
+async def test_post_channel_target_still_requires_channel(session):
+    result = await PostToChatPlatformTool()._execute(
+        user_id=_USER, session=session, content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_channel"
 
 
 @pytest.mark.asyncio

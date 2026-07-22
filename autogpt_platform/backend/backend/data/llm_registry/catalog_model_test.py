@@ -29,7 +29,6 @@ def _model_kwargs(**overrides):
 def test_valid_model_parses():
     m = CatalogModel(**_model_kwargs())
     assert m.price_tier == 1
-    assert m.kind == "CHAT"
     assert m.visibility == "GA"
     assert m.is_enabled is True
     assert m.cost is None
@@ -48,7 +47,6 @@ def test_valid_model_parses():
         ("price_tier", 4),
         ("display_name", ""),
         ("visibility", "SECRET"),
-        ("min_subscription_tier", "PLATINUM"),
     ],
 )
 def test_invalid_model_fields_rejected(field, value):

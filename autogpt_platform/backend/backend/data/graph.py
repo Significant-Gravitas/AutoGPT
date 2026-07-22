@@ -27,7 +27,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
@@ -1976,10 +1976,10 @@ async def fix_llm_provider_credentials():
         )
 
 
-def _legacy_value_aliases(legacy_value: str, replacement: LlmModel) -> set[str]:
+def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
     """Stored-value forms that should map to ``replacement`` for one legacy slug.
 
-    ``LlmModel._missing_`` accepts provider-prefixed inputs at write time, so
+    ``LLMModel._missing_`` accepts provider-prefixed inputs at write time, so
     historical rows may carry either the bare slug or ``<provider>/<slug>``
     even when the canonical enum value is unprefixed. Vendor-prefixed legacy
     values (e.g. ``google/...``) need no alias.
@@ -1989,11 +1989,11 @@ def _legacy_value_aliases(legacy_value: str, replacement: LlmModel) -> set[str]:
     return {legacy_value, f"{replacement.metadata.provider}/{legacy_value}"}
 
 
-async def migrate_llm_models(fallback: LlmModel):
+async def migrate_llm_models(fallback: LLMModel):
     """
     Rewrite legacy LLM model values to in-enum equivalents.
 
-    Runs in two passes per LlmModel field:
+    Runs in two passes per LLMModel field:
       1. Family-aware: for each (legacy_value, replacement) in
          LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
          replacement so e.g. Claude Opus lands on a newer Opus, not the global
@@ -2002,19 +2002,19 @@ async def migrate_llm_models(fallback: LlmModel):
 
     Both passes run against two tables:
       * ``AgentNode.constantInput`` — saved graph definitions (scoped by
-        ``agentBlockId`` because we know the LlmModel field name per block).
+        ``agentBlockId`` because we know the LLMModel field name per block).
       * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
         preset input overrides; scoped only by the field-value match since
         preset rows don't carry the block id.
 
-    Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
+    Note: Only updates top level LLMModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
     llm_model_fields = _find_llm_model_fields()
     if not llm_model_fields:
         return
 
-    enum_values = [v.value for v in LlmModel]
+    enum_values = [v.value for v in LLMModel]
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
     node_targeted_query = """
@@ -2088,12 +2088,12 @@ async def migrate_llm_models(fallback: LlmModel):
 
 
 def _find_llm_model_fields() -> dict[str, str]:
-    """Return ``{block_id: field_name}`` for every top-level LlmModel field."""
+    """Return ``{block_id: field_name}`` for every top-level LLMModel field."""
     llm_model_fields: dict[str, str] = {}
     for block_type in get_blocks().values():
         block = block_type()
         for field_name, field in block.input_schema.model_fields.items():
-            if field.annotation == LlmModel:
+            if field.annotation == LLMModel:
                 llm_model_fields[block.id] = field_name
     return llm_model_fields
 

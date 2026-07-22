@@ -1111,3 +1111,26 @@ def require_library_check(session: ChatSession, tool_name: str):
         ),
         session_id=session.session_id,
     )
+
+
+def coerce_agent_json(
+    agent_json: dict[str, Any] | str | None,
+) -> dict[str, Any] | None:
+    """Coerce an ``agent_json`` tool argument into a dict.
+
+    A bare ``@@agptfile:`` reference is expanded and JSON-parsed into a dict
+    by the SDK layer before the tool runs, but a raw JSON string can still
+    arrive — e.g. a reference embedded in surrounding text, or a file that
+    failed structured parsing. Returns None when the value cannot be
+    interpreted as a JSON object.
+    """
+    if isinstance(agent_json, dict):
+        return agent_json
+    if isinstance(agent_json, str) and agent_json.strip():
+        try:
+            parsed = json.loads(agent_json)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+    return None

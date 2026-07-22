@@ -50,6 +50,8 @@ export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
 export const MIN_CONTEXT_PANEL_WIDTH = 280;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;
 export const MIN_ARTIFACT_PANEL_WIDTH = 400;
+/** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
+export const PANEL_RESERVED_WIDTH = 440;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";

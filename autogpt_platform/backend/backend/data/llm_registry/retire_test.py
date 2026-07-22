@@ -225,3 +225,85 @@ async def test_cli_dry_run_writes_nothing(retirement_env, mocker):
 
     assert await _node_model(node_id) == _node_value(source)
     assert await prisma.models.LlmModelMigration.prisma().count() == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_revert_leaves_manually_repointed_nodes_alone(retirement_env):
+    """The documented revert guard: nodes a user manually repointed at a
+    third model since the migration are NOT touched by the revert, and the
+    result reports them as already-changed."""
+    source, replacement = _two_catalog_slugs()
+    node_a = await _seed_node(retirement_env, _node_value(source))
+    node_b = await _seed_node(retirement_env, _node_value(source))
+
+    result = await retire_model(source, replacement)
+    assert result.nodes_migrated == 2
+
+    third = "user/hand-picked-model"
+    node = await prisma.models.AgentNode.prisma().find_unique(where={"id": node_b})
+    assert node is not None
+    assert isinstance(node.constantInput, dict)
+    ci = dict(node.constantInput)
+    ci["model"] = third
+    await prisma.models.AgentNode.prisma().update(
+        where={"id": node_b}, data={"constantInput": prisma.Json(ci)}
+    )
+
+    migrations = await list_model_migrations()
+    revert = await revert_model_migration(migrations[0].id)
+
+    assert revert.nodes_reverted == 1
+    assert revert.nodes_already_changed == 1
+    assert await _node_model(node_a) == _node_value(source)
+    assert await _node_model(node_b) == third
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_replacement_defaults_from_catalog_fallback(retirement_env, mocker):
+    """--replacement pre-fills from the retired model's fallback_model_slug."""
+    from backend.data.llm_registry import retire as retire_mod
+    from backend.data.llm_registry.retire import _build_parser, _run_cli
+
+    source, replacement = _two_catalog_slugs()
+    node_id = await _seed_node(retirement_env, _node_value(source))
+
+    payload = retire_mod.get_catalog()
+    patched = payload.model_copy(
+        update={
+            "models": [
+                (
+                    m.model_copy(update={"fallback_model_slug": replacement})
+                    if m.slug == source
+                    else m
+                )
+                for m in payload.models
+            ]
+        }
+    )
+    mocker.patch.object(retire_mod, "get_catalog", return_value=patched)
+    mocker.patch("backend.data.db.connect", new=AsyncMock())
+
+    args = _build_parser().parse_args([source])  # no --replacement
+    assert await _run_cli(args) == 1  # dry run banner path
+    assert args.replacement == replacement
+    assert await _node_model(node_id) == _node_value(source)  # nothing written
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_double_revert_refused_by_atomic_claim(retirement_env):
+    """The second revert of the same migration must refuse — the guarded
+    in-transaction claim matches zero rows (the TOCTOU race guard)."""
+    source, replacement = _two_catalog_slugs()
+    await _seed_node(retirement_env, _node_value(source))
+    await retire_model(source, replacement)
+    migration_id = (await list_model_migrations())[0].id
+
+    await revert_model_migration(migration_id)
+    with pytest.raises(ValueError, match="already been reverted"):
+        await revert_model_migration(migration_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_revert_unknown_migration_id_refused(retirement_env):
+    with pytest.raises(ValueError, match="not found"):
+        await revert_model_migration("no-such-migration-id")

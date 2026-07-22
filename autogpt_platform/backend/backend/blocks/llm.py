@@ -28,8 +28,8 @@ from backend.data.llm_registry.llm_models import (
     LEGACY_MODEL_MAPPINGS as LEGACY_MODEL_MAPPINGS,
 )
 from backend.data.llm_registry.llm_models import MODEL_METADATA as MODEL_METADATA
-from backend.data.llm_registry.llm_models import LlmModel as LlmModel
-from backend.data.llm_registry.llm_models import LlmModelMeta as LlmModelMeta
+from backend.data.llm_registry.llm_models import LLMModel as LLMModel
+from backend.data.llm_registry.llm_models import LLMModelMeta as LLMModelMeta
 from backend.data.llm_registry.llm_models import ModelMetadata as ModelMetadata
 from backend.data.model import (
     APIKeyCredentials,
@@ -99,7 +99,7 @@ def AICredentialsField() -> AICredentials:
         description="API key for the LLM provider.",
         discriminator="model",
         discriminator_mapping={
-            model.value: model.metadata.provider for model in LlmModel
+            model.value: model.metadata.provider for model in LLMModel
         },
     )
 
@@ -215,7 +215,7 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 
 def get_parallel_tool_calls_param(
-    llm_model: LlmModel, parallel_tool_calls: bool | None
+    llm_model: LLMModel, parallel_tool_calls: bool | None
 ) -> bool | openai.Omit:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
@@ -225,7 +225,7 @@ def get_parallel_tool_calls_param(
 
 async def llm_call(
     credentials: APIKeyCredentials,
-    llm_model: LlmModel,
+    llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
     force_json_output: bool = False,
@@ -260,7 +260,7 @@ async def llm_call(
 
 async def _llm_call(
     credentials: APIKeyCredentials,
-    llm_model: LlmModel,
+    llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
     force_json_output: bool = False,
@@ -332,7 +332,7 @@ async def _llm_call(
     # API, etc.) live in ``backend/util/llm/providers.py`` so the dream
     # pass, copilot chat, and any future server-side caller route
     # through one implementation. This wrapper keeps the block-layer
-    # framing on top: ``LlmModel``-aware token budget, retry-on-bad-
+    # framing on top: ``LLMModel``-aware token budget, retry-on-bad-
     # shape (caller), ``NodeExecutionStats`` (caller).
     from backend.util.llm.providers import ProviderResponse, call_provider
 
@@ -400,7 +400,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=False,
             description="Whether the response should be a list of objects in the expected format.",
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
@@ -502,7 +502,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
     async def llm_call(
         self,
         credentials: APIKeyCredentials,
-        llm_model: LlmModel,
+        llm_model: LLMModel,
         prompt: list[dict],
         max_tokens: int | None,
         force_json_output: bool = False,
@@ -876,7 +876,7 @@ class AITextGeneratorBlock(AIBlockBase):
             description="The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces.",
             placeholder="Enter your prompt here...",
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
@@ -972,7 +972,7 @@ class AITextSummarizerBlock(AIBlockBase):
             description="The text to summarize.",
             placeholder="Enter the text to summarize here...",
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for summarizing the text.",
@@ -1189,7 +1189,7 @@ class AIConversationBlock(AIBlockBase):
         messages: List[Any] = SchemaField(
             description="List of messages in the conversation.",
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for the conversation.",
@@ -1303,7 +1303,7 @@ class AIListGeneratorBlock(AIBlockBase):
             default=None,
             advanced=False,
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for generating the list.",

@@ -11,7 +11,8 @@ A single ``platform`` enum keeps the tool surface flat as platforms are added,
 instead of one ``post_to_<platform>`` tool per platform. Delivery and
 authorization live in the bot bridge (``CoPilotChatBridge``): the tool only
 forwards over RPC, and a post is only allowed into channels of a server the
-calling user has linked — enforced bridge-side.
+calling user has linked, or (``target='dm'``) into the user's own DM with the
+bot via their DM link — enforced bridge-side.
 
 ``list_chat_platform_channels`` backs channel-name disambiguation and the
 "pick a channel" flow.
@@ -76,6 +77,13 @@ _ERROR_MESSAGES: dict[str, str] = {
         "Couldn't create the thread — the bot likely lacks permission to "
         "create public threads in that channel."
     ),
+    "no_dm_link": (
+        "The user's DMs aren't linked on that platform yet. They can link "
+        "them by DMing the bot and running its setup command."
+    ),
+    "dm_unavailable": (
+        "The bot couldn't open a DM with the user's linked account on that " "platform."
+    ),
 }
 
 
@@ -131,11 +139,7 @@ def _platform_param() -> dict[str, Any]:
     return {
         "type": "string",
         "enum": list(SUPPORTED_PLATFORMS),
-        "description": (
-            "Chat platform to post to: 'discord' (default), 'slack', or "
-            "'telegram'. On Telegram, 'channel' must be the numeric chat ID "
-            "of a linked group (names can't be listed there)."
-        ),
+        "description": "Chat platform to post to; defaults to 'discord'.",
     }
 
 
@@ -157,13 +161,14 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (Discord, Slack, or Telegram) for "
-            "the user. mode='message' sends a message; mode='thread' opens a "
-            "new thread (needs thread_name). 'channel' is a name (#standup) or "
-            "numeric ID — on Telegram it must be a linked group's numeric chat "
-            "ID. Pair with schedule_followup for recurring posts. On Discord "
-            "or Slack, if the channel can't be resolved, call "
-            "list_chat_platform_channels first."
+            "Post to a linked chat platform (Discord, Slack, or Telegram). "
+            "target='dm' sends to the user's own DMs with the bot. "
+            "mode='thread' opens a thread (needs thread_name; "
+            "channels only). 'channel' is a name (#standup) or numeric ID — "
+            "on Telegram, a linked group's numeric chat ID. Pair with "
+            "schedule_followup for recurring posts; call "
+            "list_chat_platform_channels if a Discord/Slack channel won't "
+            "resolve."
         )
 
     @property
@@ -180,9 +185,21 @@ class PostToChatPlatformTool(BaseTool):
             "type": "object",
             "properties": {
                 "platform": _platform_param(),
+                "target": {
+                    "type": "string",
+                    "enum": ["channel", "dm"],
+                    "description": (
+                        "'channel' (default) posts to a server channel; 'dm' "
+                        "goes to the user's own DMs with the bot (needs their "
+                        "DM link, no channel)."
+                    ),
+                },
                 "channel": {
                     "type": "string",
-                    "description": "Channel name (#standup) or numeric ID.",
+                    "description": (
+                        "Channel name (#standup) or numeric ID. Required "
+                        "unless target='dm'."
+                    ),
                 },
                 "content": {
                     "type": "string",
@@ -198,7 +215,7 @@ class PostToChatPlatformTool(BaseTool):
                     "description": "Thread title; required when mode='thread'.",
                 },
             },
-            "required": ["channel", "content"],
+            "required": ["content"],
         }
 
     @staticmethod
@@ -211,10 +228,23 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
+        target: str = kwargs.get("target") or "channel"
+        if target not in ("channel", "dm"):
+            return ErrorResponse(
+                message="`target` must be 'channel' or 'dm'.",
+                error="invalid_target",
+                session_id=session_id,
+            )
         channel: str | None = kwargs.get("channel")
         content: str | None = kwargs.get("content")
         mode: str = kwargs.get("mode") or "message"
-        if not channel or not channel.strip():
+        if target == "dm" and mode == "thread":
+            return ErrorResponse(
+                message="Threads can't be created in a DM — use mode='message'.",
+                error="invalid_mode",
+                session_id=session_id,
+            )
+        if target == "channel" and (not channel or not channel.strip()):
             return ErrorResponse(
                 message="`channel` is required.",
                 error="missing_channel",
@@ -266,12 +296,19 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
-        channel: str = kwargs["channel"]
+        target: str = kwargs.get("target") or "channel"
+        channel: str = kwargs.get("channel") or ""
         content: str = kwargs["content"]
         mode: str = kwargs.get("mode") or "message"
 
         client = get_copilot_chat_bridge_client()
-        if mode == "thread":
+        if target == "dm":
+            result = await client.send_dm_to_user(
+                platform=platform,
+                user_id=user_id,
+                content=content,
+            )
+        elif mode == "thread":
             result = await client.create_thread_in_channel(
                 platform=platform,
                 user_id=user_id,
@@ -294,7 +331,7 @@ class PostToChatPlatformTool(BaseTool):
                 session_id=session_id,
             )
 
-        where = "thread" if result.kind == "thread" else "message"
+        where = {"thread": "thread", "dm": "DM"}.get(result.kind, "message")
         link_note = f" ({result.url})" if result.url else ""
         return ChatPlatformPostedResponse(
             message=f"Posted {where} to {platform_name}{link_note}.",
@@ -317,10 +354,11 @@ class ListChatPlatformChannelsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List channels the bot can post to on a linked chat platform "
-            "(Discord or Slack). Use to resolve a channel name to an ID or "
-            "pick one before post_to_chat_platform. Telegram can't list "
-            "channels — post there with a linked group's numeric chat ID."
+            "List server channels the bot can post to on Discord or Slack — "
+            "use to resolve a channel name to an ID before "
+            "post_to_chat_platform. Telegram can't list channels (use a "
+            "linked group's numeric chat ID). The user's own DMs never "
+            "appear here — use target='dm' instead."
         )
 
     @property

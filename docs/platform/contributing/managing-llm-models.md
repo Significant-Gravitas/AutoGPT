@@ -22,12 +22,10 @@ Each `CatalogModel` entry:
 | `display_name` | Human-readable name shown in UIs. |
 | `provider` | Who serves the model (must match a `CatalogProvider.name`). Determines which credential/API key is used. |
 | `creator` | Who trained the model (display metadata; must match a `CatalogCreator.name`). |
-| `kind` | Model modality; currently `CHAT`. |
 | `context_window` / `max_output_tokens` | Token limits. |
 | `price_tier` | 1 (cheapest) to 3 (most expensive); used for display. |
 | `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when LaunchDarkly routes to it. |
 | `visibility` | Who may *see* the model: `GA` (everyone), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Informational until the catalog-driven picker lands (today a model stays out of block pickers by not having an enum line); the field is the picker's contract. Visibility never overrides `is_enabled`. |
-| `min_subscription_tier` | Optional tier gate (e.g. `MAX`); enforcement arrives with the catalog-driven model picker. |
 | `fallback_model_slug` | Standing replacement pointer: the retirement CLI defaults `--replacement` to it, and it is reserved for future automatic failover. |
 | `supports_*` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational and authored opportunistically — `False` means *not asserted*, not "unsupported"; nothing consumes them at runtime yet, so only rely on authored `True` values. |
 | `cost` | What users pay: flat `run_credits` and/or per-1M token **credit** rates (billing reads these). Optionally `provider_*_usd_per_1m`: what the provider charges us — the USD list price, used for in-turn cost estimates when a model is priced off its family default (e.g. Kimi K3's $3/$15). |
@@ -69,7 +67,7 @@ What each change touches — this is the complete list:
 
 | Change | You edit |
 | --- | --- |
-| Add a **block-selectable** model | Catalog entry + one `LlmModel` name line (`llm_registry/llm_models.py`). An import-time check refuses to boot if they drift. |
+| Add a **block-selectable** model | Catalog entry + one `LLMModel` name line (`llm_registry/llm_models.py`). An import-time check refuses to boot if they drift. |
 | Add a **copilot-only** model | Catalog entry. |
 | Change a price (post-cutover model) | Catalog entry. |
 | Change a price (pre-cutover model) | Catalog entry + its snapshot line (see cost note). |
@@ -107,7 +105,7 @@ On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slu
 
 Retirement has two halves:
 
-1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats LD routing).
+1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats LD routing). Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs.
 2. **Migrate existing graph nodes** onto a replacement so users' agents keep working:
 
 ```bash

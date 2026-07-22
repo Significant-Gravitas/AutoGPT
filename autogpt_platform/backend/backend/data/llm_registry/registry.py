@@ -23,8 +23,9 @@ from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import (
     CatalogModelCost,
     CatalogPayload,
-    SubscriptionTierName,
+    ModelVisibility,
 )
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
 logger = logging.getLogger(__name__)
 
@@ -63,18 +64,16 @@ class RegistryModel(BaseModel):
     description: str | None = None
     metadata: RegistryModelMetadata
     provider_display_name: str
-    is_enabled: bool
-    is_recommended: bool = False
-
     # is_enabled is the kill switch for SERVING NEW WORK: copilot refuses the
     # model and it leaves picker metadata. Existing agent graphs keep
     # executing (and billing) — hard-stopping users' running agents is a
     # deliberate separate act (the retire CLI), never a flag side-effect.
+    is_enabled: bool
+    is_recommended: bool = False
+
     # visibility only controls who SEES the model — HIDDEN still serves
     # when explicitly routed.
-    kind: str = "CHAT"
-    visibility: str = "GA"
-    min_subscription_tier: SubscriptionTierName | None = None
+    visibility: ModelVisibility = "GA"
     fallback_model_slug: str | None = None
 
     supports_tools: bool = False
@@ -89,6 +88,9 @@ class RegistryModel(BaseModel):
 # swaps are atomic, and the file can't change under a running process, so no
 # locking is needed.
 _dynamic_models: dict[str, RegistryModel] = {}
+# Date-stripped slug → model (claude-haiku-4-5 → the -20251001 entry), so
+# the router's snapshot-suffix fallback is an O(1) lookup, not a scan.
+_date_stripped_models: dict[str, RegistryModel] = {}
 _routes: dict[tuple[str, str, str], str] = {}
 _loaded = False
 
@@ -120,9 +122,7 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
             provider_display_name=provider_display,
             is_enabled=m.is_enabled,
             is_recommended=m.is_recommended,
-            kind=m.kind,
             visibility=m.visibility,
-            min_subscription_tier=m.min_subscription_tier,
             fallback_model_slug=m.fallback_model_slug,
             supports_tools=m.supports_tools,
             supports_json_output=m.supports_json_output,
@@ -141,7 +141,7 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
     empty registry (which would silently disable routing cells and
     serve-time gating).
     """
-    global _dynamic_models, _routes, _loaded
+    global _dynamic_models, _date_stripped_models, _routes, _loaded
     if payload is None:
         payload = get_catalog()
     models = _build_models(payload)
@@ -152,11 +152,21 @@ def load_catalog(payload: CatalogPayload | None = None) -> None:
         for tier, slug in tiers.items()
     }
     _dynamic_models = models
+    _date_stripped_models = {
+        stripped: model
+        for slug, model in models.items()
+        if (stripped := MODEL_DATE_SUFFIX_RE.sub("", slug)) != slug
+    }
     _routes = routes
     _loaded = True
     logger.info(
-        "LLM catalog loaded: %d models, %d routing cells", len(models), len(routes)
+        f"LLM catalog loaded: {len(models)} models, {len(routes)} routing cells"
     )
+
+
+def has_models() -> bool:
+    """O(1) emptiness check — the resolver asks this on every turn."""
+    return bool(_dynamic_models)
 
 
 def is_loaded() -> bool:
@@ -169,6 +179,12 @@ def is_loaded() -> bool:
 def get_model(slug: str) -> RegistryModel | None:
     """Get a model by slug from the catalog."""
     return _dynamic_models.get(slug)
+
+
+def get_model_by_date_stripped_slug(slug: str) -> RegistryModel | None:
+    """Resolve a date-suffix-less spelling to its snapshot-suffixed catalog
+    entry (``claude-haiku-4-5`` → the ``-20251001`` model)."""
+    return _date_stripped_models.get(slug)
 
 
 def get_all_models() -> list[RegistryModel]:

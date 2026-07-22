@@ -43,13 +43,13 @@ payload, or LD failure all fall through to the next layer.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Literal, NamedTuple
 
 import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
+from backend.data.llm_registry.llm_models import transport_slug_candidates
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -58,7 +58,9 @@ settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
-RoutingSource = Literal["ld", "catalog", "env"]
+# "fallback" is stamped (never resolved): it marks turns where the CLI's
+# 529-overload fallback served a different model than the routed one.
+RoutingSource = Literal["ld", "catalog", "env", "fallback"]
 
 ROUTE_SURFACE_COPILOT = "copilot"
 
@@ -66,9 +68,6 @@ ROUTE_SURFACE_COPILOT = "copilot"
 class ResolvedModel(NamedTuple):
     model: str
     source: RoutingSource
-
-
-_DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
 def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
@@ -80,29 +79,24 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
     not the spelling: try the exact slug, then the ``anthropic/``-stripped
     tail, then its dots→dashes form.
     """
-    candidates = [slug]
-    if slug.startswith("anthropic/"):
-        tail = slug.split("/", 1)[1]
-        candidates += [tail, tail.replace(".", "-")]
-    elif "/" not in slug and slug.startswith("claude-"):
-        candidates.append(slug.replace(".", "-"))
+    candidates = transport_slug_candidates(slug)
     for candidate in candidates:
         model = llm_registry.get_model(candidate)
         if model is not None:
             return model
     # Anthropic's API slugs carry a -YYYYMMDD snapshot suffix that the
     # OpenRouter canonical form drops (anthropic/claude-haiku-4-5 ↔ catalog
-    # claude-haiku-4-5-20251001) — match on the date-stripped catalog slug
-    # so LD experiments can route to snapshot-suffixed models.
-    candidate_set = set(candidates)
-    for model in llm_registry.get_all_models():
-        if _DATE_SUFFIX.sub("", model.slug) in candidate_set:
+    # claude-haiku-4-5-20251001) — resolve via the date-stripped index
+    # built at catalog load (O(1), no per-turn scan).
+    for candidate in candidates:
+        model = llm_registry.get_model_by_date_stripped_slug(candidate)
+        if model is not None:
             return model
     return None
 
 
 _sentry_reported: set[tuple[str, str]] = set()
-_unloaded_reported: list[bool] = []
+_unloaded_reported = False
 
 
 async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
@@ -112,12 +106,13 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     exact pre-registry behavior). Unknown slug or kill-switched model is
     refused; HIDDEN visibility serves fine when explicitly routed.
     """
-    if not llm_registry.get_all_models():
-        if not llm_registry.registry.is_loaded() and not _unloaded_reported:
+    if not llm_registry.has_models():
+        global _unloaded_reported
+        if not llm_registry.is_loaded() and not _unloaded_reported:
             # Empty-because-dormant is legitimate; empty-because-nobody-
             # called-load_catalog() in this process is a wiring bug that
             # would silently disable gating and cells — say so, once.
-            _unloaded_reported.append(True)
+            _unloaded_reported = True
             logger.error(
                 "[model_router] registry gating skipped: load_catalog() was "
                 "never called in this process — routing cells and serve-time "
@@ -225,6 +220,24 @@ async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str 
     return None
 
 
+async def _env_floor(
+    config: ChatConfig, mode: ModelMode, tier: ModelTier
+) -> ResolvedModel:
+    """Serve the env default — the LAST layer, served even when the catalog
+    refuses it (refusing would leave nothing). A kill switch pointing here
+    is an incident the operator must hear about: log + Sentry, then serve.
+    """
+    env_slug = _config_default(config, mode, tier).strip()
+    if await _registry_refuses(env_slug, "env") is not None:
+        logger.error(
+            "[model_router] env default %r is refused by the catalog "
+            "but served anyway (last-resort floor) — change the "
+            "CHAT_*_MODEL default or the routing cell",
+            env_slug,
+        )
+    return ResolvedModel(env_slug, "env")
+
+
 async def resolve_model_route(
     mode: ModelMode,
     tier: ModelTier,
@@ -261,21 +274,6 @@ async def resolve_model_route(
     if not gated:
         return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
 
-    async def _env_floor() -> ResolvedModel:
-        # The env default is the LAST layer — refusing it would leave
-        # nothing to serve, so it is served even if the catalog disables
-        # it. But a kill switch pointing at the env floor is an incident
-        # the operator must hear about: log + Sentry (deduped) and serve.
-        env_slug = _config_default(config, mode, tier).strip()
-        if await _registry_refuses(env_slug, "env") is not None:
-            logger.error(
-                "[model_router] env default %r is refused by the catalog "
-                "but served anyway (last-resort floor) — change the "
-                "CHAT_*_MODEL default or the routing cell",
-                env_slug,
-            )
-        return ResolvedModel(env_slug, "env")
-
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
     if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:
         # Cells carry TRANSPORT-READY spellings (e.g. the vendor-prefixed
@@ -284,4 +282,4 @@ async def resolve_model_route(
         # and the slug-tolerant gate above maps them to catalog identity.
         return ResolvedModel(cell_slug, "catalog")
 
-    return await _env_floor()
+    return await _env_floor(config, mode, tier)

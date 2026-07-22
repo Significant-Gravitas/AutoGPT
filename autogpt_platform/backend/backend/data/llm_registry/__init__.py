@@ -19,7 +19,10 @@ from .registry import (
     RegistryModelMetadata,
     get_all_models,
     get_model,
+    get_model_by_date_stripped_slug,
     get_route,
+    has_models,
+    is_loaded,
     load_catalog,
 )
 
@@ -37,6 +40,9 @@ __all__ = [
     "RegistryModelMetadata",
     "get_all_models",
     "get_model",
+    "get_model_by_date_stripped_slug",
     "get_route",
+    "has_models",
+    "is_loaded",
     "load_catalog",
 ]

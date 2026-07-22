@@ -126,3 +126,13 @@ def test_real_catalog_loads():
     # Cells ship empty (env stays authoritative until a cell is claimed) —
     # populated-cell behavior is covered by the seeded-payload tests above.
     assert get_route("copilot", "thinking", "standard") is None
+
+
+def test_registry_metadata_stays_field_compatible_with_block_shape():
+    """RegistryModelMetadata (router view) and ModelMetadata (block
+    projection) are documented as field-compatible by design — enforce it
+    so adding a field to one without the other fails here, not in prod."""
+    from backend.data.llm_registry.llm_models import ModelMetadata
+    from backend.data.llm_registry.registry import RegistryModelMetadata
+
+    assert set(RegistryModelMetadata.model_fields) == set(ModelMetadata._fields)

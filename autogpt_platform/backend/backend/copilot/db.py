@@ -792,6 +792,32 @@ async def update_message_content_by_sequence(
         return False
 
 
+async def update_chat_message_stamps(
+    session_id: str,
+    sequence: int,
+    model: str | None,
+    routing_source: str | None,
+) -> bool:
+    """Back-fill model/routingSource on an already-persisted message row.
+
+    Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
+    the end-of-turn stamping runs; this repairs those rows so the
+    analytics columns survive in the DB. Same mechanism and authorization
+    reasoning as ``update_chat_message_tool_calls``.
+    """
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"model": model, "routingSource": routing_source},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update stamps for session "
+            f"{session_id}, sequence {sequence}"
+        )
+        return False
+    return True
+
+
 async def update_chat_message_tool_calls(
     session_id: str,
     sequence: int,

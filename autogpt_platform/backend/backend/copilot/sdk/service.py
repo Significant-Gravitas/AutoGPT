@@ -47,7 +47,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLlmModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -61,6 +61,8 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
 from ..model_router import ResolvedModel, RoutingSource, resolve_model_route
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
@@ -1941,30 +1943,8 @@ def _resolve_sdk_model() -> str | None:
     return _normalize_model_name(config.thinking_standard_model)
 
 
-def _stamp_turn_messages(
-    messages: list[ChatMessage],
-    *,
-    start_index: int,
-    model: str | None,
-    routing_source: RoutingSource,
-) -> None:
-    """Stamp THIS turn's assistant messages with the serving model and
-    routing layer.
-
-    The SDK adapters build messages far from the resolution context, so
-    the stamp lands at persist time — bounded to ``start_index`` (the
-    session length when the turn began) so pre-feature history rows with
-    NULL model are never back-stamped with today's values, and never
-    overwriting an already-stamped row.
-    """
-    for msg in messages[start_index:]:
-        if msg.role == "assistant" and msg.model is None:
-            msg.model = model
-            msg.routing_source = routing_source
-
-
 async def _resolve_thinking_model_for_user(
-    tier: "CopilotLlmModel",
+    tier: "CopilotLLMModel",
     user_id: str | None,
 ) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
@@ -2000,7 +1980,7 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
 
 
 async def _resolve_sdk_model_for_request(
-    model: "CopilotLlmModel | None",
+    model: "CopilotLLMModel | None",
     session_id: str,
     user_id: str | None = None,
 ) -> tuple[str | None, RoutingSource]:
@@ -2022,7 +2002,7 @@ async def _resolve_sdk_model_for_request(
     if config.claude_agent_model:
         return config.claude_agent_model, "env"
 
-    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -3937,7 +3917,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -5344,10 +5324,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # sdk_model (not effective_model): in subscription mode no
+            # model was requested — the CLI's default must not read as a
+            # fallback divergence against a fabricated "request".
             _stamp_turn_messages(
                 session.messages,
                 start_index=pre_turn_message_count,
-                model=effective_model,
+                requested_model=sdk_model,
+                actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
             try:
@@ -5612,3 +5596,65 @@ async def _fetch_graphiti_context(
 
     ctx = await fetch_warm_context(user_id, message or "") or ""
     return True, ctx
+
+
+def _canonical_model(model: str) -> str:
+    """Spelling-insensitive model identity for fallback detection:
+    vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
+    tail = model.lower().split("/")[-1]
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
+    return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
+
+
+def _same_model(a: str, b: str | None) -> bool:
+    return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    requested_model: str | None,
+    actual_model: str | None,
+    routing_source: RoutingSource,
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+
+    ``actual_model`` is the model observed on ``AssistantMessage.model``
+    (survives retries). When it names a DIFFERENT MODEL than the requested
+    resolution the CLI's overload fallback served the turn — the stamp
+    records the actual model with ``routing_source="fallback"`` so
+    analytics never attribute a fallback-served turn to the layer that
+    routed a different model. The comparison is canonicalized (vendor
+    prefix, dot/dash, date-suffix spellings) so a spelling difference
+    between the request and the CLI's report never fakes a fallback.
+
+    ``requested_model=None`` means no specific model was requested
+    (subscription mode lets the CLI pick its default) — there is nothing
+    to diverge from, so the observed model stamps with the original
+    routing source, never "fallback".
+    """
+    model = actual_model or requested_model
+    if (
+        actual_model is not None
+        and requested_model is not None
+        and not _same_model(actual_model, requested_model)
+    ):
+        routing_source = "fallback"
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source
+            if msg.sequence is not None:
+                # Row already flushed to the DB mid-turn — flag it so the
+                # save path back-fills the columns (insert only covers
+                # unsequenced rows).
+                msg.stamps_pending_save = True

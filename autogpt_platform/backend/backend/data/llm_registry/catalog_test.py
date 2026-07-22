@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from backend.blocks.llm import MODEL_METADATA, LlmModel
+from backend.blocks.llm import MODEL_METADATA, LLMModel
 from backend.data.block_cost_config import MODEL_COST, TOKEN_COST
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
@@ -92,9 +92,9 @@ def test_billing_matches_pre_catalog_snapshot():
     """
     snapshot = json.loads(_SNAPSHOT_PATH.read_text())
     for slug, credits in snapshot["model_cost"].items():
-        assert MODEL_COST[LlmModel(slug)] == credits, slug
+        assert MODEL_COST[LLMModel(slug)] == credits, slug
     for slug, rate in snapshot["token_cost"].items():
-        assert TOKEN_COST[LlmModel(slug)].model_dump() == rate, slug
+        assert TOKEN_COST[LLMModel(slug)].model_dump() == rate, slug
     # Absence parity: the cutover itself must not silently move a model
     # between flat-rate and token billing.
     pre_cutover = set(snapshot["model_cost"])
@@ -105,15 +105,16 @@ def test_billing_matches_pre_catalog_snapshot():
 def test_metadata_matches_pre_catalog_snapshot():
     """Same parity proof for the block-facing metadata projection.
 
-    DISCLOSED DELTA: 4 provider_name cells in the snapshot were updated to
-    the catalog's display names — the cutover intentionally renames them:
-    "V0" → "v0 by Vercel" (v0-1.0-md, v0-1.5-md, v0-1.5-lg) and
+    DISCLOSED DELTA: 7 display cells in the snapshot were updated to the
+    catalog's names — the cutover intentionally renames them:
+    provider_name "V0" → "v0 by Vercel" and creator_name "V0" →
+    "v0 by Vercel" (v0-1.0-md, v0-1.5-md, v0-1.5-lg), plus provider_name
     "AI/ML" → "AI/ML API" (meta-llama/Llama-3.3-70B-Instruct-Turbo).
     Every other cell is the deleted literal, byte-for-byte.
     """
     snapshot = json.loads(_SNAPSHOT_PATH.read_text())
     for slug, fields in snapshot["model_metadata"].items():
-        assert MODEL_METADATA[LlmModel(slug)]._asdict() == fields, slug
+        assert MODEL_METADATA[LLMModel(slug)]._asdict() == fields, slug
 
 
 def test_exactly_one_enabled_recommended_model():
@@ -126,7 +127,7 @@ def test_exactly_one_enabled_recommended_model():
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
     and per-1M token rates — must match its authored catalog entry."""
-    k3 = LlmModel("moonshotai/kimi-k3")
+    k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
         "input": 450.0,

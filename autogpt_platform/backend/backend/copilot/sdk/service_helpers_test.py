@@ -1511,7 +1511,11 @@ class TestStampTurnMessages:
 
         msgs = self._messages()
         _stamp_turn_messages(
-            msgs, start_index=1, model="claude-sonnet-4-6", routing_source="env"
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
         )
         assert msgs[0].model is None  # pre-turn history untouched
         assert msgs[1].model is None  # user rows untouched
@@ -1525,17 +1529,89 @@ class TestStampTurnMessages:
         msgs[2].model = "already/stamped"
         msgs[2].routing_source = "ld"
         _stamp_turn_messages(
-            msgs, start_index=0, model="claude-sonnet-4-6", routing_source="env"
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
         )
         assert msgs[2].model == "already/stamped"
         assert msgs[2].routing_source == "ld"
 
+    def test_fallback_divergence_restamps_source(self):
+        """When the CLI's overload fallback served a different model than
+        the routed one, the stamp records the ACTUAL model and marks the
+        source as "fallback" — never attributing the turn to a layer that
+        routed a different model."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="moonshotai/kimi-k2.6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].model == "claude-sonnet-4-6"
+        assert msgs[0].routing_source == "fallback"
+
+    def test_matching_observed_model_keeps_source(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"
+
+    def test_subscription_default_never_marks_fallback(self):
+        """Subscription mode requests NO model (requested_model=None) — the
+        CLI's default choice is the resolution itself, not a divergence."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model=None,
+            actual_model="claude-opus-4-6",
+            routing_source="env",
+        )
+        assert msgs[0].model == "claude-opus-4-6"
+        assert msgs[0].routing_source == "env"  # NOT "fallback"
+
+    def test_flushed_rows_flagged_for_stamp_backfill(self):
+        """A row the mid-turn flush already persisted (has a sequence) gets
+        flagged so the save path back-fills its columns — the insert path
+        only covers unsequenced rows."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        msgs[2].sequence = 7  # flushed mid-turn
+        _stamp_turn_messages(
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
+        )
+        assert msgs[2].model == "claude-sonnet-4-6"
+        assert msgs[2].stamps_pending_save is True
+        assert msgs[1].stamps_pending_save is False  # user row untouched
+
 
 class TestChatMessageStampRoundTrip:
-    """model/routing_source survive the ChatMessage serialization cycle the
-    persistence layer uses."""
+    """model survives client-facing serialization; routing_source is
+    deliberately EXCLUDED from payloads (clients could infer LD cohort
+    membership from "ld" vs "env") while persisting via the explicit
+    field-mapped DB path."""
 
-    def test_round_trip(self):
+    def test_model_serializes_routing_source_excluded(self):
         from backend.copilot.model import ChatMessage
 
         msg = ChatMessage(
@@ -1545,6 +1621,40 @@ class TestChatMessageStampRoundTrip:
             model="claude-sonnet-4-6",
             routing_source="catalog",
         )
-        restored = ChatMessage.model_validate(msg.model_dump())
-        assert restored.model == "claude-sonnet-4-6"
-        assert restored.routing_source == "catalog"
+        dumped = msg.model_dump()
+        assert dumped["model"] == "claude-sonnet-4-6"
+        assert "routing_source" not in dumped
+        # The DB path reads the attribute, not the dump.
+        assert msg.routing_source == "catalog"
+
+
+class TestSameModelCanonicalization:
+    """Spelling differences between the requested resolution and the CLI's
+    report must never fake a fallback; real model changes must."""
+
+    def test_spelling_variants_are_same_model(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert _same_model("anthropic/claude-opus-4.7", "claude-opus-4-7")
+        assert _same_model("claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5")
+        assert _same_model("anthropic.claude-sonnet-4-6", "claude-sonnet-4.6")
+
+    def test_different_models_diverge(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert not _same_model("claude-sonnet-4-6", "moonshotai/kimi-k2.6")
+        assert not _same_model("claude-opus-4-7", "claude-sonnet-4-6")
+
+    def test_fallback_not_faked_by_spelling(self):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = [ChatMessage(role="assistant", content="x", sequence=None)]
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-opus-4-7",
+            actual_model="anthropic/claude-opus-4.7",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"  # same model, not "fallback"

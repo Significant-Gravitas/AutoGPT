@@ -21,7 +21,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
+from backend.copilot.config import ChatConfig, CopilotLLMModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
@@ -215,7 +215,7 @@ class StreamChatRequest(BaseModel):
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",
     )
-    model: CopilotLlmModel | None = Field(
+    model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",

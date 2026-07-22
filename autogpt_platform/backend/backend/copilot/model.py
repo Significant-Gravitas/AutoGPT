@@ -105,6 +105,26 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Which LLM served this assistant turn ("model" — visible to clients,
+    # the model-badge UX) and which routing layer picked it
+    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # overload fallback served a different model than the routed one).
+    # Product-intelligence mirrors these to segment quality judgments by
+    # model. None on user/tool rows.
+    #
+    # routing_source is excluded from serialized payloads: "ld" vs "env"
+    # would let a client infer LaunchDarkly cohort membership. It still
+    # persists — the DB save path maps fields explicitly (not via
+    # model_dump) and the back-fill reads attributes.
+    model: str | None = None
+    routing_source: str | None = Field(default=None, exclude=True)
+
+    stamps_pending_save: bool = Field(default=False, exclude=True)
+    """True when model/routing_source were stamped after this row was already
+    persisted (mid-turn flush assigned its sequence before end-of-turn
+    stamping ran). The save path back-fills flagged rows — same mechanism
+    as ``tool_calls_pending_save`` below."""
+
     tool_calls_pending_save: bool = Field(default=False, exclude=True)
     """True when ``tool_calls`` mutated after this row was already persisted.
 
@@ -131,12 +151,6 @@ class ChatMessage(BaseModel):
         dropped-tool-calls bug."""
         if self.sequence is not None:
             self.tool_calls_pending_save = True
-
-    # Which LLM served this assistant turn and which routing layer picked it
-    # ("ld" | "db" | "env"). Product-intelligence mirrors these to segment
-    # quality judgments by model. None on user/tool rows.
-    model: str | None = None
-    routing_source: str | None = None
 
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
@@ -953,6 +967,7 @@ async def _save_session_to_db(
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
             msg.tool_calls_pending_save = False
+            msg.stamps_pending_save = False
 
     # Back-fill tool_calls onto rows that were flushed before their
     # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
@@ -966,6 +981,30 @@ async def _save_session_to_db(
         for m in session.messages
         if m.tool_calls_pending_save and m.sequence is not None
     ]
+
+    # Same repair for stamps: rows flushed mid-turn got their sequence
+    # before end-of-turn stamping ran (see ChatMessage.stamps_pending_save).
+    pending_stamps = [
+        m for m in session.messages if m.stamps_pending_save and m.sequence is not None
+    ]
+
+    async def _backfill_stamps(msg: ChatMessage) -> None:
+        assert msg.sequence is not None
+        try:
+            updated = await db.update_chat_message_stamps(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                model=msg.model,
+                routing_source=msg.routing_source,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill stamps for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+        if updated:
+            msg.stamps_pending_save = False
 
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above
@@ -990,8 +1029,14 @@ async def _save_session_to_db(
                 f"{session.session_id} seq {msg.sequence} (row not found)"
             )
 
-    if pending:
-        await asyncio.gather(*(_backfill(m) for m in pending))
+    # One concurrent pass for both repairs — a mid-turn-flushed assistant
+    # row with tools commonly needs BOTH back-fills; success/failure flags
+    # stay independent per mechanism.
+    if pending or pending_stamps:
+        await asyncio.gather(
+            *(_backfill(m) for m in pending),
+            *(_backfill_stamps(m) for m in pending_stamps),
+        )
 
 
 async def append_and_save_message(

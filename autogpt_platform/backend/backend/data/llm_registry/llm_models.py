@@ -1,4 +1,4 @@
-"""Model identity: the ``LlmModel`` enum and its catalog projections.
+"""Model identity: the ``LLMModel`` enum and its catalog projections.
 
 The catalog file (``catalog.py``) owns every model FACT; this module owns
 the model NAMES — the stable identifiers block schemas serialize — plus the
@@ -9,11 +9,13 @@ for the existing import surface.
 """
 
 import logging
+import re
 from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from typing import Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
+from backend.data.llm_registry.catalog_model import CatalogPayload
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,31 @@ def strip_anthropic_vendor_prefix(model: str) -> str:
             return lowered[len(prefix) :]
     return lowered
 
+# Anthropic snapshot-date suffix (claude-haiku-4-5-20251001 → -20251001).
+# Shared by every slug canonicalizer so the pattern can't drift.
+MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
+
+
+def transport_slug_candidates(slug: str) -> list[str]:
+    """Spellings a transport-form slug may take in the catalog, in match
+    order: exact, vendor-stripped, dots→dashes. ONE definition shared by
+    every lookup that tolerates transport spellings (the copilot resolver
+    today), so a spelling accepted in one path can't be refused in
+    another. Enum resolution (``_missing_``/aliases) is deliberately
+    separate — enum identity is exact-or-aliased, never fuzzy.
+    """
+    candidates = [slug]
+    if "/" in slug:
+        # ANY vendor prefix (anthropic/, openai/, …) may wrap a catalog
+        # slug that is stored bare — exact match runs first, so slugs
+        # that legitimately carry their prefix (moonshotai/…) still hit
+        # before these fallbacks.
+        tail = slug.split("/", 1)[1]
+        candidates += [tail, tail.replace(".", "-")]
+    elif slug.startswith("claude-"):
+        candidates.append(slug.replace(".", "-"))
+    return candidates
+
 
 class ModelMetadata(NamedTuple):
     provider: str
@@ -61,13 +88,13 @@ class ModelMetadata(NamedTuple):
     price_tier: Literal[1, 2, 3]
 
 
-class LlmModelMeta(EnumMeta):
+class LLMModelMeta(EnumMeta):
     pass
 
 
-class LlmModel(str, Enum, metaclass=LlmModelMeta):
+class LLMModel(str, Enum, metaclass=LLMModelMeta):
     @classmethod
-    def _missing_(cls, value: object) -> "LlmModel | None":
+    def _missing_(cls, value: object) -> "LLMModel | None":
         """Resolve provider-prefixed model names.
 
         Handles two shapes:
@@ -77,7 +104,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
            drops — e.g. ``anthropic/claude-haiku-4-5`` ↔ enum value
            ``claude-haiku-4-5-20251001``.  Looked up via
            ``_OPENROUTER_ALIASES`` (defined below the class so it can hold
-           ``LlmModel`` members directly).
+           ``LLMModel`` members directly).
         2. Generic provider prefix strip — e.g.
            ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
         """
@@ -102,6 +129,31 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
+    # O-series reasoning (added on dev via #12619, translated to catalog)
+    O4_MINI = "o4-mini"
+    O3_PRO = "o3-pro"
+    O1 = "o1"
+    O1_MINI = "o1-mini"
+    # GPT-5.6 models (current flagship, July 2026)
+    GPT5_6_SOL = "gpt-5.6-sol"
+    GPT5_6_TERRA = "gpt-5.6-terra"
+    GPT5_6_LUNA = "gpt-5.6-luna"
+    # GPT-5.5 models
+    GPT5_5 = "gpt-5.5-2026-04-23"
+    GPT5_5_PRO = "gpt-5.5-pro"
+    # GPT-5.4 models (March 2026)
+    GPT5_4 = "gpt-5.4-2026-03-05"
+    GPT5_4_MINI = "gpt-5.4-mini-2026-03-17"
+    GPT5_4_NANO = "gpt-5.4-nano-2026-03-17"
+    GPT5_4_PRO = "gpt-5.4-pro"
+    # GPT-5.3 models
+    GPT5_3 = "gpt-5.3-chat-latest"
+    GPT5_3_CODEX = "gpt-5.3-codex"
+    # Pro/codex variants of existing generations
+    GPT5_2_PRO = "gpt-5.2-pro"
+    GPT5_1_CODEX = "gpt-5.1-codex"
+    GPT5_PRO = "gpt-5-pro"
+    GPT41_NANO = "gpt-4.1-nano"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
     GPT41 = "gpt-4.1-2025-04-14"
@@ -197,10 +249,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         json_schema = handler(schema)
         llm_model_metadata = {}
         for model in cls:
-            # Kill-switched models (catalog is_enabled=False) drop out of
-            # the picker metadata but remain valid enum values — stored
-            # graphs referencing them keep validating and executing.
-            if model.value in _DISABLED_SLUGS:
+            # Kill-switched and non-GA models drop out of the picker
+            # metadata but remain valid enum values — stored graphs
+            # referencing them keep validating and executing.
+            if model.value in _PICKER_HIDDEN_SLUGS:
                 continue
             model_name = model.value
             metadata = model.metadata
@@ -238,34 +290,38 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 # slugs that drop the snapshot-date suffix Anthropic's own API uses
 # (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
 # generic provider-prefix strip in ``_missing_`` can't reverse the date
-# truncation, so map the OpenRouter slugs to ``LlmModel`` members here.
+# truncation, so map the OpenRouter slugs to ``LLMModel`` members here.
 # Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
 # suffix need entries; values without a snapshot (4.6/4.7+) are already
-# covered by the prefix-strip path alone. Stored as ``LlmModel`` instances
+# covered by the prefix-strip path alone. Stored as ``LLMModel`` instances
 # (not strings) so a rename or snapshot rotation on the enum follows the
 # alias automatically — a stale entry becomes a load-time ``AttributeError``
 # rather than a silent ``_missing_`` miss at runtime.
-_OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
-    "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
-    "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
-    "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+_OPENROUTER_ALIASES: Mapping[str, LLMModel] = {
+    "anthropic/claude-haiku-4-5": LLMModel.CLAUDE_4_5_HAIKU,
+    "anthropic/claude-opus-4-5": LLMModel.CLAUDE_4_5_OPUS,
+    "anthropic/claude-sonnet-4-5": LLMModel.CLAUDE_4_5_SONNET,
+    "openai/gpt-5.4": LLMModel.GPT5_4,
+    "openai/gpt-5.4-mini": LLMModel.GPT5_4_MINI,
+    "openai/gpt-5.4-nano": LLMModel.GPT5_4_NANO,
+    "openai/gpt-5.5": LLMModel.GPT5_5,
 }
 
 
-def _build_model_metadata() -> dict["LlmModel", ModelMetadata]:
+def _build_model_metadata() -> dict["LLMModel", ModelMetadata]:
     """Project catalog facts into the block-facing metadata shape.
 
     The catalog file (``backend/data/llm_registry/catalog.py``) is the
     single source of truth for model facts; this module keeps only the
-    ``LlmModel`` identifiers that block schemas serialize. Catalog models
+    ``LLMModel`` identifiers that block schemas serialize. Catalog models
     without an enum member (copilot-only models routed by slug) simply
     don't surface in blocks.
     """
     payload = get_catalog()
     providers = {p.name: p.display_name for p in payload.providers}
     creators = {c.name: c.display_name for c in payload.creators}
-    members = {m.value: m for m in LlmModel}
-    metadata: dict[LlmModel, ModelMetadata] = {}
+    members = {m.value: m for m in LLMModel}
+    metadata: dict[LLMModel, ModelMetadata] = {}
     for model in payload.models:
         member = members.get(model.slug)
         if member is None:
@@ -286,23 +342,43 @@ def _build_model_metadata() -> dict["LlmModel", ModelMetadata]:
 
 MODEL_METADATA = _build_model_metadata()
 
-_DISABLED_SLUGS = frozenset(m.slug for m in get_catalog().models if not m.is_enabled)
+
+def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
+    """Slugs hidden from the block picker: kill-switched models AND models
+    not yet GA (EMPLOYEES/ADMINS/HIDDEN visibility) — the catalog's
+    documented "who can SEE this" contract. Enum values stay valid either
+    way, so stored graphs referencing a hidden model keep validating and
+    executing.
+
+    DECIDED SCOPE: at the block layer this filter is a UX control, not a
+    safety control. A hand-crafted graph node can still select a
+    kill-switched slug; execution of stored graphs must keep working after
+    a kill (and keep billing), so the block layer deliberately does not
+    veto. The hard-stop for an incident is the retirement CLI, which
+    rewrites the nodes; copilot serving IS vetoed at resolution time.
+    """
+    return frozenset(
+        m.slug for m in payload.models if not m.is_enabled or m.visibility != "GA"
+    )
 
 
-def _default_model_from_catalog() -> LlmModel:
+_PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+
+
+def _default_model_from_catalog() -> LLMModel:
     """The platform default IS the catalog's recommended model — one fact,
     one home. First enabled ``is_recommended`` entry with an enum identifier
     wins (catalog order); no recommendation is a data error caught at boot.
     """
-    members = {m.value for m in LlmModel}
-    first_enabled: LlmModel | None = None
+    members = {m.value for m in LLMModel}
+    first_enabled: LLMModel | None = None
     for model in get_catalog().models:
         if not model.is_enabled or model.slug not in members:
             continue
         if model.is_recommended:
-            return LlmModel(model.slug)
+            return LLMModel(model.slug)
         if first_enabled is None:
-            first_enabled = LlmModel(model.slug)
+            first_enabled = LLMModel(model.slug)
     # Killing the recommended model must not crash boot — fall back to the
     # first enabled block-selectable model (deterministic catalog order).
     if first_enabled is not None:
@@ -317,41 +393,46 @@ def _default_model_from_catalog() -> LlmModel:
 DEFAULT_LLM_MODEL = _default_model_from_catalog()
 
 # Family-aware mapping for legacy model values that have been retired from the
-# `LlmModel` enum. Used by both the Prisma migration that rewrites stored graph
+# `LLMModel` enum. Used by both the Prisma migration that rewrites stored graph
 # definitions and by the boot-time safety net (`migrate_llm_models` in
 # backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
 # the global GPT default. Keep this in sync with
 # migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
-LEGACY_MODEL_MAPPINGS: dict[str, LlmModel] = {
-    "claude-3-haiku-20240307": LlmModel.CLAUDE_4_5_HAIKU,
-    "claude-opus-4-20250514": LlmModel.CLAUDE_4_7_OPUS,
-    "claude-sonnet-4-20250514": LlmModel.CLAUDE_4_6_SONNET,
-    "claude-opus-4-1-20250805": LlmModel.CLAUDE_4_7_OPUS,
-    "gpt-4-turbo": LlmModel.GPT41,
-    "o1": LlmModel.O3,
-    "o1-mini": LlmModel.O3_MINI,
-    "google/gemini-2.5-pro-preview-03-25": LlmModel.GEMINI_2_5_PRO,
-    "google/gemini-2.5-flash-lite-preview-06-17": LlmModel.GEMINI_2_5_FLASH,
-    "cohere/command-r-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
-    "cohere/command-r-plus-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
-    "mistralai/mistral-nemo": LlmModel.MISTRAL_SMALL_3_2,
-    "microsoft/wizardlm-2-8x22b": LlmModel.MICROSOFT_PHI_4,
-    "moonshotai/kimi-k2": LlmModel.KIMI_K2_6,
-    "moonshotai/kimi-k2-0905": LlmModel.KIMI_K2_6,
-    "z-ai/glm-4-32b": LlmModel.ZAI_GLM_4_6,
-    "z-ai/glm-4.5": LlmModel.ZAI_GLM_4_6,
-    "z-ai/glm-4.5-air": LlmModel.ZAI_GLM_4_7_FLASH,
-    "z-ai/glm-4.5-air:free": LlmModel.ZAI_GLM_4_7_FLASH,
-    "z-ai/glm-4.5v": LlmModel.ZAI_GLM_4_6V,
+LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
+    "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
+    "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-20250514": LLMModel.CLAUDE_4_6_SONNET,
+    "claude-opus-4-1-20250805": LLMModel.CLAUDE_4_7_OPUS,
+    "gpt-4-turbo": LLMModel.GPT41,
+    "o1": LLMModel.O3,
+    "o1-mini": LLMModel.O3_MINI,
+    "google/gemini-2.5-pro-preview-03-25": LLMModel.GEMINI_2_5_PRO,
+    "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
+    "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
+    "cohere/command-r-plus-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
+    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_3_2,
+    "microsoft/wizardlm-2-8x22b": LLMModel.MICROSOFT_PHI_4,
+    "moonshotai/kimi-k2": LLMModel.KIMI_K2_6,
+    "moonshotai/kimi-k2-0905": LLMModel.KIMI_K2_6,
+    "z-ai/glm-4-32b": LLMModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5": LLMModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5-air": LLMModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5-air:free": LLMModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5v": LLMModel.ZAI_GLM_4_6V,
     # AI/ML API stragglers — no direct same-family successor on AI/ML's current
     # catalogue, so they all map to the closest open-weight Meta/Llama option
     # that AI/ML still serves.
-    "Qwen/Qwen2.5-72B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
-    "nvidia/llama-3.1-nemotron-70b-instruct": LlmModel.AIML_API_LLAMA3_3_70B,
-    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
-    "meta-llama/Llama-3.2-3B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+    "Qwen/Qwen2.5-72B-Instruct-Turbo": LLMModel.AIML_API_LLAMA3_3_70B,
+    "nvidia/llama-3.1-nemotron-70b-instruct": LLMModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": LLMModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Llama-3.2-3B-Instruct-Turbo": LLMModel.AIML_API_LLAMA3_3_70B,
 }
 
-for model in LlmModel:
-    if model not in MODEL_METADATA:
-        raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
+
+def _assert_metadata_complete() -> None:
+    for member in LLMModel:
+        if member not in MODEL_METADATA:
+            raise ValueError(f"Missing MODEL_METADATA metadata for model: {member}")
+
+
+_assert_metadata_complete()

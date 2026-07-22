@@ -74,7 +74,7 @@ def _schema_format(query_template: str) -> LiteralString:
 # AgentNode.constantInput stores FULL enum values — mixed bare and
 # provider-prefixed forms (``claude-opus-4-7``, ``moonshotai/kimi-k2.5``),
 # exactly the catalog slugs; graph.migrate_llm_models compares against
-# ``LlmModel.value`` unmodified. Node values therefore map to catalog slugs
+# ``LLMModel.value`` unmodified. Node values therefore map to catalog slugs
 # by IDENTITY — stripping the provider prefix (as an earlier revision did)
 # both misses prefixed models and writes out-of-enum values that the
 # startup migration would stomp to the global fallback.
@@ -257,23 +257,36 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
     )
 
 
-async def list_model_migrations(include_reverted: bool = False) -> list[dict[str, Any]]:
+class MigrationRow(BaseModel):
+    """One retirement record, as listed by the CLI."""
+
+    id: str
+    source_model_slug: str
+    target_model_slug: str
+    reason: str | None
+    node_count: int
+    is_reverted: bool
+    reverted_at: str | None
+    created_at: str
+
+
+async def list_model_migrations(include_reverted: bool = False) -> list[MigrationRow]:
     """Recent migrations, newest first."""
     where: Any = None if include_reverted else {"isReverted": False}
     records = await prisma.models.LlmModelMigration.prisma().find_many(
         where=where, order={"createdAt": "desc"}
     )
     return [
-        {
-            "id": r.id,
-            "source_model_slug": r.sourceModelSlug,
-            "target_model_slug": r.targetModelSlug,
-            "reason": r.reason,
-            "node_count": r.nodeCount,
-            "is_reverted": r.isReverted,
-            "reverted_at": r.revertedAt.isoformat() if r.revertedAt else None,
-            "created_at": r.createdAt.isoformat(),
-        }
+        MigrationRow(
+            id=r.id,
+            source_model_slug=r.sourceModelSlug,
+            target_model_slug=r.targetModelSlug,
+            reason=r.reason,
+            node_count=r.nodeCount,
+            is_reverted=r.isReverted,
+            reverted_at=r.revertedAt.isoformat() if r.revertedAt else None,
+            created_at=r.createdAt.isoformat(),
+        )
         for r in records
     ]
 
@@ -323,7 +336,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
         return 0
     if args.list:
         for row in await list_model_migrations(args.include_reverted):
-            print(json.dumps(row))
+            print(row.model_dump_json())
         return 0
     if args.slug and not args.replacement:
         # Standing replacement pointer: the catalog's fallback_model_slug

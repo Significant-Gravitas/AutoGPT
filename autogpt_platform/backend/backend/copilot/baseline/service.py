@@ -42,7 +42,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLlmModel, CopilotMode
+from backend.copilot.config import CopilotLLMModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.local_context_probe import (
@@ -403,7 +403,7 @@ def _filter_tools_by_permissions(
 
 
 async def _resolve_baseline_model(
-    tier: CopilotLlmModel | None, user_id: str | None
+    tier: CopilotLLMModel | None, user_id: str | None
 ) -> ResolvedModel:
     """Pick the model for the baseline path based on the per-request tier.
 
@@ -1565,7 +1565,7 @@ async def stream_chat_completion_baseline(
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
