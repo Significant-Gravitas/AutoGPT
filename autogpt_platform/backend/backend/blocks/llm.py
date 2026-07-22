@@ -218,6 +218,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    XIAOMI_MIMO_V2_PRO = "xiaomi/mimo-v2-pro"
+    XIAOMI_MIMO_V2_OMNI = "xiaomi/mimo-v2-omni"
+    XIAOMI_MIMO_V2_FLASH = "xiaomi/mimo-v2-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
@@ -635,6 +638,15 @@ MODEL_METADATA = {
     ),
     LlmModel.QWEN3_CODER: ModelMetadata(
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
+    ),
+    LlmModel.XIAOMI_MIMO_V2_PRO: ModelMetadata(
+        "open_router", 1048576, 131072, "MiMo-V2 Pro", "OpenRouter", "Xiaomi", 2
+    ),
+    LlmModel.XIAOMI_MIMO_V2_OMNI: ModelMetadata(
+        "open_router", 262144, 65536, "MiMo-V2 Omni", "OpenRouter", "Xiaomi", 2
+    ),
+    LlmModel.XIAOMI_MIMO_V2_FLASH: ModelMetadata(
+        "open_router", 262144, 65536, "MiMo-V2 Flash", "OpenRouter", "Xiaomi", 1
     ),
     # https://openrouter.ai/models?q=z-ai
     LlmModel.ZAI_GLM_4_6: ModelMetadata(
