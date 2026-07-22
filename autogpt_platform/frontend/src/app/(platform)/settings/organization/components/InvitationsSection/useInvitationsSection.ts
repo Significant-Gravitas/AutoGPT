@@ -111,19 +111,18 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     invitationsQuery.refetch();
   }
 
-  const { mutateAsync: resendInvitation } =
-    usePostV2ResendInvitation({
-      mutation: {
-        onError: (error) => {
-          toast({
-            title: "Failed to resend invitation",
-            description:
-              error instanceof Error ? error.message : "Please try again.",
-            variant: "destructive",
-          });
-        },
+  const { mutateAsync: resendInvitation } = usePostV2ResendInvitation({
+    mutation: {
+      onError: (error) => {
+        toast({
+          title: "Failed to resend invitation",
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
       },
-    });
+    },
+  });
 
   async function handleRevoke(invitation: InvitationResponse) {
     // Track the row being revoked so only its button shows a spinner.
