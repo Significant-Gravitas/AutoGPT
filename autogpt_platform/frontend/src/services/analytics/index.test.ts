@@ -113,6 +113,33 @@ describe("sendDatafastEvent", () => {
     expect(datafast).toHaveBeenCalledWith("tour_start", {});
   });
 
+  it("does not treat /tourism as a consent-exempt tour page", () => {
+    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    window.history.pushState({}, "", "/tourism");
+
+    analytics.sendDatafastEvent("tour_start", {});
+
+    const datafast = vi.fn();
+    window.datafast = datafast;
+    flushDatafastQueue();
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
+  it("warns again when the queue overflows after a successful flush", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (let i = 0; i < 101; i++) {
+      analytics.sendDatafastEvent("tour_start", {});
+    }
+    drainQueue();
+    for (let i = 0; i < 101; i++) {
+      analytics.sendDatafastEvent("tour_start", {});
+    }
+
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
   it("caps the queue at 100, keeps the earliest events, and warns once", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let i = 0; i < 150; i++) {

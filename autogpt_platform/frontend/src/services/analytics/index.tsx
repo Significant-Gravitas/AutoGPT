@@ -45,7 +45,7 @@ export function SetupAnalytics(props: SetupProps) {
   // the consent gate — otherwise tour funnel events would never fire for
   // first-touch visitors.
   const pathname = usePathname();
-  const isPublicTourPage = pathname?.startsWith("/tour") ?? false;
+  const isPublicTourPage = isTourPath(pathname);
 
   // Datafa.st journey analytics only on production AND with consent
   const dataFastEnabled =
@@ -155,7 +155,7 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   // flush from the Script's onLoad instead of dropping them. Pre-consent
   // events must not queue — they would be replayed once consent is granted.
   // /tour is exempt: it loads DataFast without consent by design.
-  const consentExempt = window.location.pathname.startsWith("/tour");
+  const consentExempt = isTourPath(window.location.pathname);
   if (!consentExempt && !consent.hasConsentFor("analytics")) return;
   if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) {
     if (!datafastQueueOverflowWarned) {
@@ -175,4 +175,14 @@ export function flushDatafastQueue() {
   datafastQueue
     .splice(0, datafastQueue.length)
     .forEach(([name, metadata]) => datafast(name, metadata));
+  // A successful drain ends the blocked episode; warn again if a later one
+  // overflows too.
+  datafastQueueOverflowWarned = false;
+}
+
+// Segment-boundary match: /tourism must not inherit the tour's consent
+// exemption.
+function isTourPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === "/tour" || pathname.startsWith("/tour/");
 }
