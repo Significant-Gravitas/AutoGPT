@@ -1,7 +1,8 @@
 """Provider cost telemetry for the desktop sandbox blocks.
 
-Emits a ``cost_meter`` object with an identical shape on the E2B and Daytona
-branches so measured runs are directly comparable (see PARITY.md).
+Every desktop block emits a ``cost_meter`` output estimating the underlying
+provider cost of the run from E2B's published per-second rates, so real
+infrastructure spend is observable per block execution.
 """
 
 from pydantic import BaseModel

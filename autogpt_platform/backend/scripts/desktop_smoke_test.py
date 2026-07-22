@@ -5,8 +5,7 @@ Run manually (costs a few cents of E2B credits):
 
 Reads E2B_API_KEY from backend/.env. Creates a desktop, verifies the live
 stream URL responds, exercises input + files + suspend/resume + the
-workspace volume, then destroys the sandbox. Prints timings for the
-provider comparison doc.
+workspace volume, then destroys the sandbox. Prints timings.
 """
 
 import asyncio
