@@ -69,6 +69,18 @@ export const customMutator = async <
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
+  // A create flow can pin an explicit team (X-Team-Id: <id>) or force org-home
+  // scope (X-Team-Id: "" sentinel) via Orval's request options. The empty
+  // sentinel means "ignore the active-team context and create in org-home";
+  // strip it here so an empty value never reaches the backend on any path.
+  const perRequestTeamId = (
+    requestOptions.headers as Record<string, string> | undefined
+  )?.[TEAM_HEADER_NAME];
+  const forceOrgHome = perRequestTeamId === "";
+  if (forceOrgHome) {
+    delete headers[TEAM_HEADER_NAME];
+  }
+
   if (environment.isClientSide()) {
     const traceData = Sentry.getTraceData?.() ?? {};
     for (const [key, value] of Object.entries(traceData)) {
@@ -78,16 +90,15 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
-    // A per-request X-Team-Id (create flows that pick an explicit team via
-    // Orval's request options) must win over the store-derived team context,
-    // so capture it before the store headers overwrite it below.
-    const perRequestTeamId = (
-      requestOptions.headers as Record<string, string> | undefined
-    )?.[TEAM_HEADER_NAME];
     // Active org/team context — the backend scopes tenancy by these headers
     // (personal-org fallback when absent).
     Object.assign(headers, getOrgContextHeaders());
-    if (perRequestTeamId) {
+    // A per-request team choice wins over the store-derived context: an
+    // explicit id pins that team; the org-home sentinel drops the team header
+    // so the create lands in org-home even when a team is active in the nav.
+    if (forceOrgHome) {
+      delete headers[TEAM_HEADER_NAME];
+    } else if (perRequestTeamId) {
       headers[TEAM_HEADER_NAME] = perRequestTeamId;
     }
   }
