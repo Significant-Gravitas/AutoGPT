@@ -102,6 +102,7 @@ from .utils import (
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
+    owner_referenced_credential_ids,
     validate_exec,
 )
 
@@ -352,6 +353,23 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
+
+    # OWNER-mode grant runs: the consumer reaches this graph only via a
+    # team grant whose credentialMode is OWNER, so the graph's OWN stored
+    # credential references resolve against the graph owner's credential
+    # store, not the executing consumer's. Set once at execution-start (see
+    # ``resolve_execution_credentials_owner``); ``None`` for every normal run.
+    # We deliberately re-read the reference from ``node.input_default`` (the
+    # owner's baked-in value) rather than trusting ``input_data`` — a consumer
+    # must never be able to redirect the lookup to an arbitrary id in the
+    # owner's store (see ``owner_credential_ids`` allowlist for auto-creds).
+    credentials_owner_id = execution_context.credentials_owner_id
+    owner_credential_ids: set[str] = (
+        owner_referenced_credential_ids(node.input_default, input_model)
+        if credentials_owner_id
+        else set()
+    )
+
     try:
         # Handle regular credentials fields
         for field_name, input_type in input_model.get_credentials_fields().items():
@@ -370,7 +388,22 @@ async def execute_node(
                 extra_exec_kwargs[field_name] = _dry_run_creds
                 continue
 
-            field_value = input_data.get(field_name)
+            # OWNER mode ignores consumer-supplied credential overrides and
+            # resolves only the graph owner's baked reference.
+            resolve_user_id = user_id
+            owner_ref = (
+                node.input_default.get(field_name) if credentials_owner_id else None
+            )
+            if (
+                credentials_owner_id
+                and isinstance(owner_ref, dict)
+                and owner_ref.get("id")
+            ):
+                field_value = owner_ref
+                resolve_user_id = credentials_owner_id
+            else:
+                field_value = input_data.get(field_name)
+
             if not field_value or (
                 isinstance(field_value, dict) and not field_value.get("id")
             ):
@@ -380,13 +413,17 @@ async def execute_node(
                 continue  # Block runs without credentials
 
             credentials_meta = input_type(**field_value)
+            if resolve_user_id != user_id:
+                # Do not copy the owner's credential title into the consumer's
+                # execution record. Secrets are never written to input_data.
+                credentials_meta = credentials_meta.model_copy(update={"title": None})
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
             field_info = credential_fields_info[field_name]
             if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
-                    user_id,
+                    resolve_user_id,
                     credentials_meta.id,
                 )
                 if not (
@@ -398,16 +435,35 @@ async def execute_node(
                     and credentials.type == credentials_meta.type
                 ):
                     raise ValueError(
-                        f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                        f"Credentials #{credentials_meta.id} for user "
+                        f"#{resolve_user_id} not found"
                     )
                 if provider_matches(credentials.provider, "codex"):
                     await enforce_codex_access(user_id)
                 continue
             try:
-                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+                lease = await creds_manager.acquire_lease(
+                    resolve_user_id, credentials_meta.id
+                )
             except ValueError:
                 # Credential was deleted or doesn't exist.
-                # If the field has a default, run without credentials.
+                if resolve_user_id != user_id:
+                    # OWNER mode never falls back to the consumer's store.
+                    if input_model.model_fields[field_name].default is not None:
+                        log_metadata.warning(
+                            f"Owner credential #{credentials_meta.id} for field "
+                            f"'{field_name}' not found, running without (optional)"
+                        )
+                        input_data[field_name] = None
+                        continue
+                    raise ValueError(
+                        f"Graph #{graph_id} is shared to run on its owner's "
+                        f"credentials, but the owner's credential "
+                        f"#{credentials_meta.id} for field '{field_name}' is "
+                        "unavailable (missing, deleted, or revoked). The graph "
+                        "owner must reconnect it."
+                    )
+                # Consumer mode preserves the existing optional-field behavior.
                 if input_model.model_fields[field_name].default is not None:
                     log_metadata.warning(
                         f"Credentials #{credentials_meta.id} not found, "
@@ -426,7 +482,8 @@ async def execute_node(
                 and credentials.type == credentials_meta.type
             ):
                 raise ValueError(
-                    f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                    f"Credentials #{credentials_meta.id} for user "
+                    f"#{resolve_user_id} not found"
                 )
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
@@ -440,6 +497,8 @@ async def execute_node(
             input_data=input_data,
             creds_manager=creds_manager,
             user_id=user_id,
+            credentials_owner_id=credentials_owner_id,
+            owner_credential_ids=owner_credential_ids,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)

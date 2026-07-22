@@ -113,6 +113,35 @@ class TestUpsertGrant:
         assert result.id == "grant-1"
 
     @pytest.mark.asyncio
+    async def test_org_admin_cannot_create_owner_grant_on_others_graph(
+        self, mock_prisma
+    ):
+        # An admin sharing someone else's graph must not be able to expose that
+        # owner's credentials via OWNER mode. 400 (ValueError), not a silent share.
+        with pytest.raises(ValueError, match="only be created by the graph's owner"):
+            await grant_db.upsert_grant(
+                "org-1",
+                "g1",
+                **_upsert_kwargs(
+                    credential_mode="OWNER",
+                    created_by_user_id="someone-else",
+                    sharer_is_org_admin=True,
+                ),
+            )
+        mock_prisma.agentgraphgrant.upsert.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_owner_can_create_owner_grant(self, mock_prisma):
+        # The graph owner (default created_by_user_id="owner-1") may consent.
+        result = await grant_db.upsert_grant(
+            "org-1", "g1", **_upsert_kwargs(credential_mode="OWNER")
+        )
+
+        assert result.id == "grant-1"
+        upsert_data = mock_prisma.agentgraphgrant.upsert.call_args.kwargs["data"]
+        assert upsert_data["create"]["credentialMode"] == "OWNER"
+
+    @pytest.mark.asyncio
     async def test_default_pin_is_active_version(self, mock_prisma):
         await grant_db.upsert_grant("org-1", "g1", **_upsert_kwargs())
 

@@ -30,12 +30,26 @@ async def acquire_auto_credentials(
     input_data: dict[str, Any],
     creds_manager: IntegrationCredentialsManager,
     user_id: str,
+    credentials_owner_id: str | None = None,
+    owner_credential_ids: set[str] | None = None,
 ) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
 
     Returns:
         (extra_exec_kwargs, locks): kwargs to inject into block execution,
         and credential locks to release after execution completes.
+
+    Args:
+        credentials_owner_id: When set (OWNER-mode grant run), an auto-credential
+            id that the graph itself references (i.e. present in
+            ``owner_credential_ids``) is resolved against this graph owner's
+            store instead of ``user_id``. Any other id — e.g. a file the
+            consumer picked from their own Drive — still resolves against
+            ``user_id``, so a consumer can never redirect the lookup into the
+            owner's store.
+        owner_credential_ids: Allowlist of credential ids the graph references
+            (from the owner's baked ``input_default``). Only consulted when
+            ``credentials_owner_id`` is set.
 
     Raises:
         MissingAutoCredentialsError: when a field is missing or lacks a
@@ -45,6 +59,7 @@ async def acquire_auto_credentials(
     """
     extra_exec_kwargs: dict[str, Any] = {}
     locks: list[AsyncRedisLock] = []
+    owner_credential_ids = owner_credential_ids or set()
 
     try:
         for kwarg_name, info in input_model.get_auto_credentials_fields().items():
@@ -68,13 +83,33 @@ async def acquire_auto_credentials(
                             f"builder and re-select the file."
                         )
                     file_name = field_data.get("name", "selected file")
+                    # OWNER-mode: resolve the graph's own referenced file
+                    # credential against the owner's store; everything else
+                    # against the executing consumer.
+                    resolve_user_id = (
+                        credentials_owner_id
+                        if credentials_owner_id and cred_id in owner_credential_ids
+                        else user_id
+                    )
                     try:
                         credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
+                            resolve_user_id, cred_id
                         )
                         locks.append(lock)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
+                        if resolve_user_id != user_id:
+                            # OWNER mode: the graph owner's referenced file
+                            # credential is gone. Fail loudly — never fall back
+                            # to the consumer's store.
+                            raise ValueError(
+                                f"{provider.capitalize()} credentials for "
+                                f"'{file_name}' in field '{field_name}' are "
+                                f"shared to run on the graph owner's account, "
+                                f"but the owner's credential is unavailable "
+                                f"(missing, deleted, or revoked). The graph "
+                                f"owner must re-select the file."
+                            )
                         raise ValueError(
                             f"{provider.capitalize()} credentials for "
                             f"'{file_name}' in field '{field_name}' are not "

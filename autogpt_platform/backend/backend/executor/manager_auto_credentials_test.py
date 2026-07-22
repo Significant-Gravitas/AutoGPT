@@ -469,3 +469,83 @@ async def test_acquire_auto_credentials_rejects_non_dict_value_with_type_message
     # can't silently regress to the old generic message.
     assert type(bad_value).__name__ in msg
     manager.acquire.assert_not_called()
+
+
+class TestAutoCredentialsOwnerMode:
+    """OWNER-mode grant runs resolve the graph's OWN referenced file
+    credentials against the graph owner's store, while a file the consumer
+    picked themselves still resolves against the consumer."""
+
+    @pytest.mark.asyncio
+    async def test_owner_referenced_id_resolves_against_owner(
+        self,
+        google_drive_file_data,
+        mock_input_model,
+        mock_creds_manager,
+    ):
+        from backend.executor.auto_credentials import acquire_auto_credentials
+
+        manager, mock_creds, _ = mock_creds_manager
+        input_data = {"spreadsheet": google_drive_file_data["valid"]}
+
+        extra_kwargs, _ = await acquire_auto_credentials(
+            input_model=mock_input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="consumer-1",
+            credentials_owner_id="owner-1",
+            owner_credential_ids={"cred-id-123"},
+        )
+
+        # cred-id-123 is a graph-referenced id -> resolves against the owner.
+        manager.acquire.assert_called_once_with("owner-1", "cred-id-123")
+        assert extra_kwargs["credentials"] == mock_creds
+
+    @pytest.mark.asyncio
+    async def test_consumer_picked_id_not_in_allowlist_resolves_against_consumer(
+        self,
+        google_drive_file_data,
+        mock_input_model,
+        mock_creds_manager,
+    ):
+        from backend.executor.auto_credentials import acquire_auto_credentials
+
+        manager, _, _ = mock_creds_manager
+        input_data = {"spreadsheet": google_drive_file_data["valid"]}
+
+        await acquire_auto_credentials(
+            input_model=mock_input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="consumer-1",
+            credentials_owner_id="owner-1",
+            owner_credential_ids={"some-other-owner-ref"},  # cred-id-123 NOT listed
+        )
+
+        # Not a graph-referenced id -> the consumer's own store, never the owner's.
+        manager.acquire.assert_called_once_with("consumer-1", "cred-id-123")
+
+    @pytest.mark.asyncio
+    async def test_missing_owner_credential_raises_owner_specific_error(
+        self,
+        google_drive_file_data,
+        mock_input_model,
+        mock_creds_manager,
+    ):
+        from backend.executor.auto_credentials import acquire_auto_credentials
+
+        manager, _, _ = mock_creds_manager
+        manager.acquire.side_effect = ValueError(
+            "Credentials #cred-id-123 for user #owner-1 not found"
+        )
+        input_data = {"spreadsheet": google_drive_file_data["valid"]}
+
+        with pytest.raises(ValueError, match="run on the graph owner's account"):
+            await acquire_auto_credentials(
+                input_model=mock_input_model,
+                input_data=input_data,
+                creds_manager=manager,
+                user_id="consumer-1",
+                credentials_owner_id="owner-1",
+                owner_credential_ids={"cred-id-123"},
+            )
