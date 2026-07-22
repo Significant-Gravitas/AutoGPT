@@ -228,8 +228,9 @@ async def write_agent_json_to_workspace(
     is the caller-specific "what to do instead" clause).
     """
     if not re.fullmatch(r"[\w][\w.-]*", write_to):
+        # Don't echo the rejected value — it may carry directory structure.
         return None, (
-            f" NOTE: write_to must be a plain filename (got {write_to!r}); "
+            f" NOTE: write_to must be a plain filename without directories; "
             f"{fallback_note}"
         )
     if not user_id or not session_id:

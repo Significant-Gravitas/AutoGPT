@@ -12,7 +12,7 @@ from .agent_search import (
     search_library_for_creation,
 )
 from .base import BaseTool
-from .models import AgentsFoundResponse, ToolResponseBase
+from .models import AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
 class FindLibraryAgentTool(BaseTool):
@@ -107,6 +107,15 @@ class FindLibraryAgentTool(BaseTool):
                 user_id=user_id,
             )
         write_graph_to = write_graph_to.strip()
+        if write_graph_to and not agent_id.strip():
+            return ErrorResponse(
+                message=(
+                    "write_graph_to requires agent_id — pass the library agent "
+                    "or graph id whose graph should be written to the file."
+                ),
+                error="missing_agent_id",
+                session_id=session.session_id,
+            )
         if agent_id := agent_id.strip():
             result = await lookup_library_agent_by_id(
                 agent_id=agent_id,
@@ -135,9 +144,14 @@ async def _write_graph_note(
     """Write the agent's graph to a workspace file; return the message note.
 
     The note either carries the @@agptfile ref to pass to edit_agent, or
-    explains why the write failed and what to do instead.
+    explains why the write failed and what to do instead. Never raises —
+    the agent lookup already succeeded, so a graph-write hiccup must degrade
+    to a note on that result, not replace it with a generic tool error.
     """
-    agent_json = await get_agent_as_json(agent_id, user_id)
+    try:
+        agent_json = await get_agent_as_json(agent_id, user_id)
+    except Exception:
+        agent_json = None
     if agent_json is None:
         return (
             "NOTE: could not load the agent's graph to write it to a file; "

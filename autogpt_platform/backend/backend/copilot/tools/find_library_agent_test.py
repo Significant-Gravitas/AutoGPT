@@ -394,6 +394,51 @@ async def test_write_graph_to_unloadable_graph_notes_fallback(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_write_graph_to_without_agent_id_is_rejected(tool, session):
+    """write_graph_to must not be silently discarded on the search path."""
+    with patch(
+        "backend.copilot.tools.find_library_agent.search_agents",
+        new=AsyncMock(),
+    ) as mock_search:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            query="weather",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert "agent_id" in result.message
+    mock_search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_graph_to_loader_exception_notes_fallback(tool, session):
+    """An exception while loading the graph degrades to the fallback note —
+    the successful lookup result must not be replaced by a generic error."""
+    manager, p1, p2, p3 = _write_graph_patches(_lookup_lib_db(), None)
+
+    with (
+        p1,
+        p3,
+        patch(
+            "backend.copilot.tools.find_library_agent.get_agent_as_json",
+            new=AsyncMock(side_effect=RuntimeError("db hiccup")),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+            write_graph_to="agent.json",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert "could not load" in result.message
+    manager.write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_write_graph_to_write_failure_notes_fallback(tool, session):
     """A workspace write failure degrades to a note, not an error response."""
     graph = {"nodes": [{"id": "n1"}], "links": []}
