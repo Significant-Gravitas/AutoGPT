@@ -181,7 +181,9 @@ async def test_create_team_credential_writes_expected_row_shape(mock_prisma, moc
     """The written row must match exactly what the read path resolves on:
     ownerType=TEAM, ownerId=teamId, teamId set, organizationId=team's org."""
     mocker.patch.object(
-        scoped_credentials._cryptor, "encrypt", return_value="encrypted-blob"
+        scoped_credentials,
+        "_cryptor",
+        MagicMock(encrypt=MagicMock(return_value="encrypted-blob")),
     )
     created = _cred(owner_type="TEAM", owner_id=TEAM_A)
     mock_prisma.integrationcredential.create = AsyncMock(return_value=created)
@@ -219,7 +221,9 @@ async def test_create_credential_syncs_payload_id_with_row_id(mock_prisma, mocke
         return "encrypted-blob"
 
     mocker.patch.object(
-        scoped_credentials._cryptor, "encrypt", side_effect=_fake_encrypt
+        scoped_credentials,
+        "_cryptor",
+        MagicMock(encrypt=MagicMock(side_effect=_fake_encrypt)),
     )
     mock_prisma.integrationcredential.create = AsyncMock(
         return_value=_cred(owner_type="TEAM", owner_id=TEAM_A)

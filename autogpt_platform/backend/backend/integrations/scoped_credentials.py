@@ -18,7 +18,18 @@ from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)
 
-_cryptor = JSONCryptor()
+_cryptor: JSONCryptor | None = None
+
+
+def _get_cryptor() -> JSONCryptor:
+    """Lazy singleton — instantiating JSONCryptor at import time makes every
+    importer of this module (the integrations router, and transitively the
+    whole app) require ENCRYPTION_KEY, which breaks key-less contexts like the
+    CI OpenAPI export."""
+    global _cryptor
+    if _cryptor is None:
+        _cryptor = JSONCryptor()
+    return _cryptor
 
 
 async def get_scoped_credentials(
@@ -120,7 +131,7 @@ async def get_credential_by_id(
 
     result = _cred_to_metadata(cred, scope=cred.ownerType)
     if decrypt:
-        result["payload"] = _cryptor.decrypt(cred.encryptedPayload)
+        result["payload"] = _get_cryptor().decrypt(cred.encryptedPayload)
 
     return result
 
@@ -158,7 +169,7 @@ async def create_credential(
     # surface the client-supplied id from the blob instead of the authoritative
     # row id, breaking id-based resolution.
     credential_id = str(uuid4())
-    encrypted = _cryptor.encrypt({**payload, "id": credential_id})
+    encrypted = _get_cryptor().encrypt({**payload, "id": credential_id})
 
     cred = await prisma.integrationcredential.create(
         data={
