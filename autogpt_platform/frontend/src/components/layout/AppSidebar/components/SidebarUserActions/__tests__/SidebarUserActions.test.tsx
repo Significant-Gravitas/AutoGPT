@@ -11,10 +11,11 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: () => mockUseSupabase(),
 }));
 
-vi.mock(
-  "@/components/layout/Navbar/components/AgentActivityDropdown/AgentActivityDropdown",
-  () => ({ AgentActivityDropdown: () => <div data-testid="agent-activity" /> }),
-);
+vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return { ...actual, useSidebar: () => ({ state: "expanded" }) };
+});
+
 vi.mock("@/components/layout/Navbar/components/Wallet/Wallet", () => ({
   Wallet: () => <div data-testid="wallet" />,
 }));
@@ -25,10 +26,6 @@ vi.mock(
       <div data-testid="account-menu">{userName}</div>
     ),
   }),
-);
-vi.mock(
-  "@/app/(platform)/PlatformChrome/components/UsageIndicator/UsageIndicator",
-  () => ({ UsageIndicator: () => <div data-testid="usage-indicator" /> }),
 );
 
 beforeEach(() => {
@@ -67,9 +64,9 @@ describe("SidebarUserActions", () => {
     });
     render(<SidebarUserActions />);
 
-    expect(screen.getByTestId("agent-activity")).toBeDefined();
-    expect(screen.getByTestId("usage-indicator")).toBeDefined();
     expect(screen.getByTestId("account-menu")).toBeDefined();
     expect(await screen.findByTestId("wallet")).toBeDefined();
+    expect(screen.queryByTestId("agent-activity")).toBeNull();
+    expect(screen.queryByTestId("usage-indicator")).toBeNull();
   });
 });
