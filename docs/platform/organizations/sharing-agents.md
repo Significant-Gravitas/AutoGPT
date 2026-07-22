@@ -1,53 +1,77 @@
-# Sharing agents with your team
+# Sharing agents with your teams
 
-You can give a team access to one of your agents without moving it or making a
-copy. This is called **sharing** (a *grant*).
+If you belong to an organization with one or more teams, you can share an agent
+from your library with a whole team instead of sending copies around. The team
+sees the agent, and — depending on how you share it — can run it too.
 
-## Where an agent lives
+Sharing is only available when your organization has teams. If you work solo
+(no teams), you won't see the share option.
 
-When you create an agent inside an organization, you decide where it lives:
+## How to share an agent
 
-- **Org-home** — everyone in the organization can see and run it.
-- **A team** — only that team (and you) can see and run it.
+1. Open your **Library**.
+2. Find the agent you want to share and open its actions menu (the **⋯** button
+   on the agent card, or the same menu on the agent's detail page).
+3. Choose **Share with a team**.
+4. In the dialog, pick:
+   - **Team** — which team to share with.
+   - **Access** — what the team can do (see below).
+   - **Always share latest version** — whether the team follows your edits or
+     stays pinned to today's version (see below).
+   - **Credentials** — whose connected accounts runs use (only shown when you
+     own the agent).
+5. Click **Share**. The team appears in the **Shared with** list at the bottom
+   of the dialog, where you can revoke access at any time.
 
-If an agent is in a team and you want *another* team to use it too, share it.
+To share the same agent with several teams, repeat the steps and pick a
+different team each time.
 
-## What sharing does
+You can share an agent if you own it or if you're an organization admin. If you
+don't have permission, the share is refused and you'll see an error message.
 
-Sharing opens a **specific agent** to a **specific team**. You choose how much
-access they get:
+## Access: view vs. run
 
-- **View** — the team can see the agent.
-- **Run** — the team can run the agent. (Run includes view.)
+- **Can view** — the team can see the agent and its details.
+- **Can run** — the team can run the agent. Running also includes viewing, so
+  "Can run" covers everything "Can view" does.
 
-The agent stays yours — it does not move, and the other team can't edit it just
-because you shared it.
+## Pinned version vs. always-latest
 
-## Version choices
+By default, **Always share latest version is off**, which means the team is
+**pinned to the current version** of the agent. If you keep editing the agent
+afterward, the team keeps using the version you shared — your work in progress
+doesn't reach them until you decide to.
 
-When you share, you can pin the version the team gets:
+Turn **Always share latest version on** to share the **latest** version instead.
+The team then always runs your newest published version, and your edits reach
+them as soon as you make them.
 
-- **Pin to a version** — the team keeps using that exact version even after you
-  publish updates.
-- **Follow the latest** — the team always uses your agent's current published
-  version.
+Pick pinned when you want a stable, known-good version in the team's hands. Pick
+latest when you want the team to always have your most recent changes.
 
-## Who can share and un-share
+## Credentials: whose accounts runs use
 
-- The **agent's owner** can share and un-share it.
-- An **organization admin or owner** can also share or un-share any agent in the
-  organization.
+When you share an agent you own, you choose whose connected accounts (API keys,
+integrations, etc.) a shared run uses:
 
-Re-sharing the same agent with the same team just updates the settings — it
-doesn't create a duplicate.
+- **Run with their credentials** (default) — the team runs the agent with
+  **their own** connected accounts. They'll need the relevant integrations set
+  up on their side.
+- **Run with my credentials** — runs use **your** connected accounts. This is
+  convenient when the team shouldn't need their own keys, but be deliberate:
+  every run the team makes draws on your connected accounts.
 
-## Who receives it
+The credentials choice only appears when you own the agent. If you're sharing as
+an org admin without owning it, runs use the team's own credentials.
 
-Anyone on a team you shared with can see the agents shared to that team. If you
-remove someone from the team, they lose the shared access along with the rest of
-the team's resources.
+## Seeing what's shared with you
 
-## Related
+Agents that other members shared with your teams show up in a **Shared with your
+teams** section at the top of your **Library**. Each entry shows the agent name,
+the team it was shared with, and whether you can view or run it. The section only
+appears when something has actually been shared with one of your teams.
 
-- [Organizations & Teams](organizations-and-teams.md)
-- [Who can see what](who-can-see-what.md)
+## Revoking access
+
+Open the share dialog for an agent again to see the **Shared with** list. Click
+**Revoke** next to any team to remove its access. Revoking is immediate.
