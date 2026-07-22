@@ -485,11 +485,25 @@ class TestRegistryGating:
     async def test_ld_vendor_prefixed_openai_slug_serves(self, mocker):
         """LD may route with ANY vendor prefix (openai/gpt-5.4), while the
         catalog stores the bare (possibly date-suffixed) slug — the gate
-        must match the model, not the vendor spelling."""
+        must match the model, not the vendor spelling.
+
+        The OpenAI snapshot suffix is -YYYY-MM-DD (dashed), which the
+        transport-spelling fallbacks and the -YYYYMMDD date-stripped index
+        both miss; resolution here rides the enum's exact alias map
+        (openai/gpt-5.4 -> gpt-5.4-2026-03-05). The index below is built
+        the same way load_catalog derives it, so this slug is deliberately
+        absent from it — proving the enum-alias gate, not a hand-seeded
+        index entry, is what resolves the slug.
+        """
         self.reg._dynamic_models["gpt-5.4-2026-03-05"] = self.make("gpt-5.4-2026-03-05")
-        self.reg._date_stripped_models["gpt-5.4"] = self.reg._dynamic_models[
-            "gpt-5.4-2026-03-05"
-        ]
+        from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
+        self.reg._date_stripped_models = {
+            stripped: m
+            for slug, m in self.reg._dynamic_models.items()
+            if (stripped := MODEL_DATE_SUFFIX_RE.sub("", slug)) != slug
+        }
+        assert "gpt-5.4" not in self.reg._date_stripped_models
         self._ld(mocker, "openai/gpt-5.4")
         resolved = await resolve_model_route(
             "fast", "standard", "user-1", config=_make_config()

@@ -49,7 +49,7 @@ import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
-from backend.data.llm_registry.llm_models import transport_slug_candidates
+from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -92,7 +92,17 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
         model = llm_registry.get_model_by_date_stripped_slug(candidate)
         if model is not None:
             return model
-    return None
+    # Transport spellings are fuzzy (prefix-strip, dot/dash, snapshot-date)
+    # and deliberately don't know the enum's exact alias map, so an
+    # OpenRouter OpenAI slug whose catalog entry carries a -YYYY-MM-DD
+    # snapshot (openai/gpt-5.4 → gpt-5.4-2026-03-05) slips past them. Honor
+    # the enum's alias resolution as a final gate so an LD/env cell set to
+    # such a slug resolves instead of being refused as unknown.
+    try:
+        member = LLMModel(slug)
+    except ValueError:
+        return None
+    return llm_registry.get_model(member.value)
 
 
 _sentry_reported: set[tuple[str, str]] = set()
