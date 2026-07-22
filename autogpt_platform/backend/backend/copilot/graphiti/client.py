@@ -46,33 +46,59 @@ def _get_loop_state() -> _LoopState:
     return state
 
 
-def derive_group_id(user_id: str) -> str:
-    """Derive a deterministic, injection-safe group_id from a user_id.
+def _derive_prefixed_group_id(raw_id: str, *, prefix: str, id_label: str) -> str:
+    """Derive a deterministic, injection-safe group_id from an entity id.
 
-    Strips to ``[a-zA-Z0-9_-]``, enforces max length, and prefixes with
-    ``user_``.  Raises if sanitization changed the input.
+    Strips to ``[a-zA-Z0-9_-]``, enforces max length, and applies the
+    tier ``prefix`` (``user_`` / ``team_`` / ``org_``). Raises if
+    sanitization changed the input so a tenant id can never silently
+    collapse into a different tenant's namespace.
     """
-    if not user_id:
-        raise ValueError("user_id must be non-empty to derive group_id")
+    if not raw_id:
+        raise ValueError(f"{id_label} must be non-empty to derive group_id")
 
-    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", user_id)[:_MAX_GROUP_ID_LEN]
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", raw_id)[:_MAX_GROUP_ID_LEN]
     if not safe_id:
         raise ValueError(
-            f"user_id '{user_id[:32]}...' yields empty group_id after sanitization"
+            f"{id_label} '{raw_id[:32]}...' yields empty group_id after sanitization"
         )
 
-    if safe_id != user_id:
+    if safe_id != raw_id:
         raise ValueError(
-            f"user_id contains invalid characters for group_id derivation "
-            f"(original length={len(user_id)}, sanitized='{safe_id[:32]}'). "
+            f"{id_label} contains invalid characters for group_id derivation "
+            f"(original length={len(raw_id)}, sanitized='{safe_id[:32]}'). "
             f"Only [a-zA-Z0-9_-] are allowed."
         )
 
-    group_id = f"user_{safe_id}"
+    group_id = f"{prefix}{safe_id}"
     if not _GROUP_ID_PATTERN.match(group_id):
         raise ValueError(f"Generated group_id '{group_id}' fails validation")
 
     return group_id
+
+
+def derive_group_id(user_id: str) -> str:
+    """Derive the personal-tier group_id (``user_<id>``) for a user.
+
+    THE chokepoint for personal memory isolation — FalkorDB database
+    name + Redisearch tag filter both key off this value.
+    """
+    return _derive_prefixed_group_id(user_id, prefix="user_", id_label="user_id")
+
+
+def derive_team_group_id(team_id: str) -> str:
+    """Derive the team-tier group_id (``team_<id>``) for a team.
+
+    Same sanitization contract as :func:`derive_group_id`; a distinct
+    prefix guarantees team and personal namespaces can never collide
+    even if a team id and a user id shared the same raw string.
+    """
+    return _derive_prefixed_group_id(team_id, prefix="team_", id_label="team_id")
+
+
+def derive_org_group_id(org_id: str) -> str:
+    """Derive the org-tier group_id (``org_<id>``) for an organization."""
+    return _derive_prefixed_group_id(org_id, prefix="org_", id_label="org_id")
 
 
 def _close_client_driver(client) -> None:
