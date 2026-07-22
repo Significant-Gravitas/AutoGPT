@@ -13,11 +13,15 @@ name: repo-pr-reapprove-command
 #     the default branch (master).
 #
 # Notes:
+#   - Only PRs that already received a human review are eligible: dismissed
+#     reviews stay visible in the reviews API (state DISMISSED), so the guard
+#     requires a prior APPROVED or DISMISSED review from a human. `/reapprove`
+#     can restore a stale approval but never substitute for the first one.
 #   - The bot is its own identity, so `/reapprove` works even on your own PR.
-#     Anyone with write access can therefore bypass a fresh human review —
-#     acceptable for a small trusted team; this is why the permission gate
-#     checks real repo permission and not `author_association` (unreliable in
-#     orgs).
+#     The permission gate checks real repo permission, not `author_association`
+#     (unreliable in orgs).
+#   - The bot's approval only makes the PR eligible for the merge queue again;
+#     merging still goes through the queue.
 #   - The bot's approval is itself dismissed by the next push, as intended.
 
 on:
@@ -35,7 +39,7 @@ jobs:
       startsWith(github.event.comment.body, '/reapprove')
     runs-on: ubuntu-latest
     steps:
-      - name: Verify commenter has write access
+      - name: Verify commenter has write access and PR had a human review
         uses: actions/github-script@v8
         with:
           script: |
@@ -48,6 +52,25 @@ jobs:
               core.setFailed(
                 `@${context.payload.comment.user.login} does not have write access ` +
                 `(permission: ${data.permission}) — ignoring /reapprove`,
+              );
+              return;
+            }
+
+            // Stale-dismissed approvals remain listed with state DISMISSED, so
+            // this finds both current and dismissed human approvals. (A rare
+            // manually-dismissed CHANGES_REQUESTED review would also count.)
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const humanReview = reviews.some(
+              (r) => r.user?.type !== 'Bot' && ['APPROVED', 'DISMISSED'].includes(r.state),
+            );
+            if (!humanReview) {
+              core.setFailed(
+                'No prior human approval found on this PR — /reapprove only ' +
+                'restores dismissed approvals, it cannot grant the first one.',
               );
             }
 
