@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
 def node_input_mask_key(node_id: str) -> str:
     """Per-node key under which a triggered preset stores that node's input mask
     (the trigger config), nested alongside the regular graph inputs.
@@ -37,7 +40,7 @@ def node_input_mask_key(node_id: str) -> str:
     (``_execute_webhook_preset_trigger``) so all sites agree on the format; the
     data migration mirrors it in SQL.
     """
-    return f"_node_input_mask_{node_id.split('-')[0]}"
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
 
 
 async def setup_triggered_preset(
