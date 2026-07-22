@@ -217,6 +217,12 @@ class StoreSubmission(pydantic.BaseModel):
     review_count: int = 0
     review_avg_rating: float = 0.0
 
+    # Org tenancy for badges/filters. NOTE: neither the StoreSubmission view
+    # nor its underlying StoreListing / StoreListingVersion tables carry a
+    # teamId column, so team-level tenancy is not available for submissions
+    # without a schema migration — only organization_id is surfaced here.
+    organization_id: str | None = None
+
     @classmethod
     def from_db(cls, _sub: "prisma.models.StoreSubmission") -> Self:
         """Construct from the StoreSubmission Prisma view."""
@@ -245,6 +251,7 @@ class StoreSubmission(pydantic.BaseModel):
             run_count=_sub.run_count,
             review_count=_sub.review_count,
             review_avg_rating=_sub.review_avg_rating,
+            organization_id=_sub.organization_id,
         )
 
     @classmethod
@@ -277,6 +284,7 @@ class StoreSubmission(pydantic.BaseModel):
             reviewed_at=_lv.reviewedAt,
             reviewer_id=_lv.reviewerId,
             review_comments=_lv.reviewComments,
+            organization_id=_l.owningOrgId,
         )
 
 

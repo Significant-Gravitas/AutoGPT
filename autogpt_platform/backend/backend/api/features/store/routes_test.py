@@ -582,6 +582,7 @@ def test_get_submissions_success(
                 run_count=50,
                 review_count=5,
                 review_avg_rating=4.2,
+                organization_id="test-org",
             )
         ],
         pagination=store_model.Pagination(
@@ -607,6 +608,9 @@ def test_get_submissions_success(
     data = store_model.StoreSubmissionsResponse.model_validate(response.json())
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
+    # Org tenancy surfaced for creator-dashboard badges/filters (team_id is
+    # unavailable for submissions — the view has no teamId column).
+    assert data.submissions[0].organization_id == "test-org"
     assert data.pagination.current_page == 1
     assert data.stats.total == 1
     assert data.stats.total_runs == 50
