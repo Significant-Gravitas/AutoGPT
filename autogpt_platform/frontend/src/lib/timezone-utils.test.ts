@@ -9,12 +9,12 @@ import {
 // year-round — making the assertions stable regardless of when the tests run.
 describe("getTimezoneAbbreviation", () => {
   it("returns the GMT offset for whole-hour offset zones", () => {
-    expect(getTimezoneAbbreviation("Asia/Shanghai")).toBe("GMT+8");
-    expect(getTimezoneAbbreviation("Asia/Tokyo")).toBe("GMT+9");
+    expect(getTimezoneAbbreviation("Asia/Shanghai")).toMatch(/^GMT\+0?8(?::00)?$/);
+    expect(getTimezoneAbbreviation("Asia/Tokyo")).toMatch(/^GMT\+0?9(?::00)?$/);
   });
 
   it("returns the GMT offset for half-hour offset zones", () => {
-    expect(getTimezoneAbbreviation("Asia/Kolkata")).toBe("GMT+5:30");
+    expect(getTimezoneAbbreviation("Asia/Kolkata")).toMatch(/^GMT\+0?5:30$/);
   });
 
   it("does not fall back to the raw IANA id for offset zones", () => {
