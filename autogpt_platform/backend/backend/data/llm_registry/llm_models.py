@@ -75,6 +75,31 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
+    # O-series reasoning (added on dev via #12619, translated to catalog)
+    O4_MINI = "o4-mini"
+    O3_PRO = "o3-pro"
+    O1 = "o1"
+    O1_MINI = "o1-mini"
+    # GPT-5.6 models (current flagship, July 2026)
+    GPT5_6_SOL = "gpt-5.6-sol"
+    GPT5_6_TERRA = "gpt-5.6-terra"
+    GPT5_6_LUNA = "gpt-5.6-luna"
+    # GPT-5.5 models
+    GPT5_5 = "gpt-5.5-2026-04-23"
+    GPT5_5_PRO = "gpt-5.5-pro"
+    # GPT-5.4 models (March 2026)
+    GPT5_4 = "gpt-5.4-2026-03-05"
+    GPT5_4_MINI = "gpt-5.4-mini-2026-03-17"
+    GPT5_4_NANO = "gpt-5.4-nano-2026-03-17"
+    GPT5_4_PRO = "gpt-5.4-pro"
+    # GPT-5.3 models
+    GPT5_3 = "gpt-5.3-chat-latest"
+    GPT5_3_CODEX = "gpt-5.3-codex"
+    # Pro/codex variants of existing generations
+    GPT5_2_PRO = "gpt-5.2-pro"
+    GPT5_1_CODEX = "gpt-5.1-codex"
+    GPT5_PRO = "gpt-5-pro"
+    GPT41_NANO = "gpt-4.1-nano"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
     GPT41 = "gpt-4.1-2025-04-14"
@@ -221,6 +246,10 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
     "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+    "openai/gpt-5.4": LlmModel.GPT5_4,
+    "openai/gpt-5.4-mini": LlmModel.GPT5_4_MINI,
+    "openai/gpt-5.4-nano": LlmModel.GPT5_4_NANO,
+    "openai/gpt-5.5": LlmModel.GPT5_5,
 }
 
 

@@ -408,6 +408,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_type=BlockCostType.COST_USD,
             cost_filter={
+                "model": CodexModel.GPT5_3_CODEX,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=150,
+        ),
+        BlockCost(
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
                 "model": CodexModel.GPT5_1_CODEX,
                 "credentials": {
                     "id": openai_credentials.id,
@@ -416,7 +428,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
             cost_amount=150,
-        )
+        ),
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips
@@ -1149,3 +1161,23 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
 }
+
+
+def _validate_codex_costs() -> None:
+    """Keep Codex pricing exhaustive.
+
+    ``LlmModel`` has module-load completeness guards; ``CodexModel`` does not, so
+    a Codex model added without a matching ``BlockCost`` would silently bill as
+    free.
+    """
+    for codex_model in CodexModel:
+        if not any(
+            block_cost.cost_filter.get("model") == codex_model
+            for block_cost in BLOCK_COSTS[CodeGenerationBlock]
+        ):
+            raise ValueError(
+                f"Missing CodeGenerationBlock cost for Codex model: {codex_model}"
+            )
+
+
+_validate_codex_costs()

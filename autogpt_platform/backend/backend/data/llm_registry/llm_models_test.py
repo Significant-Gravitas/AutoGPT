@@ -11,7 +11,7 @@ from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL, LlmModel
 def test_default_model_is_the_catalog_recommendation():
     """DEFAULT_LLM_MODEL derives from the catalog's is_recommended flag —
     the same fact must not be encoded twice."""
-    assert DEFAULT_LLM_MODEL is LlmModel.GPT5_2
+    assert DEFAULT_LLM_MODEL is LlmModel.GPT5_6_TERRA
 
 
 def _schema_metadata() -> dict:
