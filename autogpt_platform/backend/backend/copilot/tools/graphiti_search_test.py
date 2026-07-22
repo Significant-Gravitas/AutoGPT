@@ -41,7 +41,11 @@ async def test_expert_session_searches_only_expert_memory_group() -> None:
             "resolve_search_targets",
             new_callable=AsyncMock,
             return_value=[
-                TierTarget("expert_private_group", MemoryTier.personal, None)
+                TierTarget(
+                    group_id="expert_private_group",
+                    tier=MemoryTier.personal,
+                    label=None,
+                )
             ],
         ) as resolve_mock,
         patch(
@@ -159,10 +163,13 @@ class TestMemorySearchTiers:
     async def test_all_tiers_label_shared_results(self) -> None:
         tool = MemorySearchTool()
         targets = [
-            TierTarget("user_user-1", MemoryTier.personal, None),
-            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(group_id="user_user-1", tier=MemoryTier.personal, label=None),
+            TierTarget(group_id="org_org-1", tier=MemoryTier.org, label="org memory"),
             TierTarget(
-                "team_team-1", MemoryTier.team, "team memory (Platform)", "team-1"
+                group_id="team_team-1",
+                tier=MemoryTier.team,
+                label="team memory (Platform)",
+                team_id="team-1",
             ),
         ]
         clients = {
@@ -208,7 +215,9 @@ class TestMemorySearchTiers:
         tool = MemorySearchTool()
         # resolve_search_targets returns ONLY personal (simulating a user with
         # no active team memberships in the org).
-        targets = [TierTarget("user_user-1", MemoryTier.personal, None)]
+        targets = [
+            TierTarget(group_id="user_user-1", tier=MemoryTier.personal, label=None)
+        ]
         personal_client = _tier_client([_fact_edge("personal fact")])
 
         async def _fake_client(group_id: str):

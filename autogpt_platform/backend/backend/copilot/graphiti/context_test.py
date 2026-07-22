@@ -494,10 +494,13 @@ class TestWarmContextFanOut:
         from .tiers import MemoryTier, TierTarget
 
         targets = [
-            TierTarget("user_u1", MemoryTier.personal, None),
-            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(group_id="user_u1", tier=MemoryTier.personal, label=None),
+            TierTarget(group_id="org_org-1", tier=MemoryTier.org, label="org memory"),
             TierTarget(
-                "team_team-1", MemoryTier.team, "team memory (Platform)", "team-1"
+                group_id="team_team-1",
+                tier=MemoryTier.team,
+                label="team memory (Platform)",
+                team_id="team-1",
             ),
         ]
         clients = {
@@ -539,8 +542,8 @@ class TestWarmContextFanOut:
         personal_edge = _fact_edge("personal pref")
         org_edge = _fact_edge("org policy")
         targets = [
-            TierTarget("user_u1", MemoryTier.personal, None),
-            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(group_id="user_u1", tier=MemoryTier.personal, label=None),
+            TierTarget(group_id="org_org-1", tier=MemoryTier.org, label="org memory"),
         ]
         clients = {
             "user_u1": _tier_client([personal_edge]),
@@ -571,8 +574,8 @@ class TestWarmContextFanOut:
         from .tiers import MemoryTier, TierTarget
 
         targets = [
-            TierTarget("user_u1", MemoryTier.personal, None),
-            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(group_id="user_u1", tier=MemoryTier.personal, label=None),
+            TierTarget(group_id="org_org-1", tier=MemoryTier.org, label="org memory"),
         ]
         personal_client = _tier_client([_fact_edge("personal pref")])
 
@@ -607,8 +610,8 @@ class TestWarmContextFanOut:
         personal_edges = [_fact_edge(f"personal {i}") for i in range(10)]
         org_edges = [_fact_edge(f"org {i}") for i in range(10)]
         targets = [
-            TierTarget("user_u1", MemoryTier.personal, None),
-            TierTarget("org_org-1", MemoryTier.org, "org memory"),
+            TierTarget(group_id="user_u1", tier=MemoryTier.personal, label=None),
+            TierTarget(group_id="org_org-1", tier=MemoryTier.org, label="org memory"),
         ]
         clients = {
             "user_u1": _tier_client(personal_edges),
