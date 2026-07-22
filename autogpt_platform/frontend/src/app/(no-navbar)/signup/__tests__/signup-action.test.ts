@@ -26,6 +26,13 @@ vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
     postV1GetOrCreateUserMock(...args),
 }));
 
+// DataFast account tracking is exercised by actions.test.ts; stub it here so
+// wasAccountCreated doesn't read .headers off the minimal mocked response.
+vi.mock("@/services/analytics/datafast-server", () => ({
+  wasAccountCreated: () => false,
+  scheduleAccountCreatedGoal: vi.fn(),
+}));
+
 vi.mock("@/app/api/helpers", async (importActual) => {
   const actual = await importActual<typeof import("@/app/api/helpers")>();
   return {

@@ -101,6 +101,10 @@ describe("email signup account creation tracking", () => {
 
     expect(result.success).toBe(false);
     expect(mocks.captureException).toHaveBeenCalledOnce();
+    // Revoking the session on provisioning failure is the security-relevant
+    // behavior — without it the browser stays authenticated after a failed
+    // account setup.
+    expect(mocks.rollbackSession).toHaveBeenCalledOnce();
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
   });
 });

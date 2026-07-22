@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSessionMock = vi.fn();
-const createUserMock = vi.fn();
+const postV1GetOrCreateUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const revalidatePathMock = vi.fn();
 
@@ -9,12 +9,16 @@ vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
 }));
 
-vi.mock("@/lib/autogpt-server-api", () => ({
-  default: class BackendAPIMock {
-    createUser(...args: unknown[]) {
-      return createUserMock(...args);
-    }
-  },
+vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
+  postV1GetOrCreateUser: (...args: unknown[]) =>
+    postV1GetOrCreateUserMock(...args),
+}));
+
+// DataFast account tracking has its own coverage (route.test.ts); stub it so
+// wasAccountCreated doesn't read .headers off the mocked provisioning result.
+vi.mock("@/services/analytics/datafast-server", () => ({
+  wasAccountCreated: () => false,
+  scheduleAccountCreatedGoal: vi.fn(),
 }));
 
 vi.mock("@/app/api/helpers", () => ({
@@ -48,13 +52,13 @@ function makeCallbackRequest(
 
 function loggedInWithCompletedSetup() {
   getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
-  createUserMock.mockResolvedValue({ id: "user-1" });
+  postV1GetOrCreateUserMock.mockResolvedValue({ id: "user-1" });
   getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 }
 
 beforeEach(() => {
   getServerSessionMock.mockReset();
-  createUserMock.mockReset();
+  postV1GetOrCreateUserMock.mockReset();
   getOnboardingStatusMock.mockReset();
   revalidatePathMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -75,13 +79,13 @@ describe("auth callback GET — session handling", () => {
     expect(response.headers.get("location")).toBe(
       `${origin}/auth/auth-code-error`,
     );
-    expect(createUserMock).not.toHaveBeenCalled();
+    expect(postV1GetOrCreateUserMock).not.toHaveBeenCalled();
   });
 
   it("sends fresh users to onboarding and revalidates the layout", async () => {
     vi.stubEnv("NODE_ENV", "development");
     getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
-    createUserMock.mockResolvedValue({ id: "user-1" });
+    postV1GetOrCreateUserMock.mockResolvedValue({ id: "user-1" });
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
 
     const response = await GET(makeCallbackRequest());
@@ -148,7 +152,7 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to auth-token-invalid when the backend rejects with 401", async () => {
-    createUserMock.mockRejectedValue(
+    postV1GetOrCreateUserMock.mockRejectedValue(
       new BackendApiErrorStub("Unauthorized", 401),
     );
 
@@ -160,7 +164,7 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to server-error when the backend rejects with a 5xx status", async () => {
-    createUserMock.mockRejectedValue(
+    postV1GetOrCreateUserMock.mockRejectedValue(
       new BackendApiErrorStub("Internal Server Error", 500),
     );
 
@@ -172,7 +176,7 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to rate-limited when the backend rejects with 429", async () => {
-    createUserMock.mockRejectedValue(
+    postV1GetOrCreateUserMock.mockRejectedValue(
       new BackendApiErrorStub("Too Many Requests", 429),
     );
 
@@ -184,7 +188,9 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to network-error when the fetch itself fails", async () => {
-    createUserMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    postV1GetOrCreateUserMock.mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
 
     const response = await GET(makeCallbackRequest());
 
@@ -194,7 +200,9 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to user-creation-failed for any other failure", async () => {
-    createUserMock.mockRejectedValue(new Error("something else broke"));
+    postV1GetOrCreateUserMock.mockRejectedValue(
+      new Error("something else broke"),
+    );
 
     const response = await GET(makeCallbackRequest());
 
