@@ -37,7 +37,10 @@ WITH triggered_graphs AS (
     )
 ),
 
--- Find all presets using triggered graphs (both active and auto-disabled)
+-- Find presets that are actually webhook-triggered. Require a non-null
+-- webhookId so we only wrap genuine triggered presets: a run-template preset
+-- (real graph inputs, no webhook) can live on a graph that merely contains a
+-- webhook node, and wrapping+stripping its inputs would corrupt it.
 triggered_presets AS (
     SELECT
         ap."id" as preset_id,
@@ -45,17 +48,21 @@ triggered_presets AS (
         tg.graph_version,
         tg.webhook_node_id,
         tg.node_prefix,
-        ap."webhookId" -- May be NULL if auto-disabled
+        ap."webhookId"
     FROM "AgentPreset" ap
     JOIN triggered_graphs tg ON tg.graph_id = ap."agentGraphId"
                             AND tg.graph_version = ap."agentGraphVersion"
     WHERE ap."isDeleted" = false
+      AND ap."webhookId" IS NOT NULL
 ),
 
--- Get all current input data for triggered presets. Join via the child FK
--- `agentPresetId` — `InputPresets` is a Prisma relation field, not a SQL column.
--- LEFT JOIN so presets with no existing input rows (e.g. an empty generic
--- webhook config) still get an (empty) mask, matching setup_triggered_preset.
+-- Get the trigger-config input rows for each triggered preset. Join via the
+-- child FK `agentPresetId` — `InputPresets` is a Prisma relation field, not a
+-- SQL column. LEFT JOIN so presets with no existing input rows (e.g. an empty
+-- generic webhook config) still get an (empty) mask, matching
+-- setup_triggered_preset. Credential rows (`credentials` / `*_credentials`) are
+-- excluded from the ON clause so they stay as separate rows — LibraryAgentPreset
+-- rebuilds `preset.credentials` from them (see is_credentials_field_name).
 current_inputs AS (
     SELECT
         tp.preset_id,
@@ -66,6 +73,8 @@ current_inputs AS (
     FROM triggered_presets tp
     LEFT JOIN "AgentNodeExecutionInputOutput" aneio
         ON aneio."agentPresetId" = tp.preset_id
+       AND aneio."name" <> 'credentials'
+       AND right(aneio."name", 12) <> '_credentials'
 ),
 
 -- Create the aggregated `_node_input_mask_{node_prefix}` entry per preset.
