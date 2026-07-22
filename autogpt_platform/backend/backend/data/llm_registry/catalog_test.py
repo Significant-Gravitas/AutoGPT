@@ -140,7 +140,7 @@ def test_kimi_k3_bills_at_authored_rates():
 def test_claude_sonnet_5_bills_at_authored_rates():
     """Sonnet 5 (sticker $3/$15; intro pricing ends 2026-08-31) — flat tier
     and per-1M projections must match the authored catalog entry."""
-    s5 = LlmModel("claude-sonnet-5")
+    s5 = LLMModel("claude-sonnet-5")
     assert MODEL_COST[s5] == 9
     assert TOKEN_COST[s5].model_dump() == {
         "input": 450.0,
