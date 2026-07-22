@@ -149,4 +149,35 @@ describe("TeamPicker", () => {
       expect(currentValue()).toBe("org-home");
     });
   });
+
+  it("clears a stale last-used team (and its persisted value) when the user has no teams", async () => {
+    window.localStorage.setItem(
+      "create-surface-teams",
+      JSON.stringify({ [CreateSurface.BuilderSave]: "team-a" }),
+    );
+    // Loaded store with an empty team list (solo user, or left the org).
+    seedTeams([]);
+    render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+
+    await waitFor(() => {
+      expect(currentValue()).toBe("org-home");
+    });
+    // Persisted value is reset so a remount can't resurrect the stale id.
+    expect(
+      JSON.parse(window.localStorage.getItem("create-surface-teams") ?? "{}"),
+    ).toMatchObject({ [CreateSurface.BuilderSave]: "org-home" });
+  });
+
+  it("does not clamp before the store has loaded", () => {
+    window.localStorage.setItem(
+      "create-surface-teams",
+      JSON.stringify({ [CreateSurface.BuilderSave]: "team-a" }),
+    );
+    // Store not yet loaded (default beforeEach state): keep the seeded value
+    // rather than prematurely clearing it to org-home.
+    useOrgTeamStore.setState({ isLoaded: false, teams: [] });
+    render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+
+    expect(currentValue()).toBe("team-a");
+  });
 });
