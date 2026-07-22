@@ -25,6 +25,10 @@ async def test_add_graph_to_library_create_new_agent() -> None:
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
         ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_marketplace_image_url",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
 
@@ -62,6 +66,10 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
         ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_marketplace_image_url",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         mock_prisma.return_value.create = AsyncMock(
             side_effect=prisma.errors.UniqueViolationError(
@@ -86,3 +94,59 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     update_data = update_call.kwargs["data"]
     assert update_data["isDeleted"] is False
     assert update_data["isArchived"] is False
+
+
+@pytest.mark.asyncio
+async def test_add_graph_to_library_carries_marketplace_image() -> None:
+    """The marketplace image is copied onto the new library agent (issue #9879)."""
+    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
+    created_agent = MagicMock(name="CreatedLibraryAgent")
+    converted_agent = MagicMock(name="ConvertedLibraryAgent")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models.LibraryAgent.prisma"
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.library_model.LibraryAgent.from_db",
+            return_value=converted_agent,
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_schedule_info",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_marketplace_image_url",
+            new=AsyncMock(return_value="https://cdn.example.com/agent.png"),
+        ),
+    ):
+        mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
+
+        await add_graph_to_library("slv-id", graph_model, "user-id")
+
+    create_data = mock_prisma.return_value.create.call_args.kwargs["data"]
+    assert create_data["imageUrl"] == "https://cdn.example.com/agent.png"
+
+
+@pytest.mark.asyncio
+async def test_fetch_marketplace_image_url_returns_first_image() -> None:
+    """_fetch_marketplace_image_url returns the first listing image, or None."""
+    from ._add_to_library import _fetch_marketplace_image_url
+
+    listing = MagicMock(imageUrls=["https://cdn.example.com/a.png", "b.png"])
+    with patch(
+        "backend.api.features.library._add_to_library.prisma.models.StoreListingVersion.prisma"
+    ) as mock_slv:
+        mock_slv.return_value.find_unique = AsyncMock(return_value=listing)
+        assert (
+            await _fetch_marketplace_image_url("slv-id")
+            == "https://cdn.example.com/a.png"
+        )
+
+        mock_slv.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(imageUrls=[])
+        )
+        assert await _fetch_marketplace_image_url("slv-id") is None
+
+        mock_slv.return_value.find_unique = AsyncMock(return_value=None)
+        assert await _fetch_marketplace_image_url("slv-id") is None

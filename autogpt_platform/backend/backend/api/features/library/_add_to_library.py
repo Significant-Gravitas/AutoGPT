@@ -9,6 +9,7 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
@@ -55,6 +56,23 @@ async def resolve_graph_for_library(
     return graph_model
 
 
+async def _fetch_marketplace_image_url(
+    store_listing_version_id: str,
+) -> str | None:
+    """Return the first marketplace image for a store listing version, if any.
+
+    The marketplace stores its artwork on ``StoreListingVersion.imageUrls``.
+    Downloading an agent should carry that image over to the user's library
+    entry (issue #9879); returns ``None`` when the listing has no images.
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
+    )
+    if slv and slv.imageUrls:
+        return slv.imageUrls[0]
+    return None
+
+
 async def add_graph_to_library(
     store_listing_version_id: str,
     graph_model: GraphModel,
@@ -72,6 +90,13 @@ async def add_graph_to_library(
         user_id, include_nodes=False, include_executions=False
     )
 
+    # Carry the marketplace image over to the library so the downloaded agent
+    # shows the same artwork it had on the marketplace, rather than no image.
+    # See issue #9879.
+    marketplace_image_url = await _fetch_marketplace_image_url(
+        store_listing_version_id
+    )
+
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
@@ -87,11 +112,21 @@ async def add_graph_to_library(
                 "isCreatedByUser": False,
                 "useGraphIsActiveVersion": False,
                 "settings": settings_json,
+                "imageUrl": marketplace_image_url,
             },
             include=_include,
         )
     except prisma.errors.UniqueViolationError:
         # Already exists — update to restore if previously soft-deleted/archived
+        restore_data: prisma.types.LibraryAgentUpdateInput = {
+            "isDeleted": False,
+            "isArchived": False,
+            "settings": settings_json,
+        }
+        # Only set the image when the marketplace has one, so we never blank out
+        # an image the user might already have on an existing library entry.
+        if marketplace_image_url:
+            restore_data["imageUrl"] = marketplace_image_url
         added_agent = await prisma.models.LibraryAgent.prisma().update(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
@@ -100,11 +135,7 @@ async def add_graph_to_library(
                     "agentGraphVersion": graph_model.version,
                 }
             },
-            data={
-                "isDeleted": False,
-                "isArchived": False,
-                "settings": settings_json,
-            },
+            data=restore_data,
             include=_include,
         )
         if added_agent is None:
