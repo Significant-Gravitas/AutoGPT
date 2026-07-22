@@ -7,6 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { CaretRightIcon } from "@phosphor-icons/react";
+import * as React from "react";
 import { AccountMenuOrgList } from "./AccountMenuOrgList";
 import { InitialAvatar } from "./InitialAvatar";
 
@@ -23,12 +24,16 @@ export function AccountMenuHeader({
   avatarSrc,
   isLoading = false,
 }: Props) {
+  const popupId = React.useId();
+
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          aria-controls={popupId}
+          aria-haspopup="true"
           data-testid="account-menu-org-trigger"
         >
           <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
@@ -62,6 +67,7 @@ export function AccountMenuHeader({
       </PopoverTrigger>
 
       <PopoverContent
+        id={popupId}
         side="right"
         align="start"
         sideOffset={12}

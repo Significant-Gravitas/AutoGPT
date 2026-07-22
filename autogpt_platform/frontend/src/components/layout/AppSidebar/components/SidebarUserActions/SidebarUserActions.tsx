@@ -40,38 +40,31 @@ export function SidebarUserActions() {
 
   const isLoadingProfile = isProfileLoading || isUserLoading;
 
+  const accountMenu = (
+    <AccountMenu
+      userName={profile?.name || profile?.username}
+      userEmail={user?.email}
+      avatarSrc={profile?.avatar_url ?? ""}
+      menuItemGroups={dynamicMenuItems}
+      isLoading={isLoadingProfile}
+      newLayout
+      side="top"
+      align="start"
+    />
+  );
+
   return (
     <SidebarFooter className="border-t border-zinc-100 px-4">
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <SidebarTooltip>
             <SidebarTooltipTrigger asChild>
-              <div>
-                <AccountMenu
-                  userName={profile?.name || profile?.username}
-                  userEmail={user?.email}
-                  avatarSrc={profile?.avatar_url ?? ""}
-                  menuItemGroups={dynamicMenuItems}
-                  isLoading={isLoadingProfile}
-                  newLayout
-                  side="top"
-                  align="start"
-                />
-              </div>
+              <div>{accountMenu}</div>
             </SidebarTooltipTrigger>
             <SidebarTooltipContent side="right">Account</SidebarTooltipContent>
           </SidebarTooltip>
         ) : (
-          <AccountMenu
-            userName={profile?.name || profile?.username}
-            userEmail={user?.email}
-            avatarSrc={profile?.avatar_url ?? ""}
-            menuItemGroups={dynamicMenuItems}
-            isLoading={isLoadingProfile}
-            newLayout
-            side="top"
-            align="start"
-          />
+          accountMenu
         )}
         {profile && (
           <Tooltip>

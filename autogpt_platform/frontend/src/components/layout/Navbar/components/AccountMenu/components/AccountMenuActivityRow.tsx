@@ -6,6 +6,7 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { CaretRightIcon, PulseIcon } from "@phosphor-icons/react";
+import * as React from "react";
 import { ActivityDropdown } from "../../AgentActivityDropdown/components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "../../AgentActivityDropdown/helpers";
 import { useAgentActivityDropdown } from "../../AgentActivityDropdown/useAgentActivityDropdown";
@@ -17,6 +18,8 @@ export function AccountMenuActivityRow() {
   const { activeExecutions, recentCompletions, recentFailures } =
     useAgentActivityDropdown();
 
+  const popupId = React.useId();
+
   const totalCount =
     activeExecutions.length + recentCompletions.length + recentFailures.length;
 
@@ -26,6 +29,8 @@ export function AccountMenuActivityRow() {
         <button
           type="button"
           className={rowClasses}
+          aria-controls={popupId}
+          aria-haspopup="true"
           data-testid="account-menu-activity-trigger"
         >
           <span
@@ -58,6 +63,7 @@ export function AccountMenuActivityRow() {
       </PopoverTrigger>
 
       <PopoverContent
+        id={popupId}
         side="right"
         align="end"
         sideOffset={12}
