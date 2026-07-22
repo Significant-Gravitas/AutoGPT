@@ -15,6 +15,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddToLibraryButton } from "./AddToLibraryButton";
 
@@ -96,14 +97,51 @@ beforeEach(() => {
 
 describe("AddToLibraryButton", () => {
   it("renders the plain Add button with no caret for solo users", () => {
+    seedTeams([]);
     renderButton();
 
-    expect(
-      screen.getByRole("button", { name: "Add Test Agent to library" }),
-    ).toBeDefined();
+    const button = screen.getByRole("button", {
+      name: "Add Test Agent to library",
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
     expect(
       screen.queryByRole("button", { name: /Choose where to add/i }),
     ).toBeNull();
+  });
+
+  it("disables the Add button until the org/team store has loaded", () => {
+    // Default beforeEach leaves isLoaded=false: a team member must not be able
+    // to click the solo control (which adds to org context) during the load.
+    renderButton();
+
+    const button = screen.getByRole("button", {
+      name: "Add Test Agent to library",
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /Choose where to add/i }),
+    ).toBeNull();
+  });
+
+  it("does not persist the target when the add request fails", async () => {
+    seedTeams([TEAM_A, TEAM_B]);
+    let addCalls = 0;
+    server.use(
+      http.post("http://localhost:3000/api/proxy/api/library/agents", () => {
+        addCalls += 1;
+        return HttpResponse.json({ detail: "boom" }, { status: 500 });
+      }),
+    );
+
+    renderButton();
+    // No last-used yet, so the primary targets the Organization.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add Test Agent to Organization" }),
+    );
+
+    await waitFor(() => expect(addCalls).toBe(1));
+    // A failed add must not update the remembered target.
+    expect(getLastUsedTeam(CreateSurface.MarketplaceAdd)).toBeNull();
   });
 
   it("primary action adds to the last-used team via the X-Team-Id header", async () => {
