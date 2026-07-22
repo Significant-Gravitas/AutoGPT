@@ -117,6 +117,17 @@ class CreateAliasRequest(BaseModel):
     )
 
 
+class TeamSpendBucket(BaseModel):
+    team_id: str | None
+    team_name: str | None
+    total_spent: int
+    transaction_count: int
+
+
+class OrgSpendResponse(BaseModel):
+    teams: list[TeamSpendBucket]
+
+
 class CreateInvitationRequest(BaseModel):
     email: str
     is_admin: bool = False

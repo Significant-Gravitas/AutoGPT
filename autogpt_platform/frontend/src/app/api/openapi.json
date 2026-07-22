@@ -9392,6 +9392,68 @@
         }
       }
     },
+    "/api/orgs/{org_id}/spend": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Per-team spend breakdown",
+        "description": "Credits spent by the org, grouped by the team each debit was attributed to.\n\nRequires org-level MANAGE_BILLING (owner or billing_manager). Usage with no\nteam attribution — org-home spend and legacy personal-org migrations — is\nreported in a single bucket with ``team_id = null``.",
+        "operationId": "getV2Per-team spend breakdown",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgSpendResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/orgs/{org_id}/transfer-ownership": {
       "post": {
         "tags": ["v2", "orgs", "orgs"],
@@ -19387,6 +19449,18 @@
         ],
         "title": "OrgResponse"
       },
+      "OrgSpendResponse": {
+        "properties": {
+          "teams": {
+            "items": { "$ref": "#/components/schemas/TeamSpendBucket" },
+            "type": "array",
+            "title": "Teams"
+          }
+        },
+        "type": "object",
+        "required": ["teams"],
+        "title": "OrgSpendResponse"
+      },
       "OrphanedScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
@@ -22768,6 +22842,31 @@
           "created_at"
         ],
         "title": "TeamResponse"
+      },
+      "TeamSpendBucket": {
+        "properties": {
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Name"
+          },
+          "total_spent": { "type": "integer", "title": "Total Spent" },
+          "transaction_count": {
+            "type": "integer",
+            "title": "Transaction Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "team_id",
+          "team_name",
+          "total_spent",
+          "transaction_count"
+        ],
+        "title": "TeamSpendBucket"
       },
       "TimezoneResponse": {
         "properties": {
