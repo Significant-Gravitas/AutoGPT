@@ -1,5 +1,6 @@
 """Organization management API routes."""
 
+import os
 from typing import Annotated
 
 from autogpt_libs.auth import (
@@ -10,7 +11,10 @@ from autogpt_libs.auth import (
 )
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Security, UploadFile
+
+from backend.api.features.store import exceptions as store_exceptions
+from backend.api.features.store import media as store_media
 
 from . import db as org_db
 from .model import (
@@ -106,6 +110,59 @@ async def update_org(
             avatar_url=request.avatar_url,
         ),
     )
+
+
+_AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+@router.post(
+    "/{org_id}/avatar",
+    summary="Upload organization avatar",
+    tags=["orgs"],
+)
+async def upload_org_avatar(
+    org_id: str,
+    file: UploadFile,
+    ctx: Annotated[
+        RequestContext,
+        Security(requires_org_permission(OrgAction.RENAME_ORG)),
+    ],
+) -> OrgResponse:
+    """Upload an avatar image for the organization and persist its URL.
+
+    The storage path is derived server-side from the verified org id; the
+    client-supplied filename is only used for extension validation.
+    """
+    _verify_org_path(ctx, org_id)
+
+    if file.content_type not in store_media.ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            400,
+            detail=(
+                "Avatar must be an image; allowed content types: "
+                f"{', '.join(sorted(store_media.ALLOWED_IMAGE_TYPES))}"
+            ),
+        )
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if extension not in _AVATAR_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            400,
+            detail=(
+                "Avatar file extension must be one of: "
+                f"{', '.join(sorted(_AVATAR_ALLOWED_EXTENSIONS))}"
+            ),
+        )
+
+    try:
+        avatar_url = await store_media.upload_media(
+            user_id=ctx.user_id, file=file, organization_id=org_id
+        )
+    except store_exceptions.MediaUploadError as e:
+        # Same 400 the global ValueError handler produces on the main app;
+        # raised explicitly so the route is self-contained.
+        raise HTTPException(400, detail=str(e)) from e
+
+    return await org_db.update_org(org_id, UpdateOrgData(avatar_url=avatar_url))
 
 
 @router.delete(
