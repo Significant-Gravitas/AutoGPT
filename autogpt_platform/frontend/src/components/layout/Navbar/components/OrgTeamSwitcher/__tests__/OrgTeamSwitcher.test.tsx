@@ -123,6 +123,17 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getByTestId("org-switcher-manage")).toBeDefined();
   });
 
+  it("hides organization management when the feature flag is off", async () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    seedStore();
+    render(<OrgTeamSwitcher />);
+
+    await openSwitcher();
+
+    expect(screen.queryByTestId("org-switcher-create")).toBeNull();
+    expect(screen.queryByTestId("org-switcher-manage")).toBeNull();
+  });
+
   it("does not render a team-switching section (teams are badges, not context)", async () => {
     seedStore();
     render(<OrgTeamSwitcher />);
@@ -144,6 +155,9 @@ describe("OrgTeamSwitcher", () => {
 
     expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
     expect(useOrgTeamStore.getState().activeTeamID).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId("org-switcher-popover")).toBeNull(),
+    );
   });
 
   it("re-selecting the already-active org leaves state untouched", async () => {

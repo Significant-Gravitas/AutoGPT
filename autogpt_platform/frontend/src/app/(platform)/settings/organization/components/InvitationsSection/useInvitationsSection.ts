@@ -35,7 +35,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
 
-  const invitationsQuery = useGetV2ListPendingInvitations(orgId, {
+  const invitationsQuery = useGetV2ListPendingInvitations(orgId, undefined, {
     query: {
       enabled: isAdmin,
       select: (res) => res.data as InvitationResponse[],
@@ -51,11 +51,8 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
 
   const orgTeams = teamsQuery.data ?? [];
 
-  // Everyone lands in the org's default team automatically on accept
-  // (add_org_member), so pre-assignment only makes sense for the other teams.
   const assignableTeams = orgTeams.filter((team) => !team.is_default);
 
-  // Lets pending-invitation rows spell out assigned team names client-side.
   const teamNameById = new Map(orgTeams.map((team) => [team.id, team.name]));
 
   const form = useForm<InviteFormValues>({
@@ -125,7 +122,6 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
   });
 
   async function handleRevoke(invitation: InvitationResponse) {
-    // Track the row being revoked so only its button shows a spinner.
     setRevokingId(invitation.id);
     try {
       await revokeInvitation({ orgId, invitationId: invitation.id });
@@ -135,7 +131,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
       });
       invitationsQuery.refetch();
     } catch {
-      // onError already surfaced the failure toast.
+      return;
     } finally {
       setRevokingId(null);
     }

@@ -422,6 +422,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    media_storage_dir: str = Field(
+        default="",
+        description="Local media directory used when GCS is not configured",
+    )
+
     workspace_storage_dir: str = Field(
         default="",
         description="Local directory for workspace file storage when GCS is not configured. "

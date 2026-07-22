@@ -857,6 +857,11 @@ class TestOrgAvatarUpload:
 
         self.app.dependency_overrides[get_request_context] = lambda: ctx
 
+    def _authenticate_user(self):
+        from autogpt_libs.auth import get_user_id
+
+        self.app.dependency_overrides[get_user_id] = lambda: USER_ID
+
     def _post_avatar(
         self,
         org_id=ORG_ID,
@@ -943,6 +948,15 @@ class TestOrgAvatarUpload:
         assert "extension" in resp.json()["detail"]
         self.mock_upload.assert_not_called()
 
+    def test_image_content_type_must_match_extension(self):
+        self._authenticate_as(_owner_ctx())
+
+        resp = self._post_avatar(filename="logo.png", content_type="image/jpeg")
+
+        assert resp.status_code == 400
+        assert "does not match" in resp.json()["detail"]
+        self.mock_upload.assert_not_called()
+
     def test_oversized_upload_returns_400_and_persists_nothing(self):
         from backend.api.features.store import exceptions as store_exceptions
 
@@ -965,6 +979,56 @@ class TestOrgAvatarUpload:
         model = OrgResponse.from_db(org, member_count=3)
 
         assert model.avatar_url == "https://cdn.example.com/logo.png"
+
+    def test_member_can_read_local_avatar(self, tmp_path, mocker):
+        avatar = tmp_path / "avatar.png"
+        avatar.write_bytes(self.PNG_BYTES)
+        mocker.patch(
+            "backend.api.features.orgs.routes.store_media.get_local_media_path",
+            return_value=avatar,
+        )
+        self.mock_db.is_org_member = AsyncMock(return_value=True)
+        self._authenticate_user()
+
+        resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
+
+        assert resp.status_code == 200
+        assert resp.content == self.PNG_BYTES
+        assert resp.headers["content-type"] == "image/png"
+
+    def test_non_member_cannot_read_local_avatar(self):
+        self.mock_db.is_org_member = AsyncMock(return_value=False)
+        self._authenticate_user()
+
+        resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
+
+        assert resp.status_code == 403
+
+    def test_unauthenticated_user_cannot_read_local_avatar(self):
+        resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
+
+        assert resp.status_code == 401
+        self.mock_db.is_org_member.assert_not_called()
+
+    def test_missing_local_avatar_returns_404(self, tmp_path, mocker):
+        mocker.patch(
+            "backend.api.features.orgs.routes.store_media.get_local_media_path",
+            return_value=tmp_path / "missing.png",
+        )
+        self.mock_db.is_org_member = AsyncMock(return_value=True)
+        self._authenticate_user()
+
+        resp = self.client.get(f"/orgs/{ORG_ID}/avatar/missing.png")
+
+        assert resp.status_code == 404
+
+    def test_disallowed_local_avatar_extension_returns_404(self):
+        self.mock_db.is_org_member = AsyncMock(return_value=True)
+        self._authenticate_user()
+
+        resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.svg")
+
+        assert resp.status_code == 404
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2097,6 +2161,21 @@ class TestOrgDbListUserOrgs:
         assert len(result) == 2
         assert result[0].id == "org-1"
         assert result[1].id == "org-2"
+
+    @pytest.mark.asyncio
+    async def test_member_check_requires_active_non_deleted_org(self):
+        from backend.api.features.orgs.db import is_org_member
+
+        self.prisma.orgmember.find_first = AsyncMock(return_value=None)
+
+        assert await is_org_member(ORG_ID, USER_ID) is False
+        where = self.prisma.orgmember.find_first.call_args.kwargs["where"]
+        assert where == {
+            "orgId": ORG_ID,
+            "userId": USER_ID,
+            "status": "ACTIVE",
+            "Org": {"deletedAt": None},
+        }
 
 
 class TestOrgDbListMembers:

@@ -85,6 +85,40 @@ async def test_upload_media_org_scoped_storage_path(mock_settings, mock_storage_
     mock_storage_client.upload.assert_called_once()
 
 
+async def test_upload_media_org_scoped_local_storage(tmp_path, monkeypatch, mocker):
+    settings = Settings()
+    settings.config.media_gcs_bucket_name = ""
+    settings.config.media_storage_dir = str(tmp_path)
+    monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    mocker.patch(
+        "backend.api.features.store.media.scan_content_safe", new_callable=AsyncMock
+    )
+    test_file = fastapi.UploadFile(
+        filename="logo.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\n"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+
+    result = await store_media.upload_media(
+        "test-user", test_file, organization_id="org-123"
+    )
+
+    filename = result.rsplit("/", 1)[-1]
+    assert result == f"/api/orgs/org-123/avatar/{filename}"
+    assert (tmp_path / "orgs" / "org-123" / "images" / filename).read_bytes() == (
+        b"\x89PNG\r\n\x1a\n"
+    )
+
+
+def test_local_media_path_rejects_escape(tmp_path, monkeypatch):
+    settings = Settings()
+    settings.config.media_storage_dir = str(tmp_path)
+    monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="Invalid media path"):
+        store_media.get_local_media_path("../outside.png")
+
+
 async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.txt",

@@ -29,6 +29,7 @@ export function AccountMenuHeader({
   isLoading = false,
 }: Props) {
   const popupId = React.useId();
+  const [isOpen, setIsOpen] = React.useState(false);
   const collaborationEnabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const profile = (
     <>
@@ -70,7 +71,7 @@ export function AccountMenuHeader({
   }
 
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -97,7 +98,7 @@ export function AccountMenuHeader({
         className="w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg"
         data-testid="account-menu-org-popover"
       >
-        <AccountMenuOrgList />
+        <AccountMenuOrgList onSelect={() => setIsOpen(false)} />
       </PopoverContent>
     </Popover>
   );

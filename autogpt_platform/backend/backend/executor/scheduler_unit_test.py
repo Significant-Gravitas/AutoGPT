@@ -1448,6 +1448,7 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
         interval_hours,
     )
     mock_scheduler = MagicMock()
+    embedding_coverage = MagicMock()
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
@@ -1460,11 +1461,15 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(
+            f"{_SCHEDULER_PATH}.ensure_embeddings_coverage",
+            new=embedding_coverage,
+        ),
         # super().run_service() blocks forever keeping the service alive; no-op it.
         patch("backend.util.service.AppService.run_service", return_value=None),
     ):
         Scheduler(register_system_tasks=True).run_service()
+    embedding_coverage.assert_not_called()
     return mock_scheduler.add_job.call_args_list
 
 
@@ -1490,6 +1495,18 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=12)
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_embedding_coverage_starts_as_a_non_blocking_scheduler_job(monkeypatch):
+    before = datetime.now(timezone.utc)
+    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    after = datetime.now(timezone.utc)
+
+    match = next(c for c in calls if c.kwargs.get("id") == "ensure_embeddings_coverage")
+    assert match.kwargs["trigger"] == "interval"
+    assert match.kwargs["hours"] == 6
+    assert match.kwargs["max_instances"] == 1
+    assert before <= match.kwargs["next_run_time"] <= after
 
 
 class TestScheduleOrgVisibility:

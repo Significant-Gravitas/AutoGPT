@@ -55,6 +55,13 @@ class InternalServiceTopologyTest(unittest.TestCase):
         )
 
 
+class FrontendBuildConfigurationTest(unittest.TestCase):
+    def test_org_settings_are_enabled_in_the_self_hosted_frontend(self) -> None:
+        dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS=true", dockerfile)
+
+
 class AccountRegistrationTest(unittest.TestCase):
     def test_defaults_open_for_all_origins(self) -> None:
         for public_url in (
