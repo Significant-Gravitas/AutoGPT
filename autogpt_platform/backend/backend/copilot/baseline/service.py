@@ -1587,6 +1587,8 @@ async def _fetch_graphiti_context(
         user_id,
         message or "",
         expert_id=session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
     )
 
 
