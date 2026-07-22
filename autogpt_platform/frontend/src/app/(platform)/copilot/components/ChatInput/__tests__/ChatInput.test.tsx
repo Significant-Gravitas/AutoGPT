@@ -108,24 +108,26 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
         Send
       </button>
     ),
-  PromptInputTextarea: (props: {
+  PromptInputTextarea: function PromptInputTextarea(props: {
     id?: string;
     value?: string;
     onChange?: React.ChangeEventHandler<HTMLTextAreaElement>;
     onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
     disabled?: boolean;
     placeholder?: string;
-  }) => (
-    <textarea
-      id={props.id}
-      value={props.value}
-      onChange={props.onChange}
-      onPaste={props.onPaste}
-      disabled={props.disabled}
-      placeholder={props.placeholder}
-      data-testid="textarea"
-    />
-  ),
+  }) {
+    return (
+      <textarea
+        id={props.id}
+        value={props.value}
+        onChange={props.onChange}
+        onPaste={props.onPaste}
+        disabled={props.disabled}
+        placeholder={props.placeholder}
+        data-testid="textarea"
+      />
+    );
+  },
   PromptInputTools: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="tools">{children}</div>
   ),
@@ -708,6 +710,52 @@ describe("ChatInput clipboard paste", () => {
       expect(onSend).toHaveBeenCalledTimes(1);
     });
     expect(onSend.mock.calls[0][1][0].name).toBe("report.pdf");
+  });
+
+  it("does not rename non-image files with generic image names", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    pasteFiles(textarea, [
+      new File(["pdf-bytes"], "image.pdf", { type: "application/pdf" }),
+    ]);
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(onSend.mock.calls[0][1][0].name).toBe("image.pdf");
+  });
+
+  it("gives images from separate pastes in the same second distinct names", async () => {
+    vi.useFakeTimers();
+    try {
+      const baseTime = new Date("2026-01-01T10:00:00.100Z");
+      vi.setSystemTime(baseTime);
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput onSend={onSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+      pasteFiles(textarea, [
+        new File(["a"], "image.png", { type: "image/png" }),
+      ]);
+      vi.setSystemTime(new Date("2026-01-01T10:00:00.900Z"));
+      pasteFiles(textarea, [
+        new File(["b"], "image.png", { type: "image/png" }),
+      ]);
+
+      vi.useRealTimers();
+      fireEvent.submit(textarea.closest("form")!);
+      await waitFor(() => {
+        expect(onSend).toHaveBeenCalledTimes(1);
+      });
+      const files = onSend.mock.calls[0][1] as File[];
+      expect(files).toHaveLength(2);
+      expect(files[0].name).not.toBe(files[1].name);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gives multiple generic pasted images distinct names", async () => {

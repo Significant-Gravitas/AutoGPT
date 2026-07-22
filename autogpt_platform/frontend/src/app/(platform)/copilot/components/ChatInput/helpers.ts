@@ -10,9 +10,14 @@ export function getFilesFromClipboard(
 }
 
 function renameGenericImage(file: File, index: number): File {
-  if (!GENERIC_CLIPBOARD_IMAGE_NAME.test(file.name)) return file;
+  if (
+    !file.type.startsWith("image/") ||
+    !GENERIC_CLIPBOARD_IMAGE_NAME.test(file.name)
+  ) {
+    return file;
+  }
   const extension = file.name.split(".").pop();
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+  const stamp = new Date().toISOString().slice(0, 23).replace(/[T:.]/g, "-");
   const suffix = index > 0 ? `-${index + 1}` : "";
   return new File([file], `pasted-image-${stamp}${suffix}.${extension}`, {
     type: file.type,
