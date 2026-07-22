@@ -71,6 +71,18 @@ describe("usePlatformChrome", () => {
     });
   });
 
+  it("excludes /admin routes from the new layout but keeps the flag active", async () => {
+    pathnameMock.mockReturnValue("/admin/marketplace");
+    const { result } = renderHook(() => usePlatformChrome());
+
+    await waitFor(() => {
+      // The admin section brings its own sidebar, so the app sidebar shell is
+      // suppressed even though the new-layout flag itself is active.
+      expect(result.current.showNewLayout).toBe(false);
+      expect(result.current.isNewLayoutActive).toBe(true);
+    });
+  });
+
   it.each([
     "/reset-password",
     "/auth/auth-code-error",

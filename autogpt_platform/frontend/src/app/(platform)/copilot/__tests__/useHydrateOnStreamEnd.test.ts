@@ -61,6 +61,7 @@ function runForceHydrate({
     sessionId: SESSION_ID,
     isReconnectScheduled: false,
     hasActiveStream: false,
+    isFinishProbing: false,
     setMessages,
   };
 
@@ -164,5 +165,180 @@ describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424
       ...range(1, 40).map(seqOf),
       ...freshWindow.map(seqOf),
     ]);
+  });
+});
+
+describe("useHydrateOnStreamEnd — continuation-turn flash guard", () => {
+  type Props = Parameters<typeof useHydrateOnStreamEnd>[0];
+
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function makeCapturingSetMessages(prev: Messages) {
+    const captured: { current: Messages | null } = { current: null };
+    const setMessages = vi.fn(
+      (updater: Messages | ((p: Messages) => Messages)) => {
+        captured.current =
+          typeof updater === "function" ? updater(prev) : updater;
+      },
+    );
+    return { setMessages, captured };
+  }
+
+  function setup({ prev = [] as Messages } = {}) {
+    const { setMessages, captured } = makeCapturingSetMessages(prev);
+    const baseProps = {
+      sessionId: SESSION_ID,
+      isReconnectScheduled: false,
+      hasActiveStream: false,
+      isFinishProbing: false,
+      setMessages,
+    };
+    const hook = renderHook<void, Props>(
+      (props) => useHydrateOnStreamEnd(props),
+      {
+        initialProps: {
+          ...baseProps,
+          status: "streaming",
+          hydratedMessages: range(51, 100),
+        },
+      },
+    );
+    // Stream ends → arms the force-hydrate against the stale pre-turn window.
+    hook.rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(51, 100),
+    } satisfies Props);
+    return { ...hook, baseProps, setMessages, captured };
+  }
+
+  it("defers the force-hydrate while the post-finish probe is in flight", () => {
+    const { rerender, baseProps, setMessages, captured } = setup();
+
+    // Fresh post-turn window lands while `handleFinish` is still probing for
+    // a continuation turn — the replace must NOT apply (it would swap every
+    // message id, remount the list and flash the panel).
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Probe settles with no continuation → the replace lands.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(captured.current!.map(seqOf)).toEqual(range(53, 102).map(seqOf));
+  });
+
+  it("holds the force-hydrate while the backend still has an active stream", () => {
+    const { rerender, baseProps, setMessages, captured } = setup();
+
+    // Refetched session data shows a continuation turn already live — the
+    // resume flow takes over, so the replace must wait.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      hasActiveStream: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Backend goes idle → the replace lands.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      hasActiveStream: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(captured.current!.map(seqOf)).toEqual(range(53, 102).map(seqOf));
+  });
+
+  it("stays held through the probe → reconnect handoff", () => {
+    const { rerender, baseProps, setMessages } = setup();
+
+    // The real continuation flow: the probe is in flight...
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: true,
+    } satisfies Props);
+    // ...then the probe finds an active stream and schedules the reconnect —
+    // `isFinishProbing` flips false while `hasActiveStream` is now true. The
+    // replace must stay held by the second gate.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: false,
+      hasActiveStream: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Continuation turn ends, backend idle → the replace finally lands.
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      hasActiveStream: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains older in-memory history when the deferred replace lands", () => {
+    // Memory holds seq 1-60; the fresh window covers seq 53-102. The delayed
+    // replace must still prepend the older in-memory run (seq 1-52) instead
+    // of tearing a hole into scrolled-back history.
+    const { rerender, baseProps, setMessages, captured } = setup({
+      prev: range(1, 60),
+    });
+
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: true,
+    } satisfies Props);
+    expect(setMessages).not.toHaveBeenCalled();
+
+    rerender({
+      ...baseProps,
+      status: "ready",
+      hydratedMessages: range(53, 102),
+      isFinishProbing: false,
+    } satisfies Props);
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(captured.current!.map(seqOf)).toEqual(range(1, 102).map(seqOf));
+  });
+
+  it("still applies length-gated top-ups while a stream is active (session restore)", () => {
+    // Reopening a session with an active backend stream relies on the top-up
+    // branch to render history before the resume replay starts — only the
+    // force-hydrate path is gated on `hasActiveStream`.
+    const { setMessages, captured } = makeCapturingSetMessages([]);
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        sessionId: SESSION_ID,
+        status: "ready",
+        hydratedMessages: range(1, 10),
+        isReconnectScheduled: false,
+        hasActiveStream: true,
+        isFinishProbing: false,
+        setMessages,
+      }),
+    );
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    expect(captured.current!.map(seqOf)).toEqual(range(1, 10).map(seqOf));
   });
 });

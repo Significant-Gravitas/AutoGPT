@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import itertools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -21,6 +20,7 @@ from prisma.enums import ContentType
 from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+from backend.util.docs import get_docs_root
 from backend.util.text import split_camelcase
 
 if TYPE_CHECKING:
@@ -238,7 +238,14 @@ class BlockHandler(ContentHandler):
         return ContentType.BLOCK
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
-        """Fetch blocks without embeddings."""
+        """Fetch blocks whose embedding is missing or stale.
+
+        Stale = the stored ``searchableText`` no longer matches the text built
+        from the current block definition (rename, description change, schema
+        drift). Without this check a renamed block keeps its old embedding
+        forever and becomes unfindable under its new name (e.g.
+        SmartDecisionMakerBlock → OrchestratorBlock).
+        """
         # to_thread keeps the first (heavy) call off the event loop.  On
         # subsequent calls the lru_cache makes this a dict lookup, so the
         # thread-pool overhead is negligible compared to the DB queries below.
@@ -248,11 +255,11 @@ class BlockHandler(ContentHandler):
 
         block_ids = list(enabled.keys())
 
-        # Query for existing embeddings
+        # Query for existing embeddings and their indexed text
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
         existing_result = await query_raw_with_schema(
             f"""
-            SELECT "contentId"
+            SELECT "contentId", "searchableText"
             FROM {{schema_prefix}}"UnifiedContentEmbedding"
             WHERE "contentType" = 'BLOCK'::{{schema_prefix}}"ContentType"
             AND "contentId" = ANY(ARRAY[{placeholders}])
@@ -260,74 +267,27 @@ class BlockHandler(ContentHandler):
             *block_ids,
         )
 
-        existing_ids = {row["contentId"] for row in existing_result}
+        existing_text = {
+            row["contentId"]: row.get("searchableText") for row in existing_result
+        }
 
         # Convert to ContentItem — disabled filtering already done by
         # _get_enabled_blocks so batch_size won't be exhausted by disabled blocks.
-        missing = ((bid, b) for bid, b in enabled.items() if bid not in existing_ids)
-        items = []
-        for block_id, block in itertools.islice(missing, batch_size):
+        items: list[ContentItem] = []
+        for block_id, block in enabled.items():
+            if len(items) >= batch_size:
+                break
             try:
-                # Build searchable text from block metadata
-                if not block.name:
-                    logger.warning(
-                        f"Block {block_id} has no name — using block_id as fallback"
-                    )
-                display_name = split_camelcase(block.name) if block.name else ""
-                parts = []
-                if display_name:
-                    parts.append(display_name)
-                if block.description:
-                    parts.append(block.description)
-                if block.categories:
-                    parts.append(" ".join(str(cat.value) for cat in block.categories))
-
-                # Add input schema field descriptions
-                parts += [
-                    f"{field_name}: {field_info.description}"
-                    for field_name, field_info in block.input_schema.model_fields.items()
-                    if field_info.description
-                ]
-
-                searchable_text = " ".join(parts)
-
-                categories_list = (
-                    [cat.value for cat in block.categories] if block.categories else []
-                )
-
-                # Extract provider names from credentials fields
-                credentials_info = block.input_schema.get_credentials_fields_info()
-                is_integration = len(credentials_info) > 0
-                provider_names = [
-                    provider.value.lower()
-                    for info in credentials_info.values()
-                    for provider in info.provider
-                ]
-
-                # Check if block has LlmModel field in input schema
-                has_llm_model_field = any(
-                    _contains_type(field.annotation, LlmModel)
-                    for field in block.input_schema.model_fields.values()
-                )
-
-                items.append(
-                    ContentItem(
-                        content_id=block_id,
-                        content_type=ContentType.BLOCK,
-                        searchable_text=searchable_text,
-                        metadata={
-                            "name": display_name or block.name or block_id,
-                            "categories": categories_list,
-                            "providers": provider_names,
-                            "has_llm_model_field": has_llm_model_field,
-                            "is_integration": is_integration,
-                        },
-                        user_id=None,
-                    )
-                )
+                item = _build_block_content_item(block_id, block)
             except Exception as e:
                 logger.warning(f"Failed to process block {block_id}: {e}")
                 continue
+            if (
+                block_id in existing_text
+                and existing_text[block_id] == item.searchable_text
+            ):
+                continue  # embedding exists and is up to date
+            items.append(item)
 
         return items
 
@@ -368,6 +328,62 @@ class BlockHandler(ContentHandler):
         return set(enabled.keys())
 
 
+def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentItem:
+    """Build the embeddable ContentItem for a block from its live definition."""
+    if not block.name:
+        logger.warning(f"Block {block_id} has no name — using block_id as fallback")
+    display_name = split_camelcase(block.name) if block.name else ""
+    parts = []
+    if display_name:
+        parts.append(display_name)
+    if block.description:
+        parts.append(block.description)
+    if block.categories:
+        parts.append(" ".join(str(cat.value) for cat in block.categories))
+
+    # Add input schema field descriptions
+    parts += [
+        f"{field_name}: {field_info.description}"
+        for field_name, field_info in block.input_schema.model_fields.items()
+        if field_info.description
+    ]
+
+    searchable_text = " ".join(parts)
+
+    categories_list = (
+        [cat.value for cat in block.categories] if block.categories else []
+    )
+
+    # Extract provider names from credentials fields
+    credentials_info = block.input_schema.get_credentials_fields_info()
+    is_integration = len(credentials_info) > 0
+    provider_names = [
+        provider.value.lower()
+        for info in credentials_info.values()
+        for provider in info.provider
+    ]
+
+    # Check if block has LlmModel field in input schema
+    has_llm_model_field = any(
+        _contains_type(field.annotation, LlmModel)
+        for field in block.input_schema.model_fields.values()
+    )
+
+    return ContentItem(
+        content_id=block_id,
+        content_type=ContentType.BLOCK,
+        searchable_text=searchable_text,
+        metadata={
+            "name": display_name or block.name or block_id,
+            "categories": categories_list,
+            "providers": provider_names,
+            "has_llm_model_field": has_llm_model_field,
+            "is_integration": is_integration,
+        },
+        user_id=None,
+    )
+
+
 @dataclass
 class MarkdownSection:
     """Represents a section of a markdown document."""
@@ -389,20 +405,12 @@ class DocumentationHandler(ContentHandler):
     def content_type(self) -> ContentType:
         return ContentType.DOCUMENTATION
 
-    def _get_docs_root(self) -> Path:
-        """Get the documentation root directory."""
-        # content_handlers.py is at: backend/backend/api/features/store/content_handlers.py
-        # Need to go up to project root then into docs/
-        # In container: /app/autogpt_platform/backend/backend/api/features/store -> /app/docs
-        # In development: /repo/autogpt_platform/backend/backend/api/features/store -> /repo/docs
-        this_file = Path(
-            __file__
-        )  # .../backend/backend/api/features/store/content_handlers.py
-        project_root = (
-            this_file.parent.parent.parent.parent.parent.parent.parent
-        )  # -> /app or /repo
-        docs_root = project_root / "docs"
-        return docs_root
+    def _get_docs_root(self) -> Path | None:
+        """Get the documentation root directory (shared with the copilot
+        docs tools so indexed paths and page reads always agree), or None
+        when this deployment didn't bundle the docs — the indexer degrades
+        to empty results instead of crashing."""
+        return get_docs_root()
 
     def _extract_doc_title(self, file_path: Path) -> str:
         """Extract the document title from a markdown file."""
@@ -562,8 +570,8 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
-            logger.warning(f"Documentation root not found: {docs_root}")
+        if docs_root is None:
+            logger.warning("Documentation root not found")
             return []
 
         # Find all .md and .mdx files
@@ -667,7 +675,7 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
+        if docs_root is None:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         # Get all section content IDs
@@ -699,7 +707,7 @@ class DocumentationHandler(ContentHandler):
         # or removed section drops from this set and its embedding gets
         # cleaned up.
         docs_root = self._get_docs_root()
-        if not docs_root.exists():
+        if docs_root is None:
             return set()
         # Filesystem walk is sync; keep it off the event loop.
         return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)

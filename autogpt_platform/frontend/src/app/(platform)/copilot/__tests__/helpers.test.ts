@@ -10,6 +10,7 @@ import {
   getCopilotAuthHeaders,
   getSendSuppressionReason,
   parseSessionIDs,
+  resolveModeChangedMode,
   resolveSessionDryRun,
   shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
@@ -679,5 +680,41 @@ describe("getCopilotAuthHeaders", () => {
     await expect(getCopilotAuthHeaders()).rejects.toThrow(
       "Authentication failed — please sign in again.",
     );
+  });
+});
+
+describe("resolveModeChangedMode", () => {
+  it("returns the mode for a data-mode-changed part with a known mode", () => {
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "extended_thinking" },
+      }),
+    ).toBe("extended_thinking");
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "fast" },
+      }),
+    ).toBe("fast");
+  });
+
+  it("returns null for other data part types", () => {
+    expect(
+      resolveModeChangedMode({ type: "data-status", data: { mode: "fast" } }),
+    ).toBeNull();
+  });
+
+  it("returns null for unknown or missing modes", () => {
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "turbo" },
+      }),
+    ).toBeNull();
+    expect(resolveModeChangedMode({ type: "data-mode-changed" })).toBeNull();
+    expect(
+      resolveModeChangedMode({ type: "data-mode-changed", data: "fast" }),
+    ).toBeNull();
   });
 });

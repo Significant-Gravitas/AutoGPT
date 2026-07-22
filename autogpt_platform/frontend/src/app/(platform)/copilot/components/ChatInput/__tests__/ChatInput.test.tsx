@@ -23,6 +23,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 }));
 
 let mockCopilotMode = "extended_thinking";
+let mockCopilotModePinned = false;
 const mockSetCopilotChatMode = vi.fn((mode: string) => {
   mockCopilotMode = mode;
 });
@@ -43,6 +44,7 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     setCopilotMode: mockSetCopilotChatMode,
     copilotChatMode: mockCopilotMode,
     setCopilotChatMode: mockSetCopilotChatMode,
+    copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
     isDryRun: false,
@@ -224,6 +226,18 @@ describe("ChatInput mode toggle", () => {
     mockCopilotMode = "fast";
     render(<ChatInput onSend={mockOnSend} />);
     expect(screen.getByText("Fast")).toBeDefined();
+  });
+
+  it("keeps the mode locked while pinned (building mode)", () => {
+    mockFlagValue = true;
+    mockCopilotMode = "extended_thinking";
+    mockCopilotModePinned = true;
+    render(<ChatInput onSend={mockOnSend} />);
+    const button = screen.getByLabelText(/mode locked to extended thinking/i);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button);
+    expect(mockSetCopilotChatMode).not.toHaveBeenCalled();
+    mockCopilotModePinned = false;
   });
 
   it("toggles from extended_thinking to fast on click", () => {
