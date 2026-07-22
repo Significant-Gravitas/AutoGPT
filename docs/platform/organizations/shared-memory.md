@@ -35,6 +35,7 @@ active shared memory, and `POST .../reject` retracts it. All three review
 endpoints require org-admin (owner/admin) permission and only ever act on the
 org's own shared tiers — personal memory is never exposed or modified.
 
-In the org settings **Shared memory** card, the toggle persists through the
-setting above; the review-queue page wiring is the remaining UI step and the
-card says so where it applies.
+Both surfaces are live in the org settings UI (General tab → Shared memory):
+admins can flip hold-for-review directly, and the review queue lists each held
+memory with its tier, originating team, and provenance, with per-item approve
+and reject actions.

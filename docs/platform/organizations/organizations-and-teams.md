@@ -63,3 +63,5 @@ space.
 - [Team credentials](team-credentials.md)
 - [Shared memory](shared-memory.md)
 - [Who can see what](who-can-see-what.md)
+
+Organization admins can set the organization's logo from **Settings → Organization** — use the **Change** button next to the avatar in the profile section.
