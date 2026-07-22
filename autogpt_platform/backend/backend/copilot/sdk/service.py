@@ -101,6 +101,7 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -808,9 +809,38 @@ async def _consume_sdk_until_done(
             loop_state.last_flush_time = now
             loop_state.msgs_since_flush = 0
 
+        # --- Building-mode switch (enter_agent_building_mode) ---
+        # Restart the attempt with the guide in the system prompt.
+        if _ready_for_building_mode_restart(ctx.session, state.adapter):
+            logger.info(
+                f"{ctx.log_prefix} Building mode requested — interrupting "
+                f"for prompt upgrade"
+            )
+            try:
+                await client.interrupt()
+            except Exception as exc:
+                # Best-effort: client close in the caller's finally is the
+                # fallback shutdown path (same as transient retries).
+                logger.warning(
+                    f"{ctx.log_prefix} Interrupt for building-mode restart "
+                    f"failed: {exc}"
+                )
+            raise _BuildingModeRestart()
+
         if acc.stream_completed:
             break
 
+
+# Continuation query sent when relaunching an attempt after the
+# building-mode switch — the CLI session already holds the original user
+# message and all partial work, so this only needs to orient the model.
+# Sibling of the baseline engine-switch continuation prompt
+# (engine_switch.CONTINUATION_MESSAGE) — keep the two aligned when rewording.
+_BUILDING_MODE_CONTINUATION = (
+    "Building mode is now active — the complete agent-building guide is in "
+    "your system prompt (<building_guide>) and survives context compaction. "
+    "Continue working on the user's request from where you left off."
+)
 
 # Synthetic message injected when a turn ends with extended thinking but no
 # visible TextBlock. Bounded to one re-prompt per turn — if the model still
@@ -1504,6 +1534,89 @@ class _InterruptedAttempt:
         return events
 
 
+async def _apply_building_mode_restart(
+    *,
+    session: "ChatSession",
+    state: "_RetryState",
+    sdk_options: "ClaudeAgentOptions",
+    base_system_prompt: str,
+    graphiti_supplement: str,
+    use_e2b: bool,
+    session_id: str,
+    message_id: str,
+    log_prefix: str,
+) -> StreamStatus:
+    """Reconfigure *state* to relaunch the attempt with the guide in the
+    system prompt, returning the status event to yield.
+
+    Not an error, not a rollback — everything produced so far stands, so the
+    fresh adapter only carries over the transient-retry flags. Detection
+    cannot re-fire: guide_in_system_prompt flips True on success,
+    building_mode_requested flips False either way.
+    """
+    session.building_mode_requested = False
+    building_suffix = await build_builder_system_prompt_suffix(session)
+    session.guide_in_system_prompt = bool(building_suffix)
+    if not building_suffix:
+        logger.error(
+            f"{log_prefix} Building-mode restart: guide suffix "
+            f"empty — continuing without prompt upgrade"
+        )
+    system_prompt = (
+        base_system_prompt
+        + get_sdk_supplement(use_e2b=use_e2b)
+        + graphiti_supplement
+        + building_suffix
+    )
+    sdk_options_restart = copy(sdk_options)
+    sdk_options_restart.system_prompt = _build_system_prompt_value(
+        system_prompt,
+        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+    )
+    # Resume the CLI session the interrupted run was writing —
+    # spike-verified: --resume accepts a changed append and the
+    # new content is live on the resumed turn.
+    sdk_options_restart.resume = session_id
+    sdk_options_restart.session_id = None
+    state.options = sdk_options_restart
+    state.use_resume = True
+    state.resume_file = session_id
+    state.query_message = _BUILDING_MODE_CONTINUATION
+    # Fresh adapter, same carry-over rules as a transient retry.
+    # NOTE: the transcript builder is NOT restored — its partial
+    # entries are real; the relaunched run's `append_user` adds
+    # the original message once more, which only surfaces in the
+    # rare CLI-file-loss fallback path (cosmetic duplicate).
+    prior_adapter = state.adapter
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        render_reasoning_in_ui=config.render_reasoning_in_ui,
+    )
+    state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
+    if prior_adapter.emitted_real_content_to_wire:
+        state.adapter.prior_attempt_emitted_visible_content = True
+    return StreamStatus(message="Entering building mode — loading the agent guide…")
+
+
+def _ready_for_building_mode_restart(
+    session: "ChatSession",
+    adapter: "SDKResponseAdapter",
+) -> bool:
+    """True when the attempt may restart for the building-mode prompt upgrade.
+
+    Requires a clean message boundary — no unresolved tool calls — so the
+    CLI session file is orphan-free and cleanly resumable; firing mid-tool-
+    call would strand ``tool_use`` blocks without results. No-op once the
+    guide is already in the system prompt (restart already happened).
+    """
+    return (
+        session.building_mode_requested
+        and not session.guide_in_system_prompt
+        and not adapter.has_unresolved_tool_calls
+    )
+
+
 def _flush_orphan_tool_uses_to_session(
     session: "ChatSession | None",
     state: "_RetryState | None",
@@ -1532,9 +1645,44 @@ def _flush_orphan_tool_uses_to_session(
                 else json.dumps(resp.output, ensure_ascii=False)
             )
             session.messages.append(
-                ChatMessage(role="tool", content=content, tool_call_id=resp.toolCallId)
+                ChatMessage(
+                    role="tool",
+                    content=content,
+                    tool_call_id=resp.toolCallId,
+                    name=_resolve_tool_result_name(
+                        session, resp.toolCallId, resp.toolName
+                    ),
+                )
             )
     return safety
+
+
+def _resolve_tool_result_name(
+    session: "ChatSession",
+    tool_call_id: str,
+    tool_name: str | None,
+) -> str | None:
+    """Name for a persisted tool-result row, falling back to the matching
+    assistant ``tool_call`` — a nameless row is unidentifiable in history,
+    which is the exact defect the ``name`` column exists to fix."""
+    if tool_name:
+        return tool_name
+    for msg in reversed(session.messages):
+        for tc in msg.tool_calls or []:
+            if tc.get("id") == tool_call_id:
+                if name := tc.get("function", {}).get("name"):
+                    return name
+                logger.warning(
+                    f"Persisting nameless tool-result row for session "
+                    f"{session.session_id}: matching tool_call "
+                    f"{tool_call_id} has no function name"
+                )
+                return None
+    logger.warning(
+        f"Persisting nameless tool-result row for session {session.session_id}: "
+        f"no name provided and no matching tool_call {tool_call_id} in history"
+    )
+    return None
 
 
 @dataclass(frozen=True)
@@ -3069,6 +3217,7 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
+        acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
@@ -3107,6 +3256,9 @@ def _dispatch_response(
                 role="tool",
                 content=content,
                 tool_call_id=response.toolCallId,
+                name=_resolve_tool_result_name(
+                    ctx.session, response.toolCallId, response.toolName
+                ),
             )
         )
         if not entries_replaced:
@@ -3120,6 +3272,17 @@ def _dispatch_response(
         acc.stream_completed = True
 
     return response
+
+
+class _BuildingModeRestart(Exception):
+    """Raised by ``_consume_sdk_until_done`` when ``enter_agent_building_mode``
+    was called: the outer loop relaunches this attempt with the agent-building
+    guide in the system prompt (``--resume`` on the same CLI session).
+
+    NOT an error and NOT a rollback — everything the attempt produced so far
+    (tool calls, results, text) stands, in the client stream, the session
+    history, and the CLI session file.
+    """
 
 
 class _HandledStreamError(Exception):
@@ -4032,6 +4195,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # prompt cache keeps the ~20KB guide warm for the whole session.
         # Empty string for non-builder sessions preserves cross-user caching.
         builder_session_suffix = await build_builder_system_prompt_suffix(session)
+        # Per-turn runtime flag (never persisted): lets the guide gate and
+        # get_agent_building_guide skip redundant guide round-trips when the
+        # guide is already in this turn's cached system prompt.
+        session.sdk_turn_active = True
+        session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
@@ -4047,6 +4215,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+
+        if mode == "fast":
+            # The request asked for Fast but this turn runs on the SDK
+            # engine (building-mode pin or engine-switch continuation).
+            # Tell stale pickers — a client that missed the original
+            # data-mode-changed (reload, second tab) re-syncs here.
+            yield StreamModeChanged(mode="extended_thinking")
 
         set_execution_context(
             user_id,
@@ -4074,9 +4249,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # hiding is meant to eliminate (CLI returns "Permission to use ...
         # has been denied", which the model narrates as a fake Allow/Deny
         # prompt).
-        hidden_tools = _hidden_short_names_for_permissions(
-            permissions
-        ) | tool_names_in_groups(disabled_tool_groups)
+        # get_agent_building_guide is redundant on the SDK path —
+        # enter_agent_building_mode puts the same guide compaction-proof
+        # into the system prompt. Hiding it removes the tempting-but-worse
+        # fallback; read_skill("agent_building_guide") remains as escape
+        # hatch. The baseline path (no prompt machinery) keeps the tool.
+        hidden_tools = (
+            _hidden_short_names_for_permissions(permissions)
+            | tool_names_in_groups(disabled_tool_groups)
+            | {"get_agent_building_guide"}
+        )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b, hidden_tool_names=hidden_tools
         )
@@ -4682,6 +4864,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
+            except _BuildingModeRestart:
+                # enter_agent_building_mode: relaunch this attempt with the
+                # agent-building guide in the system prompt. Not an error,
+                # not a rollback — everything produced so far stands (client
+                # stream, session history, CLI session file), so no
+                # interrupted.capture / snapshot restore here. Detection
+                # cannot re-fire: guide_in_system_prompt flips True on
+                # success, building_mode_requested flips False either way.
+                yield await _apply_building_mode_restart(
+                    session=session,
+                    state=state,
+                    sdk_options=sdk_options,
+                    base_system_prompt=base_system_prompt,
+                    graphiti_supplement=graphiti_supplement,
+                    use_e2b=use_e2b,
+                    session_id=session_id,
+                    message_id=message_id,
+                    log_prefix=log_prefix,
+                )
+                continue
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
                 # appended an error marker.  We only need to rollback

@@ -1,5 +1,6 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
+import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import Link, { useLinkStatus } from "next/link";
 import * as React from "react";
 
@@ -11,20 +12,24 @@ interface Props {
   destructive?: boolean;
   as?: "link" | "button";
   external?: boolean;
+  // New sidebar layout variant: lighter text weight + external-link glyph.
+  newLayout?: boolean;
 }
 
 const baseRowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm font-medium outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
+  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
 
 function RowBody({
   icon,
   label,
   destructive,
+  external = false,
   pending = false,
 }: {
   icon: React.ReactNode;
   label: string;
   destructive: boolean;
+  external?: boolean;
   pending?: boolean;
 }) {
   const barClasses = destructive
@@ -42,6 +47,12 @@ function RowBody({
           className="relative z-10 text-current"
           aria-hidden="true"
         />
+      ) : external ? (
+        <ArrowSquareOutIcon
+          className="relative z-10 shrink-0 text-neutral-700"
+          size={16}
+          aria-hidden="true"
+        />
       ) : null}
     </>
   );
@@ -51,10 +62,12 @@ function LinkRowBody({
   icon,
   label,
   destructive,
+  external = false,
 }: {
   icon: React.ReactNode;
   label: string;
   destructive: boolean;
+  external?: boolean;
 }) {
   const { pending } = useLinkStatus();
   return (
@@ -62,6 +75,7 @@ function LinkRowBody({
       icon={icon}
       label={label}
       destructive={destructive}
+      external={external}
       pending={pending}
     />
   );
@@ -75,10 +89,16 @@ export function AccountMenuRow({
   destructive = false,
   as = "link",
   external = false,
+  newLayout = false,
 }: Props) {
   const colorClasses = destructive
     ? "text-neutral-700 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
     : "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
+  const rowClasses = cn(
+    baseRowClasses,
+    newLayout ? "font-normal" : "font-medium",
+    colorClasses,
+  );
 
   if (as === "link" && href) {
     if (external) {
@@ -87,25 +107,26 @@ export function AccountMenuRow({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn(baseRowClasses, colorClasses)}
+          className={rowClasses}
         >
-          <RowBody icon={icon} label={label} destructive={destructive} />
+          <RowBody
+            icon={icon}
+            label={label}
+            destructive={destructive}
+            external={newLayout}
+          />
         </a>
       );
     }
     return (
-      <Link href={href} className={cn(baseRowClasses, colorClasses)}>
+      <Link href={href} className={rowClasses}>
         <LinkRowBody icon={icon} label={label} destructive={destructive} />
       </Link>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(baseRowClasses, colorClasses)}
-    >
+    <button type="button" onClick={onClick} className={rowClasses}>
       <RowBody icon={icon} label={label} destructive={destructive} />
     </button>
   );
