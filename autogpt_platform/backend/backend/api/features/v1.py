@@ -1694,6 +1694,36 @@ async def get_graph_all_versions(
     return graphs
 
 
+async def _resolve_write_team_id(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> str | None:
+    """Validate an explicitly-requested team_id for a create/save.
+
+    Returns ``team_id`` when the caller is an ACTIVE member of a team that
+    belongs to ``organization_id`` (which is what makes it stampable), and
+    ``None`` when no team was requested (org-home). Raises HTTP 400 for a
+    team the caller may not write into — a team in another org, or one the
+    caller is not an active member of. Org admins are not exempt: creating
+    into a team requires membership (join the team first).
+    """
+    if team_id is None:
+        return None
+    if not organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No organization context available for team assignment.",
+        )
+    if team_id not in await get_user_team_ids(user_id, organization_id):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid team_id: it must be a team in your organization that "
+                "you are an active member of."
+            ),
+        )
+    return team_id
+
+
 @v1_router.post(
     path="/graphs",
     summary="Create new graph",
@@ -2772,12 +2802,18 @@ async def create_api_key(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
+    # A team-scoped key may only ever act on that team's resources. The
+    # X-Team-Id transport lands the active team in ctx.team_id; validate it is
+    # an active membership before pinning the key to it. (When an explicit
+    # request.team_id is added, it takes precedence over this ctx fallback.)
+    team_id_restriction = await _resolve_write_team_id(user_id, ctx.org_id, ctx.team_id)
     api_key_info, plain_text_key = await api_key_db.create_api_key(
         name=request.name,
         user_id=user_id,
         permissions=request.permissions,
         description=request.description,
         organization_id=ctx.org_id,
+        team_id_restriction=team_id_restriction,
     )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 

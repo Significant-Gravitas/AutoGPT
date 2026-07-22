@@ -11,6 +11,8 @@ def _make_library_agent(
     *,
     graph_id: str = "g1",
     executions: list | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
@@ -26,6 +28,8 @@ def _make_library_agent(
         updatedAt=datetime.datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        organizationId=organization_id,
+        teamId=team_id,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id=graph_id,
@@ -63,6 +67,37 @@ def test_from_db_execution_count_override_covers_success_rate():
     assert result.execution_count == 1
     assert result.success_rate is not None
     assert result.success_rate == 100.0
+
+
+def test_library_agent_from_db_surfaces_team_tenancy():
+    """team_id/organization_id are surfaced from the row for list badges."""
+    agent = _make_library_agent(organization_id="org-1", team_id="team-7")
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.organization_id == "org-1"
+    assert result.team_id == "team-7"
+
+
+def test_library_folder_from_db_surfaces_team_tenancy():
+    """LibraryFolder.from_db carries the row's team tenancy for badges."""
+    now = datetime.datetime.now()
+    folder = prisma.models.LibraryFolder(
+        id="f1",
+        userId="u1",
+        name="My Folder",
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=False,
+        organizationId="org-1",
+        teamId="team-7",
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+
+    result = library_model.LibraryFolder.from_db(folder)
+
+    assert result.organization_id == "org-1"
+    assert result.team_id == "team-7"
 
 
 @pytest.mark.asyncio

@@ -1598,3 +1598,104 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
     response = client.post("/skills", json={"content": _VALID_SKILL_MD})
     assert response.status_code == 400
     assert "virus scan" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# API-key create: active-team context (X-Team-Id) restriction (SECRT-2488)
+#
+# The X-Team-Id header lands the active team in ctx.team_id. create_api_key
+# must stamp that as the key's team restriction so a team-scoped key can only
+# act on that team's resources — instead of silently ignoring the header and
+# minting an org-wide key. These lock in that fallback and its validation.
+# ---------------------------------------------------------------------------
+def _api_key_info(user_id: str):
+    from prisma.enums import APIKeyStatus
+
+    from backend.data.auth.api_key import APIKeyInfo
+
+    return APIKeyInfo(
+        id="key-1",
+        name="k",
+        head="agpt_xxxx",
+        tail="yyyy",
+        status=APIKeyStatus.ACTIVE,
+        scopes=[],
+        user_id=user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
+    )
+
+
+def _override_ctx_team(team_id: str | None) -> None:
+    """Repoint get_request_context at a ctx with the given active team.
+
+    The autouse setup_app_auth fixture already installs a ctx with
+    team_id=None; this lets a single test exercise the header-set case. The
+    fixture's teardown clears the override afterwards.
+    """
+    import dataclasses
+
+    from autogpt_libs.auth.dependencies import get_request_context
+
+    ctx = dataclasses.replace(_test_ctx("test-user-id"), team_id=team_id)
+    app.dependency_overrides[get_request_context] = lambda: ctx
+
+
+def test_create_api_key_stamps_ctx_team_restriction(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """An active-team ctx (X-Team-Id) pins the new key to that team."""
+    _override_ctx_team("test-team")
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["test-team"]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] == "test-team"
+
+
+def test_create_api_key_no_team_context_is_unrestricted(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Org-home ctx (team_id=None) -> an org-wide key; no membership lookup."""
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+    get_teams = mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["test-team"]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] is None
+    get_teams.assert_not_awaited()
+
+
+def test_create_api_key_rejects_ctx_team_user_not_member(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Defense-in-depth: a ctx team the caller isn't an active member of is
+    re-validated and rejected with 400 — no key minted."""
+    _override_ctx_team("test-team")
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 400
+    assert "active member" in response.json()["detail"]
+    create_mock.assert_not_awaited()
