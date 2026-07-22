@@ -48,12 +48,18 @@ export function setLastUsedTeam(
   storage.set(Key.CREATE_SURFACE_TEAMS, JSON.stringify(map));
 }
 
+// Sentinel X-Team-Id value that tells customMutator to force org-home scope:
+// it drops the store-derived active-team context header so a create lands in
+// org-home even when a team is active in the nav. Empty string is never sent
+// to the backend — the mutator strips it.
+export const ORG_HOME_TEAM_SENTINEL = "";
+
 // Per-request Orval options (second arg to customMutator) that stamp the
-// chosen team via the X-Team-Id header. Returns undefined for org-home so the
-// backend falls back to the active-org context.
-export function getTeamRequestInit(
-  teamId: string | null,
-): RequestInit | undefined {
-  if (!teamId) return undefined;
-  return { headers: { [TEAM_HEADER_NAME]: teamId } };
+// chosen team via the X-Team-Id header. For org-home (null) it sends the
+// org-home sentinel so the mutator suppresses the active-team context rather
+// than silently inheriting the nav team.
+export function getTeamRequestInit(teamId: string | null): RequestInit {
+  return {
+    headers: { [TEAM_HEADER_NAME]: teamId ?? ORG_HOME_TEAM_SENTINEL },
+  };
 }
