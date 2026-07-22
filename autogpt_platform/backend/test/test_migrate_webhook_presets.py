@@ -40,6 +40,19 @@ def mock_prisma():
         yield mock_client
 
 
+@pytest.fixture(autouse=True)
+def mock_input_output_prisma():
+    """migrate_webhook_presets_to_new_version re-keys the trigger mask via
+    AgentNodeExecutionInputOutput.update_many; mock it so these DB-less tests
+    don't hit a real (unconnected) client. Re-key assertions live in
+    db_test.py::test_migrate_webhook_presets_rekeys_input_mask."""
+    with patch("prisma.models.AgentNodeExecutionInputOutput.prisma") as mock:
+        io_client = AsyncMock()
+        io_client.update_many = AsyncMock(return_value=0)
+        mock.return_value = io_client
+        yield io_client
+
+
 def _make_graph(
     *,
     block_id: str = "trigger-block-a",
