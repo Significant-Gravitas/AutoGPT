@@ -56,8 +56,12 @@ sampling (step 2), not by deliberation.
    English; put block class names and wiring verbs in the separate
    `block_name` and `action` fields.
 4. **If editing**: First narrow to the specific agent by UUID, then fetch its
-   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
-   returns the full graph structure (nodes + links). **Never edit blindly** —
+   graph: `find_library_agent(agent_id="<agent_id>",
+   write_graph_to="agent.json")`. This writes the full graph (nodes + links)
+   to a workspace file and returns an `@@agptfile` ref — inspect and edit the
+   file with your file tools instead of pulling the whole graph through
+   context. (`include_graph=true` returns it inline instead; only use that
+   for small graphs.) **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
@@ -92,12 +96,8 @@ sampling (step 2), not by deliberation.
    for errors. For any non-trivial graph, pass the file from step 8 by
    reference instead of re-emitting the JSON inline:
    `agent_json="@@agptfile:workspace:///agent.json"` (a plain string — the
-   platform reads and parses the file), or equivalently
-   `agent_json_ref="workspace:///agent.json"`. Every agent tool that takes
-   `agent_json` (`validate_agent_graph`, `fix_agent_graph`, `create_agent`,
-   `edit_agent`, `customize_agent`) accepts both forms. This avoids
-   re-generating large JSON in tool arguments, where it can get truncated
-   and dropped.
+   platform reads and parses the file). This avoids re-generating large
+   JSON in tool arguments, where it can get truncated.
 10. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
     or fix manually based on the error descriptions. Iterate until valid.
     Pass `write_to="agent.json"` so the fixed JSON is written back to the
@@ -106,8 +106,7 @@ sampling (step 2), not by deliberation.
     the graph.
 11. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
     the final `agent_json` — again by file reference when it lives in a
-    file: `agent_json="@@agptfile:workspace:///agent.json"` (or
-    `agent_json_ref="workspace:///agent.json"`).
+    file: `agent_json="@@agptfile:workspace:///agent.json"`.
 12. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
 13. **Inspect & fix**: Check the dry-run output for errors. If issues are

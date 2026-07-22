@@ -15,12 +15,18 @@ tool ever runs (OPEN-3188). Two mitigations live here:
 ``resolve_agent_json_input`` accepts either form and returns the parsed graph,
 working on both the SDK path (where the file-ref wrapper has already expanded a
 ``@@agptfile:`` token to file text) and the baseline path (where it has not).
+``write_agent_json_to_workspace`` is the outbound counterpart: it writes a
+graph to a workspace file and returns the ``@@agptfile:`` ref to hand back to
+the model instead of the inline JSON.
 """
 
 import json
+import logging
 import os
+import re
 from typing import Any
 
+from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FILE_REF_PREFIX,
@@ -29,6 +35,8 @@ from backend.copilot.sdk.file_ref import (
 )
 
 from .models import ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 # Structured (not bare ``{"type": "object"}``) so constrained tool-arg decoders
 # have keys to follow instead of collapsing the value to ``{}``. Nested props are
@@ -201,3 +209,48 @@ def _try_parse_json(text: str) -> Any:
         return json.loads(text)
     except (json.JSONDecodeError, ValueError):
         return None
+
+
+async def write_agent_json_to_workspace(
+    agent_json: dict[str, Any],
+    write_to: str,
+    user_id: str | None,
+    session_id: str | None,
+    *,
+    label: str,
+    pass_to: str,
+    fallback_note: str,
+) -> tuple[str | None, str]:
+    """Write an agent graph to a workspace file, pretty-printed.
+
+    Returns ``(file reference to pass onward, message note)``. On any failure
+    the reference is None and the note explains the fallback (``fallback_note``
+    is the caller-specific "what to do instead" clause).
+    """
+    if not re.fullmatch(r"[\w][\w.-]*", write_to):
+        return None, (
+            f" NOTE: write_to must be a plain filename (got {write_to!r}); "
+            f"{fallback_note}"
+        )
+    if not user_id or not session_id:
+        return None, (
+            f" NOTE: write_to requires an authenticated session; {fallback_note}"
+        )
+    try:
+        manager = await get_workspace_manager(user_id, session_id)
+        rec = await manager.write_file(
+            content=json.dumps(agent_json, indent=2).encode("utf-8"),
+            filename=write_to,
+            overwrite=True,
+            metadata={"origin": "agent-created"},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to write agent JSON to {write_to!r}: {e}")
+        return None, (
+            f" NOTE: could not write {os.path.basename(write_to)}; {fallback_note}"
+        )
+    ref = f"{FILE_REF_PREFIX}workspace://{rec.path}"
+    return ref, (
+        f" {label} written to workspace file {rec.path} — pass "
+        f'agent_json="{ref}" to {pass_to} (do not re-emit the JSON).'
+    )

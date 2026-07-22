@@ -95,7 +95,8 @@ from backend.copilot.tools import TOOL_REGISTRY
 # with a structured schema (nodes/links/...) and gained an agent_json_ref string
 # param. The structure is what stops constrained decoders collapsing the graph to
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
-# Merged registry measures 50557 chars; ~950 headroom for wording tweaks.
+# Merged registry measures 50915 chars (incl. find_library_agent's
+# write_graph_to); ~580 headroom for wording tweaks.
 _CHAR_BUDGET = 51_500
 
 
