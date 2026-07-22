@@ -155,6 +155,7 @@ const DEFAULT_TEAM: TeamResponse = {
   join_policy: "OPEN",
   org_id: TEAM_ORG.id,
   member_count: 2,
+  is_member: true,
   created_at: new Date("2026-01-01T00:00:00Z"),
 };
 

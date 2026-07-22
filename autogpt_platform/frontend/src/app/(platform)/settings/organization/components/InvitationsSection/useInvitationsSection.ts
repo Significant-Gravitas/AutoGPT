@@ -8,6 +8,7 @@ import {
   useDeleteV2RevokeInvitation,
   useGetV2ListPendingInvitations,
   usePostV2CreateInvitation,
+  usePostV2ResendInvitation,
 } from "@/app/api/__generated__/endpoints/invitations/invitations";
 import { useGetV2ListWorkspaces } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { InvitationResponse } from "@/app/api/__generated__/models/invitationResponse";
@@ -103,10 +104,33 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     invitationsQuery.refetch();
   }
 
+  const { mutateAsync: resendInvitation, isPending: isResending } =
+    usePostV2ResendInvitation({
+      mutation: {
+        onError: (error) => {
+          toast({
+            title: "Failed to resend invitation",
+            description:
+              error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
   async function handleRevoke(invitation: InvitationResponse) {
     await revokeInvitation({ orgId, invitationId: invitation.id });
     toast({
       title: `Invitation to ${invitation.email} revoked`,
+      variant: "success",
+    });
+    invitationsQuery.refetch();
+  }
+
+  async function handleResend(invitation: InvitationResponse) {
+    await resendInvitation({ orgId, invitationId: invitation.id });
+    toast({
+      title: "Invitation resent — previous link no longer works",
       variant: "success",
     });
     invitationsQuery.refetch();
@@ -120,7 +144,9 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     isLoading: invitationsQuery.isLoading,
     isInviting,
     isRevoking,
+    isResending,
     handleInvite,
     handleRevoke,
+    handleResend,
   };
 }

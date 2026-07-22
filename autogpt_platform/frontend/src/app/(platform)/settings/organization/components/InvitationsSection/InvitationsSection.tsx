@@ -32,8 +32,10 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
     teamNameById,
     isInviting,
     isRevoking,
+    isResending,
     handleInvite,
     handleRevoke,
+    handleResend,
   } = useInvitationsSection({ orgId, isAdmin });
 
   if (!isAdmin) {
@@ -154,6 +156,14 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                   {roleLabel(flagsToRole(invitation))}
                 </Badge>
               ) : null}
+              <Button
+                variant="ghost"
+                size="small"
+                loading={isResending}
+                onClick={() => handleResend(invitation)}
+              >
+                Resend
+              </Button>
               <Button
                 variant="ghost"
                 size="small"
