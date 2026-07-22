@@ -15,6 +15,7 @@
 ## Organizations & Teams
 
 * [Sharing agents with your teams](organizations/sharing-agents.md)
+* [Shared memory](organizations/shared-memory.md)
 
 ## Advanced Setup
 

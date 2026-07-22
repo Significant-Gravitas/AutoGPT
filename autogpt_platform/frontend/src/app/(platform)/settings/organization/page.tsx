@@ -18,6 +18,7 @@ import { InvitationsSection } from "./components/InvitationsSection/InvitationsS
 import { MembersSection } from "./components/MembersSection/MembersSection";
 import { MyInvitationsSection } from "./components/MyInvitationsSection/MyInvitationsSection";
 import { OrgProfileSection } from "./components/OrgProfileSection/OrgProfileSection";
+import { SharedMemorySection } from "./components/SharedMemorySection/SharedMemorySection";
 import { TeamsSection } from "./components/TeamsSection/TeamsSection";
 import { useOrganizationSettingsPage } from "./useOrganizationSettingsPage";
 
@@ -133,6 +134,7 @@ export default function OrganizationSettingsPage() {
 
         <TabsLineContent value="profile" className="flex flex-col gap-8">
           <OrgProfileSection org={org} isAdmin={isAdmin} onSaved={refetchOrg} />
+          <SharedMemorySection isAdmin={isAdmin} />
           <DangerZoneSection
             org={org}
             members={members}
