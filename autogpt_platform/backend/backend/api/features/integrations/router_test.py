@@ -918,6 +918,25 @@ class TestCreateTeamCredential:
         # store encrypts it; CREDENTIALS_ADAPTER reconstructs on read).
         assert kwargs["payload"]["api_key"] == "sk-secret-key-value"
 
+    def test_team_credential_store_failure_maps_to_500(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(org_id="org-1")
+            )
+            mock_scoped.create_credential = AsyncMock(
+                side_effect=RuntimeError("db down")
+            )
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 500
+        assert "sk-secret-key-value" not in str(resp.json())
+
     def test_non_admin_member_cannot_create_team_credential(self):
         cred = _make_api_key_cred(provider="openai")
         with (

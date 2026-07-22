@@ -209,6 +209,62 @@ async def test_create_team_credential_writes_expected_row_shape(mock_prisma, moc
 
 
 @pytest.mark.asyncio
+async def test_create_credential_syncs_payload_id_with_row_id(mock_prisma, mocker):
+    """The encrypted payload's id must equal the row's primary key so a
+    decrypted read resolves to the same credential the row represents."""
+    captured: dict = {}
+
+    def _fake_encrypt(payload):
+        captured["payload"] = payload
+        return "encrypted-blob"
+
+    mocker.patch.object(
+        scoped_credentials._cryptor, "encrypt", side_effect=_fake_encrypt
+    )
+    mock_prisma.integrationcredential.create = AsyncMock(
+        return_value=_cred(owner_type="TEAM", owner_id=TEAM_A)
+    )
+
+    await scoped_credentials.create_credential(
+        organization_id=ORG_ID,
+        owner_type="TEAM",
+        owner_id=TEAM_A,
+        team_id=TEAM_A,
+        provider="github",
+        credential_type="api_key",
+        display_name="Team GitHub",
+        payload={"id": "client-supplied-id", "type": "api_key", "api_key": "secret"},
+        user_id=USER_ID,
+    )
+
+    data = mock_prisma.integrationcredential.create.await_args.kwargs["data"]
+    # Row id is server-generated, not the client-supplied one ...
+    assert data["id"] != "client-supplied-id"
+    # ... and the encrypted payload carries that same authoritative id.
+    assert captured["payload"]["id"] == data["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_credential_rejects_team_without_matching_team_id(mock_prisma):
+    """TEAM rows must carry a teamId FK equal to ownerId (cascade + read path)."""
+    mock_prisma.integrationcredential.create = AsyncMock()
+
+    with pytest.raises(ValueError, match="team_id must equal owner_id"):
+        await scoped_credentials.create_credential(
+            organization_id=ORG_ID,
+            owner_type="TEAM",
+            owner_id=TEAM_A,
+            team_id=TEAM_B,
+            provider="github",
+            credential_type="api_key",
+            display_name="Team GitHub",
+            payload={"type": "api_key", "api_key": "secret"},
+            user_id=USER_ID,
+        )
+    mock_prisma.integrationcredential.create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_list_team_credentials_scopes_query_to_team(mock_prisma):
     mock_prisma.integrationcredential.find_many = AsyncMock(
         return_value=[_cred(owner_type="TEAM", owner_id=TEAM_A)]

@@ -581,21 +581,28 @@ async def _create_team_credential(
     # queries on (avoids the `ProviderName.X` stringification quirk).
     credentials.provider = provider.value
 
-    created = await scoped_credentials.create_credential(
-        organization_id=org_id,
-        owner_type="TEAM",
-        owner_id=team_id,
-        team_id=team_id,
-        provider=provider.value,
-        credential_type=credentials.type,
-        display_name=credentials.title or provider.value,
-        # `model_dump()` renders SecretStr fields to plaintext (see
-        # `_BaseCredentials.dump_secret_strings`); it round-trips back through
-        # `CREDENTIALS_ADAPTER` on read. Expiry lives inside the payload.
-        payload=credentials.model_dump(),
-        user_id=user_id,
-        metadata=credentials.metadata or None,
-    )
+    try:
+        created = await scoped_credentials.create_credential(
+            organization_id=org_id,
+            owner_type="TEAM",
+            owner_id=team_id,
+            team_id=team_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            display_name=credentials.title or provider.value,
+            # `model_dump()` renders SecretStr fields to plaintext (see
+            # `_BaseCredentials.dump_secret_strings`); it round-trips back
+            # through `CREDENTIALS_ADAPTER` on read. Expiry lives in the payload.
+            payload=credentials.model_dump(),
+            user_id=user_id,
+            metadata=credentials.metadata or None,
+        )
+    except Exception:
+        logger.exception("Failed to store team credential")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store credentials",
+        )
 
     # The table generates its own uuid; reflect the authoritative row id back
     # rather than the client-supplied one (which is ignored for team creds).

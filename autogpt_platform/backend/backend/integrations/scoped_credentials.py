@@ -11,6 +11,7 @@ reads from the User.integrations encrypted blob.
 
 import logging
 from typing import Optional
+from uuid import uuid4
 
 from backend.data.db import prisma
 from backend.util.encryption import JSONCryptor
@@ -146,10 +147,22 @@ async def create_credential(
     resolves TEAM rows by ``ownerType="TEAM"`` + ``ownerId=<teamId>`` +
     ``organizationId``, so those three fields are the load-bearing shape.
     """
-    encrypted = _cryptor.encrypt(payload)
+    if owner_type == "TEAM" and team_id != owner_id:
+        # Enforce the invariant the docstring promises: without the matching
+        # teamId FK, the row loses cascade cleanup and diverges from what the
+        # read path resolves on.
+        raise ValueError("team_id must equal owner_id for TEAM-owned credentials")
+
+    # Generate the id up front so the encrypted payload's id matches the row's
+    # primary key. Otherwise a decrypted read (via CREDENTIALS_ADAPTER) would
+    # surface the client-supplied id from the blob instead of the authoritative
+    # row id, breaking id-based resolution.
+    credential_id = str(uuid4())
+    encrypted = _cryptor.encrypt({**payload, "id": credential_id})
 
     cred = await prisma.integrationcredential.create(
         data={
+            "id": credential_id,
             "organizationId": organization_id,
             "ownerType": owner_type,
             "ownerId": owner_id,
