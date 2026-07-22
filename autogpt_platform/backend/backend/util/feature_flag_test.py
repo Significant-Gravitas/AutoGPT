@@ -222,6 +222,24 @@ class TestUserContext:
 
         assert ctx.get("role") == "authenticated"
 
+    @pytest.mark.asyncio
+    async def test_missing_user_falls_back_to_uncached_anonymous(self, mocker):
+        # A not-found user (e.g. mid auth-migration bridge window) must NOT be
+        # cached as anonymous — the inner lookup raises so @cached skips it and
+        # the caller returns an uncached anonymous context.
+        from backend.util import feature_flag as ff
+
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.authuser.find_unique = mocker.AsyncMock(return_value=None)
+        user_id = str(uuid.uuid4())
+
+        with pytest.raises(LookupError):
+            await ff._fetch_user_context(user_id)
+
+        ctx = await _fetch_user_context_data(user_id)
+        assert ctx.get("email") is None
+        assert ctx.get("role") is None
+
 
 class TestUserContextCacheDegradation:
     """A failed user lookup must not poison the 24h context cache.

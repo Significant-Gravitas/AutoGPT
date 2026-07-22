@@ -447,7 +447,9 @@ class NotificationManager(AppService):
         credential. Deliberately not wrapped in try/except: a delivery failure
         must propagate to the RPC caller so it can surface the error instead
         of reporting "email sent" for an undeliverable message."""
-        self.email_sender.send_transactional(to, subject, body)
+        # send_transactional wraps a blocking Postmark HTTP call; run it off
+        # the event loop so it can't stall the notification service.
+        await asyncio.to_thread(self.email_sender.send_transactional, to, subject, body)
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""

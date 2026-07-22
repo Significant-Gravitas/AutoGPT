@@ -249,24 +249,30 @@ async def _fetch_user_context(user_id: str) -> Context:
     # Local import to avoid a util <-> data import cycle.
     from backend.data.db import prisma
 
-    builder = Context.builder(user_id).kind("user").anonymous(True)
-
     user = await prisma.authuser.find_unique(where={"id": user_id})
-    if user:
-        builder.anonymous(False)
-        # Keep the same role values previously issued in JWTs so existing
-        # LaunchDarkly targeting rules keep matching.
-        role = "admin" if user.role == "admin" else "authenticated"
-        builder.set("role", role)
-        # It's weird, I know, but it is what it is.
-        builder.set("custom", {"role": role})
-        if user.email:
-            builder.set("email", user.email)
-            builder.set("email_domain", user.email.split("@")[-1])
-        if user.createdAt:
-            # ISO-8601 string — LD supports RFC3339 date targeting on
-            # this attribute (e.g. cohort users by signup window).
-            builder.set("created_at", user.createdAt.isoformat())
+    if user is None:
+        # Do NOT cache a not-found as anonymous. During the auth-migration
+        # bridge window a user's row may not exist yet (or is mid-copy); a
+        # 24h-cached anonymous context would keep them out of email/role-
+        # targeted flags long after their row lands. Raising keeps @cached
+        # from storing it — the caller falls back to an uncached anonymous
+        # context and retries on the next evaluation.
+        raise LookupError(f"No auth user row for {user_id}")
+
+    builder = Context.builder(user_id).kind("user").anonymous(False)
+    # Keep the same role values previously issued in JWTs so existing
+    # LaunchDarkly targeting rules keep matching.
+    role = "admin" if user.role == "admin" else "authenticated"
+    builder.set("role", role)
+    # It's weird, I know, but it is what it is.
+    builder.set("custom", {"role": role})
+    if user.email:
+        builder.set("email", user.email)
+        builder.set("email_domain", user.email.split("@")[-1])
+    if user.createdAt:
+        # ISO-8601 string — LD supports RFC3339 date targeting on
+        # this attribute (e.g. cohort users by signup window).
+        builder.set("created_at", user.createdAt.isoformat())
 
     return builder.build()
 

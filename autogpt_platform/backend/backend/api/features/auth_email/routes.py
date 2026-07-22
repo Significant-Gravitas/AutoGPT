@@ -13,6 +13,7 @@ to our own hosts.
 """
 
 import asyncio
+import html
 import logging
 from typing import Literal
 from urllib.parse import urlparse
@@ -83,9 +84,12 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
 
     subject = _SUBJECTS[request.type]
     action = _ACTIONS[request.type]
+    # Escape the (host-validated) URL before embedding it in HTML — a path or
+    # query on an allowed host could still carry markup-breaking characters.
+    safe_url = html.escape(request.url, quote=True)
     body = (
         f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        f'<p><a href="{request.url}">{request.url}</a></p>'
+        f'<p><a href="{safe_url}">{safe_url}</a></p>'
         "<p>If you didn't request this, you can safely ignore this email.</p>"
     )
 
@@ -98,4 +102,6 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
         subject,
         body,
     )
-    logger.info("Sent %s auth email to %s", request.type, request.to)
+    # Don't log the recipient address — auth emails go to arbitrary users and
+    # the address is PII we don't want in application logs.
+    logger.info("Sent %s auth email", request.type)
