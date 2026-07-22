@@ -103,22 +103,20 @@ from backend.integrations.credentials_store import (
 
 MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O4_MINI: 2,
-    LlmModel.O4_MINI_DEEP_RESEARCH: 5,
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,
     LlmModel.O3_PRO: 30,
-    LlmModel.O3_DEEP_RESEARCH: 15,
     LlmModel.O1: 16,
-    LlmModel.O1_MINI: 4,
+    LlmModel.O1_MINI: 2,
     # GPT-5.6 models
     LlmModel.GPT5_6_SOL: 10,
-    LlmModel.GPT5_6_TERRA: 5,
+    LlmModel.GPT5_6_TERRA: 6,
     LlmModel.GPT5_6_LUNA: 2,
     # GPT-5.5 models
     LlmModel.GPT5_5: 10,
     LlmModel.GPT5_5_PRO: 60,
     # GPT-5 models
-    LlmModel.GPT5_4: 5,
+    LlmModel.GPT5_4: 6,
     LlmModel.GPT5_4_MINI: 2,
     LlmModel.GPT5_4_NANO: 1,
     LlmModel.GPT5_4_PRO: 60,
@@ -289,13 +287,11 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.GPT41_MINI: TokenRate(input=60, output=240),
     LlmModel.GPT41_NANO: TokenRate(input=15, output=60),
     LlmModel.O4_MINI: TokenRate(input=165, output=660),
-    LlmModel.O4_MINI_DEEP_RESEARCH: TokenRate(input=165, output=660),
     LlmModel.O3: TokenRate(input=300, output=1200),
     LlmModel.O3_MINI: TokenRate(input=165, output=660),
     LlmModel.O3_PRO: TokenRate(input=3000, output=12000),
-    LlmModel.O3_DEEP_RESEARCH: TokenRate(input=300, output=1200),
     LlmModel.O1: TokenRate(input=2250, output=9000),
-    LlmModel.O1_MINI: TokenRate(input=450, output=1800),
+    LlmModel.O1_MINI: TokenRate(input=165, output=660),
     # Google Gemini (uses <=200k context tier pricing).
     LlmModel.GEMINI_2_5_PRO: TokenRate(input=188, output=1500),
     LlmModel.GEMINI_2_5_FLASH: TokenRate(input=45, output=375),

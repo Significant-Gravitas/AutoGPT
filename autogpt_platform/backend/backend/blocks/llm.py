@@ -142,11 +142,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
     # OpenAI models — O-series reasoning
     O4_MINI = "o4-mini"
-    O4_MINI_DEEP_RESEARCH = "o4-mini-deep-research"
     O3 = "o3-2025-04-16"
     O3_MINI = "o3-mini"
     O3_PRO = "o3-pro"
-    O3_DEEP_RESEARCH = "o3-deep-research"
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5.6 models (current flagship)
@@ -162,7 +160,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT5_4_NANO = "gpt-5.4-nano-2026-03-17"
     GPT5_4_PRO = "gpt-5.4-pro"
     # GPT-5.3 models
-    GPT5_3 = "gpt-5.3"
+    GPT5_3 = "gpt-5.3-chat-latest"
     GPT5_3_CODEX = "gpt-5.3-codex"
     # GPT-5.2 models
     GPT5_2 = "gpt-5.2-2025-12-11"
@@ -316,6 +314,9 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
     "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+    "openai/gpt-5.4": LlmModel.GPT5_4,
+    "openai/gpt-5.4-mini": LlmModel.GPT5_4_MINI,
+    "openai/gpt-5.4-nano": LlmModel.GPT5_4_NANO,
     "openai/gpt-5.5": LlmModel.GPT5_5,
 }
 
@@ -326,18 +327,12 @@ MODEL_METADATA = {
     LlmModel.O4_MINI: ModelMetadata(
         "openai", 200000, 100000, "O4 Mini", "OpenAI", "OpenAI", 2
     ),
-    LlmModel.O4_MINI_DEEP_RESEARCH: ModelMetadata(
-        "openai", 200000, 100000, "O4 Mini Deep Research", "OpenAI", "OpenAI", 2
-    ),
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
     LlmModel.O3_MINI: ModelMetadata(
         "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
     ),  # o3-mini-2025-01-31
     LlmModel.O3_PRO: ModelMetadata(
         "openai", 200000, 100000, "O3 Pro", "OpenAI", "OpenAI", 3
-    ),
-    LlmModel.O3_DEEP_RESEARCH: ModelMetadata(
-        "openai", 200000, 100000, "O3 Deep Research", "OpenAI", "OpenAI", 3
     ),
     LlmModel.O1: ModelMetadata(
         "openai", 200000, 100000, "O1", "OpenAI", "OpenAI", 3
