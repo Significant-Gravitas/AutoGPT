@@ -56,6 +56,14 @@ EXCLUDED_BLOCK_IDS = frozenset(
     }
 )
 
+INPUT_BLOCK_TYPES = frozenset(
+    {
+        BlockType.INPUT,
+        BlockType.WEBHOOK,
+        BlockType.WEBHOOK_MANUAL,
+    }
+)
+
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
 
@@ -152,9 +160,12 @@ def get_blocks(
             continue
         # Skip blocks that don't match the type
         if (
-            (type == "input" and block.block_type.value != "Input")
-            or (type == "output" and block.block_type.value != "Output")
-            or (type == "action" and block.block_type.value in ("Input", "Output"))
+            (type == "input" and block.block_type not in INPUT_BLOCK_TYPES)
+            or (type == "output" and block.block_type != BlockType.OUTPUT)
+            or (
+                type == "action"
+                and block.block_type in (*INPUT_BLOCK_TYPES, BlockType.OUTPUT)
+            )
         ):
             continue
         # Skip blocks that don't match the provider
@@ -193,7 +204,9 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
     return None
 
 
-async def update_search(user_id: str, search: SearchEntry) -> str:
+async def update_search(
+    user_id: str, search: SearchEntry, organization_id: str | None = None
+) -> str:
     """
     Upsert a search request for the user and return the search ID.
     """
@@ -218,6 +231,7 @@ async def update_search(user_id: str, search: SearchEntry) -> str:
                 "searchQuery": search.search_query or "",
                 "filter": search.filter or [],  # type: ignore
                 "byCreator": search.by_creator or [],
+                **({"organizationId": organization_id} if organization_id else {}),
             }
         )
         return new_search.id
@@ -253,14 +267,19 @@ async def get_sorted_search_results(
     search_query: str | None,
     filters: Sequence[FilterType],
     by_creator: Sequence[str] | None = None,
+    organization_id: str | None = None,
 ) -> _SearchCacheEntry:
     normalized_filters: tuple[FilterType, ...] = tuple(sorted(set(filters or [])))
     normalized_creators: tuple[str, ...] = tuple(sorted(set(by_creator or [])))
+    # organization_id participates in the cache key: my_agents results are
+    # org-scoped, so a user switching orgs must not see cached results
+    # from another org context.
     return await _build_cached_search_results(
         user_id=user_id,
         search_query=search_query or "",
         filters=normalized_filters,
         by_creator=normalized_creators,
+        organization_id=organization_id,
     )
 
 
@@ -270,6 +289,7 @@ async def _build_cached_search_results(
     search_query: str,
     filters: tuple[FilterType, ...],
     by_creator: tuple[str, ...],
+    organization_id: str | None = None,
 ) -> _SearchCacheEntry:
     normalized_query = (search_query or "").strip().lower()
 
@@ -300,7 +320,9 @@ async def _build_cached_search_results(
             )
         )
     if include_library_agents:
-        branches.append(_search_library(user_id, search_query, normalized_query))
+        branches.append(
+            _search_library(user_id, search_query, normalized_query, organization_id)
+        )
     if include_marketplace_agents:
         branches.append(
             _search_marketplace(list(by_creator), search_query, normalized_query)
@@ -351,6 +373,7 @@ async def _search_library(
     user_id: str,
     search_query: str,
     normalized_query: str,
+    organization_id: str | None = None,
 ) -> _SearchBranchResult:
     library_response = await library_db.list_library_agents(
         user_id=user_id,
@@ -360,6 +383,7 @@ async def _search_library(
         # Hide trigger agents — they're parent-coupled, not
         # generally reusable as a sub-agent block.
         is_hidden=False,
+        organization_id=organization_id,
     )
     items = _build_library_items(
         agents=library_response.agents,
@@ -603,14 +627,17 @@ def get_providers(
     )
 
 
-async def get_counts(user_id: str) -> CountResponse:
-    my_agents = await prisma.models.LibraryAgent.prisma().count(
-        where={
-            "userId": user_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-    )
+async def get_counts(user_id: str, organization_id: str | None = None) -> CountResponse:
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+    }
+    if organization_id is not None:
+        where["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
+    my_agents = await prisma.models.LibraryAgent.prisma().count(where=where)
     counts = await _get_static_counts()
     return CountResponse(
         my_agents=my_agents,
@@ -639,9 +666,9 @@ async def _get_static_counts():
 
         all_blocks += 1
 
-        if block.block_type.value == "Input":
+        if block.block_type in INPUT_BLOCK_TYPES:
             input_blocks += 1
-        elif block.block_type.value == "Output":
+        elif block.block_type == BlockType.OUTPUT:
             output_blocks += 1
         else:
             action_blocks += 1

@@ -30,10 +30,11 @@ export function EditNameDialog({ currentName }: Props) {
 
     setIsSaving(true);
     try {
+      // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: trimmed }),
+        body: JSON.stringify({ preferred_name: trimmed }),
       });
 
       if (!res.ok) {

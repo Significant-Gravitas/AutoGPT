@@ -39,7 +39,11 @@ export function ToolAccordion({
 
   return (
     <div
-      className={cn("mt-2 w-full rounded-lg bg-stone-50 px-3 py-2", className)}
+      className={cn(
+        "mt-2 w-full rounded-xl border border-zinc-200/70 bg-white px-3 py-2 shadow-sm",
+        "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both",
+        className,
+      )}
     >
       <button
         type="button"

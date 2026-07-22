@@ -5,11 +5,19 @@ interface Props {
   activeTab: ContextPanelTab;
   filesCount: number;
   onChange: (tab: ContextPanelTab) => void;
+  showProgressTab?: boolean;
 }
 
-export function TabSwitcher({ activeTab, filesCount, onChange }: Props) {
+export function TabSwitcher({
+  activeTab,
+  filesCount,
+  onChange,
+  showProgressTab = true,
+}: Props) {
   const tabs: { id: ContextPanelTab; label: string }[] = [
-    { id: "progress", label: "Progress" },
+    ...(showProgressTab
+      ? [{ id: "progress" as const, label: "Progress" }]
+      : []),
     { id: "files", label: `Files (${filesCount})` },
   ];
 

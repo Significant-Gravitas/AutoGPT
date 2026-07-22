@@ -10,11 +10,14 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
@@ -40,7 +43,11 @@ export interface ChatContainerProps {
    * flips immediately regardless of AI SDK's status timing. */
   isUserStopping?: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -85,6 +92,7 @@ export const ChatContainer = ({
   turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -174,9 +182,8 @@ export const ChatContainer = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative px-3 pb-2 pt-2"
+                className="relative px-3 pb-6 pt-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#fafafa]" />
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
@@ -196,6 +203,14 @@ export const ChatContainer = ({
                   </div>
                 )}
                 <SharedChatNotice sessionId={sessionId} />
+                {isTaskBarEnabled && (
+                  <div className="relative z-10">
+                    <TaskProgressBar
+                      todos={getLatestTaskList(messages) ?? []}
+                      isStreaming={isStreaming}
+                    />
+                  </div>
+                )}
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>
