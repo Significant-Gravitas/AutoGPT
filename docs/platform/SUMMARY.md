@@ -30,6 +30,10 @@
 * [Download & Import an Agent](download-agent-from-marketplace-local.md)
 * [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
 
+## Organizations & Teams
+
+* [Shared memory](organizations/shared-memory.md)
+
 ## Building Blocks
 
 * [Agent Blocks Overview](agent-blocks.md)
