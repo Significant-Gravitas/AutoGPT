@@ -5,7 +5,7 @@ import logging
 from prisma.enums import GrantCapability, GrantCredentialMode, GrantPrincipalType
 
 from backend.data.db import prisma
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .grant_model import GrantResponse, ReceivedGrantResponse
 
@@ -66,7 +66,7 @@ async def upsert_grant(
             + " not found in this organization"
         )
     if graph.userId != created_by_user_id and not sharer_is_org_admin:
-        raise ValueError("Only the graph's owner or an org admin can share it")
+        raise NotAuthorizedError("Only the graph's owner or an org admin can share it")
 
     grant = await prisma.agentgraphgrant.upsert(
         where={
@@ -120,7 +120,7 @@ async def list_received_grants(
         where={
             "userId": user_id,
             "status": "ACTIVE",
-            "Team": {"is": {"orgId": org_id}},
+            "Team": {"is": {"orgId": org_id, "archivedAt": None}},
         }
     )
     team_ids = [m.teamId for m in memberships]
@@ -162,7 +162,9 @@ async def revoke_grant(
         and graph.userId != revoked_by_user_id
         and not revoker_is_org_admin
     ):
-        raise ValueError("Only the graph's owner or an org admin can revoke a grant")
+        raise NotAuthorizedError(
+            "Only the graph's owner or an org admin can revoke a grant"
+        )
 
     await prisma.agentgraphgrant.delete(where={"id": grant_id})
     logger.info(f"Grant {grant_id} on graph {graph_id} revoked")
