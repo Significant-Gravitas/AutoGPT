@@ -81,10 +81,9 @@ _RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = _overrides_from_c
 def is_moonshot_model(model: str | None) -> bool:
     """True when *model* is a Moonshot OpenRouter slug.
 
-    Prefix match against ``moonshotai/`` covers every Kimi SKU Moonshot
-    ships today (``kimi-k2``, ``kimi-k2.5``, ``kimi-k2.6``,
-    ``kimi-k2-thinking``, ``kimi-k3``) plus any future SKU Moonshot
-    publishes under the same namespace.  Used by both pricing and cache-control gating.
+    Prefix match against ``moonshotai/`` covers every Kimi SKU under that
+    namespace — present and future — with no per-SKU roster to maintain.
+    Used by both pricing and cache-control gating.
     """
     return isinstance(model, str) and model.startswith(_MOONSHOT_PREFIX)
 
