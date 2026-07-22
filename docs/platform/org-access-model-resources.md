@@ -116,16 +116,28 @@ the API can't quietly change access semantics.
 
 - **`CONSUMER`** (default) — the grantee runs the agent with **their own**
   resolved credentials.
-- **`OWNER`** — intended to run with the **graph owner's** credentials.
+- **`OWNER`** — the granted run resolves the graph's credential references
+  against the **graph owner's** credential store. Secrets are injected at
+  execution only; the grantee never sees them (the owner's credential title is
+  redacted from the grantee's execution record).
 
-> **Enforcement status:** `credentialMode` is currently **stored but not
-> enforced**. Nothing in the executor or integration layer branches on it — a
-> granted run always resolves the *grantee's* credentials, so an `OWNER`-mode
-> grant behaves exactly like `CONSUMER` today. Treat `OWNER` as a
-> forward-declared field, not a live capability, until owner-credential
-> resolution lands in the executor. (The task premise referenced an in-flight
-> `feat/grant-credential-modes` branch; it is not present on origin and carries
-> no enforcement diff.)
+`OWNER` mode is enforced with deliberate guardrails:
+
+- **Allowlisted** — only the credential ids the graph itself references
+  (`node.input_default`) resolve against the owner's store; grantee-supplied
+  credential overrides are ignored, so a consumer can never point resolution at
+  arbitrary entries the owner holds.
+- **Fail-closed** — a missing or revoked owner credential fails the run with a
+  clear error naming the graph and credential. It never falls back to the
+  grantee's credentials, which would silently misattribute API usage.
+- **Scope** — inert for owners running their own graphs, for marketplace or
+  library access, and for `CONSUMER` grants. Nested sub-graph executions always
+  run `CONSUMER`; the owner context does not propagate.
+- **Creation** — only the graph's **owner** may create an `OWNER`-mode grant.
+  An org admin sharing another member's graph cannot expose that member's
+  credentials (the API rejects it).
+- **Audit** — an execution-start log records graph, grant, owner, and consumer
+  ids (never secrets) whenever `OWNER` mode engages.
 
 ### Who can share and revoke
 

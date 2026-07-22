@@ -111,8 +111,6 @@ reference flags them at the point of use rather than describing them as live:
 - **Seat enforcement** — `seat_status` rides on `RequestContext`, but seat/
   subscription gating is owned by the paywall workstream and is not enforced
   today.
-- **Grant credential `OWNER` mode** — stored, not yet enforced (see
-  [Grants](org-access-model-resources.md#credential-modes)).
 - **Shared-memory review** — held (`tentative`) team/org memories have no
   promotion path yet (see
   [Write governance](org-access-model-credentials-and-memory.md#write-governance-the-hold-buffer)).
