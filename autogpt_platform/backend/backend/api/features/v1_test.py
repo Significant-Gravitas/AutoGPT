@@ -1,4 +1,3 @@
-import dataclasses
 import json
 from datetime import datetime, timezone
 from io import BytesIO
@@ -32,11 +31,11 @@ from backend.util.exceptions import InsufficientBalanceError
 from .v1 import upload_file, v1_router
 
 
-def _test_ctx(user_id: str) -> RequestContext:
+def _test_ctx(user_id: str, team_id: str | None = "test-workspace") -> RequestContext:
     return RequestContext(
         user_id=user_id,
         org_id="test-org",
-        team_id="test-workspace",
+        team_id=team_id,
         is_org_owner=True,
         is_org_admin=True,
         is_org_billing_manager=False,
@@ -1894,7 +1893,7 @@ def _override_ctx_team(team_id: str | None) -> None:
     team_id=None; this lets a single test exercise the header-set case. The
     fixture's teardown clears the override afterwards.
     """
-    ctx = dataclasses.replace(_test_ctx("test-user-id"), team_id=team_id)
+    ctx = _test_ctx("test-user-id", team_id=team_id)
     app.dependency_overrides[get_request_context] = lambda: ctx
 
 
