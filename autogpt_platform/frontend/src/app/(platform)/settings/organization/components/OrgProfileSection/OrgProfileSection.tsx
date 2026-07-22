@@ -12,6 +12,7 @@ import {
   FormMessage,
 } from "@/components/molecules/Form/Form";
 
+import { OrgAvatarControl } from "./components/OrgAvatarControl/OrgAvatarControl";
 import { useOrgProfileSection } from "./useOrgProfileSection";
 
 interface Props {
@@ -31,6 +32,7 @@ export function OrgProfileSection({ org, isAdmin, onSaved }: Props) {
       <Text variant="h4" as="h2">
         Profile
       </Text>
+      <OrgAvatarControl org={org} isAdmin={isAdmin} onSaved={onSaved} />
       <Form
         form={form}
         onSubmit={handleSubmit}

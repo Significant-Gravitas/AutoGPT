@@ -149,7 +149,11 @@ export default function OrganizationSettingsPage() {
 
         <TabsLineContent value="profile" className="flex flex-col gap-8">
           <OrgProfileSection org={org} isAdmin={isAdmin} onSaved={refetchOrg} />
-          <SharedMemorySection isAdmin={isAdmin} />
+          <SharedMemorySection
+            org={org}
+            isAdmin={isAdmin}
+            onSaved={refetchOrg}
+          />
           <DangerZoneSection
             org={org}
             members={members}
