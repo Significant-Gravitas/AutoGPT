@@ -60,6 +60,9 @@ async def resolve_graph_grant(
             "userId": user_id,
             "status": "ACTIVE",
             "teamId": {"in": [row.principalId for row in eligible]},
+            # Archived workspaces stop granting access, matching create-time
+            # rules (upsert_grant rejects archived teams) and list_teams.
+            "Team": {"is": {"archivedAt": None}},
         }
     )
     if membership is None:
