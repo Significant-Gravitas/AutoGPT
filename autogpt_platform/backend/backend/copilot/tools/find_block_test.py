@@ -601,8 +601,9 @@ class TestFindBlockFiltering:
         )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_include_schemas_false_omits_schemas(self):
-        """Without include_schemas, schemas should be empty dicts."""
+    async def test_schemas_always_omitted(self):
+        """Schemas are never returned — full schemas context-bomb the model
+        (see run_block's schema-on-demand flow instead)."""
         session = make_session(user_id=_TEST_USER_ID)
         input_schema = {"properties": {"url": {"type": "string"}}, "required": ["url"]}
         output_schema = {"properties": {"result": {"type": "string"}}}
@@ -636,7 +637,6 @@ class TestFindBlockFiltering:
                 user_id=_TEST_USER_ID,
                 session=session,
                 query="test",
-                include_schemas=False,
             )
 
         assert isinstance(response, BlockListResponse)
@@ -645,8 +645,9 @@ class TestFindBlockFiltering:
         assert response.blocks[0].static_output is False
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_include_schemas_true_populates_schemas(self):
-        """With include_schemas=true, schemas should be populated from block info."""
+    async def test_include_schemas_arg_is_ignored(self):
+        """A stray include_schemas=True argument (e.g. replayed from an old
+        transcript) must not re-enable schema payloads."""
         session = make_session(user_id=_TEST_USER_ID)
         input_schema = {"properties": {"url": {"type": "string"}}, "required": ["url"]}
         output_schema = {"properties": {"result": {"type": "string"}}}
@@ -685,9 +686,8 @@ class TestFindBlockFiltering:
             )
 
         assert isinstance(response, BlockListResponse)
-        assert response.blocks[0].input_schema == input_schema
-        assert response.blocks[0].output_schema == output_schema
-        assert response.blocks[0].static_output is True
+        assert response.blocks[0].input_schema == {}
+        assert response.blocks[0].output_schema == {}
 
 
 class TestFindBlockDirectLookup:

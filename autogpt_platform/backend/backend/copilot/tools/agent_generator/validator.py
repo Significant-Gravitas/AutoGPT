@@ -161,6 +161,16 @@ class AgentValidator:
                 continue
 
             required_inputs = block.get("inputSchema", {}).get("required", [])
+            # AgentExecutorBlock / MCPToolBlock carry their real input
+            # requirements in the node's dynamic schema (the sub-agent's /
+            # MCP tool's), not the static block schema — a required dynamic
+            # argument must not slip through validation.
+            dynamic_required = _dynamic_required_inputs(node)
+            if dynamic_required:
+                required_inputs = [
+                    *required_inputs,
+                    *[r for r in dynamic_required if r not in required_inputs],
+                ]
             input_defaults = node.get("input_default", {})
             node_id = node.get("id")
 
@@ -1237,6 +1247,29 @@ def _resolve_optional_union(schema: dict[str, Any]) -> dict[str, Any] | None:
     if len(options) == 1:
         return options[0]
     return None
+
+
+def _dynamic_required_inputs(node: dict[str, Any]) -> list[str]:
+    """Required argument names from a node's dynamic input schema.
+
+    AgentExecutorBlock nodes carry the sub-agent's input schema in
+    ``input_default["input_schema"]``; MCPToolBlock nodes carry the MCP
+    tool's schema in ``input_default["tool_input_schema"]``. Their static
+    block schemas say nothing about these per-node requirements.
+    """
+    block_id = node.get("block_id", "")
+    if block_id not in (AGENT_EXECUTOR_BLOCK_ID, MCP_TOOL_BLOCK_ID):
+        return []
+    schema_field = (
+        "input_schema" if block_id == AGENT_EXECUTOR_BLOCK_ID else "tool_input_schema"
+    )
+    schema = node.get("input_default", {}).get(schema_field, {})
+    if not isinstance(schema, dict):
+        return []
+    required = schema.get("required")
+    if not isinstance(required, list):
+        return []
+    return [name for name in required if isinstance(name, str)]
 
 
 def _schema_display_type(schema: dict[str, Any]) -> str:

@@ -502,3 +502,68 @@ class TestBuildSdkEnvLocalTransportGuard:
                 RuntimeError, match=r"transport 'local'.*doesn't support the SDK"
             ):
                 build_sdk_env()
+
+
+class TestAutocompactPctSonnet5Scaling:
+    """Sonnet 5's trigger percentage is scaled by the ~1.3x tokenizer
+    inflation so compaction fires at the same text-equivalent point as on
+    4.x models (50% -> 65% = 130K tokens of the pinned 200K window
+    ~= 100K 4.x-tokens' worth)."""
+
+    @pytest.mark.parametrize("model", ["anthropic/claude-sonnet-5", "claude-sonnet-5"])
+    def test_sonnet_5_scaled(self, model):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=50
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "65"
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-sonnet-4-5",  # substring near-miss guard
+            "anthropic/claude-opus-4-7",
+        ],
+    )
+    def test_non_sonnet_5_not_scaled(self, model):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=50
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    def test_scaled_value_capped_below_cli_ceiling(self):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=80
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
+
+class TestContextWindowPin:
+    """CLAUDE_CODE_DISABLE_1M_CONTEXT pins the CLI's perceived window at
+    200K: 1M context is GA (not beta-gated) on Sonnet 4.6+/5, so the
+    experimental-betas flag alone no longer prevents a future CLI from
+    silently moving the autocompact trigger to ~500K."""
+
+    def test_disable_1m_context_set_in_all_modes(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
