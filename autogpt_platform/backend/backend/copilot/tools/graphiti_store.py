@@ -19,6 +19,7 @@ from backend.copilot.graphiti.tiers import (
     TierError,
     hold_buffer_enabled,
     is_org_admin,
+    is_org_member,
     resolve_store_team,
 )
 from backend.copilot.model import ChatSession
@@ -270,6 +271,17 @@ class MemoryStoreTool(BaseTool):
                     message=(
                         "Storing to organization memory requires a session "
                         "attached to an organization."
+                    ),
+                    session_id=session.session_id,
+                )
+            # Re-verify ACTIVE org membership: session.organization_id is only
+            # checked at session creation, so a revoked/stale membership must
+            # not reach the org write path (mirrors the team tier below).
+            if not await is_org_member(user_id, org_id):
+                return ErrorResponse(
+                    message=(
+                        "You are not an active member of this organization, so "
+                        "you cannot store to its organization memory."
                     ),
                     session_id=session.session_id,
                 )

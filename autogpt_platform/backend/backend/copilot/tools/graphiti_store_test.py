@@ -415,7 +415,14 @@ class TestMemoryStoreTierGovernance:
     """Shared-tier writes route to the tier's group and land active or
     tentative per the writer's role + the org hold-buffer setting."""
 
-    def _patches(self, *, is_org_admin=None, hold_buffer=None, resolve_store_team=None):
+    def _patches(
+        self,
+        *,
+        is_org_admin=None,
+        is_org_member=None,
+        hold_buffer=None,
+        resolve_store_team=None,
+    ):
         from contextlib import ExitStack
 
         stack = ExitStack()
@@ -433,6 +440,14 @@ class TestMemoryStoreTierGovernance:
                 return_value=True,
             )
         )
+        if is_org_member is not None:
+            stack.enter_context(
+                patch(
+                    "backend.copilot.tools.graphiti_store.is_org_member",
+                    new_callable=AsyncMock,
+                    return_value=is_org_member,
+                )
+            )
         if is_org_admin is not None:
             stack.enter_context(
                 patch(
@@ -461,7 +476,9 @@ class TestMemoryStoreTierGovernance:
     @pytest.mark.asyncio
     async def test_org_store_as_admin_lands_active(self) -> None:
         tool = MemoryStoreTool()
-        stack, enqueue = self._patches(is_org_admin=True, hold_buffer=True)
+        stack, enqueue = self._patches(
+            is_org_admin=True, is_org_member=True, hold_buffer=True
+        )
         with stack:
             result = await tool._execute(
                 user_id="user-1",
@@ -480,9 +497,29 @@ class TestMemoryStoreTierGovernance:
         assert "queued for storage in org memory" in result.message
 
     @pytest.mark.asyncio
+    async def test_org_store_non_member_rejected(self) -> None:
+        # A revoked/stale org membership must be blocked at the write path.
+        tool = MemoryStoreTool()
+        stack, enqueue = self._patches(is_org_member=False, hold_buffer=True)
+        with stack:
+            result = await tool._execute(
+                user_id="user-1",
+                session=_org_session(),
+                name="policy",
+                content="Refunds within 30 days.",
+                tier="org",
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "not an active member" in result.message
+        enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_org_store_as_member_lands_tentative(self) -> None:
         tool = MemoryStoreTool()
-        stack, enqueue = self._patches(is_org_admin=False, hold_buffer=True)
+        stack, enqueue = self._patches(
+            is_org_admin=False, is_org_member=True, hold_buffer=True
+        )
         with stack:
             result = await tool._execute(
                 user_id="user-1",
@@ -503,7 +540,9 @@ class TestMemoryStoreTierGovernance:
     @pytest.mark.asyncio
     async def test_org_store_member_active_when_hold_buffer_disabled(self) -> None:
         tool = MemoryStoreTool()
-        stack, enqueue = self._patches(is_org_admin=False, hold_buffer=False)
+        stack, enqueue = self._patches(
+            is_org_admin=False, is_org_member=True, hold_buffer=False
+        )
         with stack:
             result = await tool._execute(
                 user_id="user-1",

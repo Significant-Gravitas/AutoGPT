@@ -105,6 +105,25 @@ async def resolve_team_names(team_ids: list[str]) -> dict[str, str]:
     return {t.id: t.name for t in teams}
 
 
+async def is_org_member(user_id: str, org_id: str) -> bool:
+    """True if *user_id* is an ACTIVE member (any role) of *org_id*.
+
+    The org tier must re-check this per operation: ``session.organization_id``
+    is membership-verified only at session creation, so a revoked or stale
+    membership (or a cached session row) would otherwise reach org memory.
+    Mirrors the TEAM tier, which re-verifies via ``get_team_membership``.
+    """
+    from backend.data.db import prisma
+
+    member = await prisma.orgmember.find_first(
+        where=cast(
+            "OrgMemberWhereInput",
+            {"userId": user_id, "orgId": org_id, "status": "ACTIVE"},
+        )
+    )
+    return member is not None
+
+
 async def is_org_admin(user_id: str, org_id: str) -> bool:
     """True if *user_id* is an ACTIVE admin or owner of *org_id*."""
     from backend.data.db import prisma
@@ -225,29 +244,39 @@ async def resolve_warm_targets(
 ) -> list[TierTarget]:
     """Groups the session-start warm-context prefetch may read.
 
-    Personal always; org when the session carries an organization; the
-    session's team ONLY when the session is team-tagged AND the user is
-    an ACTIVE member of it (untagged sessions skip the team tier).
+    Personal always; org ONLY when the session carries an organization AND
+    the user is an ACTIVE org member (re-checked here, not trusted from the
+    session); the session's team ONLY when the session is team-tagged AND the
+    user is an ACTIVE member of it (untagged sessions skip the team tier).
     """
     targets = [TierTarget(derive_group_id(user_id), MemoryTier.personal, None)]
 
     if organization_id:
-        targets.append(
-            TierTarget(derive_org_group_id(organization_id), MemoryTier.org, ORG_LABEL)
-        )
+        try:
+            org_group_id = derive_org_group_id(organization_id)
+        except ValueError:
+            # A malformed org id must not sink the personal warm context:
+            # per-tier isolation (see graphiti/context.py) starts here.
+            logger.warning(
+                "Skipping org warm-context tier: invalid organization id",
+                exc_info=True,
+            )
+        else:
+            if await is_org_member(user_id, organization_id):
+                targets.append(TierTarget(org_group_id, MemoryTier.org, ORG_LABEL))
 
-        if session_team_id:
-            active_ids = await get_user_team_ids(user_id, organization_id)
-            if session_team_id in active_ids:
-                name = await resolve_team_name(session_team_id)
-                targets.append(
-                    TierTarget(
-                        derive_team_group_id(session_team_id),
-                        MemoryTier.team,
-                        team_label(name),
-                        session_team_id,
+            if session_team_id:
+                active_ids = await get_user_team_ids(user_id, organization_id)
+                if session_team_id in active_ids:
+                    name = await resolve_team_name(session_team_id)
+                    targets.append(
+                        TierTarget(
+                            derive_team_group_id(session_team_id),
+                            MemoryTier.team,
+                            team_label(name),
+                            session_team_id,
+                        )
                     )
-                )
 
     return targets
 
@@ -261,11 +290,17 @@ async def resolve_search_targets(
 
     ``all`` (default) unions personal + org + EVERY ACTIVE team the user
     belongs to; ``personal``/``org``/``team`` restrict to that tier.
-    Team tiers only ever include the user's ACTIVE memberships. Raises
-    ``TierError`` when an org/team tier is requested without an org on
-    the session.
+    The org tier is included only for ACTIVE org members and team tiers only
+    for the user's ACTIVE memberships (re-checked here, not trusted from the
+    session), so a non-member never reads shared memory. Raises ``TierError``
+    for an unknown tier, or when an org/team tier is requested without an org
+    on the session.
     """
     tier = tier or "all"
+    if tier not in ("all", "personal", "org", "team"):
+        raise TierError(
+            f"Unknown memory tier '{tier}'. Valid tiers: all, personal, org, team."
+        )
     include_personal = tier in ("all", "personal")
     include_org = tier in ("all", "org")
     include_team = tier in ("all", "team")
@@ -282,7 +317,11 @@ async def resolve_search_targets(
     if include_personal:
         targets.append(TierTarget(derive_group_id(user_id), MemoryTier.personal, None))
 
-    if include_org and organization_id:
+    if (
+        include_org
+        and organization_id
+        and await is_org_member(user_id, organization_id)
+    ):
         targets.append(
             TierTarget(derive_org_group_id(organization_id), MemoryTier.org, ORG_LABEL)
         )

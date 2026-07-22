@@ -92,15 +92,31 @@ class TestResolveWarmTargets:
 
     @pytest.mark.asyncio
     async def test_personal_and_org_without_team(self) -> None:
-        targets = await resolve_warm_targets("u1", "org-1", None)
+        with patch.object(
+            tiers, "is_org_member", new_callable=AsyncMock, return_value=True
+        ):
+            targets = await resolve_warm_targets("u1", "org-1", None)
         tiers_seen = [t.tier for t in targets]
         assert tiers_seen == [MemoryTier.personal, MemoryTier.org]
         assert targets[1].group_id == "org_org-1"
         assert targets[1].label == "org memory"
 
     @pytest.mark.asyncio
+    async def test_org_tier_excluded_when_not_org_member(self) -> None:
+        # A stale/revoked org membership must not reach org memory: the org
+        # tier is re-checked here, not trusted from session.organization_id.
+        with patch.object(
+            tiers, "is_org_member", new_callable=AsyncMock, return_value=False
+        ):
+            targets = await resolve_warm_targets("u1", "org-1", None)
+        assert [t.tier for t in targets] == [MemoryTier.personal]
+
+    @pytest.mark.asyncio
     async def test_includes_session_team_when_active_member(self) -> None:
         with (
+            patch.object(
+                tiers, "is_org_member", new_callable=AsyncMock, return_value=True
+            ),
             patch.object(
                 tiers,
                 "get_user_team_ids",
@@ -127,26 +143,45 @@ class TestResolveWarmTargets:
 
     @pytest.mark.asyncio
     async def test_skips_session_team_when_not_active_member(self) -> None:
-        with patch.object(
-            tiers,
-            "get_user_team_ids",
-            new_callable=AsyncMock,
-            return_value=["other-team"],
+        with (
+            patch.object(
+                tiers, "is_org_member", new_callable=AsyncMock, return_value=True
+            ),
+            patch.object(
+                tiers,
+                "get_user_team_ids",
+                new_callable=AsyncMock,
+                return_value=["other-team"],
+            ),
         ):
             targets = await resolve_warm_targets("u1", "org-1", "team-1")
 
-        # Non-member: team tier is dropped, org still present.
+        # Non-member of the team: team tier is dropped, org still present.
         assert [t.tier for t in targets] == [MemoryTier.personal, MemoryTier.org]
 
     @pytest.mark.asyncio
     async def test_untagged_session_skips_team(self) -> None:
         # team_id None → team tier never considered (no membership query).
-        with patch.object(
-            tiers, "get_user_team_ids", new_callable=AsyncMock
-        ) as get_teams:
+        with (
+            patch.object(
+                tiers, "is_org_member", new_callable=AsyncMock, return_value=True
+            ),
+            patch.object(
+                tiers, "get_user_team_ids", new_callable=AsyncMock
+            ) as get_teams,
+        ):
             targets = await resolve_warm_targets("u1", "org-1", None)
         get_teams.assert_not_awaited()
         assert [t.tier for t in targets] == [MemoryTier.personal, MemoryTier.org]
+
+    @pytest.mark.asyncio
+    async def test_invalid_org_id_preserves_personal(self) -> None:
+        # A malformed org id must skip the org tier, not sink personal.
+        with patch.object(
+            tiers, "derive_org_group_id", side_effect=ValueError("bad org id")
+        ):
+            targets = await resolve_warm_targets("u1", "bad-org", None)
+        assert [t.tier for t in targets] == [MemoryTier.personal]
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +196,18 @@ class TestResolveSearchTargets:
         assert [t.tier for t in targets] == [MemoryTier.personal]
 
     @pytest.mark.asyncio
+    async def test_unknown_tier_raises(self) -> None:
+        # An unrecognized tier must be rejected, not silently return no
+        # targets (which memory_search would report as "no memories").
+        with pytest.raises(TierError, match="Unknown memory tier"):
+            await resolve_search_targets("u1", "org-1", "bogus")
+
+    @pytest.mark.asyncio
     async def test_all_unions_personal_org_and_active_teams(self) -> None:
         with (
+            patch.object(
+                tiers, "is_org_member", new_callable=AsyncMock, return_value=True
+            ),
             patch.object(
                 tiers,
                 "get_user_team_ids",
@@ -186,6 +231,16 @@ class TestResolveSearchTargets:
         ]
         team_labels = {t.label for t in targets if t.tier == MemoryTier.team}
         assert team_labels == {"team memory (Platform)", "team memory (Growth)"}
+
+    @pytest.mark.asyncio
+    async def test_org_tier_excluded_for_non_member(self) -> None:
+        # tier='org' by a non-member yields no targets (memory_search then
+        # reports "no memories") — never the org group's contents.
+        with patch.object(
+            tiers, "is_org_member", new_callable=AsyncMock, return_value=False
+        ):
+            targets = await resolve_search_targets("u1", "org-1", "org")
+        assert targets == []
 
     @pytest.mark.asyncio
     async def test_team_tier_only_queries_active_memberships(self) -> None:
