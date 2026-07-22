@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,6 +29,7 @@ import { useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ShareAgentDialog } from "../../ShareAgentDialog/ShareAgentDialog";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -39,9 +41,14 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
   const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const [isDeletingAgent, setIsDeletingAgent] = useState(false);
   const [isDuplicatingAgent, setIsDuplicatingAgent] = useState(false);
   const [isRemovingFromFolder, setIsRemovingFromFolder] = useState(false);
+
+  // Sharing targets a team, so it only makes sense once the user has teams.
+  // Ownership/admin rights are enforced by the backend (surfaced as a toast).
+  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
 
   const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
   const { mutateAsync: forkAgent } = usePostV2ForkLibraryAgent();
@@ -192,6 +199,21 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           >
             Duplicate agent
           </DropdownMenuItem>
+          {hasTeams && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowShareDialog(true);
+                }}
+                className="flex items-center gap-2"
+                data-testid="library-agent-card-share"
+              >
+                Share with a team
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={(e) => {
@@ -271,6 +293,14 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         isOpen={showMoveDialog}
         setIsOpen={setShowMoveDialog}
       />
+
+      {hasTeams && (
+        <ShareAgentDialog
+          agent={agent}
+          isOpen={showShareDialog}
+          setIsOpen={setShowShareDialog}
+        />
+      )}
     </>
   );
 }
