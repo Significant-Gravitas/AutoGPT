@@ -158,3 +158,48 @@ async def test_validation_exception_returns_error(tool, session):
     assert isinstance(result, ErrorResponse)
     assert result.error is not None
     assert "validation_exception" in result.error
+
+
+@pytest.mark.asyncio
+async def test_agent_json_as_json_string(tool, session):
+    """agent_json passed as a raw JSON string is parsed and validated."""
+    agent_json = (
+        '{"nodes": [{"id": "node-1", "block_id": "block-1", '
+        '"input_default": {}, "metadata": {"position": {"x": 0, "y": 0}}}], '
+        '"links": []}'
+    )
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    with (
+        patch(
+            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
+            return_value=[],
+        ),
+        patch(
+            "backend.copilot.tools.validate_agent.AgentValidator",
+            return_value=mock_validator,
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json=agent_json,
+        )
+
+    assert isinstance(result, ValidationResultResponse)
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_agent_json_unresolved_file_ref_string_returns_error(tool, session):
+    """An unexpanded @@agptfile reference (not valid JSON) returns a clear error."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_json="@@agptfile:/home/user/agent.json",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "@@agptfile" in result.message

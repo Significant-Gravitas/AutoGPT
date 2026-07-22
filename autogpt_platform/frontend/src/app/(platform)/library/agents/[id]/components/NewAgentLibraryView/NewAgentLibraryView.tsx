@@ -17,6 +17,7 @@ import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
 import { SectionWrap } from "./components/other/SectionWrap";
+import { TriggerNotFound } from "./components/other/TriggerNotFound";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
@@ -38,8 +39,9 @@ export function NewAgentLibraryView() {
     isTemplateLoading,
     error,
     hasAnyItems,
-    activeItem,
-    isActiveItemTriggerAgent,
+    activeItemId,
+    selectedTriggerKind,
+    retryTriggerLists,
     sidebarLoading,
     activeTab,
     setActiveTab,
@@ -119,6 +121,60 @@ export function NewAgentLibraryView() {
     );
   }
 
+  function renderSelectedTrigger(selectedItemId: string) {
+    if (!agent) return null;
+
+    switch (selectedTriggerKind) {
+      case "trigger-agent":
+        return (
+          <SelectedTriggerAgentView
+            agent={agent}
+            triggerAgentId={selectedItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "webhook-trigger":
+        return (
+          <SelectedTriggerView
+            agent={agent}
+            triggerId={selectedItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "loading":
+        return <LoadingSelectedContent agent={agent} />;
+      case "error":
+        return (
+          <SelectedViewLayout
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+          >
+            <ErrorCard
+              responseError={{
+                message:
+                  "Could not load this agent's triggers. Check your connection and try again.",
+              }}
+              context="triggers"
+              onRetry={retryTriggerLists}
+            />
+          </SelectedViewLayout>
+        );
+      case "not-found":
+        return (
+          <TriggerNotFound
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+            onClearSelection={handleClearSelectedRun}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
   if (error) {
     return (
       <ErrorCard
@@ -134,7 +190,9 @@ export function NewAgentLibraryView() {
     return <AgentRunsLoading />;
   }
 
-  if (!sidebarLoading && !hasAnyItems) {
+  // Keep the selected-content layout while an item is selected — even with
+  // zero listable items — so a stale selection can show its not-found state.
+  if (!sidebarLoading && !hasAnyItems && !activeItemId) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -196,7 +254,7 @@ export function NewAgentLibraryView() {
 
           <SidebarRunsList
             agent={agent}
-            selectedRunId={activeItem ?? undefined}
+            selectedRunId={activeItemId ?? undefined}
             onSelectRun={handleSelectRun}
             onClearSelectedRun={handleClearSelectedRun}
             onScheduleDeleted={handleScheduleDeleted}
@@ -205,11 +263,11 @@ export function NewAgentLibraryView() {
           />
         </SectionWrap>
 
-        {activeItem ? (
+        {activeItemId ? (
           activeTab === "scheduled" ? (
             <SelectedScheduleView
               agent={agent}
-              scheduleId={activeItem}
+              scheduleId={activeItemId}
               onScheduleDeleted={handleScheduleDeleted}
               onSelectRun={(id) => handleSelectRun(id, "runs")}
               banner={renderMarketplaceUpdateBanner()}
@@ -217,7 +275,7 @@ export function NewAgentLibraryView() {
           ) : activeTab === "templates" ? (
             <SelectedTemplateView
               agent={agent}
-              templateId={activeItem}
+              templateId={activeItemId}
               onClearSelectedRun={handleClearSelectedRun}
               onRunCreated={(execution) =>
                 handleSelectRun(execution.id, "runs")
@@ -226,26 +284,11 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "triggers" ? (
-            isActiveItemTriggerAgent ? (
-              <SelectedTriggerAgentView
-                agent={agent}
-                triggerAgentId={activeItem}
-                onClearSelectedRun={handleClearSelectedRun}
-                banner={renderMarketplaceUpdateBanner()}
-              />
-            ) : (
-              <SelectedTriggerView
-                agent={agent}
-                triggerId={activeItem}
-                onClearSelectedRun={handleClearSelectedRun}
-                onSwitchToRunsTab={() => setActiveTab("runs")}
-                banner={renderMarketplaceUpdateBanner()}
-              />
-            )
+            renderSelectedTrigger(activeItemId)
           ) : (
             <SelectedRunView
               agent={agent}
-              runId={activeItem}
+              runId={activeItemId}
               onSelectRun={handleSelectRun}
               onClearSelectedRun={handleClearSelectedRun}
               banner={renderMarketplaceUpdateBanner()}

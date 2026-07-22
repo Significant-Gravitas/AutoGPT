@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 from backend.data.db_accessors import chat_db, library_db
 from backend.data.graph import GraphSettings
@@ -103,6 +104,33 @@ class ChatMessage(BaseModel):
     sequence: int | None = None
     duration_ms: int | None = None
     created_at: datetime | None = None
+
+    tool_calls_pending_save: bool = Field(default=False, exclude=True)
+    """True when ``tool_calls`` mutated after this row was already persisted.
+
+    An assistant row is often flushed to the DB (getting its ``sequence``)
+    while its text streams, BEFORE the turn's tool_use blocks arrive — the
+    save path only inserts ``sequence is None`` rows, so late-attached
+    tool_calls would otherwise never reach the DB and the tool activity
+    becomes invisible in session history. ``_save_session_to_db`` back-fills
+    rows flagged here and clears the flag.
+
+    In-memory only (``exclude=True``) by necessity, not oversight: the flag
+    marks tool_calls content that exists ONLY in this process — if the
+    worker dies before a back-fill succeeds, the content is gone with it,
+    so a persisted flag would have nothing left to back-fill from. Residual
+    window: a back-fill failure on the turn's final save is retried on any
+    later save of the session, but not across a worker restart."""
+
+    def mark_tool_calls_pending_save(self) -> None:
+        """Flag this row for a toolCalls back-fill if it was already
+        persisted (has a sequence). The single invariant behind the
+        mid-turn-flush fix: any site that mutates ``tool_calls`` on a
+        possibly-sequenced message must call this — encapsulated here so a
+        future third mutation site can't silently reintroduce the
+        dropped-tool-calls bug."""
+        if self.sequence is not None:
+            self.tool_calls_pending_save = True
 
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
@@ -281,6 +309,27 @@ class ChatSession(ChatSessionInfo):
     # list of argument dicts (one entry per dispatched call).
     _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
 
+    guide_in_system_prompt: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True when this turn's system prompt includes the
+    agent-building guide (builder-bound session, or a building session detected
+    from a prior-turn guide read / mode switch). Set by the SDK service at turn
+    start after the system prompt is assembled; never persisted — recomputed
+    every turn. The guide gate and ``get_agent_building_guide`` consult it to
+    skip redundant guide round-trips."""
+
+    sdk_turn_active: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True while the SDK service is running this
+    turn (set at turn start, never persisted). Lets shared tools branch on
+    the execution path — e.g. enter_agent_building_mode restarts in-turn on
+    SDK but degrades gracefully on the baseline path."""
+
+    building_mode_requested: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
+    SDK service to restart the in-flight attempt with the agent-building
+    guide in the system prompt. Cleared by the restart handler; never
+    persisted — the durable mode signal is the tool call in message
+    history."""
+
     @classmethod
     def new(
         cls,
@@ -408,6 +457,7 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
+                msg.mark_tool_calls_pending_save()
                 return
 
         self.messages.append(
@@ -892,6 +942,46 @@ async def _save_session_to_db(
         )
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
+            msg.tool_calls_pending_save = False
+
+    # Back-fill tool_calls onto rows that were flushed before their
+    # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
+    # Save-ordering invariant: this only repairs the row if a save runs
+    # AFTER the tool_use blocks arrive. That is guaranteed by the end-of-turn
+    # save (every turn ends with save_chat_session, including the error paths
+    # that append an error marker) — mid-turn flushes merely narrow the
+    # window. On failure the flag stays set so any later save retries.
+    pending = [
+        m
+        for m in session.messages
+        if m.tool_calls_pending_save and m.sequence is not None
+    ]
+
+    async def _backfill(msg: ChatMessage) -> None:
+        assert msg.sequence is not None  # narrowed by the filter above
+        try:
+            updated = await db.update_chat_message_tool_calls(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                tool_calls=msg.tool_calls or [],
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+
+        if updated:
+            msg.tool_calls_pending_save = False
+        else:
+            logger.warning(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence} (row not found)"
+            )
+
+    if pending:
+        await asyncio.gather(*(_backfill(m) for m in pending))
 
 
 async def append_and_save_message(
