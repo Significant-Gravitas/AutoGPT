@@ -67,6 +67,7 @@ LLMProviderName = Literal[
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
+    ProviderName.ORCA_ROUTER,
     ProviderName.LLAMA_API,
     ProviderName.V0,
 ]
@@ -235,6 +236,15 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
+    # OrcaRouter models (https://www.orcarouter.ai/models). Values are the
+    # upstream-namespaced model IDs OrcaRouter routes on.
+    ORCAROUTER_GPT_5_5 = "openai/gpt-5.5"
+    ORCAROUTER_CLAUDE_OPUS_4_8 = "anthropic/claude-opus-4.8"
+    ORCAROUTER_GEMINI_3_5_FLASH = "google/gemini-3.5-flash"
+    ORCAROUTER_GROK_4_3 = "grok/grok-4.3"
+    ORCAROUTER_DEEPSEEK_V4_PRO = "deepseek/deepseek-v4-pro"
+    ORCAROUTER_MINIMAX_M2_7 = "minimax/minimax-m2.7"
+    ORCAROUTER_QWEN3_7_MAX = "qwen/qwen3.7-max"
 
     @classmethod
     def __get_pydantic_json_schema__(cls, schema, handler):
@@ -687,6 +697,31 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000, "v0 1.5 LG", "V0", "V0", 1),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
+    # OrcaRouter models. context_window / max_output sourced from
+    # https://www.orcarouter.ai/api/pricing (context_length /
+    # max_completion_tokens). creator_name reuses the upstream vendor so the
+    # existing per-creator UI icons apply.
+    LlmModel.ORCAROUTER_GPT_5_5: ModelMetadata(
+        "orca_router", 1048576, 128000, "GPT-5.5", "OrcaRouter", "OpenAI", 3
+    ),
+    LlmModel.ORCAROUTER_CLAUDE_OPUS_4_8: ModelMetadata(
+        "orca_router", 1000000, 128000, "Claude Opus 4.8", "OrcaRouter", "Anthropic", 3
+    ),
+    LlmModel.ORCAROUTER_GEMINI_3_5_FLASH: ModelMetadata(
+        "orca_router", 1048576, 65536, "Gemini 3.5 Flash", "OrcaRouter", "Google", 1
+    ),
+    LlmModel.ORCAROUTER_GROK_4_3: ModelMetadata(
+        "orca_router", 1000000, None, "Grok 4.3", "OrcaRouter", "xAI", 1
+    ),
+    LlmModel.ORCAROUTER_DEEPSEEK_V4_PRO: ModelMetadata(
+        "orca_router", 1048576, 384000, "DeepSeek V4 Pro", "OrcaRouter", "DeepSeek", 1
+    ),
+    LlmModel.ORCAROUTER_MINIMAX_M2_7: ModelMetadata(
+        "orca_router", 204800, 2048, "MiniMax M2.7", "OrcaRouter", "MiniMax", 1
+    ),
+    LlmModel.ORCAROUTER_QWEN3_7_MAX: ModelMetadata(
+        "orca_router", 1000000, 64000, "Qwen 3.7 Max", "OrcaRouter", "Qwen", 2
+    ),
 }
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
