@@ -53,6 +53,7 @@ from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
+from .start_desktop import StartDesktopTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -136,6 +137,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
+    "start_desktop": StartDesktopTool(),
     "connect_integration": ConnectIntegrationTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools

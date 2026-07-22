@@ -638,6 +638,18 @@ class ChatConfig(BaseSettings):
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
+    e2b_desktop_template: str = Field(
+        default="desktop",
+        description="E2B template for the on-demand start_desktop sandbox.",
+    )
+    e2b_desktop_timeout: int = Field(
+        default=900,
+        description="Running-time timeout (seconds) for the on-demand desktop "
+        "sandbox. Unlike the bash sandbox it is NOT paused at turn end — the "
+        "user may still be watching the stream — so this is the only thing "
+        "stopping the meter; it auto-pauses (free) when the timeout lapses "
+        "and resumes on the next start_desktop call.",
+    )
 
     @property
     def openrouter_active(self) -> bool:

@@ -92,6 +92,7 @@ class ResponseType(str, Enum):
 
     # Code execution
     BASH_EXEC = "bash_exec"
+    DESKTOP_STREAM = "desktop_stream"
 
     # Web
     WEB_FETCH = "web_fetch"
@@ -713,6 +714,18 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+
+
+class DesktopStreamToolResponse(ToolResponseBase):
+    """Response for start_desktop: an embeddable live desktop stream.
+
+    ``desktop_stream`` carries the same shape the desktop blocks emit
+    (kind/url/provider/sandbox_id/requires_auth) so the frontend's
+    DesktopStreamRenderer picks it up wherever tool outputs render.
+    """
+
+    type: ResponseType = ResponseType.DESKTOP_STREAM
+    desktop_stream: dict
 
 
 # Feature request models

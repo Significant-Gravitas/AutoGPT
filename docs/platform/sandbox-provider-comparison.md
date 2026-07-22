@@ -29,12 +29,12 @@ E2B column measured 2026-07-21 via `backend/scripts/desktop_smoke_test.py`.
 
 | Metric | E2B | Daytona |
 |---|---|---|
-| Cold start → ready (s) | 3.9 | |
-| Stream ready, URL responds 200 (s) | 1.4 | |
-| Action round-trip: first click (s) | 16.8 (first xdotool call while XFCE settles; subsequent actions sub-second) | |
-| Action round-trip: screenshot (s) | 0.5 | |
-| Suspend (s) | 0.5 | |
-| Resume after suspend (s) | 0.6 (file state verified preserved) | |
+| Cold start → ready (s) | 3.3–3.9 (n=7) | |
+| Stream ready, URL responds 200 (s) | 1.1–1.4 | |
+| Action round-trip: click (s) | 0.2 typical (n=8 sandboxes). Caveat: during one ~40 min window, 5 consecutive sandboxes showed a uniform ~15.5 s per input action (queries unaffected); not reproducible since, cause undetermined (E2B-side transient suspected — uniform delay suggests an internal timeout) | |
+| Action round-trip: screenshot (s) | 0.5–0.6 | |
+| Suspend (s) | 0.4–0.8 | |
+| Resume after suspend (s) | 0.6–0.8 (file state verified preserved) | |
 | Volume file visible across sandboxes | not testable — volumes not enabled on account (private beta); blocks fall back to suspend-only persistence with warning | |
 | $/h active (from cost_meter `rate_usd_per_hour_running`) | $0.166 (2 vCPU + 4 GiB) | |
 | $/month suspended (published pricing) | $0 compute; storage retained (paused kept indefinitely) | |
@@ -66,6 +66,17 @@ scenarios: **[sandbox-provider-pricing.md](./sandbox-provider-pricing.md)** (res
 | Stream auth | VNC password embedded in URL | Signed preview URL (expiring) |
 
 ## Qualitative notes
+
+- **Stream embed (E2B)**: the noVNC URL (password embedded as a query param) loads
+  straight into the live desktop — HTTP 200, no interstitial or extra click. Contrast:
+  Daytona preview URLs show an "I Understand, Continue" interstitial inside the iframe
+  once per browser (see the Daytona branch's notes).
+- **CoPilot integration (E2B)**: `start_desktop` uses a SEPARATE on-demand
+  desktop-template sandbox (session-linked via Redis, auto-pauses when idle, resumes
+  in ~1 s) rather than making the session sandbox desktop-capable — E2B bills actual
+  vCPU+RAM per running second, so keeping every copilot session on the GUI template
+  would tax sessions that never need a screen. Session files are tar-copied into the
+  desktop once at creation (E2B has no cross-sandbox mounts until volumes GA).
 
 - **E2B**: pause/resume preserves full machine state (RAM included) with ~1 s resume;
   volumes are private beta (blocks degrade gracefully to suspend-only persistence).
