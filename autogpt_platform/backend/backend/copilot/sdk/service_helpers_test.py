@@ -1569,6 +1569,22 @@ class TestStampTurnMessages:
         )
         assert msgs[0].routing_source == "ld"
 
+    def test_subscription_default_never_marks_fallback(self):
+        """Subscription mode requests NO model (requested_model=None) — the
+        CLI's default choice is the resolution itself, not a divergence."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model=None,
+            actual_model="claude-opus-4-6",
+            routing_source="env",
+        )
+        assert msgs[0].model == "claude-opus-4-6"
+        assert msgs[0].routing_source == "env"  # NOT "fallback"
+
     def test_flushed_rows_flagged_for_stamp_backfill(self):
         """A row the mid-turn flush already persisted (has a sequence) gets
         flagged so the save path back-fills its columns — the insert path

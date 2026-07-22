@@ -5324,10 +5324,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # sdk_model (not effective_model): in subscription mode no
+            # model was requested — the CLI's default must not read as a
+            # fallback divergence against a fabricated "request".
             _stamp_turn_messages(
                 session.messages,
                 start_index=pre_turn_message_count,
-                requested_model=effective_model,
+                requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
@@ -5633,9 +5636,18 @@ def _stamp_turn_messages(
     routed a different model. The comparison is canonicalized (vendor
     prefix, dot/dash, date-suffix spellings) so a spelling difference
     between the request and the CLI's report never fakes a fallback.
+
+    ``requested_model=None`` means no specific model was requested
+    (subscription mode lets the CLI pick its default) — there is nothing
+    to diverge from, so the observed model stamps with the original
+    routing source, never "fallback".
     """
     model = actual_model or requested_model
-    if actual_model is not None and not _same_model(actual_model, requested_model):
+    if (
+        actual_model is not None
+        and requested_model is not None
+        and not _same_model(actual_model, requested_model)
+    ):
         routing_source = "fallback"
     for msg in messages[start_index:]:
         if msg.role == "assistant" and msg.model is None:
