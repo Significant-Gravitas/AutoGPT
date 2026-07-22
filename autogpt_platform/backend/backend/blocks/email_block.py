@@ -68,7 +68,12 @@ class SendEmailBlock(Block):
         body: str = SchemaField(
             description="Body of the email", placeholder="Enter the email body"
         )
-        config: SMTPConfig = SchemaField(description="SMTP Config")
+        config: SMTPConfig = SchemaField(
+            description=(
+                "SMTP server configuration. The port must be one of "
+                "25, 465, 587, or 2525."
+            )
+        )
         credentials: SMTPCredentialsInput = SMTPCredentialsField()
 
     class Output(BlockSchemaOutput):
