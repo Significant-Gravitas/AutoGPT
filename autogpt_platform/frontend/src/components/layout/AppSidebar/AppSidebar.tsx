@@ -21,20 +21,21 @@ import {
   FlowArrowIcon,
   FolderIcon,
   type Icon,
-  SparkleIcon,
+  NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
-import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
-import { ComponentProps, ReactNode, Suspense } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
+import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 
@@ -83,7 +84,30 @@ function NewTaskIcon() {
     return <LoadingSpinner size="small" className="shrink-0" />;
   }
 
-  return <SparkleIcon className="size-4" />;
+  return <NotePencilIcon className="size-5" />;
+}
+
+// New Task shares the nav-item styling with the main links so it sits in the
+// same section with a uniform gap, instead of being a standalone CTA button.
+function NewTaskItem() {
+  const pathname = usePathname();
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip="New Task"
+        isActive={isLinkActive(pathname, "/copilot")}
+        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+      >
+        <Link href="/copilot">
+          <NewTaskIcon />
+          <span className="truncate">New Task</span>
+          <ShortcutHint letter="O" />
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 }
 
 function NavMenu({
@@ -104,7 +128,7 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
           >
             <Link href={link.href}>
               <link.icon className="size-5" />
@@ -140,7 +164,7 @@ function CollapsibleNavGroup({
       >
         <SidebarGroupLabel
           asChild
-          className="text-[13px] font-medium text-zinc-500"
+          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
         >
           <CollapsibleTrigger>
             {label}
@@ -176,6 +200,23 @@ type Props = ComponentProps<typeof Sidebar>;
 export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  const router = useRouter();
+
+  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
+  useEffect(() => {
+    function handleNewTaskShortcut(event: KeyboardEvent) {
+      if (event.repeat) return;
+      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      if (!event.shiftKey) return;
+      if (isEditableElement(document.activeElement)) return;
+      event.preventDefault();
+      router.push("/copilot");
+    }
+
+    document.addEventListener("keydown", handleNewTaskShortcut);
+    return () => document.removeEventListener("keydown", handleNewTaskShortcut);
+  }, [router]);
 
   return (
     <Sidebar
@@ -193,37 +234,17 @@ export function AppSidebar(props: Props) {
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+            <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <Button
-                  as="NextLink"
-                  href="/copilot"
-                  variant="primary"
-                  size="small"
-                  aria-label="New Task"
-                  leftIcon={<NewTaskIcon />}
-                  className={cn(
-                    "relative h-10 w-full overflow-hidden",
-                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-6px_rgba(139,92,246,0.45)]",
-                    "transition-all duration-300",
-                    "hover:-translate-y-px hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_22px_-6px_rgba(139,92,246,0.7)]",
-                    "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:transition-transform before:duration-700 before:ease-out hover:before:translate-x-full",
-                    "motion-reduce:transition-none motion-reduce:before:hidden motion-reduce:hover:translate-y-0",
-                    "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-0",
-                  )}
-                >
-                  <span className="truncate group-data-[collapsible=icon]:hidden">
-                    New Task
-                  </span>
-                </Button>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
-              <SidebarGroupContent>
-                <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
+                <NavMenu
+                  links={MAIN_LINKS}
+                  leading={
+                    <>
+                      <NewTaskItem />
+                      <SidebarSearch />
+                    </>
+                  }
+                />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
