@@ -410,6 +410,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
     mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        mocker.AsyncMock(return_value=None),
+    )
     mock_get_queue.return_value = mock_queue
     mock_get_event_bus.return_value = mock_event_bus
 
@@ -490,6 +494,94 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     assert result2 == mock_graph_exec_2
 
 
+@pytest.mark.asyncio
+async def test_add_graph_execution_owner_mode_threads_owner_and_audits(
+    mocker: MockerFixture, caplog
+):
+    """When ``resolve_execution_credentials_owner`` reports an OWNER-mode grant,
+    the run threads the owner id onto the ExecutionContext, passes it into
+    validation, and emits the audit log line — no secrets, only ids."""
+    import logging
+
+    from backend.data.execution import GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    graph_id = "g-owned"
+    user_id = "consumer-1"
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 4
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = None
+    mock_graph_exec.team_id = None
+    mock_graph_exec.id = "exec-owner-1"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 4
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [], {}, set())
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = True
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
+    mock_gdb.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=True, sensitive_action_safe_mode=False
+        )
+    )
+    # The OWNER-mode decision: consumer reaches g-owned via an OWNER grant.
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        mocker.AsyncMock(return_value=("owner-9", "grant-42")),
+    )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mocker.MagicMock(id="ws-1")
+    )
+    mocker.patch("backend.executor.utils.onboarding_db")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_queue.return_value = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mocker.MagicMock(publish=mocker.AsyncMock()),
+    )
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        mocker.AsyncMock(return_value=False),
+    )
+
+    with caplog.at_level(logging.INFO, logger="backend.executor.utils"):
+        await add_graph_execution(graph_id=graph_id, user_id=user_id)
+
+    # validation ran against the owner, not the consumer
+    assert mock_validate.call_args.kwargs["credentials_owner_id"] == "owner-9"
+
+    # the ExecutionContext carried to the queue names the owner
+    ctx = mock_graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert ctx.credentials_owner_id == "owner-9"
+
+    # audit line names graph, owner, grant, consumer — and leaks no secret
+    audit = [r.message for r in caplog.records if "OWNER-mode credentials" in r.message]
+    assert audit, "expected an OWNER-mode audit log line"
+    assert "owner-9" in audit[0]
+    assert "grant-42" in audit[0]
+    assert user_id in audit[0]
+
+
 # ============================================================================
 # Regression test: RPC layer returns typed User model, not raw dict
 # ============================================================================
@@ -555,6 +647,9 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         return_value=mocker.MagicMock(
             human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
         )
+    )
+    mock_db_client.resolve_execution_credentials_owner = mocker.AsyncMock(
+        return_value=None
     )
     mock_db_client.create_graph_execution = mocker.AsyncMock(
         return_value=mock_graph_exec
@@ -797,6 +892,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
 
     mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
     mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        mocker.AsyncMock(return_value=None),
+    )
     mock_get_queue.return_value = mocker.AsyncMock()
     mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
 
