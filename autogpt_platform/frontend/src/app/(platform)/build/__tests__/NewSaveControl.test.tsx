@@ -61,6 +61,9 @@ function setupMock(overrides: {
     isSaving: overrides.isSaving ?? false,
     graphVersion: overrides.graphVersion,
     handleSave: mockHandleSave,
+    teamId: null,
+    setTeamId: vi.fn(),
+    showTeamPicker: false,
   });
 
   return form;

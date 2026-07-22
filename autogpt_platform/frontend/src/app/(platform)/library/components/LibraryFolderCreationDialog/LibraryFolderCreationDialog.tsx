@@ -25,6 +25,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { FOLDER_COLORS } from "../folder-constants";
 import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 const LazyEmojiPicker = dynamic(
   () =>
@@ -47,8 +50,12 @@ export default function LibraryFolderCreationDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { teamId, setTeamId, teamRequestInit } = useCreateTeamSelection(
+    CreateSurface.LibraryFolder,
+  );
 
   const { mutate: createFolder, isPending } = usePostV2CreateFolder({
+    request: teamRequestInit,
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
@@ -137,6 +144,13 @@ export default function LibraryFolderCreationDialog() {
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          <TeamPicker
+            surfaceKey={CreateSurface.LibraryFolder}
+            value={teamId}
+            onChange={setTeamId}
+            wrapperClassName="!mb-0"
           />
 
           <FormField

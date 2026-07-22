@@ -7,6 +7,8 @@ import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/grap
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useSaveGraph } from "../../../hooks/useSaveGraph";
+import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -26,9 +28,16 @@ export const useNewSaveControl = () => {
     });
   };
 
+  // Only a brand-new agent gets a team owner; saving over an existing graph
+  // (flowID present) reuses its ownership, so hide the picker then.
+  const { teamId, setTeamId, hasTeams } = useCreateTeamSelection(
+    CreateSurface.BuilderSave,
+  );
+
   const { saveGraph, isSaving } = useSaveGraph({
     showToast: true,
     onSuccess,
+    teamId,
   });
 
   const [{ flowID, flowVersion }] = useQueryStates({
@@ -86,10 +95,17 @@ export const useNewSaveControl = () => {
     }
   }, [graph, form]);
 
+  // Show the picker only when creating a new agent (no flowID) and the user
+  // actually has teams to choose from.
+  const showTeamPicker = !flowID && hasTeams;
+
   return {
     form,
     isSaving: isSaving,
     graphVersion: graph?.version,
     handleSave,
+    teamId,
+    setTeamId,
+    showTeamPicker,
   };
 };
