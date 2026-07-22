@@ -1,0 +1,77 @@
+name: repo-pr-reapprove-command
+
+# ChatOps: a team member comments `/reapprove` on a PR whose approval was
+# dismissed by a stale-review dismissal (e.g. after merging dev or pushing a
+# small fix), and the github-actions bot re-approves on their behalf.
+# Deterministic — no AI.
+#
+# Prerequisites:
+#   - Repo (and org) setting "Allow GitHub Actions to create and approve pull
+#     requests" must be enabled (Settings → Actions → General), otherwise the
+#     review-creation call is rejected.
+#   - Like all issue_comment workflows, this only triggers once the file is on
+#     the default branch (master).
+#
+# Notes:
+#   - The bot is its own identity, so `/reapprove` works even on your own PR.
+#     Anyone with write access can therefore bypass a fresh human review —
+#     acceptable for a small trusted team; this is why the permission gate
+#     checks real repo permission and not `author_association` (unreliable in
+#     orgs).
+#   - The bot's approval is itself dismissed by the next push, as intended.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  reapprove:
+    # PR comments only, and only when the comment starts with `/reapprove`
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/reapprove')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify commenter has write access
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            if (!['admin', 'write'].includes(data.permission)) {
+              core.setFailed(
+                `@${context.payload.comment.user.login} does not have write access ` +
+                `(permission: ${data.permission}) — ignoring /reapprove`,
+              );
+            }
+
+      - name: Approve PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: 'APPROVE',
+              body:
+                `Re-approved at the request of @${context.payload.comment.user.login} ` +
+                `(${context.payload.comment.html_url})`,
+            });
+
+      - name: React to command comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1',
+            });
