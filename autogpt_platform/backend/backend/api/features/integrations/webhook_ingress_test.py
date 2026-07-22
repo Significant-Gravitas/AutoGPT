@@ -502,7 +502,14 @@ class TestProviderPathConfusion:
             ProviderName("generic_webhook"),
             headers={"X-Webhook-Secret": "t0ken"},
         )
-        assert resp.status_code != 403, resp.text
+        assert resp.status_code == 200, resp.text
+
+    def test_matching_provider_different_case_accepted(self):
+        # The guard compares case-insensitively: a same-provider request whose
+        # path casing differs from the stored (canonical) value must not 403.
+        webhook = _make_webhook(ProviderName.COMPASS)
+        resp = self._run_cross_provider(webhook, "Compass", ProviderName.COMPASS)
+        assert resp.status_code == 200, resp.text
 
 
 # ---------------------------------------------------------------------------

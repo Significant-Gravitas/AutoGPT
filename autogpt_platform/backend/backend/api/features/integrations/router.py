@@ -558,12 +558,6 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
-        user_id = webhook.user_id
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -572,8 +566,11 @@ async def webhook_ingress_generic(
     # The manager is selected from the URL `provider`, so a request must not be
     # allowed to process a webhook registered under a different provider: that
     # would run the URL provider's verifier (a no-op for unsigned providers)
-    # instead of the stored provider's. 403, not 404 — don't leak existence.
-    if webhook.provider != provider:
+    # instead of the stored provider's. Checked before any credential lookup so
+    # a mismatch can't touch the credential store or 500. 403, not 404 — don't
+    # leak existence. Compared case-insensitively: ingress URLs are canonical,
+    # but a non-canonical path shouldn't slip past on casing alone.
+    if webhook.provider.value.lower() != provider.value.lower():
         logger.warning(
             f"Webhook #{webhook_id} provider mismatch: "
             f"registered as {webhook.provider.value}, ingress via {provider.value}"
@@ -582,6 +579,17 @@ async def webhook_ingress_generic(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
+
+    user_id = webhook.user_id
+    try:
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
