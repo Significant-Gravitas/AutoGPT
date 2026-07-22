@@ -12,10 +12,6 @@
 * [Create a Basic Agent](create-basic-agent.md)
 * [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
 
-## Organizations & Teams
-
-* [Sharing agents with your teams](organizations/sharing-agents.md)
-
 ## Advanced Setup
 
 * [Advanced Setup](advanced_setup.md)
