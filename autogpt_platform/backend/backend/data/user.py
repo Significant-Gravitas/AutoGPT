@@ -20,6 +20,7 @@ from prisma.types import (
     UserCreateInput,
     UserUpdateInput,
 )
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma
 from backend.data.model import (
@@ -47,8 +48,23 @@ settings = Settings()
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
+class UserCreationResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user: User
+    was_created: bool
+
+
 @cache_user_lookup
 async def get_or_create_user(user_data: dict) -> User:
+    return (await _get_or_create_user(user_data)).user
+
+
+async def get_or_create_user_with_status(user_data: dict) -> UserCreationResult:
+    return await _get_or_create_user(user_data)
+
+
+async def _get_or_create_user(user_data: dict) -> UserCreationResult:
     try:
         user_id = user_data.get("sub")
         if not user_id:
@@ -67,6 +83,9 @@ async def get_or_create_user(user_data: dict) -> User:
                     name=user_data.get("user_metadata", {}).get("name"),
                 )
             )
+            was_created = True
+        else:
+            was_created = False
 
         # Ensure every user has a marketplace Profile (required to publish
         # agents). Best-effort: a failure must not block user resolution — the
@@ -88,7 +107,7 @@ async def get_or_create_user(user_data: dict) -> User:
         # race-safe (see ensure_personal_org).
         await ensure_personal_org(user.id)
 
-        return User.from_db(user)
+        return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 

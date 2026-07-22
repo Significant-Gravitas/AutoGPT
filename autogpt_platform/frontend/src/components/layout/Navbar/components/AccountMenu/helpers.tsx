@@ -3,6 +3,7 @@ import {
   ChartLineUpIcon,
   CreditCardIcon,
   GearIcon,
+  NewspaperIcon,
   QuestionIcon,
   SignOutIcon,
   SlidersHorizontalIcon,
@@ -10,9 +11,11 @@ import {
   UserIcon,
 } from "@phosphor-icons/react";
 
-export function getAccountMenuPhosphorIcon(icon: IconType) {
+export function getAccountMenuPhosphorIcon(
+  icon: IconType,
+  weight: "bold" | "regular" = "bold",
+) {
   const className = "h-[18px] w-[18px] shrink-0";
-  const weight = "bold";
   switch (icon) {
     case IconType.Edit:
       return <UserIcon className={className} weight={weight} />;
@@ -28,6 +31,8 @@ export function getAccountMenuPhosphorIcon(icon: IconType) {
       return <CreditCardIcon className={className} weight={weight} />;
     case IconType.Help:
       return <QuestionIcon className={className} weight={weight} />;
+    case IconType.WhatsNew:
+      return <NewspaperIcon className={className} weight={weight} />;
     case IconType.LogOut:
       return <SignOutIcon className={className} weight={weight} />;
     default:

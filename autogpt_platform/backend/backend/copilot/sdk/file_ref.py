@@ -371,15 +371,17 @@ async def expand_file_refs_in_args(
                 value, user_id, session, raise_on_error=True
             )
         if isinstance(value, dict):
-            # When the schema says this is an object but doesn't define
-            # inner properties, skip expansion — the caller (e.g.
+            # When the schema says this is (or can be) an object but doesn't
+            # define inner properties, skip expansion — the caller (e.g.
             # RunBlockTool) will expand with the actual nested schema.
-            if (
-                prop_schema is not None
-                and prop_schema.get("type") == "object"
-                and "properties" not in prop_schema
-            ):
-                return value
+            # ``type`` may be a union list, e.g. ["object", "string"] on
+            # ``agent_json`` parameters.
+            if prop_schema is not None and "properties" not in prop_schema:
+                prop_type = prop_schema.get("type")
+                if prop_type == "object" or (
+                    isinstance(prop_type, list) and "object" in prop_type
+                ):
+                    return value
             nested_props = (prop_schema or {}).get("properties", {})
             return {
                 k: await _expand(v, prop_schema=nested_props.get(k))

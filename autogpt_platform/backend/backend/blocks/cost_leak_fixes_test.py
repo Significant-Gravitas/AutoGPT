@@ -150,10 +150,28 @@ def test_codex_registered_as_cost_usd_150():
     from backend.blocks.codex import CodeGenerationBlock
 
     entries = BLOCK_COSTS[CodeGenerationBlock]
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.cost_type == BlockCostType.COST_USD
-    assert entry.cost_amount == 150
+    # Both Codex models (GPT5_3_CODEX, GPT5_1_CODEX) are COST_USD 150.
+    assert len(entries) == 2
+    for entry in entries:
+        assert entry.cost_type == BlockCostType.COST_USD
+        assert entry.cost_amount == 150
+
+
+def test_all_codex_models_have_cost():
+    """The exhaustiveness guard passes for the current Codex lineup."""
+    from backend.data.block_cost_config import _validate_codex_costs
+
+    _validate_codex_costs()  # must not raise
+
+
+def test_validate_codex_costs_catches_missing_model():
+    """A Codex model without a BlockCost is rejected, not billed as free."""
+    from backend.blocks.codex import CodeGenerationBlock
+    from backend.data.block_cost_config import _validate_codex_costs
+
+    with patch.dict(BLOCK_COSTS, {CodeGenerationBlock: []}):
+        with pytest.raises(ValueError, match="Missing CodeGenerationBlock cost"):
+            _validate_codex_costs()
 
 
 @pytest.mark.parametrize(
