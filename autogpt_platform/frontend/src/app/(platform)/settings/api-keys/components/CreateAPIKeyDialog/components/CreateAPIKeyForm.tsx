@@ -14,14 +14,24 @@ import {
 
 import type { CreateAPIKeyFormValues } from "../schema";
 import { PermissionsCheckboxGroup } from "./PermissionsCheckboxGroup";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   form: UseFormReturn<CreateAPIKeyFormValues>;
   onSubmit: (values: CreateAPIKeyFormValues) => Promise<void> | void;
   isPending: boolean;
+  teamId: string | null;
+  setTeamId: (teamId: string | null) => void;
 }
 
-export function CreateAPIKeyForm({ form, onSubmit, isPending }: Props) {
+export function CreateAPIKeyForm({
+  form,
+  onSubmit,
+  isPending,
+  teamId,
+  setTeamId,
+}: Props) {
   return (
     <Form form={form} onSubmit={onSubmit} className="flex flex-col gap-4 px-1">
       <FormField
@@ -60,6 +70,14 @@ export function CreateAPIKeyForm({ form, onSubmit, isPending }: Props) {
             <FormMessage />
           </FormItem>
         )}
+      />
+
+      <TeamPicker
+        surfaceKey={CreateSurface.ApiKey}
+        value={teamId}
+        onChange={setTeamId}
+        label="Restrict to team"
+        wrapperClassName="!mb-0"
       />
 
       <FormField
