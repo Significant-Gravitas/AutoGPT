@@ -23,9 +23,11 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -116,6 +118,7 @@ async def test_get_library_agents_success(
         folder_id=None,
         include_root_only=False,
         is_hidden=None,
+        organization_id="test-org",
     )
 
 

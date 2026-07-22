@@ -24,12 +24,15 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.platform_linking.models import (
+    MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
     BotEventInput,
     BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     Platform,
+    TurnDenial,
     WorkspaceArtifact,
     WorkspaceUploadRequest,
     WorkspaceUploadResult,
@@ -42,6 +45,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends
@@ -63,10 +67,23 @@ class BotStreamError(Exception):
         self.error_kind = error_kind
 
 
+class ChatTurnDeniedError(Exception):
+    """The turn was refused before running (subscription paywall / rate limit).
+
+    Carries the :class:`TurnDenial` so the handler can show the user-facing
+    message and, when present, a CTA button (e.g. Subscribe / Upgrade).
+    """
+
+    def __init__(self, denial: TurnDenial):
+        super().__init__(denial.message)
+        self.denial = denial
+
+
 __all__ = [
     "BotBackend",
     "BotStreamError",
     "ChatSummary",
+    "ChatTurnDeniedError",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -237,6 +254,17 @@ class BotBackend:
             user_id=user_id,
         )
 
+    async def get_dm_user_id(self, platform: str, user_id: str) -> str | None:
+        """Return the platform user ID behind ``user_id``'s DM link, or None.
+
+        Backs proactive DM delivery: the target is always the caller's own
+        linked account, so authorization is the link itself.
+        """
+        return await self._client.get_user_dm_id(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
+
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
     ) -> None:
@@ -321,18 +349,43 @@ class BotBackend:
             for s in resp.sessions
         ]
 
+    async def ensure_session(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        """Resolve (or create) the copilot session for this conversation.
+
+        Called before uploading attachments so they land in the session folder
+        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        UI uploads into an already-open session. Carries a ``denial`` instead
+        of a session when the turn gate refuses the user, so the caller can
+        skip the upload entirely.
+        """
+        return await self._client.ensure_chat_session(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
+            session_id=session_id,
+        )
+
     async def upload_workspace_files(
         self,
         platform: str,
         platform_user_id: str,
         platform_server_id: str | None,
         attachments: tuple[InboundAttachment, ...],
+        session_id: str | None = None,
     ) -> list[WorkspaceUploadResult]:
         """Upload each attachment into the conversation owner's workspace.
 
-        Returns one result per file (with a ``file_id`` on success or an
-        ``error`` code) so the caller can attach the successes to the turn and
-        tell the user about any that were rejected.
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them, matching the web upload. Returns one result per file (with a
+        ``file_id`` on success or an ``error`` code) so the caller can attach
+        the successes to the turn and tell the user about any that were
+        rejected.
         """
         platform_enum = Platform(platform.upper())
         results: list[WorkspaceUploadResult] = []
@@ -349,6 +402,7 @@ class BotBackend:
                             filename=attachment.filename,
                             mime_type=attachment.mime_type,
                             content=attachment.content,
+                            session_id=session_id,
                         )
                     )
                 )
@@ -395,12 +449,19 @@ class BotBackend:
             request=BotChatRequest(
                 platform=Platform(platform.upper()),
                 platform_user_id=platform_user_id,
-                message=message,
+                # A long conversation's history can push the assembled prompt
+                # past the request cap; clamp here so it never fails validation
+                # (which the turn streamer would surface as a generic error).
+                message=clamp_prompt(message, MAX_BOT_MESSAGE_CHARS),
                 session_id=session_id,
                 platform_server_id=platform_server_id,
                 file_ids=file_ids or [],
             )
         )
+        if handle.denial is not None:
+            # Refused before running (paywall / rate limit) — no stream exists
+            # to subscribe to. Surface the denial for the handler to render.
+            raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
 

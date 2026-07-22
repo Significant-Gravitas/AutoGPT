@@ -1,10 +1,28 @@
 """Pydantic models for platform_linking requests and responses."""
 
+import base64
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer
+
+# File content that survives the JSON service RPC. Raw bytes stay bytes
+# in-process, but the wire format is base64 — plain ``bytes`` fields are
+# strict-UTF-8-decoded by JSON serialization, which fails on binary content.
+# Matches how the platform encodes file bytes in JSON elsewhere (the
+# ``data:<mime>;base64,`` URIs from ``store_media_file``).
+Base64EncodedBytes = Annotated[
+    bytes,
+    BeforeValidator(lambda v: base64.b64decode(v) if isinstance(v, str) else v),
+    PlainSerializer(lambda v: base64.b64encode(v).decode("ascii"), when_used="json"),
+]
+
+# Hard cap on the assembled bot prompt. The chat bots build a prompt from the
+# user's message plus channel history / referenced conversations, which on a
+# very long conversation can blow past this — callers must clamp to it before
+# constructing a BotChatRequest (see bot.prompt.clamp_prompt).
+MAX_BOT_MESSAGE_CHARS = 32000
 
 
 class Platform(str, Enum):
@@ -106,7 +124,9 @@ class BotChatRequest(BaseModel):
         max_length=255,
     )
     message: str = Field(
-        description="The user's message", min_length=1, max_length=32000
+        description="The user's message",
+        min_length=1,
+        max_length=MAX_BOT_MESSAGE_CHARS,
     )
     session_id: str | None = Field(
         default=None,
@@ -131,7 +151,11 @@ class WorkspaceUploadRequest(BaseModel):
     platform_user_id: str = Field(min_length=1, max_length=255)
     filename: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(min_length=1, max_length=255)
-    content: bytes
+    content: Base64EncodedBytes
+    # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
+    # file during the turn, same as a web upload. Resolved by the caller before
+    # uploading (see ``ensure_chat_session``).
+    session_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 # ── Response Models ────────────────────────────────────────────────────
@@ -217,13 +241,46 @@ class DeleteLinkResponse(BaseModel):
     success: bool
 
 
+class TurnDenial(BaseModel):
+    """Why a copilot turn was refused before it ran, with the message (and
+    optional CTA button) the bot should show the user.
+
+    Lets ``start_chat_turn`` enforce the same subscription paywall + usage
+    rate limits the web UI applies, since the bot bypasses both by enqueuing
+    directly into the executor.
+    """
+
+    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    message: str
+    button_label: str | None = None
+    button_url: str | None = None
+
+
+class EnsureSessionResult(BaseModel):
+    """Result of resolving a session ahead of attachment uploads.
+
+    When ``denial`` is set the turn gate refused the user before anything was
+    uploaded — the bot renders the denial and skips both the upload and the
+    turn, so a capped/paywalled user's files are never scanned or stored.
+    """
+
+    session_id: str | None = None
+    denial: TurnDenial | None = None
+
+
 class ChatTurnHandle(BaseModel):
-    """Subscribe keys for a pending copilot turn."""
+    """Subscribe keys for a pending copilot turn.
+
+    When ``denial`` is set the turn was refused (paywall / rate limit) and
+    nothing was enqueued — the caller surfaces the denial instead of
+    subscribing to a stream.
+    """
 
     session_id: str
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+    denial: TurnDenial | None = None
 
 
 class ChatSessionSummary(BaseModel):
@@ -252,7 +309,7 @@ class WorkspaceArtifact(BaseModel):
     filename: str
     mime_type: str
     size_bytes: int
-    content: bytes
+    content: Base64EncodedBytes
 
 
 class BotEventInput(BaseModel):

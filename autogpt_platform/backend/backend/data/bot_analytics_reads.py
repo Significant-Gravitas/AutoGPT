@@ -49,6 +49,7 @@ class BotServerCountPoint(BaseModel):
 
 
 class BotServerActivity(BaseModel):
+    platform: str
     server_id: str
     name: str | None
     messages: int
@@ -56,6 +57,7 @@ class BotServerActivity(BaseModel):
 
 
 class BotCommandUsage(BaseModel):
+    platform: str
     command: str
     uses: int
 
@@ -214,6 +216,7 @@ async def get_bot_top_servers(
         f"""
         SELECT
             e."serverId" AS server_id,
+            e."platform" AS platform,
             g."name" AS name,
             count(*) FILTER (WHERE e."eventType" = 'message_received') AS messages,
             count(*) FILTER (WHERE e."eventType" = 'command_used') AS commands
@@ -221,7 +224,7 @@ async def get_bot_top_servers(
         LEFT JOIN {{schema_prefix}}"BotGuild" g
             ON g."serverId" = e."serverId" AND g."platform" = e."platform"
         WHERE e."createdAt" >= $1::timestamptz AND e."serverId" IS NOT NULL {platform_filter}
-        GROUP BY e."serverId", g."name"
+        GROUP BY e."serverId", e."platform", g."name"
         ORDER BY messages DESC
         LIMIT ${len(params)}::int
         """,
@@ -229,6 +232,7 @@ async def get_bot_top_servers(
     )
     return [
         BotServerActivity(
+            platform=row["platform"],
             server_id=row["server_id"],
             name=row["name"],
             messages=int(row["messages"]),
@@ -245,18 +249,21 @@ async def get_bot_command_usage(
     platform_filter = _platform_filter(platform, params)
     rows = await query_raw_with_schema(
         f"""
-        SELECT "commandName" AS command, count(*) AS uses
+        SELECT "commandName" AS command, "platform" AS platform, count(*) AS uses
         FROM {{schema_prefix}}"BotEvent"
         WHERE "eventType" = 'command_used'
             AND "commandName" IS NOT NULL
             AND "createdAt" >= $1::timestamptz {platform_filter}
-        GROUP BY "commandName"
+        GROUP BY "commandName", "platform"
         ORDER BY uses DESC
         """,
         *params,
     )
     return [
-        BotCommandUsage(command=row["command"], uses=int(row["uses"])) for row in rows
+        BotCommandUsage(
+            platform=row["platform"], command=row["command"], uses=int(row["uses"])
+        )
+        for row in rows
     ]
 
 

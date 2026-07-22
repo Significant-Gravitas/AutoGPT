@@ -136,6 +136,51 @@ function toToolInput(rawArguments: unknown): unknown {
   return {};
 }
 
+/**
+ * The backend sometimes persists a TodoWrite *result* without persisting the
+ * assistant tool_calls row that carries its input (observed on the final
+ * all-completed update of a turn). Dropping it leaves the newest surviving
+ * TodoWrite input stale — an earlier "in_progress" snapshot — so the task
+ * progress UI shows work still running after the turn finished. Recover the
+ * list from the orphan result's ``todos`` and synthesize the missing part.
+ */
+function orphanTodoWriteResultToPart(
+  msg: SessionChatMessage,
+  consumedToolCallIds: ReadonlySet<string>,
+): UIMessage<unknown, UIDataTypes, UITools>["parts"][number] | null {
+  const toolCallId = msg.tool_call_id?.trim();
+  if (!toolCallId || consumedToolCallIds.has(toolCallId)) {
+    return null;
+  }
+  if (typeof msg.content !== "string") return null;
+  const parsed = safeJsonParse(msg.content);
+  if (!parsed || typeof parsed !== "object") return null;
+  const todos = (parsed as { todos?: unknown }).todos;
+  if (!Array.isArray(todos) || todos.length === 0) return null;
+  return {
+    type: "tool-TodoWrite",
+    toolCallId,
+    state: "output-available",
+    input: { todos },
+    output: parsed,
+  } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
+}
+
+function collectConsumedToolCallIds(
+  messages: SessionChatMessage[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const msg of messages) {
+    if (!Array.isArray(msg.tool_calls)) continue;
+    for (const rawToolCall of msg.tool_calls) {
+      if (!rawToolCall || typeof rawToolCall !== "object") continue;
+      const id = String((rawToolCall as { id?: unknown }).id ?? "").trim();
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
 // Capture trailing sequence number from a hydrated UIMessage id of the
 // shape ``<sessionId>-seq-<N>``.  Streaming-path ids (AI SDK uuids) and
 // idx-based fallback ids (``-idx-<N>``) don't match — return null so the
@@ -256,13 +301,15 @@ export function convertChatSessionMessagesToUiMessages(
 
   for (const msg of messages) {
     if (msg.role !== "tool") continue;
-    if (!msg.tool_call_id) continue;
+    const toolCallId = msg.tool_call_id?.trim();
+    if (!toolCallId) continue;
     if (msg.content == null) continue;
-    toolOutputsByCallId.set(msg.tool_call_id, msg.content);
+    toolOutputsByCallId.set(toolCallId, msg.content);
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
   const stats: TurnStatsMap = new Map();
+  const consumedToolCallIds = collectConsumedToolCallIds(messages);
 
   function patchStats(id: string, patch: Partial<TurnStats>) {
     const existing = stats.get(id) ?? {};
@@ -270,7 +317,29 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   messages.forEach((msg, idx) => {
-    if (msg.role === "tool") return;
+    if (msg.role === "tool") {
+      // Orphan TodoWrite results (no matching assistant tool_calls row) carry
+      // the newest task-list state — fold a synthetic part into the previous
+      // assistant bubble so progress UIs see it. TodoWrite renders as null in
+      // chat, so this adds no visible bubble content.
+      const orphanPart = orphanTodoWriteResultToPart(msg, consumedToolCallIds);
+      if (orphanPart) {
+        const prevUI = uiMessages[uiMessages.length - 1];
+        if (prevUI && prevUI.role === "assistant") {
+          prevUI.parts.push(orphanPart);
+        } else {
+          uiMessages.push({
+            id:
+              msg.sequence != null
+                ? `${sessionId}-seq-${msg.sequence}`
+                : `${sessionId}-idx-${idx}`,
+            role: "assistant",
+            parts: [orphanPart],
+          });
+        }
+      }
+      return;
+    }
     if (
       msg.role !== "user" &&
       msg.role !== "assistant" &&

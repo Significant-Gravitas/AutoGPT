@@ -7,13 +7,21 @@ import { useTourCopilot } from "./useTourCopilot";
 interface Props {
   sessionId: string;
   script: TourScript;
+  onComplete?: () => void;
+  completionNotice?: string;
 }
 
-export function TourChatHost({ sessionId, script }: Props) {
+export function TourChatHost({
+  sessionId,
+  script,
+  onComplete,
+  completionNotice,
+}: Props) {
   const chat = useTourCopilot({
     sessionId,
     script,
-    onComplete: () => {},
+    onComplete: onComplete ?? (() => {}),
+    completionNotice,
   });
 
   return <TourChatContainer chat={chat} />;

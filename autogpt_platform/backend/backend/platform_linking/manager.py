@@ -6,7 +6,12 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import list_user_chats, start_chat_turn, upload_workspace_file
+from .chat import (
+    ensure_chat_session,
+    list_user_chats,
+    start_chat_turn,
+    upload_workspace_file,
+)
 from .models import (
     BotChatRequest,
     BotEventInput,
@@ -14,6 +19,7 @@ from .models import (
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     LinkTokenResponse,
     LinkTokenStatusResponse,
     ListUserChatsResponse,
@@ -76,6 +82,31 @@ class PlatformLinkingManager(AppService):
         return [
             link.platform_server_id for link in links if link.platform == platform.value
         ]
+
+    @expose
+    async def get_user_dm_id(self, platform: Platform, user_id: str) -> str | None:
+        """Bot-scoped: the platform user ID behind ``user_id``'s DM link, if any.
+
+        Backs proactive DM delivery — the returned ID is always the calling
+        user's own linked account, so a DM post can never target anyone else.
+        """
+        links = await platform_linking_db().list_user_links(user_id)
+        for link in links:
+            if link.platform == platform.value:
+                return link.platform_user_id
+        return None
+
+    @expose
+    async def ensure_chat_session(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        return await ensure_chat_session(
+            platform, platform_user_id, platform_server_id, session_id
+        )
 
     @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
@@ -151,6 +182,8 @@ class PlatformLinkingManagerClient(AppServiceClient):
     list_user_server_ids = endpoint_to_async(
         PlatformLinkingManager.list_user_server_ids
     )
+    get_user_dm_id = endpoint_to_async(PlatformLinkingManager.get_user_dm_id)
+    ensure_chat_session = endpoint_to_async(PlatformLinkingManager.ensure_chat_session)
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
     upload_workspace_file = endpoint_to_async(
         PlatformLinkingManager.upload_workspace_file

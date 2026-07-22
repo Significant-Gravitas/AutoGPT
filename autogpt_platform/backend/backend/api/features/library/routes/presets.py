@@ -249,6 +249,9 @@ async def delete_preset(
 async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
         ..., embed=True, default_factory=dict
@@ -280,6 +283,16 @@ async def execute_preset(
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
 
+    # Resource-follows-parent: the execution attributes (visibility + org
+    # credit spend) to the preset's own org/team — set from its parent
+    # graph at creation — not the caller's active header org. Untagged
+    # legacy presets fall back to the caller's context.
+    exec_org_id, exec_team_id = (
+        (preset.organization_id, preset.team_id)
+        if preset.organization_id
+        else (ctx.org_id, ctx.team_id)
+    )
+
     return await add_graph_execution(
         user_id=user_id,
         graph_id=preset.graph_id,
@@ -287,4 +300,6 @@ async def execute_preset(
         preset_id=preset_id,
         inputs=merged_node_input,
         graph_credentials_inputs=merged_credential_inputs,
+        organization_id=exec_org_id,
+        team_id=exec_team_id,
     )

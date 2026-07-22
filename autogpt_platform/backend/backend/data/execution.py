@@ -45,6 +45,7 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
@@ -105,9 +106,13 @@ class ExecutionContext(BaseModel):
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
 
-    # Workspace
+    # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
     session_id: Optional[str] = None
+
+    # Org/team tenancy context
+    organization_id: Optional[str] = None
+    team_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -187,6 +192,11 @@ class GraphExecutionMeta(BaseDbModel):
     is_shared: bool = False
     share_token: Optional[str] = None
     is_dry_run: bool = False
+    # Org/team tenancy. Surfaced from the DB row so the runtime
+    # ExecutionContext (and billing) can recover org/team on resume/requeue
+    # paths where the caller doesn't re-supply them.
+    organization_id: Optional[str] = None
+    team_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -316,6 +326,8 @@ class GraphExecutionMeta(BaseDbModel):
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
             is_dry_run=stats.is_dry_run if stats else False,
+            organization_id=_graph_exec.organizationId,
+            team_id=_graph_exec.teamId,
         )
 
 
@@ -541,6 +553,7 @@ async def get_graph_executions(
     started_time_gte: Optional[datetime] = None,
     started_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
+    team_id: Optional[str] = None,
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
@@ -564,8 +577,13 @@ async def get_graph_executions(
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
+    # Scope by user_id and optionally team_id. Don't conflate either with
+    # organizationId — those are separate columns in the schema and a
+    # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
+    if team_id:
+        where_filter["teamId"] = team_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
@@ -687,12 +705,27 @@ async def get_graph_executions_paginated(
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    organization_id: Optional[str] = None,
 ) -> GraphExecutionsPaginated:
-    """Get paginated graph executions for a specific graph."""
+    """Get paginated graph executions for a specific graph.
+
+    With ``organization_id`` (from a membership-verified RequestContext),
+    org/team visibility rules apply: own + org-home + member-team runs.
+    Nested in ``AND`` so it can't collide with the ``statuses`` OR-clause.
+    """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
-        "userId": user_id,
     }
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_filter["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where_filter["userId"] = user_id
 
     if graph_id:
         where_filter["agentGraphId"] = graph_id
@@ -727,11 +760,22 @@ async def get_graph_executions_paginated(
 
 
 async def get_graph_execution_meta(
-    user_id: str, execution_id: str
+    user_id: str,
+    execution_id: str,
+    organization_id: str | None = None,
 ) -> GraphExecutionMeta | None:
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id}
-    )
+    where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where["userId"] = user_id
+    execution = await AgentGraphExecution.prisma().find_first(where=where)
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
@@ -740,6 +784,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: Literal[True],
+    organization_id: str | None = None,
 ) -> GraphExecutionWithNodes | None: ...
 
 
@@ -748,6 +793,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: Literal[False] = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | None: ...
 
 
@@ -756,6 +802,7 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: bool = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | GraphExecutionWithNodes | None: ...
 
 
@@ -763,9 +810,21 @@ async def get_graph_execution(
     user_id: str,
     execution_id: str,
     include_node_executions: bool = False,
+    organization_id: str | None = None,
 ) -> GraphExecution | GraphExecutionWithNodes | None:
+    where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where["AND"] = [
+            cast(
+                AgentGraphExecutionWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    else:
+        where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id},
+        where=where,
         include=(
             GRAPH_EXECUTION_INCLUDE_WITH_NODES
             if include_node_executions
@@ -814,6 +873,8 @@ async def create_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
     is_dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -852,6 +913,9 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
+            # Tenancy dual-write fields
+            **({"organizationId": organization_id} if organization_id else {}),
+            **({"teamId": team_id} if team_id else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )

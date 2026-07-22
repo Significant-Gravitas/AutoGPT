@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.platform_linking.models import WorkspaceArtifact, WorkspaceUploadResult
+from backend.platform_linking.models import (
+    EnsureSessionResult,
+    TurnDenial,
+    WorkspaceArtifact,
+    WorkspaceUploadResult,
+)
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import (
@@ -16,14 +21,9 @@ from .adapters.base import (
     MessageHistoryEntry,
     ReferencedConversation,
 )
-from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import (
-    MAX_TURN_FILE_IDS,
-    MessageHandler,
-    TargetState,
-    build_thread_name,
-    clamp_thread_name,
-)
+from .bot_backend import ChatTurnDeniedError, LinkTokenResult, ResolveResult
+from .handler import MAX_TURN_FILE_IDS, MessageHandler, TargetState
+from .prompt import build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -62,12 +62,16 @@ def _adapter() -> MagicMock:
     adapter = MagicMock()
     adapter.chunk_flush_at = 1900
     adapter.max_attachment_bytes = 25 * 1024 * 1024
+    adapter.max_thread_name_length = 100
+    adapter.typing_refresh_interval = 8.0
     adapter.send_message = AsyncMock()
     adapter.send_reply = AsyncMock()
     adapter.send_link = AsyncMock()
     adapter.send_file = AsyncMock()
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
+    adapter.supports_stream_drafts = False
+    adapter.send_stream_draft = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
@@ -86,6 +90,9 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
     )
     api.fetch_workspace_artifact = AsyncMock(return_value=None)
     api.upload_workspace_files = AsyncMock(return_value=[])
+    api.ensure_session = AsyncMock(
+        return_value=EnsureSessionResult(session_id="session-ensured")
+    )
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -111,7 +118,7 @@ def _capture_handler_tasks():
         return task
 
     with patch(
-        "backend.copilot.bot.handler.asyncio.create_task",
+        "backend.copilot.bot.turn_stream.asyncio.create_task",
         side_effect=_capturing,
     ):
         yield tasks
@@ -245,7 +252,7 @@ class TestResolveTarget:
             result = await handler._resolve_target(_ctx(), adapter)
         assert result == "thread-created"
         subscribe.assert_awaited_once_with("discord", "thread-created")
-        assert adapter.create_thread.await_args.args[2] == "AutoPilot: hello bot"
+        assert adapter.create_thread.await_args.args[2] == "AutoGPT: hello bot"
 
     @pytest.mark.asyncio
     async def test_channel_falls_back_to_parent_when_thread_creation_fails(self):
@@ -263,7 +270,7 @@ class TestThreadAdoption:
         # turn so the user gets an answer, but DON'T subscribe — future
         # messages here need another @ to wake it back up. This keeps the
         # bot from hijacking ongoing team conversations. The reply should
-        # carry the thread history so AutoPilot has context.
+        # carry the thread history so AutoGPT has context.
         handler = MessageHandler(_api())
         adapter = _adapter()
         enqueue = AsyncMock()
@@ -408,7 +415,9 @@ class TestBatching:
 
         stream_calls: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -429,7 +438,9 @@ class TestBatching:
 
         seen: list[list] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
@@ -457,7 +468,7 @@ class TestBatching:
         adapter = _adapter()
 
         with patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
@@ -491,10 +502,12 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
             ),
-            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+            patch(
+                "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+            ),
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
@@ -537,10 +550,12 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
             ),
-            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+            patch(
+                "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+            ),
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
@@ -565,7 +580,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -605,7 +620,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -645,7 +660,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -668,14 +683,14 @@ class TestBatching:
 
 class TestStreamFallback:
     """Covers the empty-response fallback, including the boundary-flush bug
-    where prior code posted 'AutoPilot didn't produce a response' even though
+    where prior code posted 'AutoGPT didn't produce a response' even though
     content had already been flushed mid-stream.
     """
 
     @staticmethod
     def _redis_patch():
         return patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         )
 
@@ -752,21 +767,32 @@ class TestStreamFallback:
 class TestThreadNames:
     def test_build_thread_name_from_prompt(self):
         assert (
-            build_thread_name("  tell me\nabout space  ", "Bently")
-            == "AutoPilot: tell me about space"
+            build_thread_name("  tell me\nabout space  ", "Bently", 100)
+            == "AutoGPT: tell me about space"
         )
 
-    def test_build_thread_name_truncates_to_discord_limit(self):
-        name = build_thread_name("x" * 200, "Bently")
+    def test_build_thread_name_truncates_to_platform_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 100)
         assert len(name) <= 100
-        assert name.startswith("AutoPilot: ")
+        assert name.startswith("AutoGPT: ")
         assert name.endswith("...")
 
+    def test_build_thread_name_respects_a_larger_limit(self):
+        name = build_thread_name("x" * 200, "Bently", 128)
+        assert 100 < len(name) <= 128
+
     def test_clamp_thread_name_handles_generated_titles(self):
-        assert clamp_thread_name("  Generated\nWeb   Title  ") == "Generated Web Title"
+        assert (
+            clamp_thread_name("  Generated\nWeb   Title  ", 100)
+            == "Generated Web Title"
+        )
 
     def test_clamp_thread_name_falls_back_when_blank(self):
-        assert clamp_thread_name("   ") == "AutoPilot Chat"
+        assert clamp_thread_name("   ", 100) == "AutoGPT Chat"
+
+    def test_clamp_thread_name_never_overruns_a_tiny_cap(self):
+        # A tiny adapter cap must not make the slice index go negative.
+        assert len(clamp_thread_name("x" * 50, 2)) <= 2
 
 
 # ── Workspace artifact extraction & delivery ────────────────────────────
@@ -788,7 +814,7 @@ class TestDeliverArtifact:
         )
         text = "Here is your result: [chart.png](workspace://abc#image/png)"
 
-        await handler._send_text_and_artifacts(
+        await handler._streamer._send_text_and_artifacts(
             adapter, "target-1", text, _ctx(), "sess-1"
         )
 
@@ -816,8 +842,10 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
-            await handler._send_text_and_artifacts(
+        with patch(
+            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        ):
+            await handler._streamer._send_text_and_artifacts(
                 adapter,
                 "target-1",
                 "[big.zip](workspace://big)",
@@ -851,8 +879,10 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
-            await handler._send_text_and_artifacts(
+        with patch(
+            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        ):
+            await handler._streamer._send_text_and_artifacts(
                 adapter, "target-1", "[x.png](workspace://x)", _ctx(), "sess-1"
             )
 
@@ -871,7 +901,7 @@ class TestDeliverArtifact:
         handler = MessageHandler(_api())
         adapter = _adapter()
 
-        await handler._send_text_and_artifacts(
+        await handler._streamer._send_text_and_artifacts(
             adapter, "target-1", "[x.png](workspace://x)", _ctx(), None
         )
 
@@ -936,6 +966,26 @@ class TestMessageTextReferencedConversations:
 
 
 class TestAttachments:
+    @pytest.fixture(autouse=True)
+    def _mock_redis(self):
+        # These tests drive handle() end-to-end, which touches Redis: the
+        # upload path resolves the session cache, and _stream_batch reads the
+        # per-target session key. Mock both so the tests stay hermetic.
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.bot.handler.sessions.get_session",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.bot.handler.sessions.set_session", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+        ):
+            yield
+
     @staticmethod
     def _upload_recording_api(results):
         api = _api()
@@ -945,6 +995,7 @@ class TestAttachments:
         async def _recording_stream(*args, **kwargs):
             captured["file_ids"] = kwargs.get("file_ids")
             captured["message"] = kwargs.get("message")
+            captured["session_id"] = kwargs.get("session_id")
             if False:
                 yield ""
 
@@ -977,6 +1028,80 @@ class TestAttachments:
 
         api.upload_workspace_files.assert_awaited_once()
         assert captured["file_ids"] == ["f1"]
+
+    @pytest.mark.asyncio
+    async def test_uploads_are_session_scoped_via_ensure_session(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # The session is resolved up front and threaded into BOTH the upload
+        # and the turn — the turn uses the exact session the file went to, not a
+        # separate Redis read that could diverge.
+        api.ensure_session.assert_awaited_once()
+        assert (
+            api.upload_workspace_files.await_args.kwargs["session_id"]
+            == "session-ensured"
+        )
+        assert captured["session_id"] == "session-ensured"
+
+    @pytest.mark.asyncio
+    async def test_session_resolution_failure_reports_files_as_failed(self):
+        results = [WorkspaceUploadResult(filename="a.png", file_id="f1")]
+        api, captured = self._upload_recording_api(results)
+        api.ensure_session = AsyncMock(side_effect=RuntimeError("rpc down"))
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        # Files are NOT uploaded sessionless (where AutoGPT couldn't read
+        # them); the user is told they couldn't be attached and no file_ids
+        # reach the turn.
+        api.upload_workspace_files.assert_not_awaited()
+        assert "a.png" in adapter.send_message.await_args_list[0].args[1]
+        assert captured["file_ids"] == []
+
+    @pytest.mark.asyncio
+    async def test_denied_user_gets_denial_before_any_upload(self):
+        # The turn gate refuses the user during session resolution — the bot
+        # renders the denial (with CTA button) and stops: no AV scan, no
+        # storage write, no turn.
+        api, captured = self._upload_recording_api([])
+        api.ensure_session = AsyncMock(
+            return_value=EnsureSessionResult(
+                denial=TurnDenial(
+                    reason="rate_limited",
+                    message="You've reached your daily usage limit.",
+                    button_label="Upgrade for higher limits",
+                    button_url="https://app.example/settings/billing",
+                )
+            )
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
+
+        api.upload_workspace_files.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        assert (
+            adapter.send_link.await_args.kwargs["link_label"]
+            == "Upgrade for higher limits"
+        )
+        # No turn ran at all.
+        assert "file_ids" not in captured
+
+    def test_session_lock_is_stable_per_target(self):
+        # Concurrent attachment messages on the same target serialise on one
+        # lock (so they converge on one session); different targets don't block.
+        handler = MessageHandler(_api())
+        lock = handler._session_lock("t-1")
+        assert handler._session_lock("t-1") is lock
+        assert handler._session_lock("t-2") is not lock
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
@@ -1082,7 +1207,9 @@ class TestAttachments:
         adapter = _adapter()
         captured: list[list[str] | None] = []
 
-        async def fake_stream_batch(batch, ctx, ad, tid, file_ids=None):
+        async def fake_stream_batch(
+            batch, ctx, ad, tid, file_ids=None, session_id=None
+        ):
             captured.append(file_ids)
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
@@ -1193,3 +1320,63 @@ class TestAttachments:
         assert "file_ids" not in captured
         note = adapter.send_message.await_args_list[0].args[1]
         assert "bad.exe" in note
+
+
+class TestTurnDenied:
+    @pytest.mark.asyncio
+    async def test_paywalled_turn_sends_subscribe_button(self):
+        api = _api()
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(
+                TurnDenial(
+                    reason="paywalled",
+                    message="AutoGPT needs an active subscription.",
+                    button_label="Subscribe",
+                    button_url="https://app.example/settings/billing",
+                )
+            )
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.turn_stream.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        kwargs = adapter.send_link.await_args.kwargs
+        assert kwargs["link_url"] == "https://app.example/settings/billing"
+        assert kwargs["link_label"] == "Subscribe"
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_turn_sends_plain_message_when_no_button(self):
+        api = _api()
+        msg = "You've reached your daily usage limit. Resets in 5h 30m."
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(TurnDenial(reason="rate_limited", message=msg))
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.turn_stream.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_message.assert_awaited_once()
+        assert msg in adapter.send_message.await_args.args[1]
+        adapter.send_link.assert_not_awaited()
