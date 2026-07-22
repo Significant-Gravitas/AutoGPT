@@ -19,6 +19,22 @@ if TYPE_CHECKING:
     from backend.data.integrations import Webhook
 
 
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (``triggers.py``), webhook execution
+    (``_execute_webhook_preset_trigger``), and version migration
+    (``migrate_webhook_presets_to_new_version``) so all sites agree on the
+    format; the data migration mirrors it in SQL. Lives here (not in
+    ``triggers.py``) so ``db.py`` can use it without an import cycle.
+    """
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
+
+
 class LibraryAgentStatus(str, Enum):
     COMPLETED = "COMPLETED"
     HEALTHY = "HEALTHY"

@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.api.features.library.triggers import NODE_INPUT_MASK_PREFIX
+from backend.api.features.library.model import NODE_INPUT_MASK_PREFIX
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
