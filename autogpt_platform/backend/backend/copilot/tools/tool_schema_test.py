@@ -112,7 +112,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 62_500 for tiered memory (SECRT-2460/2461): memory_store
+# gains tier + team_id, memory_search gains tier, and both memory_forget tools
+# gain a tier parameter. Re-measure the merged registry before finalizing.
+_CHAR_BUDGET = 62_500
 
 
 @pytest.fixture(scope="module")
@@ -165,12 +168,12 @@ class TestToolSchema:
                 isinstance(prop_def.get("anyOf"), list)
                 and all(isinstance(b, dict) and "type" in b for b in prop_def["anyOf"])
             )
-            assert (
-                has_type
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
-            assert (
-                "description" in prop_def
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
+            assert has_type, (
+                f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
+            )
+            assert "description" in prop_def, (
+                f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
+            )
 
 
 def test_browser_act_action_enum_complete() -> None:
@@ -243,16 +246,16 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
     }
 
     default = {t["function"]["name"] for t in get_available_tools()}
-    assert memory_tool_names.issubset(
-        default
-    ), "sanity: memory_* tools should be present when no groups disabled"
+    assert memory_tool_names.issubset(default), (
+        "sanity: memory_* tools should be present when no groups disabled"
+    )
 
     filtered = {
         t["function"]["name"] for t in get_available_tools(disabled_groups=["graphiti"])
     }
-    assert not (
-        memory_tool_names & filtered
-    ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
+    assert not (memory_tool_names & filtered), (
+        f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
+    )
     # Non-graphiti tools stay visible.
     assert "find_block" in filtered
     assert "TodoWrite" in filtered
@@ -273,9 +276,9 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
     assert memory_mcp_names.issubset(default)
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
-    assert not (
-        memory_mcp_names & filtered
-    ), f"graphiti disabled but memory MCP names still present: {memory_mcp_names & filtered}"
+    assert not (memory_mcp_names & filtered), (
+        f"graphiti disabled but memory MCP names still present: {memory_mcp_names & filtered}"
+    )
     # E2B path stays consistent.
     filtered_e2b = set(
         get_copilot_tool_names(use_e2b=True, disabled_groups=["graphiti"])

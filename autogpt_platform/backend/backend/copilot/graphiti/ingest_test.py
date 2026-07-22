@@ -26,7 +26,7 @@ def _stub_dream_registration(mocker):
 
 
 def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
-    async def enqueue(_user_id: str, _group_id: str, payload: dict) -> bool:
+    async def enqueue(_user_id: str, _group_id: str, payload: dict, **_kwargs) -> bool:
         try:
             queue.put_nowait(payload)
         except asyncio.QueueFull:
@@ -490,6 +490,62 @@ class TestResolveUserName:
 
 
 class TestEnqueueEpisode:
+    @pytest.mark.asyncio
+    async def test_expert_personal_episode_schedules_personal_dreams(self) -> None:
+        enqueue_mock = AsyncMock(return_value=True)
+        with (
+            patch.object(
+                ingest,
+                "derive_memory_group_id",
+                return_value="expert_private_group",
+            ) as derive_mock,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
+        ):
+            result = await ingest.enqueue_episode(
+                user_id="user-1",
+                session_id="sess1",
+                name="private_ep",
+                episode_body="private memory",
+                expert_id="expert-1",
+            )
+
+        assert result is True
+        derive_mock.assert_called_once_with("user-1", "expert-1")
+        assert enqueue_mock.await_args.args[:2] == (
+            "user-1",
+            "expert_private_group",
+        )
+        assert enqueue_mock.await_args.kwargs["schedule_dreams"] is True
+
+    @pytest.mark.asyncio
+    async def test_shared_episode_uses_explicit_group_without_dreams(self) -> None:
+        enqueue_mock = AsyncMock(return_value=True)
+        completion = ingest.IngestionCompletion()
+        metadata = {"status": "tentative", "source_kind": "user_asserted"}
+        with (
+            patch.object(ingest, "derive_memory_group_id") as derive_mock,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
+        ):
+            result = await ingest.enqueue_episode(
+                user_id="user-1",
+                session_id="sess1",
+                name="team_ep",
+                episode_body="shared memory",
+                expert_id="expert-1",
+                group_id="team_team-1",
+                edge_metadata=metadata,
+                completion=completion,
+            )
+
+        assert result is True
+        derive_mock.assert_not_called()
+        assert enqueue_mock.await_args.args[:2] == ("user-1", "team_team-1")
+        payload = enqueue_mock.await_args.args[2]
+        assert payload["group_id"] == "team_team-1"
+        assert payload["_edge_metadata"] is metadata
+        assert payload["_completion"] is completion
+        assert enqueue_mock.await_args.kwargs["schedule_dreams"] is False
+
     @pytest.mark.asyncio
     async def test_enqueue_episode_returns_true_on_success(self) -> None:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)

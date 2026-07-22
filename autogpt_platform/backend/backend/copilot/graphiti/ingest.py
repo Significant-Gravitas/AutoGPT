@@ -34,9 +34,7 @@ class _LoopIngestState:
         self.workers_lock = asyncio.Lock()
 
 
-_loop_state: (
-    "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]"
-) = weakref.WeakKeyDictionary()
+_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]" = weakref.WeakKeyDictionary()
 
 
 def _get_loop_state() -> _LoopIngestState:
@@ -247,7 +245,8 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
     Exits after ``_WORKER_IDLE_TIMEOUT`` seconds of inactivity so that
     idle workers don't leak memory indefinitely. ``group_id`` is resolved by
     the enqueuer and is never re-derived here; this is what prevents an expert
-    write from falling back into the owning user's AutoPilot graph.
+    write from falling back into the owning user's AutoPilot graph. The same
+    per-group serialization applies to personal, team, and org tiers.
     """
     # Snapshot the loop-local state at task start so cleanup always runs
     # against the same state dict the worker was registered in, even if the
@@ -294,8 +293,9 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 # never create one. Once per group per loop.
                 await ensure_indices_once(group_id, client)
                 # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
-                # pop it before the **payload spread. Present only for dream
-                # writes; None for conversation turns / memory-store calls.
+                # pop it before the **payload spread. Present for dream writes
+                # and explicit shared-tier stores (so their status/provenance
+                # lands on the edge); None for conversation turns.
                 edge_metadata = payload.pop("_edge_metadata", None)
                 # Pass custom entity + edge types so MemoryEnvelope metadata
                 # (status, confidence, source_kind, scope, provenance) lives
@@ -328,8 +328,8 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 )
             except Exception:
                 logger.warning(
-                    "Graphiti ingestion failed for user %s",
-                    user_id[:12],
+                    "Graphiti ingestion failed for group %s",
+                    group_id[:20],
                     exc_info=True,
                 )
             finally:
@@ -340,7 +340,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 if completion is not None:
                     completion.complete_one()
     except asyncio.CancelledError:
-        logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
+        logger.debug("Ingestion worker cancelled for group %s", group_id[:20])
         raise
     finally:
         # Cancellation and unexpected exits also clean up, but only when this
@@ -410,6 +410,7 @@ async def enqueue_conversation_turn(
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
         },
+        schedule_dreams=True,
     )
     if not queued:
         logger.warning(
@@ -443,6 +444,7 @@ async def enqueue_conversation_turn(
                     "group_id": group_id,
                     "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
                 },
+                schedule_dreams=True,
             )
 
 
@@ -457,11 +459,12 @@ async def enqueue_episode(
     edge_metadata: dict | None = None,
     completion: IngestionCompletion | None = None,
     expert_id: str | None = None,
+    group_id: str | None = None,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
     Used by ``MemoryStoreTool`` so that explicit memory-store calls go
-    through the same memory-group serialization queue as conversation turns.
+    through the same per-group serialization queue as conversation turns.
 
     Args:
         is_json: When ``True``, ingest as ``EpisodeType.json`` (for
@@ -470,15 +473,18 @@ async def enqueue_episode(
         edge_metadata: Optional ``{status, source_kind, scope, confidence,
             provenance}`` (Cypher-serializable scalars) stamped onto the
             edges this episode newly creates, AFTER ingestion. Dream
-            writes pass this so their envelope metadata lands on the edge
-            deterministically (graphiti's extractor can't recover it from
-            the episode text). ``None`` (conversation turns / memory-store)
-            leaves edges at MemoryFact defaults — no behavior change.
+            writes and explicit shared-tier stores pass this so their
+            envelope metadata lands on the edge deterministically.
         completion: Optional ``IngestionCompletion`` the worker signals once
             this episode is processed. Dream-pass apply passes one so it can
             await ONLY its own episodes (scoped drain), not everything on the
             shared memory-group queue. ``None`` for chat / memory-store writes
             that are pure fire-and-forget.
+        group_id: Explicit target group for a shared-tier write
+            (``team_<id>`` / ``org_<id>``). ``None`` derives the user's
+            assistant-specific personal group — the default path.
+            Only the personal path registers the user's dream-system
+            schedules; shared tiers have no per-user dream curation.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
     The caller registers the episode on ``completion`` iff this returns
@@ -488,11 +494,17 @@ async def enqueue_episode(
     if not user_id:
         return False
 
-    try:
-        group_id = derive_memory_group_id(user_id, expert_id)
-    except ValueError:
-        logger.warning("Invalid memory scope for episode ingestion: %s", user_id[:12])
-        return False
+    is_personal = group_id is None
+    if is_personal:
+        try:
+            resolved_group_id = derive_memory_group_id(user_id, expert_id)
+        except ValueError:
+            logger.warning(
+                "Invalid memory scope for episode ingestion: %s", user_id[:12]
+            )
+            return False
+    else:
+        resolved_group_id = group_id
 
     body_bytes = len(episode_body.encode("utf-8"))
     if body_bytes > MAX_EPISODE_BODY_BYTES:
@@ -507,14 +519,14 @@ async def enqueue_episode(
 
     queued = await _enqueue_payload(
         user_id,
-        group_id,
+        resolved_group_id,
         {
             "name": name,
             "episode_body": episode_body,
             "source": source,
             "source_description": source_description,
             "reference_time": datetime.now(timezone.utc),
-            "group_id": group_id,
+            "group_id": resolved_group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
             # Sidecar — popped by the worker before the add_episode
             # spread; carries dream metadata for post-write stamping.
@@ -523,6 +535,7 @@ async def enqueue_episode(
             # processing so a scoped-drain caller can await this episode.
             "_completion": completion,
         },
+        schedule_dreams=is_personal,
     )
     if not queued:
         logger.warning(
@@ -557,20 +570,27 @@ async def wait_for_ingestion(
     return await completion.wait(timeout_seconds)
 
 
-async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
+async def _enqueue_payload(
+    user_id: str,
+    group_id: str,
+    payload: dict,
+    *,
+    schedule_dreams: bool = True,
+) -> bool:
     """Atomically select a group worker and enqueue one payload.
 
     Queue selection, worker creation, and ``put_nowait`` share
     ``workers_lock`` with idle retirement. A caller can therefore never put
     work onto a queue after its worker has unregistered it.
 
-    Also fires the auto-registration of the user's dream-system
-    schedules (community rebuild + dream pass + ratification pass) the
-    first time we see them in this process — lazy on first memory write,
+    When ``schedule_dreams`` is true (personal writes only) this also fires
+    the auto-registration of that user's dream-system schedules
+    (community rebuild + dream pass + ratification pass) the first time
+    we see the group in this process — lazy on first memory write,
     per-job flag-gated, per-job idempotent. See
     ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
-    Fire-and-forget; failures are swallowed inside the helper so
-    ingestion is never affected.
+    Fire-and-forget; failures are swallowed inside the helper. Shared
+    tiers pass ``None`` — dream curation is personal-only in v1.
     """
     state = _get_loop_state()
     is_new_group_for_this_process = False
@@ -592,7 +612,7 @@ async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
         except asyncio.QueueFull:
             return False
 
-    if is_new_group_for_this_process:
+    if is_new_group_for_this_process and schedule_dreams:
         # Fire-and-forget; per-job Redis SETNX inside the helper
         # provides cross-process / cross-restart idempotency. Done
         # outside the workers_lock so the scheduler RPC can't

@@ -5379,17 +5379,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
-                state.query_message, state.compaction_stats = (
-                    await _build_query_message(
-                        current_message,
-                        session,
-                        state.use_resume,
-                        state.transcript_msg_count,
-                        session_id,
-                        session_msg_ceiling=_pre_drain_msg_count,
-                        target_tokens=state.target_tokens,
-                        expect_compaction=True,
-                    )
+                (
+                    state.query_message,
+                    state.compaction_stats,
+                ) = await _build_query_message(
+                    current_message,
+                    session,
+                    state.use_resume,
+                    state.transcript_msg_count,
+                    session_id,
+                    session_msg_ceiling=_pre_drain_msg_count,
+                    target_tokens=state.target_tokens,
+                    expect_compaction=True,
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -6255,7 +6256,13 @@ async def _fetch_graphiti_context(
         return True, ""
 
     ctx = (
-        await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
+        await fetch_warm_context(
+            user_id,
+            message or "",
+            expert_id=session.expert_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
         or ""
     )
     return True, ctx

@@ -51,6 +51,17 @@ def _now_iso() -> str:
 
 logger = logging.getLogger(__name__)
 
+# Deleting shared memory is an admin / ratification concern and is out of
+# scope for v1 — forget only ever touches the caller's PERSONAL graph. When
+# pointed at a shared tier we refuse explicitly (rather than silently
+# searching personal and reporting "no matches") so the model doesn't think
+# it deleted a shared fact it merely couldn't see.
+_SHARED_TIER_FORGET_MESSAGE = (
+    "Memory deletion is only available for your personal memory. Facts labelled "
+    "'org memory' or 'team memory (<name>)' are shared and are managed by "
+    "organization/team admins — they can't be forgotten from here."
+)
+
 
 def _delete_error_reason(exc: Exception) -> str:
     """Sanitized, actionable reason for a delete query that raised.
@@ -89,6 +100,15 @@ class MemoryForgetSearchTool(BaseTool):
                     "type": "string",
                     "description": "Natural language description of what to forget (e.g. 'the Q2 marketing budget')",
                 },
+                "tier": {
+                    "type": "string",
+                    "enum": ["personal", "team", "org"],
+                    "description": (
+                        "Only 'personal' (default) is supported; team/org "
+                        "memory is admin-managed and will be refused."
+                    ),
+                    "default": "personal",
+                },
             },
             "required": ["query"],
         }
@@ -103,6 +123,7 @@ class MemoryForgetSearchTool(BaseTool):
         session: ChatSession,
         *,
         query: str = "",
+        tier: str = "personal",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -114,6 +135,12 @@ class MemoryForgetSearchTool(BaseTool):
         if not await is_enabled_for_user(user_id):
             return ErrorResponse(
                 message="Memory features are not enabled for your account.",
+                session_id=session.session_id,
+            )
+
+        if tier and tier != "personal":
+            return ErrorResponse(
+                message=_SHARED_TIER_FORGET_MESSAGE,
                 session_id=session.session_id,
             )
 
@@ -213,6 +240,15 @@ class MemoryForgetConfirmTool(BaseTool):
                     "description": "If true, permanently removes edges from the graph (GDPR). Default false (soft delete — marks as expired).",
                     "default": False,
                 },
+                "tier": {
+                    "type": "string",
+                    "enum": ["personal", "team", "org"],
+                    "description": (
+                        "Only 'personal' (default) is supported; team/org "
+                        "memory is admin-managed and will be refused."
+                    ),
+                    "default": "personal",
+                },
             },
             "required": ["uuids"],
         }
@@ -228,6 +264,7 @@ class MemoryForgetConfirmTool(BaseTool):
         *,
         uuids: list[str] | None = None,
         hard_delete: bool = False,
+        tier: str = "personal",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -239,6 +276,12 @@ class MemoryForgetConfirmTool(BaseTool):
         if not await is_enabled_for_user(user_id):
             return ErrorResponse(
                 message="Memory features are not enabled for your account.",
+                session_id=session.session_id,
+            )
+
+        if tier and tier != "personal":
+            return ErrorResponse(
+                message=_SHARED_TIER_FORGET_MESSAGE,
                 session_id=session.session_id,
             )
 

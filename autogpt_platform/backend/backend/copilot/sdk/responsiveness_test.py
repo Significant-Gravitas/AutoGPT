@@ -97,7 +97,13 @@ async def test_fetch_graphiti_context_loads_warm_context_on_first_turn():
         enabled, ctx = await _fetch_graphiti_context("user-1", session, "first prompt")
     assert enabled is True
     assert ctx == "<warm_facts>important fact</warm_facts>"
-    fetch_mock.assert_awaited_once_with("user-1", "first prompt", expert_id=None)
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "first prompt",
+        expert_id=None,
+        organization_id=None,
+        team_id=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -118,7 +124,13 @@ async def test_fetch_graphiti_context_uses_expert_session_scope():
 
     assert enabled is True
     assert ctx == "expert context"
-    fetch_mock.assert_awaited_once_with("user-1", "first prompt", expert_id="expert-1")
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "first prompt",
+        expert_id="expert-1",
+        organization_id=None,
+        team_id=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -227,7 +239,15 @@ async def test_fetch_graphiti_context_handles_none_message():
         enabled, ctx = await _fetch_graphiti_context("user-1", session, None)
     assert enabled is True
     assert ctx == "ctx"
-    fetch_mock.assert_awaited_once_with("user-1", "", expert_id=None)
+    # The session's org/team tenancy is threaded into warm context so it can
+    # fan out to the org + session-team tiers (both None for this session).
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "",
+        expert_id=None,
+        organization_id=None,
+        team_id=None,
+    )
 
 
 # ---------------------------------------------------------------------------
