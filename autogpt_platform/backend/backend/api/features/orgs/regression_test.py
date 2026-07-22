@@ -1066,8 +1066,11 @@ class TestRegressionLibraryAgents:
 
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
-        # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        # fork_graph must be called with the caller's user_id. With no active
+        # org/team passed to fork_library_agent, both tenancy kwargs are None.
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
@@ -1220,6 +1223,9 @@ class TestRegressionStore:
         mock_listing_obj = MagicMock()
         mock_listing_obj.id = "listing-1"
         mock_listing_obj.owningUserId = USER_ID
+        # from_listing_version now reads owningOrgId into StoreSubmission.organization_id
+        # (str | None); a bare MagicMock would fail Pydantic validation.
+        mock_listing_obj.owningOrgId = None
         mock_listing_obj.slug = SLUG
 
         mock_submission = MagicMock()
