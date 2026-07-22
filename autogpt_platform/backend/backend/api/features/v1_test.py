@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from datetime import datetime, timezone
 from io import BytesIO
@@ -8,8 +9,10 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import starlette.datastructures
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException, UploadFile
+from prisma.enums import APIKeyStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.exceptions import VirusDetectedError
@@ -20,6 +23,7 @@ from backend.copilot.tools.skills import (
     SkillLimitError,
     SkillNotFoundError,
 )
+from backend.data.auth.api_key import APIKeyInfo
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
@@ -1609,10 +1613,6 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
 # minting an org-wide key. These lock in that fallback and its validation.
 # ---------------------------------------------------------------------------
 def _api_key_info(user_id: str):
-    from prisma.enums import APIKeyStatus
-
-    from backend.data.auth.api_key import APIKeyInfo
-
     return APIKeyInfo(
         id="key-1",
         name="k",
@@ -1632,10 +1632,6 @@ def _override_ctx_team(team_id: str | None) -> None:
     team_id=None; this lets a single test exercise the header-set case. The
     fixture's teardown clears the override afterwards.
     """
-    import dataclasses
-
-    from autogpt_libs.auth.dependencies import get_request_context
-
     ctx = dataclasses.replace(_test_ctx("test-user-id"), team_id=team_id)
     app.dependency_overrides[get_request_context] = lambda: ctx
 

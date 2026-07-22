@@ -2319,7 +2319,11 @@ async def fork_library_agent(
     # GraphActivationError, but the forked graph row exists; callers should
     # surface that as a 400 to the user.
     new_graph = await graph_db.fork_graph(
-        original_agent.graph_id, original_agent.graph_version, user_id
+        original_agent.graph_id,
+        original_agent.graph_version,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     new_graph = await before_graph_activate(new_graph, user_id=user_id)
 

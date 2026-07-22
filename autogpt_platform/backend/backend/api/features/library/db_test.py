@@ -1501,7 +1501,7 @@ async def test_fork_library_agent_forwards_tenancy(mocker):
     original.settings.sensitive_action_safe_mode = False
     mocker.patch.object(db, "get_library_agent", new=AsyncMock(return_value=original))
     new_graph = MagicMock()
-    mocker.patch.object(
+    fork_mock = mocker.patch.object(
         db.graph_db, "fork_graph", new=AsyncMock(return_value=new_graph)
     )
     mocker.patch.object(
@@ -1513,5 +1513,8 @@ async def test_fork_library_agent_forwards_tenancy(mocker):
 
     await db.fork_library_agent("la-1", "u1", organization_id="org-1", team_id="team-1")
 
+    # The forked graph rows must be tenanted too, not just the library entry.
+    assert fork_mock.await_args.kwargs["organization_id"] == "org-1"
+    assert fork_mock.await_args.kwargs["team_id"] == "team-1"
     assert create_mock.await_args.kwargs["organization_id"] == "org-1"
     assert create_mock.await_args.kwargs["team_id"] == "team-1"
