@@ -40,8 +40,10 @@ describe("TeamPicker last-used storage", () => {
 });
 
 describe("getTeamRequestInit", () => {
-  it("returns undefined for org-home (null team)", () => {
-    expect(getTeamRequestInit(null)).toBeUndefined();
+  it("sends the org-home sentinel (empty X-Team-Id) for org-home (null team)", () => {
+    expect(getTeamRequestInit(null)).toEqual({
+      headers: { [TEAM_HEADER_NAME]: "" },
+    });
   });
 
   it("stamps the X-Team-Id header for a team", () => {
