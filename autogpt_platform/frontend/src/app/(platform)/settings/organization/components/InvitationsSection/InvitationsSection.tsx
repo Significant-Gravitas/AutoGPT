@@ -160,6 +160,7 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                 variant="ghost"
                 size="small"
                 loading={isResending}
+                disabled={isRevoking}
                 onClick={() => handleResend(invitation)}
               >
                 Resend
@@ -168,6 +169,7 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
                 variant="ghost"
                 size="small"
                 loading={isRevoking}
+                disabled={isResending}
                 onClick={() => handleRevoke(invitation)}
               >
                 Revoke
