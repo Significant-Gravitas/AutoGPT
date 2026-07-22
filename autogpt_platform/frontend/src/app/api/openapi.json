@@ -22721,6 +22721,7 @@
           "join_policy": { "type": "string", "title": "Join Policy" },
           "org_id": { "type": "string", "title": "Org Id" },
           "member_count": { "type": "integer", "title": "Member Count" },
+          "is_member": { "type": "boolean", "title": "Is Member" },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -22737,6 +22738,7 @@
           "join_policy",
           "org_id",
           "member_count",
+          "is_member",
           "created_at"
         ],
         "title": "TeamResponse"
