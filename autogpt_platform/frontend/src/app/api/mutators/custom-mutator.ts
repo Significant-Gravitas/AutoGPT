@@ -8,7 +8,10 @@ import * as Sentry from "@sentry/nextjs";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
-import { getOrgContextHeaders } from "@/services/org-team/headers";
+import {
+  getOrgContextHeaders,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/headers";
 import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
@@ -75,9 +78,18 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    // A per-request X-Team-Id (create flows that pick an explicit team via
+    // Orval's request options) must win over the store-derived team context,
+    // so capture it before the store headers overwrite it below.
+    const perRequestTeamId = (
+      requestOptions.headers as Record<string, string> | undefined
+    )?.[TEAM_HEADER_NAME];
     // Active org/team context — the backend scopes tenancy by these headers
     // (personal-org fallback when absent).
     Object.assign(headers, getOrgContextHeaders());
+    if (perRequestTeamId) {
+      headers[TEAM_HEADER_NAME] = perRequestTeamId;
+    }
   }
 
   const isFormData = data instanceof FormData;

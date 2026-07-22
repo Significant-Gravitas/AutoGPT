@@ -6,6 +6,8 @@ import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-sc
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
+import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 export const useCronSchedulerDialog = ({
   open,
@@ -33,9 +35,12 @@ export const useCronSchedulerDialog = ({
 
   const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
+  const { teamId, setTeamId, hasTeams, teamRequestInit } =
+    useCreateTeamSelection(CreateSurface.BuilderSchedule);
 
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
     usePostV1CreateExecutionSchedule({
+      request: teamRequestInit,
       mutation: {
         onSuccess: (response) => {
           if (response.status === 200) {
@@ -96,5 +101,8 @@ export const useCronSchedulerDialog = ({
     setScheduleName,
     scheduleName,
     isCreatingSchedule,
+    teamId,
+    setTeamId,
+    hasTeams,
   };
 };
