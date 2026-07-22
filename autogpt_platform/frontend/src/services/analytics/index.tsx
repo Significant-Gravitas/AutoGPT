@@ -12,9 +12,11 @@ import Script from "next/script";
 import { useEffect, useState } from "react";
 import { environment } from "../environment";
 
+type DatafastEvent = [name: string, metadata: Record<string, unknown>];
+
 declare global {
   interface Window {
-    datafast?: (name: string, metadata: Record<string, unknown>) => void;
+    datafast?: (...event: DatafastEvent) => void;
     [key: string]: unknown[] | ((...args: unknown[]) => void) | unknown;
   }
 }
@@ -95,7 +97,8 @@ export function SetupAnalytics(props: SetupProps) {
           />
         </>
       ) : null}
-      {/* Datafa.st */}
+      {/* Datafa.st — onLoad is load-bearing: it delivers the events that were
+          queued before the script finished loading */}
       {dataFastEnabled ? (
         <Script
           strategy="afterInteractive"
@@ -128,6 +131,15 @@ function sendGAEvent(...args: unknown[]) {
   }
 }
 
+// Module scope means the queue survives client-side navigation: queued events
+// are delivered wherever the script loads next, so metadata must never carry
+// PII. On overflow the earliest events win — funnel starts fire first. The cap
+// bounds memory when the script never loads (ad blockers, non-production
+// domains where dataFastEnabled is false).
+const MAX_QUEUED_DATAFAST_EVENTS = 100;
+const datafastQueue: DatafastEvent[] = [];
+let datafastQueueOverflowWarned = false;
+
 function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   if (window.datafast) {
@@ -140,15 +152,22 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   }
   // The script loads afterInteractive, so mount-time events (tour_start,
   // tour_scenario_start) fire before window.datafast exists. Queue them and
-  // flush from the Script's onLoad instead of dropping them.
-  if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) return;
+  // flush from the Script's onLoad instead of dropping them. Pre-consent
+  // events must not queue — they would be replayed once consent is granted.
+  // /tour is exempt: it loads DataFast without consent by design.
+  const consentExempt = window.location.pathname.startsWith("/tour");
+  if (!consentExempt && !consent.hasConsentFor("analytics")) return;
+  if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) {
+    if (!datafastQueueOverflowWarned) {
+      datafastQueueOverflowWarned = true;
+      console.warn(
+        `DataFast queue full (${MAX_QUEUED_DATAFAST_EVENTS} events); dropping new events until the script loads`,
+      );
+    }
+    return;
+  }
   datafastQueue.push([name, metadata]);
 }
-
-// Bounds memory when the script never loads (ad blockers, non-production
-// domains where dataFastEnabled is false).
-const MAX_QUEUED_DATAFAST_EVENTS = 100;
-const datafastQueue: Array<[string, Record<string, unknown>]> = [];
 
 export function flushDatafastQueue() {
   if (typeof window === "undefined" || !window.datafast) return;
