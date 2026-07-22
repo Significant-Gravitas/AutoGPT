@@ -85,12 +85,13 @@ class DesktopSession:
         width: int,
         height: int,
         volume_name: Optional[str],
+        template: str = DESKTOP_TEMPLATE,
     ) -> tuple["DesktopSession", PersistenceInfo]:
         sandbox, persistence = await _create_sandbox_with_volume(
-            volume_name, api_key, timeout_seconds
+            volume_name, api_key, timeout_seconds, template
         )
         session = cls(sandbox)
-        await session._ensure_display(width, height)
+        await session.ensure_display(width, height)
         if persistence.volume_mounted:
             await session.run_command(f"mkdir -p {shlex.quote(WORKSPACE_PATH)}")
         return session, persistence
@@ -184,18 +185,22 @@ class DesktopSession:
     async def _xdotool(self, args: str) -> None:
         await self.run_command(f"xdotool {args}")
 
-    async def _ensure_display(self, width: int, height: int) -> None:
-        if await self._check(f"xdpyinfo -display {DISPLAY}"):
+    async def ensure_display(self, width: int, height: int) -> None:
+        if await self._check("pgrep -x xfwm4"):
             return
-        await self.sandbox.commands.run(
-            f"Xvfb {DISPLAY} -ac -screen 0 {width}x{height}x24 -retro -dpi 96 "
-            "-nolisten tcp -nolisten unix",
-            background=True,
-        )
-        await self._wait_for(f"xdpyinfo -display {DISPLAY}")
+        if not await self._check(f"xdpyinfo -display {DISPLAY}"):
+            await self.sandbox.commands.run(
+                f"Xvfb {DISPLAY} -ac -screen 0 {width}x{height}x24 -retro -dpi 96 "
+                "-nolisten tcp -nolisten unix",
+                background=True,
+            )
+            await self._wait_for(f"xdpyinfo -display {DISPLAY}")
         await self.sandbox.commands.run(
             "startxfce4", background=True, envs={"DISPLAY": DISPLAY}
         )
+        # Without gating on the window manager, the first xdotool call blocks
+        # 10-15 s inside a half-started XFCE instead of failing fast here.
+        await self._wait_for("pgrep -x xfwm4")
 
     async def _check(self, command: str) -> bool:
         try:
@@ -212,9 +217,9 @@ class DesktopSession:
         raise TimeoutError(f"Timed out waiting for: {command.split()[0]}")
 
 
-def _sandbox_create_kwargs(api_key: str, timeout_seconds: int) -> dict:
+def _sandbox_create_kwargs(api_key: str, timeout_seconds: int, template: str) -> dict:
     return {
-        "template": DESKTOP_TEMPLATE,
+        "template": template,
         "api_key": api_key,
         "timeout": timeout_seconds,
         "lifecycle": SandboxLifecycle(on_timeout="pause", auto_resume=True),
@@ -222,9 +227,12 @@ def _sandbox_create_kwargs(api_key: str, timeout_seconds: int) -> dict:
 
 
 async def _create_sandbox_with_volume(
-    volume_name: Optional[str], api_key: str, timeout_seconds: int
+    volume_name: Optional[str],
+    api_key: str,
+    timeout_seconds: int,
+    template: str = DESKTOP_TEMPLATE,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
-    kwargs = _sandbox_create_kwargs(api_key, timeout_seconds)
+    kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template)
     if not volume_name:
         return await AsyncSandbox.create(**kwargs), PersistenceInfo()
 
