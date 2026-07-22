@@ -9,6 +9,7 @@ import {
   useDeleteV2RevokeInvitation,
   useGetV2ListPendingInvitations,
   usePostV2CreateInvitation,
+  usePostV2ResendInvitation,
 } from "@/app/api/__generated__/endpoints/invitations/invitations";
 import { useGetV2ListWorkspaces } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { InvitationResponse } from "@/app/api/__generated__/models/invitationResponse";
@@ -32,6 +33,7 @@ interface Args {
 
 export function useInvitationsSection({ orgId, isAdmin }: Args) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const invitationsQuery = useGetV2ListPendingInvitations(orgId, {
     query: {
@@ -109,6 +111,20 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     invitationsQuery.refetch();
   }
 
+  const { mutateAsync: resendInvitation } =
+    usePostV2ResendInvitation({
+      mutation: {
+        onError: (error) => {
+          toast({
+            title: "Failed to resend invitation",
+            description:
+              error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
   async function handleRevoke(invitation: InvitationResponse) {
     // Track the row being revoked so only its button shows a spinner.
     setRevokingId(invitation.id);
@@ -126,6 +142,22 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     }
   }
 
+  async function handleResend(invitation: InvitationResponse) {
+    setResendingId(invitation.id);
+    try {
+      await resendInvitation({ orgId, invitationId: invitation.id });
+      toast({
+        title: "Invitation resent — previous link no longer works",
+        variant: "success",
+      });
+      invitationsQuery.refetch();
+    } catch {
+      return;
+    } finally {
+      setResendingId(null);
+    }
+  }
+
   return {
     form,
     invitations: invitationsQuery.data ?? [],
@@ -134,7 +166,9 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     isLoading: invitationsQuery.isLoading,
     isInviting,
     revokingId,
+    resendingId,
     handleInvite,
     handleRevoke,
+    handleResend,
   };
 }

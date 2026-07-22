@@ -32,8 +32,10 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
     teamNameById,
     isInviting,
     revokingId,
+    resendingId,
     handleInvite,
     handleRevoke,
+    handleResend,
   } = useInvitationsSection({ orgId, isAdmin });
 
   if (!isAdmin) {
@@ -157,7 +159,17 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
               <Button
                 variant="ghost"
                 size="small"
+                loading={resendingId === invitation.id}
+                disabled={revokingId !== null}
+                onClick={() => handleResend(invitation)}
+              >
+                Resend
+              </Button>
+              <Button
+                variant="ghost"
+                size="small"
                 loading={revokingId === invitation.id}
+                disabled={resendingId !== null}
                 onClick={() => handleRevoke(invitation)}
               >
                 Revoke
