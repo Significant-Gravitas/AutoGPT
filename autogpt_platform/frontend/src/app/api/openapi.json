@@ -11012,6 +11012,54 @@
         }
       }
     },
+    "/api/orgs/{org_id}/avatar": {
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Upload organization avatar",
+        "description": "Upload an avatar image for the organization and persist its URL.\n\nThe storage path is derived server-side from the verified org id; the\nclient-supplied filename is only used for extension validation.",
+        "operationId": "postV2Upload organization avatar",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Upload_organization_avatar"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/orgs/{org_id}/convert": {
       "post": {
         "tags": ["v2", "orgs", "orgs"],
@@ -11554,6 +11602,143 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held": {
+      "get": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "List held (tentative) shared memories",
+        "operationId": "getV2List held (tentative) shared memories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldMemoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held/{memory_id}/approve": {
+      "post": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "Approve a held memory (ratify tentative → active)",
+        "operationId": "postV2Approve a held memory (ratify tentative → active)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Memory Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryActionResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held/{memory_id}/reject": {
+      "post": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "Reject a held memory (soft-retract)",
+        "operationId": "postV2Reject a held memory (soft-retract)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Memory Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryActionResult" }
               }
             }
           },
@@ -16636,6 +16821,14 @@
         "required": ["user_id"],
         "title": "Body_postV2Reset user rate limit usage"
       },
+      "Body_postV2Upload_organization_avatar": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV2Upload organization avatar"
+      },
       "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -21283,6 +21476,57 @@
         ],
         "title": "HomeWeekSummary"
       },
+      "HeldMemory": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "tier": { "type": "string", "title": "Tier" },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Name"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "source_kind": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Kind"
+          },
+          "provenance": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provenance"
+          }
+        },
+        "type": "object",
+        "required": ["id", "tier"],
+        "title": "HeldMemory",
+        "description": "A single tentative ('held') memory edge awaiting org-admin review."
+      },
+      "HeldMemoryListResponse": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/HeldMemory" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["org_id", "items"],
+        "title": "HeldMemoryListResponse"
+      },
       "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -21683,6 +21927,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "is_hidden": {
             "type": "boolean",
             "title": "Is Hidden",
@@ -22030,6 +22282,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -22073,6 +22333,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "children": {
             "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
@@ -22396,6 +22664,22 @@
         "type": "object",
         "required": ["items"],
         "title": "MemoryFactListResponse"
+      },
+      "MemoryActionResult": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "action": { "type": "string", "title": "Action" },
+          "applied": { "type": "boolean", "title": "Applied" },
+          "tier": { "type": "string", "title": "Tier" },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "action", "applied", "tier"],
+        "title": "MemoryActionResult",
+        "description": "Result of approving or rejecting a held memory."
       },
       "MemoryForgetCandidatesResponse": {
         "properties": {
@@ -23311,6 +23595,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "memory_hold_buffer": {
+            "type": "boolean",
+            "title": "Memory Hold Buffer",
+            "default": true
           }
         },
         "type": "object",
@@ -25577,6 +25866,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -26287,6 +26584,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           }
         },
         "type": "object",
@@ -26390,6 +26691,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           },
           "internal_comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -28070,6 +28375,10 @@
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "memory_hold_buffer": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Memory Hold Buffer"
           }
         },
         "type": "object",

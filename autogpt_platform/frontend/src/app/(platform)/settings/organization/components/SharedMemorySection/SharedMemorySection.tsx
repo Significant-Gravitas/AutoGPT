@@ -1,18 +1,27 @@
 "use client";
 
+import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 
+import { HeldMemoryReviewQueue } from "./components/HeldMemoryReviewQueue/HeldMemoryReviewQueue";
+import { useSharedMemorySection } from "./useSharedMemorySection";
+
 interface Props {
+  org: OrgResponse;
   isAdmin: boolean;
+  onSaved: () => void;
 }
 
-// Org-admin surface for shared (org-wide) memory governance. The hold-for-review
-// setting and the tentative-memory review queue both depend on backend that
-// doesn't exist yet (memory tiers shipped per-user admin tools only, and the
-// org update endpoint can't persist a settings JSON), so the control is shown
-// disabled and the review queue is flagged as blocked rather than faked.
-export function SharedMemorySection({ isAdmin }: Props) {
+// Org-admin surface for shared (org-wide) memory governance: the hold-for-review
+// toggle persists to the org, and the review queue lists tentative memories for
+// approve/reject.
+export function SharedMemorySection({ org, isAdmin, onSaved }: Props) {
+  const { holdForReview, isPending, handleToggle } = useSharedMemorySection({
+    org,
+    onSaved,
+  });
+
   if (!isAdmin) {
     return null;
   }
@@ -42,47 +51,15 @@ export function SharedMemorySection({ isAdmin }: Props) {
             </Text>
           </div>
           <Switch
-            checked={false}
-            disabled
+            checked={holdForReview}
+            disabled={isPending}
+            onCheckedChange={handleToggle}
             aria-label="Hold new memories for review"
           />
         </div>
-        <Text variant="small" className="mt-3 block text-amber-600">
-          Not yet available — turning this on requires backend support (see
-          below).
-        </Text>
       </div>
 
-      <div
-        className="rounded-large border border-dashed border-zinc-300 bg-zinc-50 p-4"
-        data-testid="org-memory-review-blocked"
-      >
-        <Text variant="body-medium">Review queue</Text>
-        <Text variant="small" className="mt-1 block text-zinc-500">
-          The admin review queue for tentative memories isn’t available yet.
-          It’s blocked on backend endpoints that don’t exist — the memory-tiers
-          backend shipped per-user admin tools (<code>/api/admin/memory/*</code>
-          ) only and deferred org review. Still needed:
-        </Text>
-        <ul className="mt-2 list-inside list-disc">
-          <li>
-            <Text variant="small" as="span" className="text-zinc-500">
-              persist the hold-for-review setting on the org (no{" "}
-              <code>settings</code> field on the org update endpoint today)
-            </Text>
-          </li>
-          <li>
-            <Text variant="small" as="span" className="text-zinc-500">
-              list tentative memories for an org/team
-            </Text>
-          </li>
-          <li>
-            <Text variant="small" as="span" className="text-zinc-500">
-              approve / reject a tentative memory
-            </Text>
-          </li>
-        </ul>
-      </div>
+      <HeldMemoryReviewQueue orgId={org.id} />
     </section>
   );
 }
