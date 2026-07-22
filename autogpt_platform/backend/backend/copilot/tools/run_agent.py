@@ -24,7 +24,13 @@ from backend.util.timezone_utils import (
 )
 
 from .base import BaseTool
-from .execution_utils import get_execution_outputs, wait_for_execution
+from .execution_utils import (
+    NodeFailureSummary,
+    build_run_health_warning,
+    get_execution_outputs,
+    summarize_node_failures,
+    wait_for_execution,
+)
 from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
@@ -904,21 +910,26 @@ class RunAgentTool(BaseTool):
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
                 outputs = get_execution_outputs(completed)
-                # Inline the per-node execution trace on dry-runs so the
-                # LLM can inspect "did every block run, what did each
-                # produce?" without a follow-up view_agent_output call.
-                # Empty final outputs on a COMPLETED dry-run almost always
-                # mean a node silently produced nothing / a link was wired
-                # wrong — the trace is what lets the model debug that.
+                # A COMPLETED graph run can still contain FAILED nodes (node
+                # errors don't fail the run), so always fetch the per-node
+                # trace to check run health. The full trace is inlined in the
+                # response only on dry-runs — where the LLM needs it to debug
+                # wiring ("did every block run, what did each produce?")
+                # without a follow-up view_agent_output call — to keep wet-run
+                # responses small.
                 node_executions_data = None
-                if dry_run:
-                    try:
-                        detailed = await execution_db().get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution.id,
-                            include_node_executions=True,
+                node_failures: list[NodeFailureSummary] = []
+                try:
+                    detailed = await execution_db().get_graph_execution(
+                        user_id=user_id,
+                        execution_id=execution.id,
+                        include_node_executions=True,
+                    )
+                    if isinstance(detailed, GraphExecutionWithNodes):
+                        node_failures = summarize_node_failures(
+                            detailed.node_executions
                         )
-                        if isinstance(detailed, GraphExecutionWithNodes):
+                        if dry_run:
                             node_executions_data = [
                                 {
                                     "node_id": ne.node_id,
@@ -937,21 +948,30 @@ class RunAgentTool(BaseTool):
                                 }
                                 for ne in detailed.node_executions
                             ]
-                    except Exception:
-                        logger.warning(
-                            "run_agent: failed to load node executions for "
-                            "dry-run %s; returning summary only",
-                            execution.id,
-                            exc_info=True,
-                        )
+                except Exception:
+                    logger.warning(
+                        "run_agent: failed to load node executions for "
+                        "execution %s; returning summary only",
+                        execution.id,
+                        exc_info=True,
+                    )
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
-                return AgentOutputResponse(
-                    message=(
+                health_warning = build_run_health_warning(outputs, node_failures)
+                if health_warning:
+                    message = (
+                        f"Agent '{library_agent.name}' finished with status "
+                        f"COMPLETED. {health_warning} "
+                        f"View at {library_agent_link}."
+                    )
+                else:
+                    message = (
                         f"Agent '{library_agent.name}' completed successfully. "
                         f"View at {library_agent_link}."
-                    ),
+                    )
+                return AgentOutputResponse(
+                    message=message,
                     session_id=session_id,
                     agent_name=library_agent.name,
                     agent_id=library_agent.graph_id,
@@ -964,6 +984,7 @@ class RunAgentTool(BaseTool):
                         ended_at=completed.ended_at,
                         outputs=outputs or {},
                         node_executions=node_executions_data,
+                        nodes_failed=node_failures or None,
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:

@@ -6,6 +6,7 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
+import { AccountMenuNewLayout } from "./AccountMenuNewLayout";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
@@ -18,6 +19,12 @@ interface Props {
   hideNavBarUsername?: boolean;
   menuItemGroups: MenuItemGroup[];
   isLoading?: boolean;
+  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag,
+  // opted into only by the (flag-gated) sidebar. Classic Navbar keeps the
+  // original menu below.
+  newLayout?: boolean;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 }
 
 export function AccountMenu({
@@ -26,8 +33,25 @@ export function AccountMenu({
   avatarSrc,
   menuItemGroups,
   isLoading = false,
+  newLayout = false,
+  side,
+  align,
 }: Props) {
   const popupId = React.useId();
+
+  if (newLayout) {
+    return (
+      <AccountMenuNewLayout
+        userName={userName}
+        userEmail={userEmail}
+        avatarSrc={avatarSrc}
+        menuItemGroups={menuItemGroups}
+        isLoading={isLoading}
+        side={side}
+        align={align}
+      />
+    );
+  }
 
   return (
     <Popover>

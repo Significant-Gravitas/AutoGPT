@@ -59,6 +59,22 @@ def _enable_google_blocks_for_auto_cred_tests(request, monkeypatch):
     monkeypatch.setattr("backend.blocks.google._auth.GOOGLE_OAUTH_IS_CONFIGURED", True)
 
 
+@pytest.fixture(autouse=True)
+def _mock_grants_prisma():
+    """No-grant baseline for graph access checks.
+
+    ``get_graph``'s team-grant fallback and ``validate_graph_execution_permissions``
+    both call ``resolve_graph_grant``, which queries ``backend.data.grants.prisma``.
+    The get_graph/validate tests mock the AgentGraph/StoreListingVersion/LibraryAgent
+    clients but not this one, so without a patch the grant lookup hits the real,
+    unconnected client. Return no grant rows so the no-grant path is explicit;
+    tests that exercise grants patch this themselves.
+    """
+    with patch("backend.data.grants.prisma") as mock_grants_prisma:
+        mock_grants_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[])
+        yield mock_grants_prisma
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_creation(server: SpinTestServer, snapshot: Snapshot):
     """

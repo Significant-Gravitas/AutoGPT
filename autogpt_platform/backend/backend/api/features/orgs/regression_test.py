@@ -200,6 +200,11 @@ class TestGraphCrudUserIdIsolation:
         mock_library_actions = AsyncMock()
         mock_library_actions.find_first = AsyncMock(return_value=None)
 
+        # No team grant: get_graph's grant fallback queries the grants client,
+        # which is otherwise the real, unconnected one in this unit test.
+        mock_grants = MagicMock()
+        mock_grants.agentgraphgrant.find_many = AsyncMock(return_value=[])
+
         with (
             patch(
                 "backend.data.graph.AgentGraph.prisma",
@@ -213,6 +218,7 @@ class TestGraphCrudUserIdIsolation:
                 "backend.data.graph.LibraryAgent.prisma",
                 return_value=mock_library_actions,
             ),
+            patch("backend.data.grants.prisma", mock_grants),
         ):
             from backend.data.graph import get_graph
 
