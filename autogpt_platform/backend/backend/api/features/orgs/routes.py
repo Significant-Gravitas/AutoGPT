@@ -1,6 +1,7 @@
 """Organization management API routes."""
 
 import os
+from datetime import datetime
 from typing import Annotated
 
 from autogpt_libs.auth import (
@@ -11,10 +12,11 @@ from autogpt_libs.auth import (
 )
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
-from fastapi import APIRouter, HTTPException, Security, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Security, UploadFile
 
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import media as store_media
+from backend.data.org_credit import get_org_spend_by_team
 
 from . import db as org_db
 from .model import (
@@ -24,6 +26,8 @@ from .model import (
     OrgAliasResponse,
     OrgMemberResponse,
     OrgResponse,
+    OrgSpendResponse,
+    TeamSpendBucket,
     TransferOwnershipRequest,
     UpdateMemberRequest,
     UpdateOrgData,
@@ -294,6 +298,36 @@ async def transfer_ownership(
 ) -> None:
     _verify_org_path(ctx, org_id)
     await org_db.transfer_ownership(org_id, ctx.user_id, request.new_owner_id)
+
+
+# --- Spend ---
+
+
+@router.get(
+    "/{org_id}/spend",
+    summary="Per-team spend breakdown",
+    tags=["orgs"],
+)
+async def get_org_spend(
+    org_id: str,
+    ctx: Annotated[
+        RequestContext,
+        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+    ],
+    from_time: Annotated[datetime | None, Query(alias="from")] = None,
+    to_time: Annotated[datetime | None, Query(alias="to")] = None,
+) -> OrgSpendResponse:
+    """Credits spent by the org, grouped by the team each debit was attributed to.
+
+    Requires org-level MANAGE_BILLING (owner or billing_manager). Usage with no
+    team attribution — org-home spend and legacy personal-org migrations — is
+    reported in a single bucket with ``team_id = null``.
+    """
+    _verify_org_path(ctx, org_id)
+    buckets = await get_org_spend_by_team(
+        org_id, start_time=from_time, end_time=to_time
+    )
+    return OrgSpendResponse(teams=[TeamSpendBucket(**bucket) for bucket in buckets])
 
 
 # --- Aliases ---
