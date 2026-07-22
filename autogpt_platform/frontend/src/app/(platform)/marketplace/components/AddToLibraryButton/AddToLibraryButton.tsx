@@ -94,6 +94,7 @@ export function AddToLibraryButton({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const teams = useOrgTeamStore((s) => s.teams);
+  const isLoaded = useOrgTeamStore((s) => s.isLoaded);
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
@@ -142,8 +143,11 @@ export function AddToLibraryButton({
     e?.preventDefault();
 
     try {
-      setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
       const data = await addToLibrary({ teamId });
+      // Only remember this target once the add actually succeeds, so a failed
+      // request can't leave the split button defaulting to a team/Organization
+      // that never received the agent.
+      setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
       setJustAdded(true);
 
       await queryClient.invalidateQueries({
@@ -200,12 +204,16 @@ export function AddToLibraryButton({
   const ghostButtonClassName = `z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`;
 
   // Solo users (no teams): original plain button, adds to their org context.
-  if (teams.length === 0) {
+  // While the org/team store is still loading we render the same control but
+  // disable it, so a team member can't click the solo button during the async
+  // load window and accidentally add to org context instead of a team.
+  if (!isLoaded || teams.length === 0) {
     return (
       <Button
         variant="ghost"
         size="small"
         loading={isPending}
+        disabled={!isLoaded}
         leftIcon={<PlusIcon size={14} weight="bold" />}
         onClick={(e) => handleAdd(null, e)}
         className={ghostButtonClassName}
