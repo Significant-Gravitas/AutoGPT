@@ -1,7 +1,9 @@
+import type { getV1ListAvailableBlocksResponse } from "@/app/api/__generated__/endpoints/blocks/blocks";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { beautifyString } from "@/lib/utils";
 import {
   PlayCircleIcon,
   PlayIcon,
@@ -149,18 +151,24 @@ export function getRunBlockToolOutput(
   return parseOutput((part as { output?: unknown }).output);
 }
 
-export function getAnimationText(part: {
-  state: ToolUIPart["state"];
-  input?: unknown;
-  output?: unknown;
-}): string {
+export function getAnimationText(
+  part: {
+    state: ToolUIPart["state"];
+    input?: unknown;
+    output?: unknown;
+  },
+  blockNamesById?: Map<string, string>,
+): string {
   const input = part.input as RunBlockInput | undefined;
   const blockName = input?.block_name?.trim();
   const blockId = input?.block_id?.trim();
   const isDryRun = input?.dry_run === true;
-  // Prefer block_name if available, otherwise fall back to block_id
-  const blockText = blockName
-    ? ` "${blockName}"`
+  // Prefer block_name, then a name looked up from the blocks API,
+  // and only fall back to the raw block_id when neither is known
+  const displayName =
+    blockName || (blockId ? blockNamesById?.get(blockId) : undefined);
+  const blockText = displayName
+    ? ` "${displayName}"`
     : blockId
       ? ` "${blockId}"`
       : "";
@@ -193,6 +201,21 @@ export function getAnimationText(part: {
     default:
       return isDryRun ? "Simulating" : "Running";
   }
+}
+
+export function getBlockNamesById(
+  response: getV1ListAvailableBlocksResponse | undefined,
+): Map<string, string> | undefined {
+  if (response?.status !== 200) return undefined;
+  const names = new Map<string, string>();
+  for (const block of response.data) {
+    if (typeof block.id === "string" && typeof block.name === "string") {
+      // Same display treatment as the blocks menu: beautify and
+      // drop the redundant "Block" suffix
+      names.set(block.id, beautifyString(block.name).replace(/ Block$/, ""));
+    }
+  }
+  return names;
 }
 
 export function ToolIcon({

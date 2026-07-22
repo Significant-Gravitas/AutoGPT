@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import Link from "next/link";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSettingsSidebar } from "./useSettingsSidebar";
 import { SettingsNavItem } from "./SettingsNavItem";
@@ -26,13 +28,16 @@ export function SettingsSidebar() {
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
       className="hidden h-full w-[237px] shrink-0 overflow-y-auto border-r border-[#DADADC] bg-[#F9F9FA] px-[10px] pt-[13px] md:block"
     >
-      <Text
-        variant="label"
-        as="span"
-        className="mb-[16px] block px-4 font-medium text-[#27272a]"
+      <Link
+        href="/copilot"
+        aria-label="Back to home"
+        className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-[#505057] transition-colors hover:text-[#1F1F20]"
       >
-        SETTINGS
-      </Text>
+        <ArrowLeftIcon size={16} weight="bold" />
+        <Text variant="body" as="span" className="font-medium">
+          Back
+        </Text>
+      </Link>
       <motion.nav
         variants={container}
         initial="hidden"
