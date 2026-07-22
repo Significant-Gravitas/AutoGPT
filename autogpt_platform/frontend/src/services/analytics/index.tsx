@@ -14,7 +14,7 @@ import { environment } from "../environment";
 
 declare global {
   interface Window {
-    datafast: (name: string, metadata: Record<string, unknown>) => void;
+    datafast?: (name: string, metadata: Record<string, unknown>) => void;
     [key: string]: unknown[] | ((...args: unknown[]) => void) | unknown;
   }
 }
@@ -102,6 +102,7 @@ export function SetupAnalytics(props: SetupProps) {
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
           data-domain="agpt.co"
           src="https://datafa.st/js/script.js"
+          onLoad={flushDatafastQueue}
         />
       ) : null}
     </>
@@ -128,6 +129,27 @@ function sendGAEvent(...args: unknown[]) {
 }
 
 function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  if (window.datafast) {
+    window.datafast(name, metadata);
+    return;
+  }
+  // The script loads afterInteractive, so mount-time events (tour_start,
+  // tour_scenario_start) fire before window.datafast exists. Queue them and
+  // flush from the Script's onLoad instead of dropping them.
+  if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) return;
+  datafastQueue.push([name, metadata]);
+}
+
+// Bounds memory when the script never loads (ad blockers, non-production
+// domains where dataFastEnabled is false).
+const MAX_QUEUED_DATAFAST_EVENTS = 100;
+const datafastQueue: Array<[string, Record<string, unknown>]> = [];
+
+export function flushDatafastQueue() {
   if (typeof window === "undefined" || !window.datafast) return;
-  window.datafast(name, metadata);
+  const datafast = window.datafast;
+  datafastQueue
+    .splice(0, datafastQueue.length)
+    .forEach(([name, metadata]) => datafast(name, metadata));
 }
