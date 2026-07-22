@@ -29,11 +29,6 @@ _NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,99}$"
 _SLUG_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9/._:-]{0,199}$"
 
 
-SubscriptionTierName = Literal[
-    "NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
-]
-
-
 class CatalogProvider(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -100,7 +95,6 @@ class CatalogModel(BaseModel):
     description: str | None = None
     provider: str = Field(pattern=_NAME_PATTERN)  # FK by CatalogProvider.name
     creator: str | None = Field(default=None, pattern=_NAME_PATTERN)
-    kind: str = "CHAT"
     context_window: int = Field(gt=0)
     max_output_tokens: int | None = Field(default=None, gt=0)
     price_tier: Literal[1, 2, 3] = 1
@@ -113,9 +107,6 @@ class CatalogModel(BaseModel):
     # picker hides); visibility="HIDDEN" still SERVES when explicitly
     # routed — the pre-launch testing state.
     visibility: ModelVisibility = "GA"
-    # Null = available on every subscription tier. Enforcement lands with
-    # the catalog-driven model picker when that ships.
-    min_subscription_tier: SubscriptionTierName | None = None
     # Standing replacement pointer: pre-fills the retirement CLI's
     # replacement and is the hook for future runtime failover.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)

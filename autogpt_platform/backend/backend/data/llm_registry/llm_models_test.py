@@ -87,3 +87,27 @@ class TestAliasResolution:
 
         with pytest.raises(ValueError):
             LlmModel("someprovider/not-a-model")
+
+
+def test_picker_hidden_derivation_from_catalog_payload():
+    """The real derivation (not a patched frozenset): non-GA and disabled
+    models land in the hidden set; enabled GA models never do. An inverted
+    predicate cannot pass this."""
+    from backend.data.llm_registry.catalog import get_catalog
+    from backend.data.llm_registry.llm_models import _picker_hidden_slugs
+
+    payload = get_catalog()
+    ga, others = payload.models[0], payload.models[1:3]
+    modified = payload.model_copy(
+        update={
+            "models": [
+                ga,  # enabled GA — must stay visible
+                others[0].model_copy(update={"visibility": "EMPLOYEES"}),
+                others[1].model_copy(update={"is_enabled": False}),
+            ]
+        }
+    )
+    hidden = _picker_hidden_slugs(modified)
+    assert ga.slug not in hidden
+    assert others[0].slug in hidden
+    assert others[1].slug in hidden

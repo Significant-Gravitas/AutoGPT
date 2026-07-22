@@ -1006,9 +1006,6 @@ async def _save_session_to_db(
         if updated:
             msg.stamps_pending_save = False
 
-    if pending_stamps:
-        await asyncio.gather(*(_backfill_stamps(m) for m in pending_stamps))
-
     async def _backfill(msg: ChatMessage) -> None:
         assert msg.sequence is not None  # narrowed by the filter above
         try:
@@ -1032,8 +1029,14 @@ async def _save_session_to_db(
                 f"{session.session_id} seq {msg.sequence} (row not found)"
             )
 
-    if pending:
-        await asyncio.gather(*(_backfill(m) for m in pending))
+    # One concurrent pass for both repairs — a mid-turn-flushed assistant
+    # row with tools commonly needs BOTH back-fills; success/failure flags
+    # stay independent per mechanism.
+    if pending or pending_stamps:
+        await asyncio.gather(
+            *(_backfill(m) for m in pending),
+            *(_backfill_stamps(m) for m in pending_stamps),
+        )
 
 
 async def append_and_save_message(

@@ -15,6 +15,7 @@ from enum import Enum, EnumMeta
 from typing import Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
+from backend.data.llm_registry.catalog_model import CatalogPayload
 
 logger = logging.getLogger(__name__)
 
@@ -257,20 +258,27 @@ def _build_model_metadata() -> dict["LlmModel", ModelMetadata]:
 
 MODEL_METADATA = _build_model_metadata()
 
-# Hidden from the block picker: kill-switched models AND models not yet GA
-# (EMPLOYEES/ADMINS/HIDDEN visibility) — the catalog's documented "who can
-# SEE this" contract. Enum values stay valid either way, so stored graphs
-# referencing a hidden model keep validating and executing.
-#
-# DECIDED SCOPE: at the block layer this filter is a UX control, not a
-# safety control. A hand-crafted graph node can still select a
-# kill-switched slug; execution of stored graphs must keep working after
-# a kill (and keep billing), so the block layer deliberately does not
-# veto. The hard-stop for an incident is the retirement CLI, which
-# rewrites the nodes; copilot serving IS vetoed at resolution time.
-_PICKER_HIDDEN_SLUGS = frozenset(
-    m.slug for m in get_catalog().models if not m.is_enabled or m.visibility != "GA"
-)
+
+def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
+    """Slugs hidden from the block picker: kill-switched models AND models
+    not yet GA (EMPLOYEES/ADMINS/HIDDEN visibility) — the catalog's
+    documented "who can SEE this" contract. Enum values stay valid either
+    way, so stored graphs referencing a hidden model keep validating and
+    executing.
+
+    DECIDED SCOPE: at the block layer this filter is a UX control, not a
+    safety control. A hand-crafted graph node can still select a
+    kill-switched slug; execution of stored graphs must keep working after
+    a kill (and keep billing), so the block layer deliberately does not
+    veto. The hard-stop for an incident is the retirement CLI, which
+    rewrites the nodes; copilot serving IS vetoed at resolution time.
+    """
+    return frozenset(
+        m.slug for m in payload.models if not m.is_enabled or m.visibility != "GA"
+    )
+
+
+_PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
 
 
 def _default_model_from_catalog() -> LlmModel:

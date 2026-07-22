@@ -22,12 +22,10 @@ Each `CatalogModel` entry:
 | `display_name` | Human-readable name shown in UIs. |
 | `provider` | Who serves the model (must match a `CatalogProvider.name`). Determines which credential/API key is used. |
 | `creator` | Who trained the model (display metadata; must match a `CatalogCreator.name`). |
-| `kind` | Model modality; currently `CHAT`. |
 | `context_window` / `max_output_tokens` | Token limits. |
 | `price_tier` | 1 (cheapest) to 3 (most expensive); used for display. |
 | `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when LaunchDarkly routes to it. |
 | `visibility` | Who may *see* the model: `GA` (everyone), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Informational until the catalog-driven picker lands (today a model stays out of block pickers by not having an enum line); the field is the picker's contract. Visibility never overrides `is_enabled`. |
-| `min_subscription_tier` | Optional tier gate (e.g. `MAX`); enforcement arrives with the catalog-driven model picker. |
 | `fallback_model_slug` | Standing replacement pointer: the retirement CLI defaults `--replacement` to it, and it is reserved for future automatic failover. |
 | `supports_*` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational and authored opportunistically — `False` means *not asserted*, not "unsupported"; nothing consumes them at runtime yet, so only rely on authored `True` values. |
 | `cost` | What users pay: flat `run_credits` and/or per-1M token **credit** rates (billing reads these). Optionally `provider_*_usd_per_1m`: what the provider charges us — the USD list price, used for in-turn cost estimates when a model is priced off its family default (e.g. Kimi K3's $3/$15). |

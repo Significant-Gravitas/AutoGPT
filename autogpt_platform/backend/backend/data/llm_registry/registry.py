@@ -24,7 +24,6 @@ from backend.data.llm_registry.catalog_model import (
     CatalogModelCost,
     CatalogPayload,
     ModelVisibility,
-    SubscriptionTierName,
 )
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
@@ -74,9 +73,7 @@ class RegistryModel(BaseModel):
 
     # visibility only controls who SEES the model — HIDDEN still serves
     # when explicitly routed.
-    kind: str = "CHAT"
     visibility: ModelVisibility = "GA"
-    min_subscription_tier: SubscriptionTierName | None = None
     fallback_model_slug: str | None = None
 
     supports_tools: bool = False
@@ -125,9 +122,7 @@ def _build_models(payload: CatalogPayload) -> dict[str, RegistryModel]:
             provider_display_name=provider_display,
             is_enabled=m.is_enabled,
             is_recommended=m.is_recommended,
-            kind=m.kind,
             visibility=m.visibility,
-            min_subscription_tier=m.min_subscription_tier,
             fallback_model_slug=m.fallback_model_slug,
             supports_tools=m.supports_tools,
             supports_json_output=m.supports_json_output,
