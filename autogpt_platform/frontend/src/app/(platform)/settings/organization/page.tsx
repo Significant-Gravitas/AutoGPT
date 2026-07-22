@@ -19,19 +19,26 @@ import { MembersSection } from "./components/MembersSection/MembersSection";
 import { MyInvitationsSection } from "./components/MyInvitationsSection/MyInvitationsSection";
 import { OrgProfileSection } from "./components/OrgProfileSection/OrgProfileSection";
 import { SharedMemorySection } from "./components/SharedMemorySection/SharedMemorySection";
+import { TeamSpendSection } from "./components/TeamSpendSection/TeamSpendSection";
 import { TeamsSection } from "./components/TeamsSection/TeamsSection";
 import { useOrganizationSettingsPage } from "./useOrganizationSettingsPage";
 
 // The "General" tab keeps the internal `profile` id so existing ?tab=profile
 // deep links stay valid; only the visible label changed.
-type OrgSettingsTab = "profile" | "members" | "invitations" | "teams";
+type OrgSettingsTab =
+  | "profile"
+  | "members"
+  | "invitations"
+  | "teams"
+  | "billing";
 
 function isOrgSettingsTab(value: string): value is OrgSettingsTab {
   return (
     value === "profile" ||
     value === "members" ||
     value === "invitations" ||
-    value === "teams"
+    value === "teams" ||
+    value === "billing"
   );
 }
 
@@ -48,6 +55,7 @@ export default function OrganizationSettingsPage() {
     members,
     currentMember,
     isAdmin,
+    canManageBilling,
     isLoading,
     isError,
     refetchMembers,
@@ -111,10 +119,14 @@ export default function OrganizationSettingsPage() {
     );
   }
 
-  // Invitations is admin-only, so a plain member never sees the tab. Fall back
-  // to General if a non-admin lands on it via a ?tab=invitations deep link.
+  // Invitations is admin-only and Billing is billing-manager/owner-only, so a
+  // member without that right never sees the tab. Fall back to General if they
+  // land on a gated tab via a ?tab= deep link.
   const effectiveTab =
-    activeTab === "invitations" && !isAdmin ? "profile" : activeTab;
+    (activeTab === "invitations" && !isAdmin) ||
+    (activeTab === "billing" && !canManageBilling)
+      ? "profile"
+      : activeTab;
 
   return (
     <div className="flex flex-col gap-8 py-6">
@@ -130,6 +142,9 @@ export default function OrganizationSettingsPage() {
             <TabsLineTrigger value="invitations">Invitations</TabsLineTrigger>
           ) : null}
           <TabsLineTrigger value="teams">Teams</TabsLineTrigger>
+          {canManageBilling ? (
+            <TabsLineTrigger value="billing">Billing</TabsLineTrigger>
+          ) : null}
         </TabsLineList>
 
         <TabsLineContent value="profile" className="flex flex-col gap-8">
@@ -169,6 +184,15 @@ export default function OrganizationSettingsPage() {
             currentMember={currentMember}
           />
         </TabsLineContent>
+
+        {canManageBilling ? (
+          <TabsLineContent value="billing" className="flex flex-col gap-8">
+            <TeamSpendSection
+              orgId={org.id}
+              canManageBilling={canManageBilling}
+            />
+          </TabsLineContent>
+        ) : null}
       </TabsLine>
     </div>
   );

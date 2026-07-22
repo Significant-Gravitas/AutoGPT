@@ -28,12 +28,18 @@ export function useOrganizationSettingsPage() {
   const members = membersQuery.data ?? [];
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
   const isAdmin = Boolean(currentMember?.is_owner || currentMember?.is_admin);
+  // MANAGE_BILLING is owner + billing_manager only — admins do NOT get it
+  // (matches _ORG_PERMISSIONS in autogpt_libs/auth/permissions.py).
+  const canManageBilling = Boolean(
+    currentMember?.is_owner || currentMember?.is_billing_manager,
+  );
 
   return {
     org: orgQuery.data ?? null,
     members,
     currentMember,
     isAdmin,
+    canManageBilling,
     isLoading:
       !isOrgContextLoaded || orgQuery.isLoading || membersQuery.isLoading,
     isError: orgQuery.isError,
