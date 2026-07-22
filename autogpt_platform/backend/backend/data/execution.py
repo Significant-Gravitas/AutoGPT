@@ -127,6 +127,15 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # When set, this run executes a graph the consumer only reaches via an
+    # OWNER-mode team grant: the graph's own stored credential references
+    # resolve against THIS user's credential store (the graph owner), never
+    # the executing consumer's. Only ever the graph owner's id, resolved once
+    # at execution-start (see ``resolve_execution_credentials_owner``); the
+    # consumer never sees the secret. ``None`` for all normal runs (owner
+    # running own graph, CONSUMER-mode grants, marketplace/library, sub-graphs).
+    credentials_owner_id: Optional[str] = None
+
 
 # -------------------------- Models -------------------------- #
 

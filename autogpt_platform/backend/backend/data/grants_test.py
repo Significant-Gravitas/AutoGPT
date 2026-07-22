@@ -3,11 +3,12 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from prisma.enums import GrantCapability, GrantPrincipalType
+from prisma.enums import GrantCapability, GrantCredentialMode, GrantPrincipalType
 
 from backend.data.grants import (
     GrantPrincipalNotSupportedError,
     grant_covers_version,
+    resolve_execution_credentials_owner,
     resolve_graph_grant,
 )
 
@@ -146,3 +147,135 @@ class TestGrantCoversVersion:
     def test_follow_latest_covers_any_version(self):
         grant = _grant(version=3, follow_latest=True)
         assert grant_covers_version(grant, 7)
+
+
+def _cred_grant(
+    *,
+    credential_mode=GrantCredentialMode.OWNER,
+    org_id="org-1",
+    version=3,
+    follow_latest=False,
+    grant_id="grant-1",
+):
+    row = MagicMock()
+    row.id = grant_id
+    row.credentialMode = credential_mode
+    row.organizationId = org_id
+    row.agentGraphVersion = version
+    row.followLatest = follow_latest
+    return row
+
+
+def _cred_graph(*, user_id="owner-1", org_id="org-1", version=3, is_active=True):
+    g = MagicMock()
+    g.userId = user_id
+    g.organizationId = org_id
+    g.version = version
+    g.isActive = is_active
+    return g
+
+
+class TestResolveExecutionCredentialsOwner:
+    """The decision of whether a run executes on the graph OWNER's credentials."""
+
+    @pytest.fixture
+    def mock_prisma(self, mocker):
+        mock = MagicMock()
+        mock.agentgraph.find_unique = AsyncMock(return_value=_cred_graph())
+        mock.agentgraph.find_first = AsyncMock(return_value=_cred_graph())
+        mocker.patch("backend.data.grants.prisma", mock)
+        return mock
+
+    @pytest.fixture
+    def patch_grant(self, mocker):
+        def _set(grant):
+            mocker.patch(
+                "backend.data.grants.resolve_graph_grant",
+                AsyncMock(return_value=grant),
+            )
+
+        return _set
+
+    @pytest.mark.asyncio
+    async def test_owner_mode_grant_returns_owner_and_grant_id(
+        self, mock_prisma, patch_grant
+    ):
+        patch_grant(_cred_grant(credential_mode=GrantCredentialMode.OWNER))
+
+        result = await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+
+        assert result == ("owner-1", "grant-1")
+
+    @pytest.mark.asyncio
+    async def test_consumer_mode_grant_returns_none(self, mock_prisma, patch_grant):
+        patch_grant(_cred_grant(credential_mode=GrantCredentialMode.CONSUMER))
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+
+    @pytest.mark.asyncio
+    async def test_graph_owner_running_own_graph_is_inert(self, mock_prisma, mocker):
+        # Owner runs own graph: never OWNER mode, and no grant lookup needed.
+        spy = mocker.patch(
+            "backend.data.grants.resolve_graph_grant", AsyncMock(return_value=None)
+        )
+
+        assert await resolve_execution_credentials_owner("owner-1", "g1", 3) is None
+        spy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_grant_returns_none(self, mock_prisma, patch_grant):
+        # e.g. a marketplace/library run with no team grant at all.
+        patch_grant(None)
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+
+    @pytest.mark.asyncio
+    async def test_org_mismatch_returns_none(self, mock_prisma, patch_grant):
+        patch_grant(_cred_grant(org_id="other-org"))
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+
+    @pytest.mark.asyncio
+    async def test_pinned_version_not_covered_returns_none(
+        self, mock_prisma, patch_grant
+    ):
+        # Grant pins v2; the run is v3.
+        patch_grant(_cred_grant(version=2, follow_latest=False))
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+
+    @pytest.mark.asyncio
+    async def test_missing_graph_returns_none(self, mock_prisma, patch_grant):
+        mock_prisma.agentgraph.find_unique = AsyncMock(return_value=None)
+        patch_grant(_cred_grant())
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+
+    @pytest.mark.asyncio
+    async def test_version_none_resolves_active_version(self, mock_prisma, patch_grant):
+        mock_prisma.agentgraph.find_first = AsyncMock(
+            return_value=_cred_graph(version=5)
+        )
+        # follow_latest grant so any active version is covered.
+        patch_grant(_cred_grant(follow_latest=True))
+
+        result = await resolve_execution_credentials_owner("consumer-1", "g1", None)
+
+        assert result == ("owner-1", "grant-1")
+        # Active-version lookup, not a pinned find_unique.
+        mock_prisma.agentgraph.find_unique.assert_not_called()
+        where = mock_prisma.agentgraph.find_first.call_args.kwargs["where"]
+        assert where["isActive"] is True
+
+    @pytest.mark.asyncio
+    async def test_follow_latest_grant_on_non_active_version_returns_none(
+        self, mock_prisma, patch_grant
+    ):
+        # followLatest covers only the active version; a non-active version
+        # reached via another access path stays CONSUMER.
+        mock_prisma.agentgraph.find_unique = AsyncMock(
+            return_value=_cred_graph(version=2, is_active=False)
+        )
+        patch_grant(_cred_grant(follow_latest=True))
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 2) is None
