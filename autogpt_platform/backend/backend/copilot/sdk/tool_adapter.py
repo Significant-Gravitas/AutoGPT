@@ -752,20 +752,25 @@ def _make_truncating_wrapper(
         # the wrapper instead.
         if not args and required_args:
             logger.warning(
-                "[MCP] %s called with empty args (likely output "
-                "token truncation) — returning guidance",
-                tool_name,
+                f"[MCP] {tool_name} called with empty args (truncated or "
+                f"schema-rejected input) — returning guidance"
             )
+            stop_msg = _check_circuit_breaker(tool_name, args)
+            _record_tool_failure(tool_name, args)
+            if stop_msg:
+                return _mcp_error(stop_msg)
             return _mcp_error(
-                f"Your call to {tool_name} had empty arguments — "
-                f"this means your previous response was too long and "
-                f"the tool call input was truncated by the API. "
-                f"To fix this: break your work into smaller steps. "
-                f"For large content, first write it to a file using "
-                f"bash_exec with cat >> (append section by section), "
-                f"then pass it via @@agptfile:filename reference. "
-                f"Do NOT retry with the same approach — it will "
-                f"be truncated again."
+                f"Your call to {tool_name} arrived with empty arguments. "
+                f"This means the arguments were dropped in transit: either "
+                f"your response hit the output-token limit mid-call, or an "
+                f"argument value did not match the parameter's declared "
+                f"type. Do NOT retry the same call — it will fail the same "
+                f"way. Instead, write the large argument value to a file "
+                f"first (bash_exec with cat >>, appending section by "
+                f"section, or reuse a file you already wrote), then call "
+                f'{tool_name} again passing the string "@@agptfile:<path>" '
+                f"as that argument's value. Object parameters such as "
+                f"agent_json accept this file-reference string directly."
             )
 
         original_args = args
