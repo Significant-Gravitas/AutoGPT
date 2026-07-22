@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from backend.util.file import store_media_file
+from backend.util.settings import Config
 from backend.util.type import MediaFileType
 
 if TYPE_CHECKING:
@@ -316,8 +317,12 @@ async def store_sandbox_files(
                 content_str = result
         except Exception as e:
             logger.warning(f"Failed to store file {file.name} to workspace: {e}")
-            # For binary files, fall back to data URI to prevent data loss
-            if not file.is_text:
+            # For binary files, fall back to the data URI to prevent data loss —
+            # but respect the same configured size cap storage enforces, so a
+            # storage failure never balloons the execution payload with content
+            # that was too large (or unlucky enough) to store in the first place.
+            max_inline = Config().max_file_size_mb * 1024 * 1024
+            if not file.is_text and len(data_uri) <= max_inline:
                 content_str = data_uri
 
         outputs.append(

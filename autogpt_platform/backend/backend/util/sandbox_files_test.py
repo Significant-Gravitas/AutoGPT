@@ -219,6 +219,25 @@ async def test_store_failure_falls_back_to_data_uri_for_binary():
 
 
 @pytest.mark.asyncio
+async def test_store_failure_fallback_respects_size_cap():
+    # A binary too large for the configured cap must NOT be inlined as a data
+    # URI on storage failure — the placeholder stays, so a broken storage
+    # backend can't balloon execution payloads.
+    store = AsyncMock(side_effect=RuntimeError("storage down"))
+    config = MagicMock(max_file_size_mb=1)
+    big = bytes(2 * 1024 * 1024)  # 2MB raw -> ~2.7MB data URI > 1MB cap
+    with (
+        patch("backend.util.sandbox_files.store_media_file", store),
+        patch("backend.util.sandbox_files.Config", return_value=config),
+    ):
+        outputs = await store_sandbox_files(
+            [_extracted("huge.png", big, is_text=False)], _ctx()
+        )
+    assert outputs[0].workspace_ref is None
+    assert outputs[0].content == f"[Binary file: {len(big)} bytes]"
+
+
+@pytest.mark.asyncio
 async def test_store_failure_keeps_decoded_text_content():
     store = AsyncMock(side_effect=RuntimeError("storage down"))
     with patch("backend.util.sandbox_files.store_media_file", store):
