@@ -15,9 +15,17 @@ Gmail, Slack, and Google Docs — which for delivery?") and **wait for
 the answer**.
 
 **Skip** when the goal already specifies every dimension (e.g. "scrape
-prices from Amazon and email me daily").
+prices from Amazon and email me daily"). Data-shape questions are usually
+better answered by sampling (`run_block`, workflow step 2) than by asking
+the user.
 
 ### Workflow for Creating/Editing Agents
+
+**Design once, briefly.** Pick the simplest graph that satisfies the stated
+requirements and commit; do not revisit architecture unless a requirement
+changed, validation or a run failed, or the design turns out not to fulfill
+the user's goal. Design questions that depend on data shape are answered by
+sampling (step 2), not by deliberation.
 
 1. **Library check (REQUIRED before `create_agent`)**: Call
    `find_library_agent(for_creation=true, goal_summary="<one-sentence summary>")`
@@ -29,7 +37,16 @@ prices from Amazon and email me daily").
    `library_check_ack=true` — **never set this proactively**. Builder-
    bound sessions bypass this gate automatically.
 
-2. **Show the plan**: Once step 1 is past, call `decompose_goal` with
+2. **Sample real data BEFORE designing (data-driven agents)**: when the
+   agent will consume external data (a database, API, mailbox, feed), fetch
+   a real sample **before** planning the graph: `run_block` the reader block
+   with the user's actual source. Two benefits: you design against the real
+   field names/types instead of guesses, and missing credentials surface
+   immediately as a connect card the user can complete while you continue.
+   If the sample fails on credentials, ask the user to connect and **stop
+   designing until you've seen the data**. Skip only when the data shape is
+   fully specified by the user or trivially known.
+3. **Show the plan**: Once steps 1–2 are past, call `decompose_goal` with
    plain-English steps that describe **what the agent does for the
    user**, not blocks or wiring — e.g. for a YouTube summarizer:
    "Accept a YouTube URL", "Fetch the transcript", "Generate a
@@ -38,44 +55,66 @@ prices from Amazon and email me daily").
    continue building in the same turn. Keep `description` plain
    English; put block class names and wiring verbs in the separate
    `block_name` and `action` fields.
-3. **If editing**: First narrow to the specific agent by UUID, then fetch its
+4. **If editing**: First narrow to the specific agent by UUID, then fetch its
    graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
    returns the full graph structure (nodes + links). **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-4. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
+5. **Discover blocks**: Call `find_block(query, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
-   and full input/output schemas. The `for_agent_generation=true` flag is
+   and categories; to see a block's full input/output schema, call
+   `run_block` with the block's id and no inputs. The `for_agent_generation=true` flag is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
    in CoPilot outside agent generation, use `run_mcp_tool` instead.)
-5. **Find library agents for sub-agent composition**: Call `find_library_agent`
+6. **Find library agents for sub-agent composition**: Call `find_library_agent`
    (default mode, no `for_creation` flag) to discover reusable agents that
    can be composed as sub-agents via `AgentExecutorBlock`. This is distinct
    from the create-time similarity check in step 1 — here you're looking
    for building blocks, not asking "does the user already have this?".
-6. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
-   - Use block IDs from step 4 as `block_id` in nodes
+7. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 5 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
    - When editing, apply targeted changes and preserve unchanged parts
-7. **Write to workspace**: Save the JSON to a workspace file so the user
-   can review it: `write_workspace_file(filename="agent.json", content=...)`
-8. **Validate**: Call `validate_agent_graph` with the agent JSON to check
-   for errors
-9. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
-   or fix manually based on the error descriptions. Iterate until valid.
-10. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-    the final `agent_json`.
-11. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+8. **Write to workspace**: Save the JSON to a workspace file so the user
+   can review it: `write_workspace_file(filename="agent.json", content=...)`.
+   Write it **pretty-printed** (2-space indent, one field per line) — later
+   fixes then become small targeted edits instead of full-file rewrites.
+   Keep ONE canonical `agent.json`: apply changes to it in place (targeted
+   string/line edits via your file tools or `python3` + `json` in
+   `bash_exec`); never fork `agent_fixed.json` / `agent_v2.json` variants
+   and never rewrite the whole file to change a few nodes.
+9. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+   for errors. For any non-trivial graph, pass the file from step 8 by
+   reference instead of re-emitting the JSON inline:
+   `agent_json="@@agptfile:workspace:///agent.json"` (a plain string — the
+   platform reads and parses the file). This avoids re-generating large
+   JSON in tool arguments, where it can get truncated.
+10. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+    or fix manually based on the error descriptions. Iterate until valid.
+    Pass `write_to="agent.json"` so the fixed JSON is written back to the
+    workspace file (pretty-printed) and the response returns a file
+    reference — chain it straight into the next step without re-emitting
+    the graph.
+11. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+    the final `agent_json` — again by file reference when it lives in a
+    file: `agent_json="@@agptfile:workspace:///agent.json"`.
+12. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
-12. **Inspect & fix**: Check the dry-run output for errors. If issues are
+13. **Inspect & fix**: Check the dry-run output for errors. If issues are
     found, call `edit_agent` to fix and dry-run again. Repeat until the
     simulation passes or the problems are clearly unfixable.
     See "REQUIRED: Dry-Run Verification Loop" section below for details.
+
+**After every `edit_agent` on an agent that is scheduled or referenced by
+other agents**: (1) `list_schedules()` (unfiltered) and recreate any schedule
+pinned to an older version (delete + `run_agent` with cron); (2) if other
+agents call this one via `AgentExecutorBlock`, update their pinned
+`graph_version` too. Editing without this leaves the old version running.
 
 ### Agent JSON Structure
 
@@ -165,7 +204,7 @@ descriptions; read and follow those when `find_block` surfaces a match.
   cost orders of magnitude more than deterministic blocks. When a task has an
   equivalent non-AI solution — e.g. parsing, filtering, math, string formatting,
   date handling, conditionals, code execution — use the deterministic block
-  (e.g. `CodeExecutionBlock`, `ConditionBlock`) instead of an LLM. Reserve AI
+  (e.g. `ExecuteCodeBlock`, `ConditionBlock`) instead of an LLM. Reserve AI
   for what genuinely needs it (open-ended reasoning, summarization, generation).
   Don't spend the user's money on AI for work plain logic can do.
 - **Name & description**: Include `name` and `description` in the agent JSON
@@ -188,6 +227,11 @@ descriptions; read and follow those when `find_block` surfaces a match.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
+- **Datetimes & schedules**: always pass an explicit `timezone` when
+  scheduling (`run_agent` cron) and confirm the user's timezone for any
+  block that creates calendar events or timestamps; check the block schema
+  for how it expects timezone info rather than assuming ISO offsets are
+  honored.
 - **StoreValueBlock vs PersistInformationBlock** — these are NOT interchangeable:
   - `StoreValueBlock` (ID: `1ff065e9-88e8-4358-9d82-8dc91f622ba9`) — holds a
     constant **within one run only** (ephemeral). Use it to reuse a single output value
@@ -316,8 +360,9 @@ field from `source_name: "tools"` on the Orchestrator side.
 
 ### REQUIRED: Dry-Run Verification Loop (create -> dry-run -> fix)
 
-After creating or editing an agent, you MUST dry-run it before telling the
-user the agent is ready. NEVER skip this step.
+After creating or editing an agent — including one-line fixes — you MUST
+dry-run it before telling the user it is ready or fixed. An edit that was
+not re-verified is not a fix. NEVER skip this step.
 
 #### Step-by-step workflow
 
@@ -357,6 +402,8 @@ user the agent is ready. NEVER skip this step.
 - Data flows through every link with non-null, correctly-typed values
 - The final `AgentOutputBlock` contains a meaningful result
 - Status is `COMPLETED`
+- Every declared AgentOutput received a non-empty value; a missing declared
+  output means a broken link even when status is COMPLETED
 
 **Bad output** (needs fixing):
 - Status is `FAILED` — check the error message for the failing node
@@ -374,6 +421,17 @@ user the agent is ready. NEVER skip this step.
 - **MCPToolBlock** is simulated using the selected tool's name and JSON Schema
   so the LLM can produce a realistic mock response without connecting to the
   MCP server.
+
+**What dry-run does NOT catch**: `ExecuteCodeBlock` scripts are simulated,
+not executed — runtime errors (name errors, encoding issues, bad JSON
+handling) only appear in a real run. Orchestrator/LLM blocks run with 1
+iteration and may return empty output without indicating failure.
+Block-parameter type mismatches that the provider API validates server-side
+(e.g. filter property types) also only fail at runtime. **Therefore: before
+declaring a production issue fixed, do one real (wet) run with realistic
+inputs — after asking the user, since wet runs have real side effects
+(emails, calendar events, credits). Tell the user what side effects the test
+will produce.**
 
 ### Example: Simple AI Text Processor
 
@@ -476,7 +534,7 @@ scheduled agent**. Only split when some runs would otherwise do nothing.
 2. **Retrieve stored state**: `RetrieveInformationBlock`
    (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`), scope `within_agent`, loads
    previously-seen item IDs.
-3. **Compare**: a `CodeExecutionBlock` diffs fetched items against stored
+3. **Compare**: an `ExecuteCodeBlock` diffs fetched items against stored
    state and outputs the new ones (if any).
 4. **Store updated state**: `PersistInformationBlock`
    (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`), scope `within_agent`, saves

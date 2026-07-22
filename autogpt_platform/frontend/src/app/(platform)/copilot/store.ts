@@ -50,6 +50,8 @@ export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
 export const MIN_CONTEXT_PANEL_WIDTH = 280;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;
 export const MIN_ARTIFACT_PANEL_WIDTH = 400;
+/** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
+export const PANEL_RESERVED_WIDTH = 440;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -177,6 +179,9 @@ interface CopilotUIState {
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
   setCopilotChatMode: (mode: CopilotMode) => void;
+  copilotModePinned: boolean;
+  applyServerModeChange: (mode: CopilotMode) => void;
+  clearCopilotModePin: () => void;
 
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
@@ -483,6 +488,13 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setCopilotChatMode: (mode) => {
     storage.set(Key.COPILOT_MODE, mode);
     set({ copilotChatMode: mode });
+  },
+  copilotModePinned: false,
+  applyServerModeChange: (mode) => {
+    set({ copilotChatMode: mode, copilotModePinned: true });
+  },
+  clearCopilotModePin: () => {
+    set({ copilotModePinned: false });
   },
 
   copilotLlmModel: (() => {

@@ -78,6 +78,7 @@ export function ChatInput({
 }: Props) {
   const {
     copilotChatMode,
+    copilotModePinned,
     setCopilotChatMode,
     copilotLlmModel,
     setCopilotLlmModel,
@@ -91,6 +92,14 @@ export function ChatInput({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   function handleToggleMode() {
+    if (copilotModePinned) {
+      toast({
+        title: "Mode is locked while building an agent",
+        description:
+          "This session switched to Extended Thinking for agent building — building sessions stay on that engine.",
+      });
+      return;
+    }
     const next =
       copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
     setCopilotChatMode(next);
@@ -317,6 +326,7 @@ export function ChatInput({
               <ModeToggleButton
                 mode={copilotChatMode}
                 onToggle={handleToggleMode}
+                pinned={copilotModePinned}
               />
             )}
             {showModeToggle && !isStreaming && (
