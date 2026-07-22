@@ -24,6 +24,23 @@ logger = logging.getLogger(__name__)
 MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 
 
+def transport_slug_candidates(slug: str) -> list[str]:
+    """Spellings a transport-form slug may take in the catalog, in match
+    order: exact, vendor-stripped, dots→dashes. ONE definition shared by
+    every lookup that tolerates transport spellings (the copilot resolver
+    today), so a spelling accepted in one path can't be refused in
+    another. Enum resolution (``_missing_``/aliases) is deliberately
+    separate — enum identity is exact-or-aliased, never fuzzy.
+    """
+    candidates = [slug]
+    if slug.startswith("anthropic/"):
+        tail = slug.split("/", 1)[1]
+        candidates += [tail, tail.replace(".", "-")]
+    elif "/" not in slug and slug.startswith("claude-"):
+        candidates.append(slug.replace(".", "-"))
+    return candidates
+
+
 class ModelMetadata(NamedTuple):
     provider: str
     context_window: int

@@ -49,6 +49,7 @@ import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
+from backend.data.llm_registry.llm_models import transport_slug_candidates
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -78,12 +79,7 @@ def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
     not the spelling: try the exact slug, then the ``anthropic/``-stripped
     tail, then its dots→dashes form.
     """
-    candidates = [slug]
-    if slug.startswith("anthropic/"):
-        tail = slug.split("/", 1)[1]
-        candidates += [tail, tail.replace(".", "-")]
-    elif "/" not in slug and slug.startswith("claude-"):
-        candidates.append(slug.replace(".", "-"))
+    candidates = transport_slug_candidates(slug)
     for candidate in candidates:
         model = llm_registry.get_model(candidate)
         if model is not None:
