@@ -1,5 +1,6 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -113,6 +114,46 @@ describe("TeamFilter", () => {
 
     await waitFor(() => {
       expect(visibleRowIds()).toEqual(["row-orghome"]);
+    });
+  });
+
+  it("resets a team filter to All when the selected team disappears", async () => {
+    seedTeams([TEAM_A, TEAM_B]);
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Team" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Growth" }));
+
+    await waitFor(() => {
+      expect(visibleRowIds()).toEqual(["row-growth"]);
+    });
+
+    // Team removed (deleted, or switched to an org without it).
+    act(() => seedTeams([TEAM_B]));
+
+    await waitFor(() => {
+      // Filter fell back to All, so every row is visible again.
+      expect(visibleRowIds()).toHaveLength(3);
+    });
+  });
+
+  it("resets to All (and hides the control) when the team list empties", async () => {
+    seedTeams([TEAM_A, TEAM_B]);
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Team" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Growth" }));
+
+    await waitFor(() => {
+      expect(visibleRowIds()).toEqual(["row-growth"]);
+    });
+
+    // Solo org / left the org: team list empties, control hides.
+    act(() => seedTeams([]));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(visibleRowIds()).toHaveLength(3);
     });
   });
 });
