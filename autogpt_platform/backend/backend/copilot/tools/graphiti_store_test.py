@@ -608,7 +608,9 @@ class TestMemoryStoreTierGovernance:
         tool = MemoryStoreTool()
         from types import SimpleNamespace
 
-        resolve = AsyncMock(return_value=SimpleNamespace(teamId="team-1", isAdmin=True))
+        resolve = AsyncMock(
+            return_value=SimpleNamespace(team_id="team-1", is_admin=True)
+        )
         stack, enqueue = self._patches(hold_buffer=True, resolve_store_team=resolve)
         with stack:
             result = await tool._execute(
@@ -631,7 +633,7 @@ class TestMemoryStoreTierGovernance:
         from types import SimpleNamespace
 
         resolve = AsyncMock(
-            return_value=SimpleNamespace(teamId="team-1", isAdmin=False)
+            return_value=SimpleNamespace(team_id="team-1", is_admin=False)
         )
         stack, enqueue = self._patches(hold_buffer=True, resolve_store_team=resolve)
         with stack:

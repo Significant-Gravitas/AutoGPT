@@ -12,28 +12,18 @@ don't have it at all.)
 
 ## Hold new memories for review
 
-The core control is **Hold new memories for review**. When it's on, new memories
-your agents learn are held as **tentative** until an admin reviews them — so a
-single run can't quietly change what the whole organization treats as true. When
-it's off, memories become usable as soon as they're learned.
+The core control is **Hold new memories for review**. When it's on, organization
+and team memories written by non-admin members are held as **tentative** until
+an admin reviews them. Admin writes remain active immediately. When the control
+is off, every authorized shared-memory write becomes active immediately.
 
-Reviewing tentative memories happens in an admin **review queue**: admins see
-what's pending and approve or reject each item.
+The **review queue** combines tentative organization and team memories. Admins
+can approve an item to make it active or reject it to retract it. The setting
+defaults to on and fails closed to on if it cannot be read.
 
-## Current status
+## Permissions
 
-The **Shared memory** card ships with the concept and the toggle laid out, but
-the interactive parts are **not yet functional** — they're waiting on backend
-support that hasn't been built:
-
-- The **Hold new memories for review** toggle is shown **disabled**. There's no
-  way to persist an org memory setting yet (the organization update endpoint
-  doesn't accept a settings value), so the toggle can't be saved.
-- The **review queue** is flagged as unavailable. The endpoints to list
-  tentative memories for an org or team, and to approve or reject them, don't
-  exist yet. The memory-tiers backend shipped **per-user admin tools**
-  (`/api/admin/memory/*`) and deliberately deferred the org-level review flow.
-
-When the backend endpoints land, the toggle will become live and the review
-queue will open up. Until then, the card documents the intended behavior and
-marks the blocked pieces so there are no surprises.
+Only organization owners and admins can change the hold setting or act on the
+review queue. Regular members can use shared memory according to their active
+organization and team memberships, but cannot bypass review or govern another
+organization's queue.

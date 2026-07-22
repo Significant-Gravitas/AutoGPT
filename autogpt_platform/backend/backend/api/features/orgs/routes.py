@@ -13,6 +13,7 @@ from autogpt_libs.auth import (
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Query, Security, UploadFile
+from fastapi.responses import FileResponse
 
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import media as store_media
@@ -118,6 +119,12 @@ async def update_org(
 
 
 _AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+_AVATAR_EXTENSIONS_BY_CONTENT_TYPE = {
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/gif": {".gif"},
+    "image/webp": {".webp"},
+}
 
 
 @router.post(
@@ -157,6 +164,11 @@ async def upload_org_avatar(
                 f"{', '.join(sorted(_AVATAR_ALLOWED_EXTENSIONS))}"
             ),
         )
+    if extension not in _AVATAR_EXTENSIONS_BY_CONTENT_TYPE[file.content_type]:
+        raise HTTPException(
+            400,
+            detail="Avatar file extension does not match its content type",
+        )
 
     try:
         avatar_url = await store_media.upload_media(
@@ -168,6 +180,28 @@ async def upload_org_avatar(
         raise HTTPException(400, detail=str(e)) from e
 
     return await org_db.update_org(org_id, UpdateOrgData(avatar_url=avatar_url))
+
+
+@router.get(
+    "/{org_id}/avatar/{filename}",
+    summary="Get organization avatar",
+    tags=["orgs"],
+    response_class=FileResponse,
+)
+async def get_org_avatar(
+    org_id: str,
+    filename: str,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> FileResponse:
+    if not await org_db.is_org_member(org_id, user_id):
+        raise HTTPException(403, detail="Not a member of this organization")
+    extension = os.path.splitext(filename)[1].lower()
+    if extension not in _AVATAR_ALLOWED_EXTENSIONS:
+        raise HTTPException(404, detail="Avatar not found")
+    path = store_media.get_local_media_path(f"orgs/{org_id}/images/{filename}")
+    if not path.is_file():
+        raise HTTPException(404, detail="Avatar not found")
+    return FileResponse(path)
 
 
 @router.delete(

@@ -14,6 +14,10 @@ from backend.copilot.graphiti._format import (
 )
 from backend.copilot.graphiti.client import get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.lifecycle import (
+    active_shared_search_filter,
+    filter_active_shared_edges,
+)
 from backend.copilot.graphiti.tiers import (
     MemoryTier,
     TierError,
@@ -28,6 +32,12 @@ from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 _MAX_LIMIT = 50
+
+
+def _search_config(limit: int):
+    from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
+
+    return EDGE_HYBRID_SEARCH_RRF.model_copy(update={"limit": limit}, deep=True)
 
 
 class MemorySearchTool(BaseTool):
@@ -148,18 +158,35 @@ class MemorySearchTool(BaseTool):
 
         async def _search_one(target):
             client = await get_graphiti_client(target.group_id)
-            return await asyncio.gather(
-                client.search(
-                    query=query,
-                    group_ids=[target.group_id],
-                    num_results=limit,
-                ),
-                client.retrieve_episodes(
-                    reference_time=now,
-                    group_ids=[target.group_id],
-                    last_n=5,
-                ),
+            if target.tier == MemoryTier.personal:
+                edge_results, episodes = await asyncio.gather(
+                    client.search_(
+                        query=query,
+                        config=_search_config(limit),
+                        group_ids=[target.group_id],
+                    ),
+                    client.retrieve_episodes(
+                        reference_time=now,
+                        group_ids=[target.group_id],
+                        last_n=5,
+                    ),
+                )
+                edges = edge_results.edges if edge_results is not None else []
+                return edges, episodes
+            edge_results = await client.search_(
+                query=query,
+                config=_search_config(_MAX_LIMIT),
+                group_ids=[target.group_id],
+                search_filter=active_shared_search_filter(),
             )
+            edges = edge_results.edges if edge_results is not None else []
+            active_edges = await filter_active_shared_edges(
+                target.group_id,
+                edges,
+                driver=getattr(client, "graph_driver", None)
+                or getattr(client, "driver", None),
+            )
+            return active_edges, []
 
         # Per-tier failures are non-fatal — a flaky shared graph must not
         # sink a personal search. Only surface "unavailable" when every

@@ -32,3 +32,17 @@ class MemoryActionResult(BaseModel):
     applied: bool  # False when the edge was already resolved (idempotent no-op)
     tier: str
     team_id: str | None = None
+
+
+class SharedMemoryOrgAccess(BaseModel):
+    """Prisma-free org membership facts for executor and scheduler processes."""
+
+    is_admin: bool
+
+
+class SharedMemoryTeamAccess(BaseModel):
+    """Prisma-free active team membership used by tiered memory routing."""
+
+    team_id: str
+    name: str
+    is_admin: bool

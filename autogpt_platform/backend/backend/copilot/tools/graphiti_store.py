@@ -307,10 +307,10 @@ class MemoryStoreTool(BaseTool):
                 )
             except TierError as exc:
                 return ErrorResponse(message=exc.message, session_id=session.session_id)
-            admin = bool(membership.isAdmin)
+            admin = membership.is_admin
             held = (not admin) and await hold_buffer_enabled(org_id)
             memory_status = MemoryStatus.tentative if held else MemoryStatus.active
-            target_group_id = derive_team_group_id(membership.teamId)
+            target_group_id = derive_team_group_id(membership.team_id)
 
         envelope = MemoryEnvelope(
             content=content,

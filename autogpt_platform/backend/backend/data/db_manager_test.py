@@ -1,4 +1,8 @@
-from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
+from .db_manager import (
+    DatabaseManager,
+    DatabaseManagerAsyncClient,
+    DatabaseManagerClient,
+)
 
 
 def test_async_client_exposes_chat_methods() -> None:
@@ -27,3 +31,14 @@ def test_owner_grant_validator_is_registered_on_rpc_service_and_client() -> None
     assert hasattr(DatabaseManagerAsyncClient, "validate_execution_credentials_owner")
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.validate_execution_credentials_owner)
+
+
+def test_shared_memory_access_is_registered_on_rpc_clients() -> None:
+    for method in (
+        "get_shared_memory_org_access",
+        "list_shared_memory_team_access",
+        "get_shared_memory_hold_buffer",
+    ):
+        assert method in DatabaseManager.__dict__
+        assert method in DatabaseManagerClient.__dict__
+        assert method in DatabaseManagerAsyncClient.__dict__

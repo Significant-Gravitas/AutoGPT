@@ -15,6 +15,7 @@ from backend.data.org_migration import (
 )
 from backend.util.exceptions import NotFoundError
 
+from .memory_model import SharedMemoryOrgAccess, SharedMemoryTeamAccess
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,71 @@ def _coerce_settings_dict(settings) -> dict:
     if isinstance(settings, dict):
         return dict(settings)
     return {}
+
+
+async def get_shared_memory_org_access(
+    org_id: str, user_id: str
+) -> SharedMemoryOrgAccess | None:
+    """Return active org access without leaking a Prisma model over RPC."""
+    member = await prisma.orgmember.find_first(
+        where={
+            "orgId": org_id,
+            "userId": user_id,
+            "status": "ACTIVE",
+            "Org": {"deletedAt": None},
+        }
+    )
+    if member is None:
+        return None
+    return SharedMemoryOrgAccess(is_admin=bool(member.isAdmin or member.isOwner))
+
+
+async def list_shared_memory_team_access(
+    org_id: str, user_id: str
+) -> list[SharedMemoryTeamAccess]:
+    """Return the caller's active, non-archived teams for memory routing."""
+    memberships = await prisma.teammember.find_many(
+        where={
+            "userId": user_id,
+            "status": "ACTIVE",
+            "Team": {
+                "is": {
+                    "orgId": org_id,
+                    "archivedAt": None,
+                    "Org": {
+                        "is": {
+                            "deletedAt": None,
+                            "Members": {
+                                "some": {"userId": user_id, "status": "ACTIVE"}
+                            },
+                        }
+                    },
+                }
+            },
+        },
+        include={"Team": True},
+    )
+    return [
+        SharedMemoryTeamAccess(
+            team_id=membership.teamId,
+            name=membership.Team.name,
+            is_admin=membership.isAdmin,
+        )
+        for membership in memberships
+        if membership.Team is not None
+    ]
+
+
+async def get_shared_memory_hold_buffer(org_id: str) -> bool:
+    """Return the review-buffer setting, failing closed when it is unavailable."""
+    org = await prisma.organization.find_unique(where={"id": org_id})
+    if org is None or org.deletedAt is not None:
+        return True
+    settings = _coerce_settings_dict(org.settings)
+    memory = settings.get("memory")
+    if not isinstance(memory, dict):
+        return True
+    return bool(memory.get("holdBuffer", True))
 
 
 async def _find_personal_org_member(user_id: str):
@@ -339,6 +405,18 @@ async def list_user_orgs(user_id: str) -> list[OrgResponse]:
             continue
         results.append(OrgResponse.from_db(org))
     return results
+
+
+async def is_org_member(org_id: str, user_id: str) -> bool:
+    member = await prisma.orgmember.find_first(
+        where={
+            "orgId": org_id,
+            "userId": user_id,
+            "status": "ACTIVE",
+            "Org": {"deletedAt": None},
+        }
+    )
+    return member is not None
 
 
 async def get_org(org_id: str) -> OrgResponse:

@@ -34,7 +34,13 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_shared_memory_hold_buffer,
+    get_shared_memory_org_access,
+    get_user_default_team,
+    list_shared_memory_team_access,
+    resolve_default_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -478,6 +484,9 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    get_shared_memory_org_access = _(get_shared_memory_org_access)
+    list_shared_memory_team_access = _(list_shared_memory_team_access)
+    get_shared_memory_hold_buffer = _(get_shared_memory_hold_buffer)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -625,6 +634,11 @@ class DatabaseManagerClient(AppServiceClient):
     spend_org_credits = _(d.spend_org_credits)
     get_org_credits = _(d.get_org_credits)
     get_personal_org_owner = _(d.get_personal_org_owner)
+
+    # Orgs
+    get_shared_memory_org_access = _(d.get_shared_memory_org_access)
+    list_shared_memory_team_access = _(d.list_shared_memory_team_access)
+    get_shared_memory_hold_buffer = _(d.get_shared_memory_hold_buffer)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -863,6 +877,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    get_shared_memory_org_access = d.get_shared_memory_org_access
+    list_shared_memory_team_access = d.list_shared_memory_team_access
+    get_shared_memory_hold_buffer = d.get_shared_memory_hold_buffer
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
