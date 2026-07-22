@@ -18,6 +18,10 @@ class UpdateOrgRequest(BaseModel):
     slug: str | None = Field(None, pattern=r"^[a-z0-9][a-z0-9-]*$")
     description: str | None = None
     avatar_url: str | None = None
+    # Shared-memory hold buffer toggle. None → leave unchanged. Persisted to
+    # Organization.settings["memory"]["holdBuffer"] — the exact key
+    # copilot/graphiti/tiers.hold_buffer_enabled reads.
+    memory_hold_buffer: bool | None = None
 
 
 class UpdateOrgData(BaseModel):
@@ -30,6 +34,31 @@ class UpdateOrgData(BaseModel):
     slug: str | None = None
     description: str | None = None
     avatar_url: str | None = None
+    memory_hold_buffer: bool | None = None
+
+
+def _hold_buffer_from_settings(settings) -> bool:
+    """Read ``settings["memory"]["holdBuffer"]``, defaulting to True.
+
+    Mirrors ``copilot/graphiti/tiers.hold_buffer_enabled`` exactly (same key
+    path, same default) so the API surfaces the value the shared-write
+    governance path actually enforces. Any missing/malformed setting → True
+    (the safer, review-gated default). Handles both a parsed dict and the raw
+    JSON-string form the settings column can hold.
+    """
+    if isinstance(settings, str):
+        import json
+
+        try:
+            settings = json.loads(settings)
+        except (json.JSONDecodeError, TypeError):
+            return True
+    if not isinstance(settings, dict):
+        return True
+    memory = settings.get("memory")
+    if not isinstance(memory, dict):
+        return True
+    return bool(memory.get("holdBuffer", True))
 
 
 class OrgResponse(BaseModel):
@@ -41,6 +70,8 @@ class OrgResponse(BaseModel):
     is_personal: bool
     member_count: int
     created_at: datetime
+    # Reflects Organization.settings["memory"]["holdBuffer"]; True when absent.
+    memory_hold_buffer: bool = True
 
     @staticmethod
     def from_db(org, member_count: int = 0) -> "OrgResponse":
@@ -53,6 +84,9 @@ class OrgResponse(BaseModel):
             is_personal=org.isPersonal,
             member_count=member_count,
             created_at=org.createdAt,
+            memory_hold_buffer=_hold_buffer_from_settings(
+                getattr(org, "settings", None)
+            ),
         )
 
 
