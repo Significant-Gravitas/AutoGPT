@@ -442,7 +442,19 @@ async def _call_openai_responses(
         temperature=temperature if temperature is not None else openai.omit,
         parallel_tool_calls=parallel_tool_calls,
         text=text_config,  # type: ignore[arg-type]
+        # ``store=False`` keeps conversation state out of OpenAI's servers —
+        # we replay the full input on every turn instead. The cost is that a
+        # reasoning item (gpt-5*, o3*) emitted on turn N can't be referenced
+        # by its ``rs_...`` id on turn N+1 (nothing was persisted to look up;
+        # OpenAI 404s with "Item with id 'rs_...' not found"). Asking for
+        # ``reasoning.encrypted_content`` makes OpenAI return the reasoning
+        # item with an opaque encrypted blob the orchestrator re-inlines
+        # verbatim next turn, so the model gets its prior reasoning back
+        # without server-side state. Harmless for non-reasoning models
+        # (gpt-4.1/4o) — they emit no reasoning items, so nothing comes back.
+        # See OPEN-3187.
         store=False,
+        include=["reasoning.encrypted_content"],
         timeout=timeout_seconds,
         # ``omit`` is only valid for TYPED params — the SDK strips it
         # there. ``extra_body`` flows raw into ``options.extra_json``

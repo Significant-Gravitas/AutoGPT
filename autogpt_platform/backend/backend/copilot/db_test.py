@@ -7,13 +7,17 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from prisma.enums import ResourceVisibility
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
     get_chat_messages_paginated,
+    get_user_chat_sessions,
     set_turn_duration,
+    update_chat_message_tool_calls,
+    update_chat_session_pinned,
     update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
@@ -62,6 +66,7 @@ def _make_session(
         title=None,
         metadata={},
         chatStatus="idle",
+        isPinned=False,
         # Sharing fields added by the chat-sharing PR — even with
         # ``model_construct`` Pydantic v2 still validates required
         # non-optional columns, so the mock needs them explicitly.
@@ -618,6 +623,53 @@ async def test_update_message_content_by_sequence_sanitizes_content():
     )
 
 
+# ---------- update_chat_session_pinned ----------
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_success():
+    """Returns True and writes isPinned scoped to (session_id, user_id)."""
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", True)
+
+    assert result is True
+    update_many.assert_called_once_with(
+        where={"id": "sess-1", "userId": "user-abc"},
+        data={"isPinned": True},
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_not_found():
+    """Returns False when no row matches (session missing or wrong user)."""
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", False)
+
+    assert result is False
+
+
+# ---------- get_user_chat_sessions ordering ----------
+
+
+@pytest.mark.asyncio
+async def test_get_user_chat_sessions_orders_pinned_first():
+    """Pinned sessions must be ordered ahead of unpinned, then by recency."""
+    find_many = AsyncMock(return_value=[])
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
+    ):
+        await get_user_chat_sessions("user-abc", limit=10, offset=0)
+
+    order = find_many.call_args.kwargs["order"]
+    assert order == [{"isPinned": "desc"}, {"updatedAt": "desc"}]
+
+
 # NOTE: previously this file had a separate suite for ``db.get_chat_session``
 # (windowed eager-load). That function was removed in favour of going through
 # ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
@@ -661,10 +713,12 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             metadata="{}",
             totalPromptTokens=0,
             totalCompletionTokens=0,
+            isPinned=False,
             isShared=False,
             shareToken=None,
             sharedAt=None,
             autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
         ),
         PrismaChatSession(
             id="s2",
@@ -678,10 +732,12 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             metadata="{}",
             totalPromptTokens=0,
             totalCompletionTokens=0,
+            isPinned=False,
             isShared=False,
             shareToken=None,
             sharedAt=None,
             autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
         ),
     ]
     find_many = AsyncMock(return_value=rows)
@@ -803,3 +859,44 @@ async def test_add_chat_message_omits_metadata_when_none() -> None:
         )
     data = create.call_args.kwargs["data"]
     assert "metadata" not in data
+
+
+# ---------- update_chat_message_tool_calls ----------
+
+_TOOL_CALLS = [
+    {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "web_search", "arguments": "{}"},
+    }
+]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_success():
+    """Returns True when the unique-keyed update finds the row."""
+    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+        mock_prisma.return_value.update = AsyncMock(return_value=object())
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is True
+    where = mock_prisma.return_value.update.call_args.kwargs["where"]
+    assert where == {"sessionId_sequence": {"sessionId": "sess-1", "sequence": 7}}
+    payload = mock_prisma.return_value.update.call_args.kwargs["data"]["toolCalls"]
+    assert payload.data == _TOOL_CALLS
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_not_found():
+    """Returns False (so the caller's pending-save flag stays set) when no row matches."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update = AsyncMock(return_value=None)
+
+        result = await update_chat_message_tool_calls("sess-1", 99, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()

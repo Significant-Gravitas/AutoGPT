@@ -53,7 +53,7 @@ class ValidateAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict | None = None,
+        agent_json: dict | str | None = None,
         agent_json_ref: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
@@ -70,8 +70,9 @@ class ValidateAgentGraphTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide a valid agent JSON object via agent_json, or "
-                "agent_json_ref pointing at the workspace agent file."
+                "Please provide a valid agent JSON object via agent_json (inline "
+                'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
+                "at the workspace agent file."
             ),
             missing_error="Missing or invalid agent_json parameter",
             invalid_error="Missing or invalid agent_json parameter",

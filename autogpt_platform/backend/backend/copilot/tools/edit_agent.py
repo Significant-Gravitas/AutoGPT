@@ -69,7 +69,7 @@ class EditAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_id: str = "",
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
         agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
@@ -117,7 +117,8 @@ class EditAgentTool(BaseTool):
             session_id=session_id,
             missing_message=(
                 "Please provide agent_json with the complete updated agent "
-                "graph, or agent_json_ref pointing at the workspace agent file."
+                'graph (inline or as an "@@agptfile:<path>" string), or '
+                "agent_json_ref pointing at the workspace agent file."
             ),
         )
         if resolve_error is not None:

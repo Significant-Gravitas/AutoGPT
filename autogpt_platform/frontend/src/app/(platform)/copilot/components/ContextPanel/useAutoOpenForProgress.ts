@@ -3,10 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useCopilotStreamStore } from "../../copilotStreamStore";
 import { useCopilotUIStore } from "../../store";
-import {
-  getLatestTaskList,
-  type TodoItem,
-} from "./components/ProgressTab/helpers";
+import { getLatestTaskList, type TodoItem } from "../TaskProgressBar/helpers";
 
 function hasActiveWork(todos: TodoItem[] | null): boolean {
   if (!todos || todos.length === 0) return false;
@@ -20,7 +17,10 @@ function hasActiveWork(todos: TodoItem[] | null): boolean {
  * task list goes "active" (has any incomplete todo). Re-arms when the active
  * state flips back to inactive so a subsequent task list reopens the panel.
  */
-export function useAutoOpenForProgress(sessionId: string | null) {
+export function useAutoOpenForProgress(
+  sessionId: string | null,
+  enabled = true,
+) {
   const openContextPanelForProgress = useCopilotUIStore(
     (s) => s.openContextPanelForProgress,
   );
@@ -38,6 +38,7 @@ export function useAutoOpenForProgress(sessionId: string | null) {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!enabled) return;
     const todos = messages ? getLatestTaskList(messages) : null;
     const active = hasActiveWork(todos);
     if (active && !wasActiveRef.current) {
@@ -46,5 +47,5 @@ export function useAutoOpenForProgress(sessionId: string | null) {
     } else if (!active && wasActiveRef.current) {
       wasActiveRef.current = false;
     }
-  }, [messages, openContextPanelForProgress]);
+  }, [enabled, messages, openContextPanelForProgress]);
 }

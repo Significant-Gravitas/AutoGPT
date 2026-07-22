@@ -95,6 +95,23 @@ async def test_ref_agptfile_token_is_read(mocker):
 
 
 @pytest.mark.asyncio
+async def test_agent_json_string_agptfile_token_is_read(mocker):
+    """An @@agptfile: token passed via agent_json itself (the flow the
+    agent-generation guide documents) resolves like agent_json_ref."""
+    session = make_session(_USER_ID)
+    read = mocker.patch(
+        f"{_MODULE}.read_file_bytes",
+        return_value=b'{"nodes": [{"id": "n1"}], "links": []}',
+    )
+    graph, err = await resolve_agent_json_input(
+        "@@agptfile:workspace:///agent.json", None, _USER_ID, session
+    )
+    assert err is None
+    assert graph == _GRAPH
+    assert read.call_args.args[0] == "workspace:///agent.json"
+
+
+@pytest.mark.asyncio
 async def test_bare_filename_becomes_workspace_path(mocker):
     session = make_session(_USER_ID)
     read = mocker.patch(

@@ -83,7 +83,7 @@ class CreateAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
         agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
@@ -116,7 +116,8 @@ class CreateAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete agent graph, or "
+                "Please provide agent_json with the complete agent graph "
+                '(inline or as an "@@agptfile:<path>" string), or '
                 "agent_json_ref pointing at the workspace agent file. "
                 "Use find_block to discover blocks, then generate the JSON."
             ),

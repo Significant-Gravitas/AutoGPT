@@ -16,6 +16,7 @@ import random
 from datetime import datetime
 
 import prisma.enums
+import prisma.models
 import pytest
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
@@ -66,6 +67,18 @@ MAX_EXECUTIONS_PER_GRAPH = (
 MIN_REVIEWS_PER_VERSION = 1  # Each version will have between 1-3 reviews
 MAX_REVIEWS_PER_VERSION = 5  # Total reviews depends on number of versions created
 
+# Organizations / teams (tenancy)
+NUM_SHARED_ORGS = 5  # Non-personal orgs shared across a subset of users
+MIN_SHARED_ORG_MEMBERS = 2  # Additional members beyond the owner
+MAX_SHARED_ORG_MEMBERS = 5
+MIN_EXTRA_TEAMS_PER_SHARED_ORG = 1  # Extra teams beyond the default team
+MAX_EXTRA_TEAMS_PER_SHARED_ORG = 2
+MIN_SHARED_ORG_BALANCE = 1000  # Random positive OrgBalance for shared orgs
+MAX_SHARED_ORG_BALANCE = 100_000
+# Fraction of tenancy-scoped resources routed to a shared org/team the user
+# belongs to (instead of the user's personal org) so shared-visibility data exists.
+SHARED_TENANCY_RATIO = 0.2
+
 
 def get_video_url():
     """Generate a consistent video URL using a placeholder service."""
@@ -79,6 +92,195 @@ def get_video_url():
     ]
     video_id = random.choice(video_ids)
     return f"https://www.youtube.com/watch?v={video_id}"
+
+
+async def create_personal_org(db: Prisma, user: prisma.models.User) -> tuple[str, str]:
+    """Create a user's personal org + default team.
+
+    Mirrors ``backend.api.features.orgs.db._create_personal_org_for_user``:
+    Organization (isPersonal) + owner OrgMember + default Team + TeamMember +
+    OrganizationProfile + FREE OrganizationSeatAssignment + zero OrgBalance.
+    Returns ``(organization_id, default_team_id)``.
+    """
+    slug = faker.unique.slug()
+    local_part = user.email.split("@")[0] if user.email else "user"
+    display_name = user.name or local_part
+
+    org = await db.organization.create(
+        data={
+            "name": display_name,
+            "slug": slug,
+            "isPersonal": True,
+            "bootstrapUserId": user.id,
+            "settings": "{}",
+        }
+    )
+    await db.orgmember.create(
+        data={
+            "orgId": org.id,
+            "userId": user.id,
+            "isOwner": True,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+    team = await db.team.create(
+        data={
+            "name": "Default",
+            "orgId": org.id,
+            "isDefault": True,
+            "joinPolicy": "OPEN",
+            "createdByUserId": user.id,
+        }
+    )
+    await db.teammember.create(
+        data={
+            "teamId": team.id,
+            "userId": user.id,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+    await db.organizationprofile.create(
+        data={
+            "organizationId": org.id,
+            "username": slug,
+            "displayName": display_name,
+        }
+    )
+    await db.organizationseatassignment.create(
+        data={
+            "organizationId": org.id,
+            "userId": user.id,
+            "seatType": "FREE",
+            "status": "ACTIVE",
+            "assignedByUserId": user.id,
+        }
+    )
+    await db.orgbalance.create(data={"orgId": org.id, "balance": 0})
+    return org.id, team.id
+
+
+async def create_shared_org(
+    db: Prisma,
+    owner: prisma.models.User,
+    members: list[prisma.models.User],
+) -> tuple[str, list[str], dict[str, list[str]]]:
+    """Create a non-personal org shared by ``owner`` + ``members``.
+
+    Adds a default team (everyone) plus 1-2 extra teams (random subsets) and a
+    random positive OrgBalance. Returns ``(organization_id, member_ids,
+    team_membership)`` where ``team_membership`` maps each team id to the user
+    ids that belong to it.
+    """
+    slug = faker.unique.slug()
+    name = faker.company()
+    all_members = [owner, *members]
+
+    org = await db.organization.create(
+        data={
+            "name": name,
+            "slug": slug,
+            "description": faker.catch_phrase(),
+            "isPersonal": False,
+            "bootstrapUserId": owner.id,
+            "settings": "{}",
+        }
+    )
+
+    # Owner is owner+admin; the rest are members (a minority promoted to admin).
+    await db.orgmember.create(
+        data={
+            "orgId": org.id,
+            "userId": owner.id,
+            "isOwner": True,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+    for member in members:
+        await db.orgmember.create(
+            data={
+                "orgId": org.id,
+                "userId": member.id,
+                "isAdmin": random.random() < 0.3,
+                "status": "ACTIVE",
+            }
+        )
+    for member in all_members:
+        await db.organizationseatassignment.create(
+            data={
+                "organizationId": org.id,
+                "userId": member.id,
+                "seatType": "FREE",
+                "status": "ACTIVE",
+                "assignedByUserId": owner.id,
+            }
+        )
+
+    await db.organizationprofile.create(
+        data={
+            "organizationId": org.id,
+            "username": slug,
+            "displayName": name,
+        }
+    )
+    await db.orgbalance.create(
+        data={
+            "orgId": org.id,
+            "balance": random.randint(MIN_SHARED_ORG_BALANCE, MAX_SHARED_ORG_BALANCE),
+        }
+    )
+
+    team_membership: dict[str, list[str]] = {}
+
+    # Default team contains everyone.
+    default_team = await db.team.create(
+        data={
+            "name": "Default",
+            "orgId": org.id,
+            "isDefault": True,
+            "joinPolicy": "OPEN",
+            "createdByUserId": owner.id,
+        }
+    )
+    for member in all_members:
+        await db.teammember.create(
+            data={
+                "teamId": default_team.id,
+                "userId": member.id,
+                "isAdmin": member.id == owner.id,
+                "status": "ACTIVE",
+            }
+        )
+    team_membership[default_team.id] = [m.id for m in all_members]
+
+    # Extra teams get a random subset of members.
+    num_extra = random.randint(
+        MIN_EXTRA_TEAMS_PER_SHARED_ORG, MAX_EXTRA_TEAMS_PER_SHARED_ORG
+    )
+    for i in range(num_extra):
+        team = await db.team.create(
+            data={
+                "name": f"{faker.word().capitalize()} Team {i + 1}",
+                "orgId": org.id,
+                "joinPolicy": random.choice(["OPEN", "PRIVATE"]),
+                "createdByUserId": owner.id,
+            }
+        )
+        subset = random.sample(all_members, k=random.randint(1, len(all_members)))
+        for member in subset:
+            await db.teammember.create(
+                data={
+                    "teamId": team.id,
+                    "userId": member.id,
+                    "isAdmin": member.id == owner.id,
+                    "status": "ACTIVE",
+                }
+            )
+        team_membership[team.id] = [m.id for m in subset]
+
+    return org.id, [m.id for m in all_members], team_membership
 
 
 async def main():
@@ -100,6 +302,51 @@ async def main():
         )
         users.append(user)
 
+    # Insert personal Organizations (one per user) + a handful of shared orgs.
+    print(f"Creating personal orgs for {len(users)} users")
+    personal_orgs: dict[str, tuple[str, str]] = {}
+    for user in users:
+        personal_orgs[user.id] = await create_personal_org(db, user)
+
+    print(f"Creating {NUM_SHARED_ORGS} shared orgs")
+    # org_id -> {team_id -> [member user ids]}
+    shared_org_teams: dict[str, dict[str, list[str]]] = {}
+    # user_id -> [org ids the user is a member of]
+    user_shared_orgs: dict[str, list[str]] = {}
+    if len(users) > 1:
+        for _ in range(NUM_SHARED_ORGS):
+            owner = random.choice(users)
+            member_pool = [u for u in users if u.id != owner.id]
+            num_members = min(
+                random.randint(MIN_SHARED_ORG_MEMBERS, MAX_SHARED_ORG_MEMBERS),
+                len(member_pool),
+            )
+            members = random.sample(member_pool, k=num_members)
+            org_id, member_ids, team_membership = await create_shared_org(
+                db, owner, members
+            )
+            shared_org_teams[org_id] = team_membership
+            for uid in member_ids:
+                user_shared_orgs.setdefault(uid, []).append(org_id)
+
+    def pick_tenancy(user_id: str) -> tuple[str, str]:
+        """Pick ``(organization_id, team_id)`` for a resource owned by a user.
+
+        Most resources land in the user's personal org; a random minority land
+        in a shared org/team the user belongs to so shared-visibility data exists.
+        """
+        candidate_org_ids = user_shared_orgs.get(user_id, [])
+        if candidate_org_ids and random.random() < SHARED_TENANCY_RATIO:
+            org_id = random.choice(candidate_org_ids)
+            member_teams = [
+                team_id
+                for team_id, member_ids in shared_org_teams[org_id].items()
+                if user_id in member_ids
+            ]
+            if member_teams:
+                return org_id, random.choice(member_teams)
+        return personal_orgs[user_id]
+
     # Insert AgentBlocks
     agent_blocks = []
     print(f"Inserting {NUM_AGENT_BLOCKS} agent blocks")
@@ -120,12 +367,15 @@ async def main():
         for _ in range(
             random.randint(MIN_GRAPHS_PER_USER, MAX_GRAPHS_PER_USER)
         ):  # Adjust the range to create more graphs per user if desired
+            org_id, team_id = pick_tenancy(user.id)
             graph = await db.agentgraph.create(
                 data=AgentGraphCreateInput(
                     name=faker.sentence(nb_words=3),
                     description=faker.text(max_nb_chars=200),
                     userId=user.id,
                     isActive=True,
+                    organizationId=org_id,
+                    teamId=team_id,
                 )
             )
             agent_graphs.append(graph)
@@ -157,6 +407,7 @@ async def main():
         num_presets = random.randint(MIN_PRESETS_PER_USER, MAX_PRESETS_PER_USER)
         for _ in range(num_presets):  # Create 1 AgentPreset per user
             graph = random.choice(agent_graphs)
+            org_id, team_id = pick_tenancy(user.id)
             preset = await db.agentpreset.create(
                 data={
                     "name": faker.sentence(nb_words=3),
@@ -165,6 +416,8 @@ async def main():
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
                     "isActive": True,
+                    "organizationId": org_id,
+                    "teamId": team_id,
                 }
             )
             agent_presets.append(preset)
@@ -206,6 +459,7 @@ async def main():
                 (p for p in profiles if p.userId == graph.userId), None
             )
 
+            org_id, team_id = pick_tenancy(user.id)
             library_agent = await db.libraryagent.create(
                 data={
                     "userId": user.id,
@@ -218,6 +472,8 @@ async def main():
                     "isCreatedByUser": random.choice([True, False]),
                     "isArchived": random.choice([True, False]),
                     "isDeleted": random.choice([True, False]),
+                    "organizationId": org_id,
+                    "teamId": team_id,
                 }
             )
             library_agents.append(library_agent)
@@ -241,6 +497,7 @@ async def main():
                 else None
             )
 
+            org_id, team_id = pick_tenancy(user.id)
             graph_execution_data.append(
                 {
                     "agentGraphId": graph.id,
@@ -249,6 +506,8 @@ async def main():
                     "executionStatus": prisma.enums.AgentExecutionStatus.COMPLETED,
                     "startedAt": faker.date_time_this_year(),
                     "agentPresetId": preset.id if preset else None,
+                    "organizationId": org_id,
+                    "teamId": team_id,
                 }
             )
 
@@ -508,6 +767,7 @@ async def main():
         users, k=int(NUM_USERS * 0.3)
     ):  # 30% of users have webhooks
         for _ in range(random.randint(1, 3)):
+            org_id, team_id = pick_tenancy(user.id)
             await db.integrationwebhook.create(
                 data=IntegrationWebhookCreateInput(
                     userId=user.id,
@@ -522,6 +782,8 @@ async def main():
                     config=prisma.Json({"url": faker.url()}),
                     secret=str(faker.sha256()),
                     providerWebhookId=str(faker.uuid4()),
+                    organizationId=org_id,
+                    teamId=team_id,
                 )
             )
 
@@ -529,6 +791,7 @@ async def main():
     print(f"Inserting {NUM_USERS} api keys")
     for user in users:
         api_key = APIKeySmith().generate_key()
+        org_id, team_id = pick_tenancy(user.id)
         await db.apikey.create(
             data={
                 "name": faker.word(),
@@ -543,6 +806,8 @@ async def main():
                 ],
                 "description": faker.text(),
                 "userId": user.id,
+                "organizationId": org_id,
+                "teamId": team_id,
             }
         )
 

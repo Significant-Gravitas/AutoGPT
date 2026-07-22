@@ -64,7 +64,7 @@ class CustomizeAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
         agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,

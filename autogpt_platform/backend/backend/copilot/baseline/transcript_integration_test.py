@@ -105,7 +105,7 @@ class TestResolveBaselineModel:
 
         assert (
             ChatConfig.model_fields["fast_standard_model"].default
-            == "anthropic/claude-sonnet-4-6"
+            == "anthropic/claude-sonnet-5"
         )
 
     def test_fast_advanced_default_is_opus(self):
@@ -116,7 +116,7 @@ class TestResolveBaselineModel:
 
         assert (
             ChatConfig.model_fields["fast_advanced_model"].default
-            == "anthropic/claude-opus-4.7"
+            == "anthropic/claude-opus-4-8"
         )
 
     def test_standard_and_advanced_cells_differ_on_fast(self):

@@ -32,10 +32,16 @@ from .models import ErrorResponse
 
 # Structured (not bare ``{"type": "object"}``) so constrained tool-arg decoders
 # have keys to follow instead of collapsing the value to ``{}``. Nested props are
-# kept type-only to stay within the schema char budget.
+# kept type-only to stay within the schema char budget. The ``string`` type is
+# part of the contract: constrained decoders must be allowed to emit an
+# ``@@agptfile:<path>`` reference here instead of the inline graph.
 AGENT_JSON_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "description": "Full agent graph. For large/existing agents use agent_json_ref instead.",
+    "type": ["object", "string"],
+    "description": (
+        "Full agent graph, or the string '@@agptfile:<path>' referencing a "
+        "JSON file. For large/existing agents pass a file reference "
+        "(or use agent_json_ref) instead of inlining the graph."
+    ),
     "properties": {
         "id": {"type": "string"},
         "version": {"type": "integer"},
@@ -68,12 +74,18 @@ async def resolve_agent_json_input(
 
     Returns ``(graph, None)`` on success or ``(None, error_message)`` when the
     input is missing or cannot be parsed. ``agent_json`` (inline) wins when both
-    are supplied. A returned ``(None, None)`` means neither argument carried a
-    usable value — the caller decides which "missing" message to surface.
+    are supplied. A string ``agent_json`` that isn't inline JSON (e.g. a bare
+    ``@@agptfile:`` token on the baseline path) is resolved as a file reference,
+    same as ``agent_json_ref``. A returned ``(None, None)`` means neither
+    argument carried a usable value — the caller decides which "missing" message
+    to surface.
     """
     inline = _coerce_to_graph(agent_json)
     if inline is not None:
         return inline, None
+
+    if isinstance(agent_json, str) and agent_json.strip():
+        return await _resolve_ref(agent_json.strip(), user_id, session)
 
     if isinstance(agent_json_ref, str) and agent_json_ref.strip():
         return await _resolve_ref(agent_json_ref.strip(), user_id, session)
@@ -126,11 +138,11 @@ def _coerce_to_graph(value: Any) -> dict[str, Any] | None:
 async def _resolve_ref(
     ref: str, user_id: str | None, session: ChatSession
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Load and parse an ``agent_json_ref`` value into a graph dict.
+    """Load and parse an agent graph reference into a graph dict.
 
-    Handles three forms: already-expanded JSON text (SDK path), a bare
-    ``@@agptfile:`` token (baseline path), and a plain ``workspace://`` URI or
-    filename.
+    Reached from ``agent_json_ref`` or from a string ``agent_json``. Handles
+    three forms: already-expanded JSON text (SDK path), a bare ``@@agptfile:``
+    token (baseline path), and a plain ``workspace://`` URI or filename.
     """
     # SDK path: the file-ref wrapper already expanded the token to file text.
     inline = _coerce_to_graph(ref)
@@ -140,9 +152,10 @@ async def _resolve_ref(
     uri = _ref_to_uri(ref)
     if uri is None:
         return None, (
-            f"Could not interpret agent_json_ref '{os.path.basename(ref)[:80]}' "
-            "as a workspace file reference. Pass the agent graph as agent_json, "
-            "or a 'workspace:///agent.json' reference as agent_json_ref."
+            f"Could not interpret agent graph reference "
+            f"'{os.path.basename(ref)[:80]}' as a workspace file reference. "
+            "Pass the agent graph inline as agent_json, or a "
+            "'workspace:///agent.json' reference as agent_json_ref."
         )
 
     # Sanitize the reference in error messages so we never echo the raw
@@ -151,13 +164,14 @@ async def _resolve_ref(
     try:
         data = await read_file_bytes(uri, user_id, session)
     except ValueError:
-        return None, f"Could not read agent_json_ref file '{ref_name}'."
+        return None, f"Could not read referenced agent graph file '{ref_name}'."
 
     parsed = _try_parse_json(data.decode("utf-8", errors="replace"))
     if not isinstance(parsed, dict) or not parsed:
         return None, (
-            f"agent_json_ref file '{ref_name}' did not contain a JSON object. "
-            "Ensure the file holds the full agent graph before referencing it."
+            f"Referenced agent graph file '{ref_name}' did not contain a JSON "
+            "object. Ensure the file holds the full agent graph before "
+            "referencing it."
         )
     return parsed, None
 
