@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
 
-from prisma.enums import SubmissionStatus
+from prisma.enums import GrantCapability, SubmissionStatus
 from prisma.models import (
     AgentGraph,
     AgentNode,
@@ -28,6 +28,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.data.grants import grant_covers_version, resolve_graph_grant
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
@@ -1322,6 +1323,25 @@ async def get_graph(
         if library_agent and library_agent.AgentGraph:
             graph = library_agent.AgentGraph
 
+    # Fall back to a team grant (share-with-team): pinned grants open exactly
+    # the pinned version; followLatest grants open the current active version.
+    if graph is None and user_id is not None:
+        if grant := await resolve_graph_grant(
+            user_id, graph_id, capability=GrantCapability.VIEW
+        ):
+            grant_where: AgentGraphWhereInput = {"id": graph_id}
+            if grant.followLatest:
+                grant_where["isActive"] = True
+            else:
+                grant_where["version"] = grant.agentGraphVersion
+            candidate = await AgentGraph.prisma().find_first(
+                where=grant_where,
+                include=AGENT_GRAPH_INCLUDE,
+                order={"version": "desc"},
+            )
+            if candidate is not None and version in (None, candidate.version):
+                graph = candidate
+
     if graph is None:
         return None
 
@@ -1641,20 +1661,41 @@ async def validate_graph_execution_permissions(
             is not None
         )
 
-    # Step 3: Apply permission logic
-    # Access is granted if the user owns it, it's in the marketplace, OR
-    # it's in the user's library ("you added it, you keep it").
+    # Step 3: Check for a team EXECUTE grant on this exact version. Pinned
+    # grants cover only the pinned version; followLatest grants require the
+    # executed version to be the graph's active one. Granted agents live
+    # outside the consumer's library, so a grant satisfies the library
+    # requirement below too.
+    exec_grant = await resolve_graph_grant(
+        user_id, graph_id, capability=GrantCapability.EXECUTE
+    )
+    user_has_exec_grant = (
+        exec_grant is not None
+        and graph is not None
+        and grant_covers_version(exec_grant, graph_version)
+        and (not exec_grant.followLatest or graph.isActive)
+    )
+
+    # Step 4: Apply permission logic
+    # Access is granted if the user owns it, it's in the marketplace, a team
+    # grant covers it, OR it's in the user's library ("you added it, you keep it").
     if not (
         user_owns_graph
         or user_has_in_library
+        or user_has_exec_grant
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
             f"You do not have access to graph #{graph_id} v{graph_version}: "
-            "it is not owned by you, not in your library, "
-            "and not available in the Marketplace"
+            "it is not owned by you, not in your library, not shared with "
+            "your teams, and not available in the Marketplace"
         )
-    elif not (user_has_in_library or owner_has_live_library_entry or is_sub_graph):
+    elif not (
+        user_has_in_library
+        or owner_has_live_library_entry
+        or user_has_exec_grant
+        or is_sub_graph
+    ):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
     # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)

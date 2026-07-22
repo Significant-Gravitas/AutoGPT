@@ -35,6 +35,7 @@ import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.orgs.grant_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
@@ -466,6 +467,11 @@ app.include_router(
     backend.api.features.orgs.team_routes.router,
     tags=["v2", "orgs", "workspaces"],
     prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.grant_routes.router,
+    tags=["v2", "orgs", "grants"],
+    prefix="/api/orgs/{org_id}",
 )
 app.include_router(
     backend.api.features.orgs.invitation_routes.org_router,
