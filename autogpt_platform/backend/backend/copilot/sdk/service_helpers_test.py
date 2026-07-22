@@ -1604,6 +1604,30 @@ class TestStampTurnMessages:
         assert msgs[2].stamps_pending_save is True
         assert msgs[1].stamps_pending_save is False  # user row untouched
 
+    def test_turn_boundary_captured_after_message_cleanup(self):
+        """The stamp's ``start_index`` (``pre_turn_message_count``) MUST be
+        taken after the turn-start cleanup that pops trailing error markers
+        and prunes orphan tool rows. Captured before, it overshoots by the
+        number of popped rows and leaves this turn's first assistant row(s)
+        below ``start_index`` — unstamped — precisely on error-recovery
+        turns. Guard the ordering at the source level: the enormous turn
+        handler can't be driven in a unit test, so pin the invariant that
+        the count assignment follows the last cleanup call."""
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        src = inspect.getsource(stream_chat_completion_sdk)
+        assign_at = src.index("pre_turn_message_count = len(session.messages)")
+        prune_at = src.index("prune_orphan_tool_calls(session.messages")
+        marker_pop_at = src.index("Removing stale error marker")
+        assert (
+            assign_at > prune_at
+        ), "pre_turn_message_count must be captured AFTER prune_orphan_tool_calls"
+        assert (
+            assign_at > marker_pop_at
+        ), "pre_turn_message_count must be captured AFTER error-marker cleanup"
+
 
 class TestChatMessageStampRoundTrip:
     """model survives client-facing serialization; routing_source is

@@ -3956,7 +3956,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Stamping state for THIS turn: messages beyond this index were created
     # by the current turn and get model/routing_source at persist time.
     # Pre-feature history rows (NULL model) must never be back-stamped.
-    pre_turn_message_count = len(session.messages)
     routing_source: RoutingSource = "env"
 
     # The session row is the tenancy anchor; the turn entry's org/team only
@@ -3986,6 +3985,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
     prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
+
+    # Capture the turn-start boundary AFTER the error-marker and orphan-tool
+    # cleanup above: those pops shrink session.messages, so a count taken
+    # before them would overshoot and leave this turn's first assistant
+    # row(s) below _stamp_turn_messages' start_index — unstamped — exactly
+    # on the error-recovery turns whose routing we most want recorded.
+    pre_turn_message_count = len(session.messages)
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
