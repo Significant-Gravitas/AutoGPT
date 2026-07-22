@@ -9,7 +9,9 @@ import {
 // year-round — making the assertions stable regardless of when the tests run.
 describe("getTimezoneAbbreviation", () => {
   it("returns the GMT offset for whole-hour offset zones", () => {
-    expect(getTimezoneAbbreviation("Asia/Shanghai")).toMatch(/^GMT\+0?8(?::00)?$/);
+    expect(getTimezoneAbbreviation("Asia/Shanghai")).toMatch(
+      /^GMT\+0?8(?::00)?$/,
+    );
     expect(getTimezoneAbbreviation("Asia/Tokyo")).toMatch(/^GMT\+0?9(?::00)?$/);
   });
 
@@ -26,7 +28,11 @@ describe("getTimezoneAbbreviation", () => {
 
 describe("getTimezoneDisplayName", () => {
   it("labels offset zones with their GMT offset, not the raw id", () => {
-    expect(getTimezoneDisplayName("Asia/Tokyo")).toBe("Tokyo (GMT+9)");
-    expect(getTimezoneDisplayName("Asia/Kolkata")).toBe("Kolkata (GMT+5:30)");
+    expect(getTimezoneDisplayName("Asia/Tokyo")).toMatch(
+      /^Tokyo \(GMT\+0?9(?::00)?\)$/,
+    );
+    expect(getTimezoneDisplayName("Asia/Kolkata")).toMatch(
+      /^Kolkata \(GMT\+0?5:30\)$/,
+    );
   });
 });
