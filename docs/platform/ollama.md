@@ -192,7 +192,7 @@ Model definitions are centralized in the LLM catalog — see [Managing LLM Model
    ```
    Ollama models use bare model names (no `vendor/` prefix) — the name must match what `ollama list` shows. A run cost of `1` is fine for local usage; cost tracking is disabled for self-hosted instances.
 
-2. **Also add one `LlmModel` name line** in `autogpt_platform/backend/backend/data/llm_registry/llm_models.py` (Ollama section) — that identifier is what block schemas serialize; every model FACT (metadata, costs) lives in the catalog entry itself, and an import-time check refuses to boot if an enum name has no catalog entry. The catalog entry is what centralizes the model's metadata and makes it routable for AutoPilot.
+2. **Also add one `LLMModel` name line** in `autogpt_platform/backend/backend/data/llm_registry/llm_models.py` (Ollama section) — that identifier is what block schemas serialize; every model FACT (metadata, costs) lives in the catalog entry itself, and an import-time check refuses to boot if an enum name has no catalog entry. The catalog entry is what centralizes the model's metadata and makes it routable for AutoPilot.
 
 3. **Rebuild the backend**:
    ```bash

@@ -74,7 +74,7 @@ def _schema_format(query_template: str) -> LiteralString:
 # AgentNode.constantInput stores FULL enum values — mixed bare and
 # provider-prefixed forms (``claude-opus-4-7``, ``moonshotai/kimi-k2.5``),
 # exactly the catalog slugs; graph.migrate_llm_models compares against
-# ``LlmModel.value`` unmodified. Node values therefore map to catalog slugs
+# ``LLMModel.value`` unmodified. Node values therefore map to catalog slugs
 # by IDENTITY — stripping the provider prefix (as an earlier revision did)
 # both misses prefixed models and writes out-of-enum values that the
 # startup migration would stomp to the global fallback.

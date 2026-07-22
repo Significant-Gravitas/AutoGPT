@@ -47,7 +47,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLlmModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -1944,7 +1944,7 @@ def _resolve_sdk_model() -> str | None:
 
 
 async def _resolve_thinking_model_for_user(
-    tier: "CopilotLlmModel",
+    tier: "CopilotLLMModel",
     user_id: str | None,
 ) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
@@ -1980,7 +1980,7 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
 
 
 async def _resolve_sdk_model_for_request(
-    model: "CopilotLlmModel | None",
+    model: "CopilotLLMModel | None",
     session_id: str,
     user_id: str | None = None,
 ) -> tuple[str | None, RoutingSource]:
@@ -2002,7 +2002,7 @@ async def _resolve_sdk_model_for_request(
     if config.claude_agent_model:
         return config.claude_agent_model, "env"
 
-    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -3917,7 +3917,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,

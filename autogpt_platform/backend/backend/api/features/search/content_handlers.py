@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, get_args, get_origin
 from prisma.enums import ContentType
 
 from backend.blocks import get_blocks
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.data.db import query_raw_with_schema
 from backend.util.docs import get_docs_root
 from backend.util.text import split_camelcase
@@ -363,9 +363,9 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
         for provider in info.provider
     ]
 
-    # Check if block has LlmModel field in input schema
+    # Check if block has LLMModel field in input schema
     has_llm_model_field = any(
-        _contains_type(field.annotation, LlmModel)
+        _contains_type(field.annotation, LLMModel)
         for field in block.input_schema.model_fields.values()
     )
 

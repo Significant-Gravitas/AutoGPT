@@ -67,7 +67,7 @@ What each change touches — this is the complete list:
 
 | Change | You edit |
 | --- | --- |
-| Add a **block-selectable** model | Catalog entry + one `LlmModel` name line (`llm_registry/llm_models.py`). An import-time check refuses to boot if they drift. |
+| Add a **block-selectable** model | Catalog entry + one `LLMModel` name line (`llm_registry/llm_models.py`). An import-time check refuses to boot if they drift. |
 | Add a **copilot-only** model | Catalog entry. |
 | Change a price (post-cutover model) | Catalog entry. |
 | Change a price (pre-cutover model) | Catalog entry + its snapshot line (see cost note). |

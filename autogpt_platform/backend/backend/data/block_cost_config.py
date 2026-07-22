@@ -45,7 +45,7 @@ from backend.blocks.llm import (
     AIStructuredResponseGeneratorBlock,
     AITextGeneratorBlock,
     AITextSummarizerBlock,
-    LlmModel,
+    LLMModel,
 )
 from backend.blocks.mem0 import (
     AddMemoryBlock,
@@ -104,11 +104,11 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 
-def _enum_members_by_value() -> dict[str, LlmModel]:
-    return {m.value: m for m in LlmModel}
+def _enum_members_by_value() -> dict[str, LLMModel]:
+    return {m.value: m for m in LLMModel}
 
 
-def _model_cost_from_catalog() -> dict[LlmModel, int]:
+def _model_cost_from_catalog() -> dict[LLMModel, int]:
     """Flat credits-per-run tiers, read from the catalog — the single
     source of truth for model pricing.
 
@@ -117,7 +117,7 @@ def _model_cost_from_catalog() -> dict[LlmModel, int]:
     reference it keep executing — and an execution that happens must be
     billed. Filtering here would make killed-model usage free."""
     members = _enum_members_by_value()
-    costs: dict[LlmModel, int] = {}
+    costs: dict[LLMModel, int] = {}
     for model in get_catalog().models:
         member = members.get(model.slug)
         if member is None or model.cost is None or model.cost.run_credits is None:
@@ -126,9 +126,9 @@ def _model_cost_from_catalog() -> dict[LlmModel, int]:
     return costs
 
 
-MODEL_COST: dict[LlmModel, int] = _model_cost_from_catalog()
+MODEL_COST: dict[LLMModel, int] = _model_cost_from_catalog()
 
-for model in LlmModel:
+for model in LLMModel:
     if model not in MODEL_COST:
         raise ValueError(f"Missing MODEL_COST for model: {model}")
 
@@ -154,9 +154,9 @@ class TokenRate(BaseModel):
 # list. Rates live in the catalog (credits/1M tokens at the current
 # credit-to-USD conversion, 1 credit ≈ $0.01, uniform 1.5x margin over
 # the published provider price).
-def _token_cost_from_catalog() -> dict[LlmModel, TokenRate]:
+def _token_cost_from_catalog() -> dict[LLMModel, TokenRate]:
     members = _enum_members_by_value()
-    rates: dict[LlmModel, TokenRate] = {}
+    rates: dict[LLMModel, TokenRate] = {}
     for model in get_catalog().models:
         member = members.get(model.slug)
         cost = model.cost
@@ -173,7 +173,7 @@ def _token_cost_from_catalog() -> dict[LlmModel, TokenRate]:
     return rates
 
 
-TOKEN_COST: dict[LlmModel, TokenRate] = _token_cost_from_catalog()
+TOKEN_COST: dict[LLMModel, TokenRate] = _token_cost_from_catalog()
 
 
 def compute_token_credits(
@@ -207,13 +207,13 @@ def compute_token_credits(
     return max(0, math.ceil(total / 1_000_000))
 
 
-def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
+def _lookup_llm_model(raw: "str | LLMModel | None") -> "LLMModel | None":
     if raw is None:
         return None
-    if isinstance(raw, LlmModel):
+    if isinstance(raw, LLMModel):
         return raw
     try:
-        return LlmModel(raw)
+        return LLMModel(raw)
     except ValueError:
         return None
 
@@ -225,7 +225,7 @@ def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
 _USD_PER_1M_DIVISOR = 150
 
 
-def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
+def _token_rate_display(model: LLMModel) -> TokenRateDisplay | None:
     """Return the published per-1M-token USD `TokenRateDisplay` for `model`,
     or None if the model has no TOKEN_COST entry. cache_* fields are set
     only when the provider publishes a distinct cached-token rate (most
@@ -246,7 +246,7 @@ def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
     )
 
 
-def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCost:
+def _tokens_llm_cost(model: LLMModel, credentials: APIKeyCredentials) -> BlockCost:
     """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
     public per-1M-token USD rates when the model has a TOKEN_COST entry.
     """
@@ -265,7 +265,7 @@ def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCo
     )
 
 
-def _groq_llm_cost(model: LlmModel) -> BlockCost:
+def _groq_llm_cost(model: LLMModel) -> BlockCost:
     """Groq variant of `_tokens_llm_cost` — keeps the legacy id-only
     cost_filter shape so older graphs that stored just the credential id
     continue to match.
@@ -281,7 +281,7 @@ def _groq_llm_cost(model: LlmModel) -> BlockCost:
     )
 
 
-def _open_router_llm_cost(model: LlmModel) -> BlockCost:
+def _open_router_llm_cost(model: LLMModel) -> BlockCost:
     """OpenRouter variant — bills via COST_USD against x-total-cost, but
     still exposes the same per-1M-token USD rates so the builder UI shows
     the "$X in / $Y out per 1M tokens" pair instead of "Pay-as-you-go".
@@ -1166,7 +1166,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
 def _validate_codex_costs() -> None:
     """Keep Codex pricing exhaustive.
 
-    ``LlmModel`` has module-load completeness guards; ``CodexModel`` does not, so
+    ``LLMModel`` has module-load completeness guards; ``CodexModel`` does not, so
     a Codex model added without a matching ``BlockCost`` would silently bill as
     free.
     """
