@@ -131,6 +131,10 @@ function sendGAEvent(...args: unknown[]) {
 function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   if (window.datafast) {
+    // Self-heal if the Script's onLoad never fired (e.g. consent toggle
+    // remounted it after the script had already loaded): replay the backlog
+    // first so queued events keep their order ahead of this one.
+    flushDatafastQueue();
     window.datafast(name, metadata);
     return;
   }

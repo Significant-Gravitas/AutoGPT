@@ -59,6 +59,19 @@ describe("sendDatafastEvent", () => {
     expect(datafast).toHaveBeenCalledTimes(1);
   });
 
+  it("flushes the backlog before sending when the script loads without onLoad", () => {
+    analytics.sendDatafastEvent("tour_start", {});
+
+    const datafast = vi.fn();
+    window.datafast = datafast;
+    analytics.sendDatafastEvent("tour_cta_click", { label: "pricing" });
+
+    expect(datafast.mock.calls).toEqual([
+      ["tour_start", {}],
+      ["tour_cta_click", { label: "pricing" }],
+    ]);
+  });
+
   it("caps the queue so a blocked script cannot grow it unbounded", () => {
     for (let i = 0; i < 150; i++) {
       analytics.sendDatafastEvent("tour_start", {});
