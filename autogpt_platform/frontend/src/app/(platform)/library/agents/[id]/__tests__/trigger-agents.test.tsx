@@ -7,7 +7,13 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import {
+  getGetV2GetASpecificPresetMockHandler,
+  getGetV2GetASpecificPresetResponseMock,
+  getGetV2ListPresetsMockHandler,
+  getGetV2ListPresetsMockHandler422,
+} from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
@@ -15,10 +21,12 @@ import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
+import { PRESETS_PAGE_SIZE } from "../components/NewAgentLibraryView/hooks/useAgentPresetsQuery";
 
 const PARENT_ID = "parent-agent-id";
 const PARENT_GRAPH_ID = "parent-graph-id";
@@ -65,6 +73,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     GENERIC_TRIGGER_AGENTS: "generic-trigger-agents",
   },
   useGetFlag: mockUseGetFlag,
+  useFlagStatus: () => ({ enabled: mockUseGetFlag(), ready: true }),
 }));
 
 // Per-test render wrapper so we can set the nuqs initial URL state
@@ -124,6 +133,40 @@ const emptyPresetsHandler = getGetV2ListPresetsMockHandler({
 const emptySchedulesHandler =
   getGetV1ListExecutionSchedulesForAGraphMockHandler([]);
 
+function makeWebhookPreset(overrides: Partial<LibraryAgentPreset> = {}) {
+  return {
+    id: "preset-1",
+    user_id: "user-1",
+    graph_id: PARENT_GRAPH_ID,
+    graph_version: 1,
+    name: "Webhook Trigger",
+    description: "",
+    inputs: {},
+    credentials: {},
+    is_active: true,
+    webhook_id: "webhook-1",
+    webhook: null,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    updated_at: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function singlePresetListHandler(
+  preset: ReturnType<typeof makeWebhookPreset>,
+  totalItems = 1,
+) {
+  return getGetV2ListPresetsMockHandler({
+    presets: [preset],
+    pagination: {
+      total_items: totalItems,
+      total_pages: Math.ceil(totalItems / PRESETS_PAGE_SIZE),
+      current_page: 1,
+      page_size: PRESETS_PAGE_SIZE,
+    },
+  });
+}
+
 describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
@@ -182,31 +225,7 @@ describe("Library agent view — trigger agents", () => {
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
-      getGetV2ListPresetsMockHandler({
-        presets: [
-          {
-            id: "preset-1",
-            user_id: "user-1",
-            graph_id: PARENT_GRAPH_ID,
-            graph_version: 1,
-            name: "Webhook Trigger",
-            description: "",
-            inputs: {},
-            credentials: {},
-            is_active: true,
-            webhook_id: "webhook-1",
-            webhook: null,
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            updated_at: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(makeWebhookPreset()),
     );
 
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
@@ -453,6 +472,255 @@ describe("Library agent view — trigger agents", () => {
     });
   });
 
+  test("selecting a webhook trigger renders its preset detail view", async () => {
+    const webhookPreset = makeWebhookPreset({
+      description: "Fires on webhook",
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      singlePresetListHandler(webhookPreset),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=preset-1",
+    );
+
+    await screen.findByText("Trigger Details");
+    screen.getByDisplayValue("Webhook Trigger");
+  });
+
+  test("agent:-prefixed activeItem renders the trigger agent detail view", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Hinted Watcher",
+      description: "Selected via type-hinted URL",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=agent:${TRIGGER_ID}`,
+    );
+
+    await screen.findByText("Selected via type-hinted URL");
+  });
+
+  test("stale trigger id shows a graceful not-found state without fetching a preset", async () => {
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Still Alive",
+      is_hidden: true,
+    });
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+      // If the view wrongly assumes the unknown id is a preset, this
+      // handler fires — the old behavior that produced a 404 error page.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return getGetV2GetASpecificPresetResponseMock();
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=deleted-preset-id",
+    );
+
+    await screen.findByText("Trigger not found");
+    await screen.findByText(/doesn't exist or is no longer available/i);
+    expect(presetGetCalls).toBe(0);
+  });
+
+  test("a preset: hint mounts the detail view while the lists are still loading", async () => {
+    const webhookPreset = makeWebhookPreset({ name: "Hint Routed Early" });
+    let releaseLists!: () => void;
+    const listGate = new Promise<void>((resolve) => {
+      releaseLists = resolve;
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler(async () => {
+        await listGate;
+        return [];
+      }),
+      getGetV2ListPresetsMockHandler(async () => {
+        await listGate;
+        return {
+          presets: [webhookPreset],
+          pagination: {
+            total_items: 1,
+            total_pages: 1,
+            current_page: 1,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      getGetV2GetASpecificPresetMockHandler(webhookPreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=preset:${webhookPreset.id}`,
+    );
+
+    // The detail view renders from the hint alone — both list queries are
+    // still gated at this point.
+    await screen.findByText("Trigger Details");
+    screen.getByDisplayValue("Hint Routed Early");
+
+    releaseLists();
+  });
+
+  test("stale selection of the sole trigger keeps its not-found state with a recovery action", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=agent:deleted-trigger-id",
+    );
+
+    // Without the activeItem guards, the zero-trigger redirect + zero-item
+    // layout replace this with the empty-tasks screen.
+    await screen.findByText("Trigger not found");
+    const clearButton = await screen.findByRole("button", {
+      name: /clear selection/i,
+    });
+
+    fireEvent.click(clearButton);
+    await waitFor(() => {
+      expect(screen.queryByText("Trigger not found")).toBeNull();
+    });
+  });
+
+  test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
+    const beyondPagePreset = makeWebhookPreset({
+      id: "beyond-page-1",
+      name: "Beyond Page Trigger",
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      // The first page doesn't contain the selected ID, but total_items says
+      // the page is incomplete — membership must NOT conclude "not-found".
+      singlePresetListHandler(makeWebhookPreset(), 150),
+      getGetV2GetASpecificPresetMockHandler(beyondPagePreset),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=beyond-page-1",
+    );
+
+    await screen.findByText("Trigger Details");
+    screen.getByDisplayValue("Beyond Page Trigger");
+    expect(screen.queryByText("Trigger not found")).toBeNull();
+  });
+
+  test("webhook trigger deleted between list and detail fetch renders the not-found card", async () => {
+    const webhookPreset = makeWebhookPreset({ name: "Just Deleted" });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      singlePresetListHandler(webhookPreset),
+      // The preset is in the list, but its by-ID detail fetch 404s — the
+      // race where it's deleted between the list load and selection.
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        () =>
+          new HttpResponse(
+            JSON.stringify({ detail: "Preset #preset-1 not found" }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      ),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=preset:${webhookPreset.id}`,
+    );
+
+    await screen.findByText("Trigger not found");
+    expect(screen.queryByText(/when retrieving/i)).toBeNull();
+  });
+
+  test("failed presets fetch shows an error card instead of an endless skeleton", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler422(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=some-bare-id",
+    );
+
+    await screen.findByText(/when retrieving triggers/i);
+  });
+
+  test("templates-tab preset failure still surfaces the page-level error", async () => {
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        () =>
+          new HttpResponse(
+            JSON.stringify({ detail: "Preset #gone-template not found" }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      ),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=templates&activeItem=gone-template",
+    );
+
+    // On the Templates tab the shared preset query's error must still
+    // surface — the tab guard only suppresses it elsewhere.
+    await screen.findByText(/when retrieving agent/i);
+  });
+
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
     mockUseGetFlag.mockReturnValue(false);
 
@@ -474,31 +742,7 @@ describe("Library agent view — trigger agents", () => {
         return [triggerAgent];
       }),
       // Webhook trigger so the Triggers tab still has reason to exist.
-      getGetV2ListPresetsMockHandler({
-        presets: [
-          {
-            id: "preset-1",
-            user_id: "user-1",
-            graph_id: PARENT_GRAPH_ID,
-            graph_version: 1,
-            name: "Webhook Trigger",
-            description: "",
-            inputs: {},
-            credentials: {},
-            is_active: true,
-            webhook_id: "webhook-1",
-            webhook: null,
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            updated_at: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ],
-        pagination: {
-          total_items: 1,
-          total_pages: 1,
-          current_page: 1,
-          page_size: 100,
-        },
-      }),
+      singlePresetListHandler(makeWebhookPreset()),
     );
 
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");

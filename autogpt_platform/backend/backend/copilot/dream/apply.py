@@ -68,6 +68,24 @@ def _episode_name(pass_id: str, phase: str, counter: int) -> str:
     return f"dream_{pass_id}_{phase}_{counter:03d}"
 
 
+def _edge_metadata(envelope: MemoryEnvelope) -> dict:
+    """Cypher-serializable MemoryFact attributes from a dream envelope.
+
+    Stamped onto the edges the envelope's episode newly creates (see
+    ``ingest._stamp_edge_metadata``) so dream provenance/status/source_kind
+    land deterministically on the edge — graphiti's text-based attribute
+    extraction can't recover them from the episode body. Enums are reduced
+    to their string values; ``confidence``/``provenance`` may be None.
+    """
+    return {
+        "status": envelope.status.value,
+        "source_kind": envelope.source_kind.value,
+        "scope": envelope.scope,
+        "confidence": envelope.confidence,
+        "provenance": envelope.provenance,
+    }
+
+
 async def _write_consolidated_fact(
     user_id: str,
     pass_id: str,
@@ -94,6 +112,7 @@ async def _write_consolidated_fact(
             f"{','.join(fact.source_episode_uuids[:5])}"
         ),
         is_json=True,
+        edge_metadata=_edge_metadata(envelope),
     )
 
 
@@ -125,6 +144,7 @@ async def _write_proposed_finding(
         episode_body=envelope.model_dump_json(),
         source_description="; ".join(description_parts),
         is_json=True,
+        edge_metadata=_edge_metadata(envelope),
     )
 
 

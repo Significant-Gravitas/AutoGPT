@@ -1005,6 +1005,124 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
     assert new_msg.sequence == 1500
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfills_late_tool_calls(
+    mocker: MockerFixture,
+) -> None:
+    """An assistant row flushed before its tool_use blocks arrived gets its
+    toolCalls back-filled on the next save, and the pending-save flag cleared."""
+    calls = [
+        {
+            "id": "c1",
+            "type": "function",
+            "function": {"name": "find_block", "arguments": "{}"},
+        }
+    ]
+    flushed = ChatMessage(
+        role="assistant",
+        content="Searching...",
+        sequence=7,
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    mock_db.add_chat_messages_batch.assert_not_awaited()
+    mock_db.update_chat_message_tool_calls.assert_awaited_once_with(
+        session_id=session.session_id, sequence=7, tool_calls=calls
+    )
+    assert flushed.tool_calls_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_new_rows_persist_tool_calls_without_backfill(
+    mocker: MockerFixture,
+) -> None:
+    """A not-yet-saved row keeps its tool_calls on the normal insert path —
+    no back-fill update is issued and the flag is cleared by the save."""
+    calls = [
+        {
+            "id": "c2",
+            "type": "function",
+            "function": {"name": "bash_exec", "arguments": "{}"},
+        }
+    ]
+    new_msg = ChatMessage(
+        role="assistant",
+        content="Running...",
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(new_msg)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=0)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=0, skip_existence_check=True
+    )
+
+    saved = mock_db.add_chat_messages_batch.call_args.kwargs["messages"]
+    assert saved[0]["tool_calls"] == calls
+    mock_db.update_chat_message_tool_calls.assert_not_awaited()
+    assert new_msg.tool_calls_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfill_failure_keeps_flag_set(
+    mocker: MockerFixture,
+) -> None:
+    """When the back-fill UPDATE fails, the pending-save flag must stay set so a
+    later save retries — this retention-on-failure is the fix's safety net."""
+    calls = [
+        {
+            "id": "c3",
+            "type": "function",
+            "function": {"name": "web_search", "arguments": "{}"},
+        }
+    ]
+    flushed = ChatMessage(
+        role="assistant",
+        content="Searching...",
+        sequence=7,
+        tool_calls=calls,
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=False)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.tool_calls_pending_save is True
+
+    # A later save retries the back-fill; on success the flag clears.
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(return_value=True)
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+    assert flushed.tool_calls_pending_save is False
+
+
 # ─── _get_session_from_db cap-hit warning ──────────────────────────────
 
 
@@ -1351,3 +1469,107 @@ def test_chat_session_new_carries_org_team():
     tenantless = ChatSession.new("u1", dry_run=False)
     assert tenantless.organization_id is None
     assert tenantless.team_id is None
+
+
+def test_add_tool_call_to_sequenced_row_flags_backfill():
+    """Attaching a tool_call to an already-persisted assistant row must set
+    the pending-save flag so the next save back-fills toolCalls (baseline path)."""
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="working...", sequence=42)
+    )
+    session.add_tool_call_to_current_turn(
+        {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    )
+    assert session.messages[-1].tool_calls_pending_save is True
+
+    fresh = _make_session_with_messages(
+        ChatMessage(role="assistant", content="working...")
+    )
+    fresh.add_tool_call_to_current_turn(
+        {"id": "c2", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    )
+    assert fresh.messages[-1].tool_calls_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_backfill_exception_keeps_flag_and_save_survives(
+    mocker: MockerFixture,
+) -> None:
+    """A raising back-fill must not fail the save, and the pending-save flag stays
+    set so a later save retries — the retry safety net for the crash case."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="working...",
+        sequence=7,
+        tool_calls=[
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "f", "arguments": "{}"},
+            }
+        ],
+        tool_calls_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.tool_calls_pending_save is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_backfill_partial_failure_clears_only_successes(
+    mocker: MockerFixture,
+) -> None:
+    """Three pending rows fan out concurrently; one raises, one reports
+    not-found — only the successful row's flag clears."""
+
+    def _msg(seq: int) -> ChatMessage:
+        return ChatMessage(
+            role="assistant",
+            content=f"m{seq}",
+            sequence=seq,
+            tool_calls=[
+                {
+                    "id": f"c{seq}",
+                    "type": "function",
+                    "function": {"name": "f", "arguments": "{}"},
+                }
+            ],
+            tool_calls_pending_save=True,
+        )
+
+    m1, m2, m3 = _msg(1), _msg(2), _msg(3)
+    session = _make_session_with_messages(m1, m2, m3)
+
+    async def _by_sequence(session_id: str, sequence: int, tool_calls):
+        if sequence == 1:
+            return True
+        if sequence == 2:
+            raise RuntimeError("db down")
+        return False
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=4)
+    mock_db.update_chat_message_tool_calls = mocker.AsyncMock(side_effect=_by_sequence)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=4, skip_existence_check=True
+    )
+
+    assert m1.tool_calls_pending_save is False
+    assert m2.tool_calls_pending_save is True
+    assert m3.tool_calls_pending_save is True
+    assert mock_db.update_chat_message_tool_calls.await_count == 3

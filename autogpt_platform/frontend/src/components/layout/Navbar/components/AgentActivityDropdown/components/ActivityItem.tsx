@@ -1,9 +1,11 @@
 "use client";
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {
+  ArrowUpRightIcon,
   CheckCircleIcon,
   ClockIcon,
   StopCircleIcon,
@@ -11,15 +13,38 @@ import {
   SpinnerIcon,
   MinusCircleIcon,
 } from "@phosphor-icons/react";
-import Link from "next/link";
+import { cn } from "@/lib/utils";
+import Link, { useLinkStatus } from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 
-interface Props {
-  execution: AgentExecutionWithInfo;
+function ActivityNavIndicator() {
+  const { pending } = useLinkStatus();
+  if (pending) {
+    return (
+      <LoadingSpinner
+        size="small"
+        className="shrink-0 text-neutral-400"
+        aria-hidden="true"
+      />
+    );
+  }
+  return (
+    <ArrowUpRightIcon
+      size={16}
+      className="shrink-0 text-neutral-400"
+      aria-hidden="true"
+    />
+  );
 }
 
-export function ActivityItem({ execution }: Props) {
+interface Props {
+  execution: AgentExecutionWithInfo;
+  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag.
+  newLayout?: boolean;
+}
+
+export function ActivityItem({ execution, newLayout = false }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -104,7 +129,10 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text variant="body-medium" className="max-w-44 truncate text-gray-900">
+        <Text
+          variant={newLayout ? "small-medium" : "body-medium"}
+          className="max-w-44 truncate text-gray-900"
+        >
           {execution.agent_name}
         </Text>
       </div>
@@ -124,16 +152,34 @@ export function ActivityItem({ execution }: Props) {
     </>
   );
 
-  return withExecutionLink ? (
-    <Link
-      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
-      href={linkUrl}
-      role="button"
+  if (withExecutionLink) {
+    return newLayout ? (
+      <Link
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        href={linkUrl}
+        role="button"
+      >
+        <div className="min-w-0 flex-1">{content}</div>
+        <ActivityNavIndicator />
+      </Link>
+    ) : (
+      <Link
+        className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
+        href={linkUrl}
+        role="button"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "block px-2 py-3",
+        newLayout ? "rounded-xl" : "border-b border-slate-50 last:border-b-0",
+      )}
     >
-      {content}
-    </Link>
-  ) : (
-    <div className="block border-b border-slate-50 px-2 py-3 last:border-b-0">
       {content}
     </div>
   );
