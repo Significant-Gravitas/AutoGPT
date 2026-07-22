@@ -13,6 +13,10 @@ export function LoadingSelectedContent(props: Props) {
     <SelectedViewLayout agent={props.agent}>
       <div
         className={cn("flex flex-col gap-4", AGENT_LIBRARY_SECTION_PADDING_X)}
+        data-testid="loading-selected-content"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading content"
       >
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-12 w-full" />

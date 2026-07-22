@@ -34,6 +34,8 @@ jobs:
       COMMAND: ${{ github.event.action }}
       PR_NUMBER: ${{ github.event.client_payload.slash_command.args.named.pr }}
       ARG1: ${{ github.event.client_payload.slash_command.args.unnamed.arg1 }}
+      # Max concurrent named batches (each = its own rollup branch + preview).
+      BATCH_MAX: ${{ vars.BATCH_MAX || '4' }}
       # Set repo variable BATCH_REQUIRE_APPROVAL=1 to gate `/batch` on an approval
       # (it deploys pre-code-review); batch.mjs reads it, so it must be exported here.
       BATCH_REQUIRE_APPROVAL: ${{ vars.BATCH_REQUIRE_APPROVAL }}
