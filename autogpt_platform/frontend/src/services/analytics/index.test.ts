@@ -68,6 +68,6 @@ describe("sendDatafastEvent", () => {
     window.datafast = datafast;
     flushDatafastQueue();
 
-    expect(datafast.mock.calls.length).toBeLessThan(150);
+    expect(datafast.mock.calls).toHaveLength(100);
   });
 });
