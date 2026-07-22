@@ -33,10 +33,14 @@ def transport_slug_candidates(slug: str) -> list[str]:
     separate — enum identity is exact-or-aliased, never fuzzy.
     """
     candidates = [slug]
-    if slug.startswith("anthropic/"):
+    if "/" in slug:
+        # ANY vendor prefix (anthropic/, openai/, …) may wrap a catalog
+        # slug that is stored bare — exact match runs first, so slugs
+        # that legitimately carry their prefix (moonshotai/…) still hit
+        # before these fallbacks.
         tail = slug.split("/", 1)[1]
         candidates += [tail, tail.replace(".", "-")]
-    elif "/" not in slug and slug.startswith("claude-"):
+    elif slug.startswith("claude-"):
         candidates.append(slug.replace(".", "-"))
     return candidates
 
