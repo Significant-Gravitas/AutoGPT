@@ -20,20 +20,21 @@ it's off, memories become usable as soon as they're learned.
 Reviewing tentative memories happens in an admin **review queue**: admins see
 what's pending and approve or reject each item.
 
-## Current status
+## Reviewing held memories
 
-The **Shared memory** card ships with the concept and the toggle laid out, but
-the interactive parts are **not yet functional** — they're waiting on backend
-support that hasn't been built:
+The hold buffer is controlled from the org settings API: `PATCH
+/api/orgs/{org_id}` accepts `memory_hold_buffer` (true keeps non-admin shared
+writes in review; false lets them land active immediately), and `GET
+/api/orgs/{org_id}` returns the current value (defaults to true).
 
-- The **Hold new memories for review** toggle is shown **disabled**. There's no
-  way to persist an org memory setting yet (the organization update endpoint
-  doesn't accept a settings value), so the toggle can't be saved.
-- The **review queue** is flagged as unavailable. The endpoints to list
-  tentative memories for an org or team, and to approve or reject them, don't
-  exist yet. The memory-tiers backend shipped **per-user admin tools**
-  (`/api/admin/memory/*`) and deliberately deferred the org-level review flow.
+Org admins have a review queue: `GET /api/orgs/{org_id}/memory/held` lists the
+tentative memories awaiting review across the org tier and all its team tiers,
+each labelled with its tier and originating team. `POST
+/api/orgs/{org_id}/memory/held/{memory_id}/approve` ratifies a held memory into
+active shared memory, and `POST .../reject` retracts it. All three review
+endpoints require org-admin (owner/admin) permission and only ever act on the
+org's own shared tiers — personal memory is never exposed or modified.
 
-When the backend endpoints land, the toggle will become live and the review
-queue will open up. Until then, the card documents the intended behavior and
-marks the blocked pieces so there are no surprises.
+In the org settings **Shared memory** card, the toggle persists through the
+setting above; the review-queue page wiring is the remaining UI step and the
+card says so where it applies.
