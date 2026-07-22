@@ -536,6 +536,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
+| [Tenki Run Code](block-integrations/tenki/code_execution.md#tenki-run-code) | Run a shell command in a fresh Tenki cloud sandbox |
 
 ## Media Generation
 

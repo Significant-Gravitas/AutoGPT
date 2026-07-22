@@ -75,6 +75,7 @@ strenum = "^0.4.9"
 stripe = "^11.5.0"
 supabase = "^2.31.0"
 tenacity = "^9.1.4"
+tenki-sandbox = "^0.4.0"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
 uvicorn = { extras = ["standard"], version = "^0.40.0" }
