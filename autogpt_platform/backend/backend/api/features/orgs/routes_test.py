@@ -823,6 +823,150 @@ class TestOrgRoutes:
         assert exc_info.value.status_code == 403
 
 
+class TestOrgAvatarUpload:
+    """HTTP-level tests for POST /orgs/{org_id}/avatar.
+
+    Storage (store_media.upload_media) and the DB layer are mocked; the
+    permission gate runs for real against an overridden RequestContext.
+    """
+
+    PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, mocker):
+        from backend.api.features.orgs.routes import router as org_router
+
+        self.app = fastapi.FastAPI()
+        self.app.include_router(org_router, prefix="/orgs")
+
+        self.mock_db = mocker.patch("backend.api.features.orgs.routes.org_db")
+        self.mock_upload = mocker.patch(
+            "backend.api.features.orgs.routes.store_media.upload_media",
+            new_callable=AsyncMock,
+            return_value=(
+                f"https://storage.googleapis.com/bucket/orgs/{ORG_ID}/images/av.png"
+            ),
+        )
+
+        self.client = fastapi.testclient.TestClient(self.app)
+        yield
+        self.app.dependency_overrides.clear()
+
+    def _authenticate_as(self, ctx):
+        from autogpt_libs.auth import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: ctx
+
+    def _post_avatar(
+        self,
+        org_id=ORG_ID,
+        filename="logo.png",
+        content=None,
+        content_type="image/png",
+    ):
+        return self.client.post(
+            f"/orgs/{org_id}/avatar",
+            files={"file": (filename, content or self.PNG_BYTES, content_type)},
+        )
+
+    def test_admin_upload_persists_and_returns_avatar_url(self):
+        from backend.api.features.orgs.model import OrgResponse
+
+        expected_url = self.mock_upload.return_value
+        self.mock_db.update_org = AsyncMock(
+            return_value=OrgResponse(
+                id=ORG_ID,
+                name="Acme",
+                slug="acme",
+                avatar_url=expected_url,
+                description=None,
+                is_personal=False,
+                member_count=1,
+                created_at=FIXED_NOW,
+            )
+        )
+        self._authenticate_as(_owner_ctx())
+
+        resp = self._post_avatar()
+
+        assert resp.status_code == 200
+        assert resp.json()["avatar_url"] == expected_url
+
+        # Storage path is scoped to the verified org id server-side
+        upload_kwargs = self.mock_upload.call_args.kwargs
+        assert upload_kwargs["organization_id"] == ORG_ID
+        assert upload_kwargs["user_id"] == USER_ID
+
+        # URL persisted on the org via the structured update model
+        org_id_arg, update_data = self.mock_db.update_org.call_args.args
+        assert org_id_arg == ORG_ID
+        assert update_data.avatar_url == expected_url
+
+    def test_plain_member_upload_returns_403(self):
+        self._authenticate_as(_member_ctx())
+
+        resp = self._post_avatar()
+
+        assert resp.status_code == 403
+        assert "Missing org permission" in resp.json()["detail"]
+        self.mock_upload.assert_not_called()
+
+    def test_upload_targeting_org_outside_context_returns_403(self):
+        """Admin of org-other cannot upload an avatar for ORG_ID via the path."""
+        self._authenticate_as(_owner_ctx(org_id="org-other"))
+
+        resp = self._post_avatar(org_id=ORG_ID)
+
+        assert resp.status_code == 403
+        assert "Not a member" in resp.json()["detail"]
+        self.mock_upload.assert_not_called()
+
+    def test_non_image_content_type_returns_400(self):
+        self._authenticate_as(_owner_ctx())
+
+        resp = self._post_avatar(
+            filename="notes.txt", content=b"hello", content_type="text/plain"
+        )
+
+        assert resp.status_code == 400
+        assert "must be an image" in resp.json()["detail"]
+        self.mock_upload.assert_not_called()
+
+    def test_image_content_type_with_disallowed_extension_returns_400(self):
+        """image/* content type with an extension outside the allowlist (e.g.
+        .svg) is rejected before any storage call."""
+        self._authenticate_as(_owner_ctx())
+
+        resp = self._post_avatar(filename="sneaky.svg")
+
+        assert resp.status_code == 400
+        assert "extension" in resp.json()["detail"]
+        self.mock_upload.assert_not_called()
+
+    def test_oversized_upload_returns_400_and_persists_nothing(self):
+        from backend.api.features.store import exceptions as store_exceptions
+
+        self.mock_upload.side_effect = store_exceptions.FileSizeTooLargeError(
+            "File too large. Maximum size is 50MB"
+        )
+        self._authenticate_as(_owner_ctx())
+
+        resp = self._post_avatar()
+
+        assert resp.status_code == 400
+        assert "too large" in resp.json()["detail"].lower()
+        self.mock_db.update_org.assert_not_called()
+
+    def test_org_response_carries_avatar_url(self):
+        from backend.api.features.orgs.model import OrgResponse
+
+        org = _make_org(avatarUrl="https://cdn.example.com/logo.png")
+
+        model = OrgResponse.from_db(org, member_count=3)
+
+        assert model.avatar_url == "https://cdn.example.com/logo.png"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. WORKSPACE CRUD (team_db.py)
 # ═══════════════════════════════════════════════════════════════════════════════

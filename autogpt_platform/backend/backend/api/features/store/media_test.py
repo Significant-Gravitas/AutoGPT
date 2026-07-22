@@ -64,6 +64,27 @@ async def test_upload_media_success(mock_settings, mock_storage_client):
     mock_storage_client.upload.assert_called_once()
 
 
+async def test_upload_media_org_scoped_storage_path(mock_settings, mock_storage_client):
+    """With organization_id set, files land under orgs/{org_id}/ instead of
+    users/{user_id}/ — the org avatar upload path."""
+    test_file = fastapi.UploadFile(
+        filename="logo.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\n"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+
+    result = await store_media.upload_media(
+        "test-user", test_file, organization_id="org-123"
+    )
+
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/orgs/org-123/images/"
+    )
+    assert result.endswith(".png")
+    assert "users/test-user" not in result
+    mock_storage_client.upload.assert_called_once()
+
+
 async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.txt",
