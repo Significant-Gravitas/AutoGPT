@@ -18,8 +18,14 @@ import { ShareAgentDialog } from "./ShareAgentDialog";
 function MockDialog({ children }: { children: ReactNode }) {
   return <div role="dialog">{children}</div>;
 }
-MockDialog.Content = ({ children }: { children: ReactNode }) => <>{children}</>;
-MockDialog.Footer = ({ children }: { children: ReactNode }) => <>{children}</>;
+function MockDialogContent({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+function MockDialogFooter({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+MockDialog.Content = MockDialogContent;
+MockDialog.Footer = MockDialogFooter;
 vi.mock("@/components/molecules/Dialog/Dialog", () => ({ Dialog: MockDialog }));
 
 const TEAM_A = {
