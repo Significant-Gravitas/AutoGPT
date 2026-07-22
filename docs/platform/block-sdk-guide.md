@@ -102,18 +102,14 @@ class MyBlock(Block):
         credentials: APIKeyCredentials,
         **kwargs
     ) -> BlockOutput:
-        try:
-            results = await self.process_data(
-                input_data.query,
-                input_data.limit,
-                credentials
-            )
+        results = await self.process_data(
+            input_data.query,
+            input_data.limit,
+            credentials
+        )
 
-            yield "results", results
-            yield "count", len(results)
-
-        except Exception as e:
-            yield "error", str(e)
+        yield "results", results
+        yield "count", len(results)
 
     async def process_data(self, query, limit, credentials):
         pass
@@ -140,12 +136,16 @@ class MyBlock(Block):
     - Implement your block logic in `process_data()` helper method
     - Use `credentials.api_key.get_secret_value()` to access the API key
     - Use `yield` to output results
+    - **Do NOT wrap your logic in try/except** — the executor framework handles errors at a higher level. Raise exceptions (e.g., `BlockExecutionError`, `BlockInputError`) for user-fixable errors; let unexpected errors propagate naturally. See [Error Handling in new_blocks.md](new_blocks.md#error-handling) for details.
 
 ## Key Components Explained
 
 ### Provider Configuration
 
-The `ProviderBuilder` allows you to:
+!!! tip "Simple API Key Integrations"
+    For integrations that only use API key authentication, you do **not** need `ProviderBuilder` or `_config.py`. Use the simpler `_auth.py` pattern instead — see [API-Key-Only Provider Auth](new_blocks.md#api-key-only-provider-auth-recommended-pattern) in the main block guide.
+
+The `ProviderBuilder` is available for advanced use cases (OAuth, webhooks, cost tracking). It allows you to:
 - **`.with_api_key()`**: Add API key authentication
 - **`.with_oauth()`**: Add OAuth authentication
 - **`.with_base_cost()`**: Set resource costs for the block
@@ -361,14 +361,16 @@ poetry run pytest 'backend/blocks/test/test_block.py::test_available_blocks[MyBl
 
 ## Integration Checklist
 
-- [ ] Create provider configuration in `_config.py`
+- [ ] Add provider to `ProviderName` enum in `backend/integrations/providers.py`
+- [ ] Create `_auth.py` with credentials type, field factory, and test credentials (or `_config.py` for OAuth/advanced providers)
 - [ ] Implement block class with Input/Output schemas
 - [ ] Generate unique block ID with `uuid.uuid4()`
 - [ ] Choose appropriate block categories
 - [ ] Implement `async run()` method
-- [ ] Handle errors gracefully
-- [ ] Add test configuration
-- [ ] Export block in `__init__.py`
+- [ ] Handle errors with `BlockInputError`/`BlockExecutionError` (don't wrap in try/except)
+- [ ] Add test configuration (inline `test_input`/`test_output` and/or standalone `{name}_test.py`)
+- [ ] Add integration icon PNG at `frontend/public/integrations/{provider_name}.png`
+- [ ] Run `cd autogpt_platform/backend && poetry run python scripts/generate_block_docs.py` to generate docs
 - [ ] Test the block
 - [ ] Document any special requirements
 
