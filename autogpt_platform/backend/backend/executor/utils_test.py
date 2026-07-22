@@ -963,6 +963,10 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
     mock_get_queue.return_value = mocker.AsyncMock()
     mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        mocker.AsyncMock(return_value=None),
+    )
 
     # Caller-supplied context with NO org/team (the bug condition).
     resume_ctx = ExecutionContext(user_id="test-user-id", workspace_id="ws-1")
@@ -1957,6 +1961,10 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
     mocker.patch("backend.executor.utils.workspace_db")
     mocker.patch("backend.executor.utils.onboarding_db")
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        mocker.AsyncMock(return_value=None),
+    )
     # Force an early sentinel error AFTER the gate so we can verify the
     # gate was passed without simulating the whole requeue pipeline.
     mock_edb.get_graph_execution = mocker.AsyncMock(
