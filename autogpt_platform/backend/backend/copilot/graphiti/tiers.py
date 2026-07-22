@@ -20,10 +20,11 @@ that judgement to the model.
 """
 
 import logging
-from dataclasses import dataclass
 from enum import Enum
 from itertools import zip_longest
 from typing import TYPE_CHECKING, Iterable, TypeVar, cast
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.tenancy import get_user_team_ids
 
@@ -64,9 +65,10 @@ class TierError(Exception):
         self.message = message
 
 
-@dataclass(frozen=True)
-class TierTarget:
+class TierTarget(BaseModel):
     """A single group a read fans out to, plus its provenance label."""
+
+    model_config = ConfigDict(frozen=True)
 
     group_id: str
     tier: MemoryTier
@@ -249,7 +251,11 @@ async def resolve_warm_targets(
     session); the session's team ONLY when the session is team-tagged AND the
     user is an ACTIVE member of it (untagged sessions skip the team tier).
     """
-    targets = [TierTarget(derive_group_id(user_id), MemoryTier.personal, None)]
+    targets = [
+        TierTarget(
+            group_id=derive_group_id(user_id), tier=MemoryTier.personal, label=None
+        )
+    ]
 
     if organization_id:
         try:
@@ -263,7 +269,11 @@ async def resolve_warm_targets(
             )
         else:
             if await is_org_member(user_id, organization_id):
-                targets.append(TierTarget(org_group_id, MemoryTier.org, ORG_LABEL))
+                targets.append(
+                    TierTarget(
+                        group_id=org_group_id, tier=MemoryTier.org, label=ORG_LABEL
+                    )
+                )
 
             if session_team_id:
                 active_ids = await get_user_team_ids(user_id, organization_id)
@@ -271,10 +281,10 @@ async def resolve_warm_targets(
                     name = await resolve_team_name(session_team_id)
                     targets.append(
                         TierTarget(
-                            derive_team_group_id(session_team_id),
-                            MemoryTier.team,
-                            team_label(name),
-                            session_team_id,
+                            group_id=derive_team_group_id(session_team_id),
+                            tier=MemoryTier.team,
+                            label=team_label(name),
+                            team_id=session_team_id,
                         )
                     )
 
@@ -315,7 +325,11 @@ async def resolve_search_targets(
     targets: list[TierTarget] = []
 
     if include_personal:
-        targets.append(TierTarget(derive_group_id(user_id), MemoryTier.personal, None))
+        targets.append(
+            TierTarget(
+                group_id=derive_group_id(user_id), tier=MemoryTier.personal, label=None
+            )
+        )
 
     if (
         include_org
@@ -323,7 +337,11 @@ async def resolve_search_targets(
         and await is_org_member(user_id, organization_id)
     ):
         targets.append(
-            TierTarget(derive_org_group_id(organization_id), MemoryTier.org, ORG_LABEL)
+            TierTarget(
+                group_id=derive_org_group_id(organization_id),
+                tier=MemoryTier.org,
+                label=ORG_LABEL,
+            )
         )
 
     if include_team and organization_id:
@@ -332,10 +350,10 @@ async def resolve_search_targets(
         for team_id in active_ids:
             targets.append(
                 TierTarget(
-                    derive_team_group_id(team_id),
-                    MemoryTier.team,
-                    team_label(names.get(team_id)),
-                    team_id,
+                    group_id=derive_team_group_id(team_id),
+                    tier=MemoryTier.team,
+                    label=team_label(names.get(team_id)),
+                    team_id=team_id,
                 )
             )
 
