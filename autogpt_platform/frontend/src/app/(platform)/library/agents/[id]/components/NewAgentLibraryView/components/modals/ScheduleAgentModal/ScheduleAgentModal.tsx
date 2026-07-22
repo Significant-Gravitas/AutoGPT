@@ -7,6 +7,8 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ModalScheduleSection } from "./components/ModalScheduleSection/ModalScheduleSection";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   isOpen: boolean;
@@ -35,6 +37,8 @@ export function ScheduleAgentModal({
     handleSetScheduleName,
     handleSetCronExpression,
     resetForm,
+    teamId,
+    setTeamId,
   } = useScheduleAgentModal(agent, inputValues, inputCredentials, {
     onCreateSchedule: (schedule) => {
       onScheduleCreated?.(schedule);
@@ -79,6 +83,14 @@ export function ScheduleAgentModal({
               onCronExpressionChange={handleSetCronExpression}
               onValidityChange={setIsScheduleFormValid}
             />
+            <div className="mt-4">
+              <TeamPicker
+                surfaceKey={CreateSurface.ScheduleAgent}
+                value={teamId}
+                onChange={setTeamId}
+                wrapperClassName="!mb-0"
+              />
+            </div>
           </div>
 
           {/* Footer */}

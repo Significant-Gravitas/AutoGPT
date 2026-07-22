@@ -5,6 +5,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { InfoIcon } from "lucide-react";
 import { useCronSchedulerDialog } from "./useCronSchedulerDialog";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 type CronSchedulerDialogProps = {
   open: boolean;
@@ -32,6 +34,8 @@ export function CronSchedulerDialog({
     scheduleName,
     setScheduleName,
     isCreatingSchedule,
+    teamId,
+    setTeamId,
   } = useCronSchedulerDialog({
     open,
     setOpen,
@@ -55,6 +59,14 @@ export function CronSchedulerDialog({
             className="max-w-80"
             value={scheduleName}
             onChange={(e) => setScheduleName(e.target.value)}
+          />
+
+          <TeamPicker
+            surfaceKey={CreateSurface.BuilderSchedule}
+            value={teamId}
+            onChange={setTeamId}
+            className="max-w-80"
+            wrapperClassName="!mb-0"
           />
 
           <CronScheduler
