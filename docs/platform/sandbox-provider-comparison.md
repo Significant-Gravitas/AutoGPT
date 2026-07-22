@@ -42,14 +42,26 @@ E2B column measured 2026-07-21 via `backend/scripts/desktop_smoke_test.py`.
 | Concurrent sandbox limit (plan) | 20 (Hobby) / 100+ (Pro) | |
 | Max continuous session | 1 h (Hobby) / 24 h (Pro) | |
 
-## Published pricing snapshot (July 2026)
+## Pricing
 
-| | E2B | Daytona |
+Full verified analysis with published-vs-assumed markers, source URLs, and five costed
+scenarios: **[sandbox-provider-pricing.md](./sandbox-provider-pricing.md)** (researched
+2026-07-22). Key conclusions:
+
+- **Metered Linux compute rates are identical** on both providers: $0.000014/vCPU/s +
+  $0.0000045/GiB-RAM/s ($0.1656/h for the reference 2 vCPU / 4 GiB desktop).
+- The real cost difference is structural: E2B's desktop feature effectively requires
+  **Pro at $150/mo fixed** (Hobby caps sessions at 1 h and concurrency at 20), while
+  Daytona is pure pay-as-you-go (tier unlocks are spendable wallet top-ups, not fees).
+  A single always-available desktop used 8 h/day lands at **~$179/mo on E2B vs ~$30/mo
+  on Daytona**.
+- Persistence at rest: E2B paused = $0 (kept indefinitely); Daytona stopped ≈
+  $0.39–0.78/mo per desktop (disk only), archived = $0.
+- Workspace volumes: Daytona free/GA (100 per org, subpath multi-tenancy); E2B private
+  beta, unpriced.
+
+| Non-pricing deltas | E2B | Daytona |
 |---|---|---|
-| Compute | $0.000014/vCPU/s + $0.0000045/GiB-RAM/s | per-vCPU/RAM/disk-hour, pay-as-you-go (see billing docs; Windows $0.0858/vCPU/h, Linux rates lower) |
-| Suspended/stopped | Paused sandboxes free (storage retained; kept indefinitely) | Stopped sandboxes billed for disk only; archived to object storage is cheaper |
-| Volumes | Private beta; storage-priced | Included free, up to 100/org |
-| Plans | Hobby free ($100 one-time credits, 1h sessions, 20 concurrent) / Pro $150/mo (24h sessions, 100 concurrent) | Pay-as-you-go, $200 sign-up credits; startup program up to $50k credits |
 | Desktop support | `desktop` template (XFCE, x11vnc/noVNC) | `computer_use` API (Xvfb/xfce4/x11vnc/noVNC) + VNC access |
 | Stream auth | VNC password embedded in URL | Signed preview URL (expiring) |
 
