@@ -1426,7 +1426,12 @@ async def get_graph(
         if grant := await resolve_graph_grant(
             user_id, graph_id, capability=GrantCapability.VIEW
         ):
-            grant_where: AgentGraphWhereInput = {"id": graph_id}
+            # Constrain to the grant's org: a followLatest grant must not
+            # follow a graph that has since moved to a different organization.
+            grant_where: AgentGraphWhereInput = {
+                "id": graph_id,
+                "organizationId": grant.organizationId,
+            }
             if grant.followLatest:
                 grant_where["isActive"] = True
             else:
@@ -1769,6 +1774,7 @@ async def validate_graph_execution_permissions(
     user_has_exec_grant = (
         exec_grant is not None
         and graph is not None
+        and graph.organizationId == exec_grant.organizationId
         and grant_covers_version(exec_grant, graph_version)
         and (not exec_grant.followLatest or graph.isActive)
     )

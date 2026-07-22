@@ -7,7 +7,7 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
 
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from . import grant_db
 from .grant_model import CreateGrantRequest, GrantResponse, ReceivedGrantResponse
@@ -46,6 +46,8 @@ async def create_grant(
         )
     except NotFoundError as e:
         raise HTTPException(404, detail=str(e))
+    except NotAuthorizedError as e:
+        raise HTTPException(403, detail=str(e))
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
 
@@ -95,6 +97,8 @@ async def revoke_grant(
         )
     except NotFoundError as e:
         raise HTTPException(404, detail=str(e))
+    except NotAuthorizedError as e:
+        raise HTTPException(403, detail=str(e))
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
 

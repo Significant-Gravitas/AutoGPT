@@ -65,6 +65,8 @@ class TestResolveGraphGrant:
         where = mock_prisma.teammember.find_first.call_args.kwargs["where"]
         assert where["status"] == "ACTIVE"
         assert where["teamId"] == {"in": ["team-1"]}
+        # Archived workspaces must not keep granting access.
+        assert where["Team"] == {"is": {"archivedAt": None}}
 
     @pytest.mark.asyncio
     async def test_non_member_gets_nothing(self, mock_prisma):

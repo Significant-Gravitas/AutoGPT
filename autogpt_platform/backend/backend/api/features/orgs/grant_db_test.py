@@ -6,7 +6,7 @@ import pytest
 from prisma.enums import GrantPrincipalType
 
 from backend.api.features.orgs import grant_db
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 
 def _graph(*, graph_id="g1", version=3, user_id="owner-1"):
@@ -94,7 +94,8 @@ class TestUpsertGrant:
 
     @pytest.mark.asyncio
     async def test_non_owner_non_admin_cannot_share(self, mock_prisma):
-        with pytest.raises(ValueError, match="owner or an org admin"):
+        # NotAuthorizedError (not a plain ValueError) so the route maps it to 403.
+        with pytest.raises(NotAuthorizedError, match="owner or an org admin"):
             await grant_db.upsert_grant(
                 "org-1", "g1", **_upsert_kwargs(created_by_user_id="someone-else")
             )
@@ -149,7 +150,7 @@ class TestRevokeGrant:
 
     @pytest.mark.asyncio
     async def test_non_owner_non_admin_cannot_revoke(self, mock_prisma):
-        with pytest.raises(ValueError, match="owner or an org admin"):
+        with pytest.raises(NotAuthorizedError, match="owner or an org admin"):
             await grant_db.revoke_grant(
                 "org-1",
                 "g1",
@@ -191,7 +192,8 @@ class TestListReceivedGrants:
 
         member_where = mock_prisma.teammember.find_many.call_args.kwargs["where"]
         assert member_where["status"] == "ACTIVE"
-        assert member_where["Team"] == {"is": {"orgId": "org-1"}}
+        # Archived workspaces are excluded so their grants stop resolving.
+        assert member_where["Team"] == {"is": {"orgId": "org-1", "archivedAt": None}}
         grant_where = mock_prisma.agentgraphgrant.find_many.call_args.kwargs["where"]
         assert grant_where["principalId"] == {"in": ["team-1"]}
         assert grant_where["principalType"] == GrantPrincipalType.TEAM
