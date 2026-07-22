@@ -482,6 +482,22 @@ class TestRegistryGating:
         self.sentry.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_ld_vendor_prefixed_openai_slug_serves(self, mocker):
+        """LD may route with ANY vendor prefix (openai/gpt-5.4), while the
+        catalog stores the bare (possibly date-suffixed) slug — the gate
+        must match the model, not the vendor spelling."""
+        self.reg._dynamic_models["gpt-5.4-2026-03-05"] = self.make("gpt-5.4-2026-03-05")
+        self.reg._date_stripped_models["gpt-5.4"] = self.reg._dynamic_models[
+            "gpt-5.4-2026-03-05"
+        ]
+        self._ld(mocker, "openai/gpt-5.4")
+        resolved = await resolve_model_route(
+            "fast", "standard", "user-1", config=_make_config()
+        )
+        assert resolved == ("openai/gpt-5.4", "ld")
+        self.sentry.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_disabled_ld_slug_refused_kill_switch(self, mocker):
         from backend.copilot.model_router import resolve_model_route
 
