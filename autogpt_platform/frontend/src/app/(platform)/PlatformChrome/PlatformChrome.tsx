@@ -26,6 +26,7 @@ interface Props {
 export function PlatformChrome({ children }: Props) {
   const {
     showNewLayout,
+    isNewLayoutActive,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
@@ -88,8 +89,10 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  // Settings renders its own sidebar shell — no top Navbar.
-  if (isSettingsRoute) {
+  // Settings renders its own sidebar shell (with a Back link) — no top Navbar.
+  // Only the new layout drops the Navbar here; classic users keep it below so
+  // they don't lose global nav (wallet, account menu) or a way back on mobile.
+  if (isSettingsRoute && isNewLayoutActive) {
     return (
       <main className="flex h-screen w-full flex-col">
         <AdminImpersonationBanner />

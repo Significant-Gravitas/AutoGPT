@@ -9,9 +9,11 @@ import { getRouteTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 // Routes that must stay outside the new top-level sidebar layout. Login,
 // signup and onboarding already live in the (no-navbar) group. These
 // (platform) routes should not show the app sidebar — reset-password and the
-// auth/error/unauthorized pages are all reachable while unauthenticated.
+// auth/error/unauthorized pages are all reachable while unauthenticated, and
+// /admin brings its own admin sidebar (see admin/layout.tsx).
 const NEW_LAYOUT_EXCLUDED_PREFIXES = [
   "/settings",
+  "/admin",
   "/reset-password",
   "/auth/auth-code-error",
   "/error",
@@ -55,9 +57,14 @@ export function usePlatformChrome() {
   const showTourSidebar =
     isMounted && isMarketplaceRoute && !isUserLoading && !isLoggedIn;
 
+  // The new layout is only active after mount (see hydration note above). This
+  // is the flag on its own, independent of the per-route exclusions, so shells
+  // for excluded routes (e.g. settings) can still gate their new-layout chrome.
+  const isNewLayoutActive = isMounted && Boolean(isNewLayoutEnabled);
+
   return {
-    showNewLayout:
-      isMounted && isNewLayoutEnabled && !isExcludedRoute && !showTourSidebar,
+    showNewLayout: isNewLayoutActive && !isExcludedRoute && !showTourSidebar,
+    isNewLayoutActive,
     // On copilot the inset header floats over the chat instead of stacking
     // above it, so messages scroll to the viewport top.
     overlayInsetHeader: isCopilotRoute,

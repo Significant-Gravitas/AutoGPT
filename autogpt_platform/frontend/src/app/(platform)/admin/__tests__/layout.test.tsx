@@ -12,12 +12,13 @@ describe("AdminLayout", () => {
     expect(screen.getByText("Test Child")).toBeDefined();
   });
 
-  it("does not render its own sidebar (uses the shared app sidebar)", () => {
+  it("renders the admin sidebar navigation", () => {
     render(
       <AdminLayout>
         <div />
       </AdminLayout>,
     );
-    expect(screen.queryByTestId("sidebar")).toBeNull();
+    expect(screen.getByText("Marketplace Management")).toBeDefined();
+    expect(screen.getByText("System Diagnostics")).toBeDefined();
   });
 });
