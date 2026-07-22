@@ -6,8 +6,9 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
+import { getTeamRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
-export function useDuplicateGraph() {
+export function useDuplicateGraph(teamId: string | null = null) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -28,7 +29,7 @@ export function useDuplicateGraph() {
     );
 
   const { mutateAsync: forkAgent, isPending: isDuplicating } =
-    usePostV2ForkLibraryAgent();
+    usePostV2ForkLibraryAgent({ request: getTeamRequestInit(teamId) });
 
   async function duplicate() {
     if (!libraryAgent) return;

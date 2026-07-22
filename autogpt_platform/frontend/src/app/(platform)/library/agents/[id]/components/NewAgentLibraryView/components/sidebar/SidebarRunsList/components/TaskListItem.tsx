@@ -17,6 +17,7 @@ import React from "react";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TaskActionsDropdown } from "./TaskActionsDropdown";
+import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
@@ -95,6 +96,7 @@ export function TaskListItem({
       }
       onClick={onClick}
       selected={selected}
+      badge={<TeamBadge teamId={run.team_id} />}
       actions={
         <TaskActionsDropdown agent={agent} run={run} onDeleted={onDeleted} />
       }

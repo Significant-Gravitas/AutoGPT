@@ -102,31 +102,20 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getAllByText(COMPANY_ORG.name).length).toBeGreaterThan(0);
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
-    // "Create organization" is hidden until the org management frontend
-    // ships (PR1 is backend-only; /org/settings does not exist yet).
-    expect(screen.queryByText("Create organization")).toBeNull();
+    expect(screen.getByTestId("org-switcher-create")).toBeDefined();
+    expect(screen.getByTestId("org-switcher-manage")).toBeDefined();
   });
 
-  it("lists teams with a Private badge on invite-only teams", async () => {
+  it("does not render a team-switching section (teams are badges, not context)", async () => {
     seedStore();
     render(<OrgTeamSwitcher />);
 
     await openSwitcher();
 
-    expect(screen.getByText(DEFAULT_TEAM.name)).toBeDefined();
-    expect(screen.getByText(PRIVATE_TEAM.name)).toBeDefined();
-    expect(screen.getByText("Private")).toBeDefined();
-    expect(screen.getByText("Manage teams")).toBeDefined();
-  });
-
-  it("hides the team section when the org has no teams", async () => {
-    seedStore({ teams: [] });
-    render(<OrgTeamSwitcher />);
-
-    await openSwitcher();
-
     expect(screen.queryByText("Teams")).toBeNull();
-    expect(screen.queryByText("Manage teams")).toBeNull();
+    expect(screen.queryByText(DEFAULT_TEAM.name)).toBeNull();
+    expect(screen.queryByText(PRIVATE_TEAM.name)).toBeNull();
+    expect(screen.getByText("Manage organization")).toBeDefined();
   });
 
   it("switching org updates the store and resets the active team", async () => {
@@ -138,17 +127,6 @@ describe("OrgTeamSwitcher", () => {
 
     expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
     expect(useOrgTeamStore.getState().activeTeamID).toBeNull();
-  });
-
-  it("switching team updates the store without touching the active org", async () => {
-    seedStore();
-    render(<OrgTeamSwitcher />);
-
-    await openSwitcher();
-    await userEvent.click(screen.getByText(PRIVATE_TEAM.name));
-
-    expect(useOrgTeamStore.getState().activeTeamID).toBe(PRIVATE_TEAM.id);
-    expect(useOrgTeamStore.getState().activeOrgID).toBe(COMPANY_ORG.id);
   });
 
   it("re-selecting the already-active org leaves state untouched", async () => {
