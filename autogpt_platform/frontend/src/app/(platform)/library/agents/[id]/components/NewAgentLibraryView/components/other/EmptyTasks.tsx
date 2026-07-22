@@ -20,6 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { getLibraryAgentBuilderHref } from "../../helpers";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
@@ -181,7 +182,7 @@ export function EmptyTasks({
           <div className="mt-4 flex items-center gap-2">
             <Button variant="secondary" size="small" asChild>
               <Link
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                href={getLibraryAgentBuilderHref(agent.graph_id)}
                 target="_blank"
               >
                 Edit agent

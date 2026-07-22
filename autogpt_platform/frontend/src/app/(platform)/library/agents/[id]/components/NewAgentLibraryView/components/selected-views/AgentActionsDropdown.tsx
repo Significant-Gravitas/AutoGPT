@@ -32,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { getLibraryAgentBuilderHref } from "../../helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -199,7 +200,7 @@ export function AgentActionsDropdown({
           ) : null}
           <DropdownMenuItem asChild>
             <Link
-              href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+              href={getLibraryAgentBuilderHref(agent.graph_id)}
               target="_blank"
               className="flex items-center gap-2"
             >
