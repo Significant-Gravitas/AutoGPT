@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   OAUTH_ERROR_FLOW_CANCELED,
+  OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
+  preOpenOAuthPopup,
 } from "./oauth-popup";
 
 // Minimal popup stub — window.open returns this. `closed` flips when the
@@ -241,5 +243,144 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect(onReject).not.toHaveBeenCalled();
 
     cleanup.abort();
+  });
+});
+
+describe("preOpenedWindow option", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("navigates the pre-opened window instead of calling window.open again", () => {
+    const openSpy = vi.spyOn(window, "open");
+    const preOpened = makePopupStub();
+
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-pre",
+        preOpenedWindow: preOpened as unknown as Window,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(preOpened.location.href).toBe("https://example.com/oauth");
+    expect(popupBlocked).toBe(false);
+    expect(fallbackBlocked).toBe(false);
+
+    // After adoption the helper owns the window: aborting must close it —
+    // callers no longer close an adopted window themselves.
+    cleanup.abort();
+    expect(preOpened.close).toHaveBeenCalled();
+  });
+
+  test("already-closed preOpenedWindow goes to the new-tab fallback", () => {
+    const openSpy = setupPopup(makePopupStub());
+    const preOpened = makePopupStub();
+    preOpened.closed = true;
+
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-pre-closed",
+        preOpenedWindow: preOpened as unknown as Window,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(false);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
+
+    cleanup.abort();
+  });
+
+  test("null preOpenedWindow goes straight to the new-tab fallback", () => {
+    const openSpy = setupPopup(makePopupStub());
+
+    const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-null",
+        preOpenedWindow: null,
+      },
+    );
+    promise.catch(() => {});
+
+    expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(false);
+    // Only the fallback open fires, with the real login URL.
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
+
+    cleanup.abort();
+  });
+
+  test("preOpenOAuthPopup opens a blank popup window", () => {
+    const popup = makePopupStub();
+    const openSpy = setupPopup(popup);
+
+    const result = preOpenOAuthPopup();
+
+    expect(result).toBe(popup);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy.mock.calls[0][0]).toBe("about:blank");
+  });
+
+  test("rejects immediately when the new-tab fallback is blocked too", async () => {
+    // iOS Safari case: the synchronous pre-open was already blocked, and the
+    // fallback open after the async break has no gesture context either.
+    setupPopup(null);
+
+    const { promise, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-blocked",
+        preOpenedWindow: null,
+      },
+    );
+    const onReject = vi.fn();
+    promise.catch(onReject);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(true);
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect((onReject.mock.calls[0][0] as Error).message).toBe(
+      OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
+    );
+  });
+
+  test("rejects immediately when window.open is blocked for both attempts", async () => {
+    // No preOpenedWindow — the inline open is blocked, and so is the
+    // fallback (e.g. aggressive popup blocker). Must not wait for timeout.
+    setupPopup(null);
+
+    const { promise, popupBlocked, fallbackBlocked } = openOAuthPopup(
+      "https://example.com/oauth",
+      {
+        stateToken: "tok-blocked-2",
+      },
+    );
+    const onReject = vi.fn();
+    promise.catch(onReject);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(popupBlocked).toBe(true);
+    expect(fallbackBlocked).toBe(true);
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect((onReject.mock.calls[0][0] as Error).message).toBe(
+      OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
+    );
   });
 });

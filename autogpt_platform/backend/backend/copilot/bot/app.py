@@ -24,6 +24,7 @@ from .adapters.discord.adapter import DiscordAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 from .outbound import DeliveryResult
+from .webhook_routes import build_webhook_adapters
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +64,19 @@ class CoPilotChatBridge(AppService):
     async def _run_adapters(self) -> None:
         api = BotBackend()
         self._api = api
-        adapters = _build_socket_adapters(api)
-        self._adapters_by_platform = {a.platform_name: a for a in adapters}
+        socket_adapters = _build_socket_adapters(api)
+        # Webhook adapters' outbound halves are stateless HTTP senders — build
+        # them here too (no routes, no handler) so proactive RPCs reach them.
+        outbound_only = build_webhook_adapters(api)
+        self._adapters_by_platform = {
+            a.platform_name: a for a in (*outbound_only, *socket_adapters)
+        }
 
-        if not adapters:
+        if not socket_adapters:
             logger.info(
-                "CoPilotChatBridge: no platform adapters configured — idling. "
-                "Set AUTOPILOT_BOT_DISCORD_TOKEN (or another platform token) to "
-                "enable an adapter."
+                "CoPilotChatBridge: no socket adapters configured — idling "
+                "(outbound-only webhook adapters stay reachable). Set "
+                "AUTOPILOT_BOT_DISCORD_TOKEN to enable one."
             )
             self._adapters_healthy = True
             try:
@@ -80,14 +86,16 @@ class CoPilotChatBridge(AppService):
                 await api.close()
 
         handler = MessageHandler(api)
-        for adapter in adapters:
+        for adapter in socket_adapters:
             adapter.on_message(handler.handle)
 
         self._adapters_healthy = True
         try:
-            await asyncio.gather(*(a.start() for a in adapters))
+            await asyncio.gather(*(a.start() for a in socket_adapters))
         finally:
-            await asyncio.gather(*(a.stop() for a in adapters), return_exceptions=True)
+            await asyncio.gather(
+                *(a.stop() for a in socket_adapters), return_exceptions=True
+            )
             await api.close()
 
     def _on_adapters_exit(self, future: "Future[None]") -> None:
@@ -163,6 +171,21 @@ class CoPilotChatBridge(AppService):
         )
 
     @expose
+    async def send_dm_to_user(
+        self,
+        platform: Platform,
+        user_id: str,
+        content: str,
+    ) -> DeliveryResult:
+        """Send ``content`` to ``user_id``'s own DM with the bot.
+
+        The target is resolved from the user's DM link — never a
+        caller-supplied recipient — so a user can only DM themself.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.deliver_dm(adapter, api, platform.value, user_id, content)
+
+    @expose
     async def create_thread_in_channel(
         self,
         platform: Platform,
@@ -187,6 +210,7 @@ class CoPilotChatBridgeClient(AppServiceClient):
     send_message_to_channel = endpoint_to_async(
         CoPilotChatBridge.send_message_to_channel
     )
+    send_dm_to_user = endpoint_to_async(CoPilotChatBridge.send_dm_to_user)
     create_thread_in_channel = endpoint_to_async(
         CoPilotChatBridge.create_thread_in_channel
     )
