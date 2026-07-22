@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.models import RequestContext
 
-from backend.api.features.orgs.invitation_routes import INVITATION_TTL_DAYS
+from backend.api.features.orgs.invitation_routes import INVITATION_TTL_DAYS, org_router
 
 USER_ID = "user-owner-1"
 OTHER_USER_ID = "user-member-2"
@@ -75,10 +76,6 @@ class TestInvitationResend:
         return inv
 
     def _client(self, ctx):
-        from autogpt_libs.auth.dependencies import get_request_context
-
-        from backend.api.features.orgs.invitation_routes import org_router
-
         app = fastapi.FastAPI()
         app.include_router(org_router, prefix="/orgs/{org_id}/invitations")
         app.dependency_overrides[get_request_context] = lambda: ctx
