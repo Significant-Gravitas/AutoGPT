@@ -19,6 +19,7 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
@@ -927,6 +928,36 @@ _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
 _AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
 
 
+_ENTER_BUILDING_MODE_TOOL_NAME = "enter_agent_building_mode"
+
+
+def session_entered_building_mode(session: ChatSession) -> bool:
+    """True when this session is in agent-building mode.
+
+    Any of these signals counts: an ``enter_agent_building_mode`` call
+    (preferred path), a ``get_agent_building_guide`` call, or a
+    ``read_skill(name="agent_building_guide")`` call. All are durable —
+    derived from message history, no session-metadata write needed. Called
+    at turn start (by the system-prompt builder) this reflects prior turns
+    only; called mid-turn (by the building-mode restart) it also sees the
+    current turn's in-flight calls.
+    """
+    return session.has_tool_been_called(
+        _ENTER_BUILDING_MODE_TOOL_NAME
+    ) or session_read_building_guide(session)
+
+
+def session_read_building_guide(session: ChatSession) -> bool:
+    """True when the agent-building guide was loaded in this session.
+
+    Accepts either the ``get_agent_building_guide`` tool call or a
+    ``read_skill(name="agent_building_guide")`` call.
+    """
+    return session.has_tool_been_called(
+        _AGENT_GUIDE_TOOL_NAME
+    ) or _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME)
+
+
 def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
     """Return True iff the model has called ``read_skill(name=skill_name)``
     in this session (durable history or current-turn in-flight calls).
@@ -999,16 +1030,34 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
-    if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
+    # Building sessions get the guide in the (cached) system prompt — see
+    # ``build_builder_system_prompt_suffix``.
+    if session.guide_in_system_prompt:
         return None
-    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+    if session_read_building_guide(session):
         return None
+    if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
+        if not chat_config.transport.supports_sdk:
+            # SDK-less deployment: the enter tool served the guide inline.
+            return None
+        return ErrorResponse(
+            message=(
+                "The engine switch is pending — building continues "
+                "automatically on the next turn with the guide loaded. End "
+                f"your turn now with a brief note; do not retry {tool_name} "
+                "in this turn."
+            ),
+            session_id=session.session_id,
+        )
     return ErrorResponse(
         message=(
-            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
-            f"first, then retry {tool_name}. The guide documents required block ids, "
-            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
-            "usage — generating agent JSON without it produces schema mismatches."
+            f"Call enter_agent_building_mode first, then retry {tool_name}. "
+            "It loads the agent-building guide into your system prompt where "
+            "it survives context compaction. (get_agent_building_guide or "
+            'read_skill(name="agent_building_guide") also satisfy this gate.) '
+            "The guide documents required block ids, input/output schemas, "
+            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
+            "generating agent JSON without it produces schema mismatches."
         ),
         session_id=session.session_id,
     )
@@ -1062,3 +1111,26 @@ def require_library_check(session: ChatSession, tool_name: str):
         ),
         session_id=session.session_id,
     )
+
+
+def coerce_agent_json(
+    agent_json: dict[str, Any] | str | None,
+) -> dict[str, Any] | None:
+    """Coerce an ``agent_json`` tool argument into a dict.
+
+    A bare ``@@agptfile:`` reference is expanded and JSON-parsed into a dict
+    by the SDK layer before the tool runs, but a raw JSON string can still
+    arrive — e.g. a reference embedded in surrounding text, or a file that
+    failed structured parsing. Returns None when the value cannot be
+    interpreted as a JSON object.
+    """
+    if isinstance(agent_json, dict):
+        return agent_json
+    if isinstance(agent_json, str) and agent_json.strip():
+        try:
+            parsed = json.loads(agent_json)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+    return None

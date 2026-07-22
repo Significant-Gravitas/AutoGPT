@@ -155,7 +155,11 @@ class TestResolveUseSdkForMode:
                     )
                     is False
                 )
-        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        # Compare levelno, not levelname: the FancyConsoleFormatter
+        # colorizes record.levelname IN PLACE when a console handler is
+        # installed in the test process, so string comparison breaks
+        # depending on logging-config import order.
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert "extended_thinking" in warnings[0].message
 
@@ -645,3 +649,73 @@ class TestExecuteSafetyNet:
             assert finished.wait(timeout=5)
         finally:
             pool.shutdown(wait=True)
+
+
+class TestBuildingModeForcesSdk:
+    """Engine pinning: a session whose history shows building mode must run
+    on the SDK engine even when the request asked for Fast."""
+
+    @pytest.mark.asyncio
+    async def test_forces_sdk_when_history_shows_building_mode(self):
+        from backend.copilot.executor.processor import _building_mode_forces_sdk
+
+        session = MagicMock()
+        with (
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.session_entered_building_mode",
+                return_value=True,
+            ),
+        ):
+            assert await _building_mode_forces_sdk("sess-1") is True
+
+    @pytest.mark.asyncio
+    async def test_no_force_without_building_history(self):
+        from backend.copilot.executor.processor import _building_mode_forces_sdk
+
+        session = MagicMock()
+        with (
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.session_entered_building_mode",
+                return_value=False,
+            ),
+        ):
+            assert await _building_mode_forces_sdk("sess-1") is False
+
+    @pytest.mark.asyncio
+    async def test_missing_session_does_not_force(self):
+        from backend.copilot.executor.processor import _building_mode_forces_sdk
+
+        with patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=None),
+        ):
+            assert await _building_mode_forces_sdk("sess-1") is False
+
+    @pytest.mark.asyncio
+    async def test_real_session_with_enter_call_forces_sdk(self):
+        """End-to-end through the real helper: a real ChatSession whose
+        history carries the enter_agent_building_mode call pins the engine."""
+        from backend.copilot.executor.processor import _building_mode_forces_sdk
+        from backend.copilot.model import ChatMessage, ChatSession
+
+        session = ChatSession.new(user_id="user-1", dry_run=False)
+        session.messages = [
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
+            )
+        ]
+        with patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ):
+            assert await _building_mode_forces_sdk(session.session_id) is True

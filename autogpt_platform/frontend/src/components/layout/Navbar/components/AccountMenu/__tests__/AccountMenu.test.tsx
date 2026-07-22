@@ -146,4 +146,44 @@ describe("AccountMenu", () => {
     expect(screen.getByTestId("profile-popout-menu-trigger")).toBeDefined();
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
   });
+
+  test("new layout renders the organization switcher header trigger", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-org-trigger")).toBeDefined();
+  });
+
+  test("new layout renders the agent activity row trigger", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
+    expect(screen.getByText("Activity")).toBeDefined();
+  });
+
+  test("classic layout does not render org/activity triggers", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
+    expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
+  });
 });

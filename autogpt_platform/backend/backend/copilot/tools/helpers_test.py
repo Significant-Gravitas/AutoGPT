@@ -11,6 +11,7 @@ from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFI
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
+    coerce_agent_json,
     execute_block,
     prepare_block_for_execution,
     require_library_check,
@@ -1548,3 +1549,26 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestCoerceAgentJson:
+    def test_dict_passes_through(self):
+        agent = {"nodes": [{"id": "n1"}], "links": []}
+        assert coerce_agent_json(agent) is agent
+
+    def test_json_object_string_is_parsed(self):
+        assert coerce_agent_json('{"nodes": [], "links": []}') == {
+            "nodes": [],
+            "links": [],
+        }
+
+    def test_unparseable_string_returns_none(self):
+        assert coerce_agent_json("@@agptfile:/home/user/agent.json") is None
+
+    def test_json_non_object_string_returns_none(self):
+        assert coerce_agent_json('["nodes"]') is None
+
+    def test_none_and_empty_return_none(self):
+        assert coerce_agent_json(None) is None
+        assert coerce_agent_json("") is None
+        assert coerce_agent_json("   ") is None

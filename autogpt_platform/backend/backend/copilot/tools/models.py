@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
@@ -460,6 +461,7 @@ class ExecutionOutputInfo(BaseModel):
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
     node_executions: list[dict[str, Any]] | None = None
+    nodes_failed: list[NodeFailureSummary] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
@@ -749,7 +751,17 @@ class MCPToolInfo(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any]
+    params: str | None = Field(
+        default=None,
+        description="Compact argument summary: top-level input field names, "
+        "required ones marked with *.",
+    )
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Full input schema. Omitted in discovery responses to "
+        "keep them small; the execution error path returns the failed "
+        "tool's full schema on demand.",
+    )
 
 
 class MCPToolsDiscoveredResponse(ToolResponseBase):
@@ -815,7 +827,11 @@ class FixResultResponse(ToolResponseBase):
     """Response for fix_agent_graph tool."""
 
     type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
-    fixed_agent_json: dict[str, Any]
+    # None when the fixed JSON was written to a workspace file instead
+    # (see fixed_agent_ref + fix_diff).
+    fixed_agent_json: dict[str, Any] | None = None
+    fixed_agent_ref: str | None = None
+    fix_diff: str | None = None
     fixes_applied: list[str] = Field(default_factory=list)
     fix_count: int = 0
     valid_after_fix: bool = False
@@ -1040,11 +1056,11 @@ class ChatPlatformChannelListResponse(ToolResponseBase):
 
 
 class ChatPlatformPostedResponse(ToolResponseBase):
-    """Response after the bot posts a message or creates a thread."""
+    """Response after the bot posts a message, creates a thread, or DMs."""
 
     type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
     platform: str
-    kind: Literal["message", "thread"]
+    kind: Literal["message", "thread", "dm"]
     channel_id: str
     ref_id: str | None = None
     url: str | None = None
