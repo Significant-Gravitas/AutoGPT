@@ -469,11 +469,6 @@ app.include_router(
     prefix="/api/orgs/{org_id}/workspaces",
 )
 app.include_router(
-    backend.api.features.orgs.grant_routes.router,
-    tags=["v2", "orgs", "grants"],
-    prefix="/api/orgs/{org_id}",
-)
-app.include_router(
     backend.api.features.orgs.invitation_routes.org_router,
     tags=["v2", "orgs", "invitations"],
     prefix="/api/orgs/{org_id}/invitations",
@@ -482,6 +477,11 @@ app.include_router(
     backend.api.features.orgs.invitation_routes.router,
     tags=["v2", "invitations"],
     prefix="/api/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.grant_routes.router,
+    tags=["v2", "orgs", "grants"],
+    prefix="/api/orgs/{org_id}",
 )
 app.include_router(
     transfer_routes.router,
