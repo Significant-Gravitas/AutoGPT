@@ -111,6 +111,14 @@ describe("GlobalSearchOverlay", () => {
     expect(await within(dialog).findByText("Revenue forecast")).toBeDefined();
   });
 
+  it("opens with plain Cmd+K on the classic chat-search path (no Shift required)", async () => {
+    render(<GlobalSearchOverlay />);
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+
+    expect(await screen.findByRole("dialog")).toBeDefined();
+  });
+
   it("filters results, shows empty copy, and clears the query", async () => {
     const user = userEvent.setup();
     render(<GlobalSearchOverlay />);

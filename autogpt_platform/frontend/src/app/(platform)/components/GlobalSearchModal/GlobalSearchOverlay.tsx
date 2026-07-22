@@ -38,14 +38,17 @@ export function GlobalSearchOverlay() {
       if (event.repeat) return;
       if (event.key.toLocaleLowerCase() !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
-      if (!event.shiftKey) return;
+      // The new layout binds Cmd/Ctrl+Shift+K; the classic chat-search path
+      // keeps its original plain Cmd/Ctrl+K, so only require Shift on the new
+      // layout to avoid changing the classic binding.
+      if (isNewLayoutEnabled && !event.shiftKey) return;
       event.preventDefault();
       useGlobalSearchStore.getState().toggleSearch();
     }
 
     document.addEventListener("keydown", handleSearchShortcut);
     return () => document.removeEventListener("keydown", handleSearchShortcut);
-  }, [isEnabled]);
+  }, [isEnabled, isNewLayoutEnabled]);
 
   if (!isEnabled) return null;
 
