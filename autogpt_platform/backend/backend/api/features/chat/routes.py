@@ -70,6 +70,10 @@ from backend.copilot.response_model import (
     StreamStartStep,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    verify_session_org_membership,
+)
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
@@ -1161,6 +1165,28 @@ async def stream_chat_post(
     # Untagged legacy sessions fall back to the request context.
     turn_org_id = session.organization_id or ctx.org_id
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
+
+    # Membership is only checked at session creation; re-verify it here so a
+    # user removed or suspended from the session's org *after* creation cannot
+    # keep acting under that stale org through this (or any) existing session.
+    # A 403 is the honest failure: silently degrading to personal context
+    # would run agents / spend credits under the wrong tenancy without the
+    # user understanding, and would hide revocation bugs.  A stale team on a
+    # still-valid org is stripped to org-home instead (team removal is
+    # routine; org removal is access revocation) — matching the team fallback
+    # in get_request_context.
+    if session.organization_id is not None:
+        try:
+            turn_team_id = await verify_session_org_membership(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked as exc:
+            raise HTTPException(
+                status_code=403,
+                detail="You are no longer a member of this session's organization",
+            ) from exc
 
     try:
         turn_in_flight = (
