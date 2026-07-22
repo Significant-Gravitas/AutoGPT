@@ -45,12 +45,12 @@ export function SidebarItemCard({
           <div className="flex w-full min-w-0 items-center gap-2">
             <Text
               variant="body"
-              className="truncate leading-tight !text-zinc-500"
+              className="min-w-0 flex-1 truncate leading-tight !text-zinc-500"
               title={descriptionTitle}
             >
               {description}
             </Text>
-            {badge}
+            {badge ? <div className="shrink-0">{badge}</div> : null}
           </div>
         </div>
         {actions ? (
