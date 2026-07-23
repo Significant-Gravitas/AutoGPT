@@ -15,6 +15,7 @@ to our own hosts.
 import asyncio
 import html
 import logging
+import re
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -52,20 +53,44 @@ class AuthEmailRequest(BaseModel):
     url: str
 
 
-def _url_host_allowed(url: str) -> bool:
-    """Only send links pointing at our own frontend: the configured
-    frontend_base_url host in prod, or a *.vercel.app preview host. Blocks a
-    token-holder from sending phishing links to arbitrary domains."""
+def _origin_of(url: str) -> str | None:
+    """Return the scheme://host[:port] origin of an http(s) URL, or None.
+    Built from hostname/port (not netloc) so embedded credentials in a crafted
+    URL can't smuggle a different effective host past the allowlist."""
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname:
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return None
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{parsed.hostname}{port}"
+
+
+def _trusted_frontend_origins() -> tuple[set[str], list[str]]:
+    """The set of frontend origins auth-email links may target: the configured
+    frontend_base_url plus any trusted_frontend_origins. Returns (exact origins,
+    regex patterns)."""
+    entries: list[str] = []
+    frontend_origin = _origin_of(settings.config.frontend_base_url)
+    if frontend_origin:
+        entries.append(frontend_origin)
+    entries.extend(settings.config.trusted_frontend_origins)
+
+    exact = {e for e in entries if not e.startswith("regex:")}
+    patterns = [e[len("regex:") :] for e in entries if e.startswith("regex:")]
+    return exact, patterns
+
+
+def _url_origin_allowed(url: str) -> bool:
+    """Only send links pointing at a trusted frontend origin (frontend_base_url
+    or an entry in trusted_frontend_origins). Blocks a token-holder from
+    sending phishing links to arbitrary domains. Self-hosting works with just
+    frontend_base_url; there is no hardcoded provider wildcard."""
+    origin = _origin_of(url)
+    if origin is None:
         return False
-    host = parsed.hostname
-    frontend = settings.config.frontend_base_url
-    if frontend:
-        frontend_host = urlparse(frontend).hostname
-        if frontend_host and host == frontend_host:
-            return True
-    return host.endswith(".vercel.app")
+    exact, patterns = _trusted_frontend_origins()
+    if origin in exact:
+        return True
+    return any(re.fullmatch(pattern, origin) for pattern in patterns)
 
 
 @auth_email_router.post(
@@ -76,10 +101,10 @@ def _url_host_allowed(url: str) -> bool:
     tags=["auth-email"],
 )
 async def send_auth_email(request: AuthEmailRequest) -> None:
-    if not _url_host_allowed(request.url):
+    if not _url_origin_allowed(request.url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="url must be an https link on an allowed frontend host.",
+            detail="url must point at a trusted frontend origin.",
         )
 
     subject = _SUBJECTS[request.type]

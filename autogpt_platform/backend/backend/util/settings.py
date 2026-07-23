@@ -337,6 +337,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    trusted_frontend_origins: List[str] = Field(
+        default=[],
+        description="Extra frontend origins (in addition to frontend_base_url) "
+        "that transactional auth-email action links may point at. Entries are "
+        'full origins ("https://host[:port]") or "regex:"-prefixed patterns, '
+        "same format as backend_cors_allow_origins. Self-hosting needs nothing "
+        "here (frontend_base_url is trusted implicitly); cloud sets a tight "
+        "preview pattern instead of a blanket wildcard.",
+    )
+
     platform_link_base_url: str = Field(
         default="https://platform.agpt.co/link",
         description="Base URL the bot service prepends to one-time linking "
