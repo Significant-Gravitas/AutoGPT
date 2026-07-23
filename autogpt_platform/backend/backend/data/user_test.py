@@ -416,6 +416,7 @@ class TestAccessibleCredentials:
         assert result[0].id == "dup"
         assert result[0].provider == "github"
 
+
 class TestGetOrCreateUserStatus:
     @pytest.fixture(autouse=True)
     def stub_user_provisioning(self):
