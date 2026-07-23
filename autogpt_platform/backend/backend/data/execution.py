@@ -921,15 +921,20 @@ async def create_graph_execution(
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
+    # Advance lastRunAt only forward (using this execution's creation time), so a
+    # delayed older execution can't overwrite a newer run's timestamp.
+    run_time = result.createdAt
     try:
         await LibraryAgent.prisma().update_many(
             where={
                 "agentGraphId": graph_id,
                 "userId": user_id,
+                "OR": [
+                    {"lastRunAt": None},
+                    {"lastRunAt": {"lt": run_time}},
+                ],
             },
-            data={
-                "lastRunAt": datetime.now(tz=timezone.utc),
-            },
+            data={"lastRunAt": run_time},
         )
     except Exception as e:
         logger.warning(
