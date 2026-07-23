@@ -22,16 +22,32 @@ export function parseSupabaseSessionCookie(cookieHeader: string): {
       return { name: part.slice(0, eq), value: part.slice(eq + 1) };
     });
 
+  // Order chunks by their numeric suffix (base cookie = -1), so `.2` precedes
+  // `.10` — a lexicographic sort would reassemble the chunks out of order once
+  // a session spans more than ten cookies.
+  const chunkIndex = (name: string): number => {
+    const dot = name.lastIndexOf(".");
+    const suffix = dot === -1 ? "" : name.slice(dot + 1);
+    return /^\d+$/.test(suffix) ? Number(suffix) : -1;
+  };
   const authCookies = cookies
     .filter(({ name }) => /^sb-.+-auth-token(\.\d+)?$/.test(name))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => chunkIndex(a.name) - chunkIndex(b.name));
 
   if (authCookies.length === 0) {
     return { accessToken: null, cookieNames: [] };
   }
 
   const cookieNames = authCookies.map(({ name }) => name);
-  let raw = decodeURIComponent(authCookies.map(({ value }) => value).join(""));
+  const joined = authCookies.map(({ value }) => value).join("");
+  let raw: string;
+  try {
+    raw = decodeURIComponent(joined);
+  } catch {
+    // Malformed percent-encoding in the cookie — treat as no bridgeable session
+    // rather than throwing an uncaught URIError.
+    return { accessToken: null, cookieNames };
+  }
 
   if (raw.startsWith("base64-")) {
     try {

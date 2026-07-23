@@ -212,7 +212,6 @@ function ResetPasswordContent() {
                 loading={isLoading}
                 type="submit"
                 className="mt-6 w-full"
-                onClick={() => onChangePassword(changePasswordForm.getValues())}
               >
                 {isLoading ? "Updating password..." : "Update password"}
               </Button>

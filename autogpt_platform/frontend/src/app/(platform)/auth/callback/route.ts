@@ -1,5 +1,6 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 import {
   scheduleAccountCreatedGoal,
@@ -25,7 +26,14 @@ export async function GET(request: Request) {
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();
-      next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+      // Prefer a sanitized ?next (relative paths only — sanitizeAuthNext drops
+      // absolute and protocol-relative values, so a crafted ?next can't
+      // open-redirect the user off-site); otherwise route by onboarding state.
+      // Resolve the final target BEFORE revalidating so we revalidate the page
+      // the user actually lands on.
+      next =
+        sanitizeAuthNext(searchParams.get("next")) ??
+        (shouldShowOnboarding ? "/onboarding" : "/copilot");
       revalidatePath(next, "layout");
     } catch (createUserError) {
       console.error("Error creating user:", createUserError);
@@ -65,9 +73,6 @@ export async function GET(request: Request) {
         `${origin}/error?message=user-creation-failed`,
       );
     }
-
-    // Get redirect destination from 'next' query parameter
-    next = searchParams.get("next") || next;
 
     const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
     const isLocalEnv = process.env.NODE_ENV === "development";

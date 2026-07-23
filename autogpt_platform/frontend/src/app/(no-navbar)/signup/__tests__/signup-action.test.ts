@@ -111,10 +111,11 @@ describe("signup", () => {
   });
 
   it("reports user_already_exists when Better Auth rejects a duplicate email", async () => {
+    // Better Auth's email sign-up throws USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL.
     signUpEmailMock.mockRejectedValue(
       new APIError("UNPROCESSABLE_ENTITY", {
-        message: "User already exists",
-        code: "USER_ALREADY_EXISTS",
+        message: "User already exists. Use another email.",
+        code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
       }),
     );
 

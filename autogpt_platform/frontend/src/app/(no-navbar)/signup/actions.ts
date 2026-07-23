@@ -52,7 +52,12 @@ export async function signup(
           return { success: false, error: "not_allowed" };
         }
 
-        if (error.body?.code === "USER_ALREADY_EXISTS") {
+        // Better Auth's email sign-up throws USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL;
+        // accept the legacy code too in case the adapter version changes.
+        if (
+          error.body?.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" ||
+          error.body?.code === "USER_ALREADY_EXISTS"
+        ) {
           return { success: false, error: "user_already_exists" };
         }
 

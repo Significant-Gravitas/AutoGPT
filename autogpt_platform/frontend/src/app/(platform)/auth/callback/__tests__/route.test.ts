@@ -144,6 +144,24 @@ describe("auth callback GET — redirect target resolution", () => {
 
     expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
   });
+
+  it("ignores an off-site next and cannot open-redirect via the forwarded host", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    loggedInWithCompletedSetup(); // shouldShowOnboarding: false -> /copilot
+
+    for (const evil of ["@evil.com", "//evil.com", "https://evil.com"]) {
+      const response = await GET(
+        makeCallbackRequest(`/auth/callback?next=${encodeURIComponent(evil)}`, {
+          "x-forwarded-host": "app.example.com",
+        }),
+      );
+      // sanitizeAuthNext drops the crafted value, so we land on the resolved
+      // in-app target under our own host — never evil.com.
+      expect(response.headers.get("location")).toBe(
+        "https://app.example.com/copilot",
+      );
+    }
+  });
 });
 
 describe("auth callback GET — user creation failures", () => {
