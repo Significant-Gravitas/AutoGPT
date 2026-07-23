@@ -18,7 +18,11 @@ from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
 
 DESKTOP_TEMPLATE = "desktop"
+HOME_PATH = "/home/user"
 WORKSPACE_PATH = "/home/user/workspace"
+# Standard XFCE user dirs redirected into the volume so a person's natural
+# desktop activity (browser downloads, files saved to the desktop) persists.
+PERSISTENT_HOME_DIRS = ("Downloads", "Desktop", "Documents")
 DISPLAY = ":0"
 VNC_PORT = 5900
 STREAM_PORT = 6080
@@ -94,6 +98,7 @@ class DesktopSession:
         await session.ensure_display(width, height)
         if persistence.volume_mounted:
             await session.run_command(f"mkdir -p {shlex.quote(WORKSPACE_PATH)}")
+            await session.ensure_persistent_home()
         return session, persistence
 
     @classmethod
@@ -175,6 +180,27 @@ class DesktopSession:
 
     async def is_workspace_mounted(self) -> bool:
         return await self._check(f"mountpoint -q {shlex.quote(WORKSPACE_PATH)}")
+
+    async def ensure_persistent_home(self) -> None:
+        """Redirect the standard user dirs into the mounted volume.
+
+        Downloads/Desktop/Documents become symlinks into ``WORKSPACE_PATH`` so
+        files a person creates through the live desktop persist on the volume
+        (surviving sandbox destroy) rather than living only in the ephemeral
+        rootfs. Idempotent: safe to run on every sandbox that mounts the
+        volume, migrating any pre-existing content in once.
+        """
+        dirs = " ".join(PERSISTENT_HOME_DIRS)
+        script = (
+            f"for d in {dirs}; do "
+            f'mkdir -p {WORKSPACE_PATH}/"$d"; '
+            f'if [ -d {HOME_PATH}/"$d" ] && [ ! -L {HOME_PATH}/"$d" ]; then '
+            f'cp -an {HOME_PATH}/"$d"/. {WORKSPACE_PATH}/"$d"/ 2>/dev/null || true; '
+            f'rm -rf {HOME_PATH}/"$d"; fi; '
+            f'ln -sfn {WORKSPACE_PATH}/"$d" {HOME_PATH}/"$d"; '
+            f"done"
+        )
+        await self.run_command(script)
 
     async def pause(self) -> None:
         await self.sandbox.pause()
