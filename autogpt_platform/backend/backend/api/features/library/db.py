@@ -210,6 +210,8 @@ async def list_library_agents(
         order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
+    elif sort_by == library_model.LibraryAgentSort.LAST_RUN:
+        order_by = {"lastRunAt": "desc"}
 
     library_agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where_clause,
