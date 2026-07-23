@@ -5,6 +5,8 @@
 > Generator block (used inside agent graphs you build yourself), see
 > [Running Ollama with AutoGPT](ollama.md). The two paths read different
 > env vars, so configuring one does not configure the other.
+> The optional voice transcription section below is also separate and
+> reads server-side variables from the frontend environment.
 >
 > Self-hosting only — the cloud `agpt.co` deployment routes AutoPilot
 > through Anthropic / OpenRouter and ignores the variables below.
@@ -82,6 +84,71 @@ CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 # and have the VRAM for it.
 CHAT_FAST_ADVANCED_MODEL=qwen3:14b-q4_K_M
 ```
+
+## Optional: local voice transcription with FunASR
+
+AutoPilot's microphone input can use a self-hosted
+[FunASR](https://github.com/modelscope/FunASR) server instead of the
+default OpenAI transcription endpoint. FunASR exposes the compatible
+`POST /v1/audio/transcriptions` route and uses SenseVoice by default.
+
+Install FunASR and start the server on the Docker host:
+
+```bash
+python -m pip install -U funasr
+
+# CPU
+funasr-server --model sensevoice --device cpu
+
+# Or, on a CUDA host
+funasr-server --model sensevoice --device cuda
+```
+
+The first start downloads the model. The server listens on
+`0.0.0.0:8000` and does not require an API key by default. Before
+connecting AutoGPT, verify it with a local audio file:
+
+```bash
+curl http://localhost:8000/v1/audio/transcriptions \
+  -F file=@sample.wav \
+  -F model=sensevoice
+```
+
+Keep port 8000 on a trusted host or private network. If the endpoint is
+reachable from an untrusted network, put it behind an authenticated
+HTTPS reverse proxy.
+
+Then add the transcription settings to
+`autogpt_platform/frontend/.env`:
+
+```bash
+# Docker Desktop on macOS or Windows
+TRANSCRIPTION_API_BASE_URL=http://host.docker.internal:8000/v1
+TRANSCRIPTION_MODEL=sensevoice
+TRANSCRIPTION_API_KEY=
+```
+
+On native Linux Docker, replace `host.docker.internal` with the host's
+LAN or bridge-reachable IP. Alternatively, add
+`host.docker.internal:host-gateway` to the frontend service's
+`extra_hosts`. For frontend development outside Docker, use
+`http://localhost:8000/v1`.
+
+Recreate the frontend container so the server-side transcription route
+receives the new environment:
+
+```bash
+cd autogpt_platform
+docker compose up -d --force-recreate frontend
+```
+
+Leave `TRANSCRIPTION_API_KEY` empty for a default FunASR server. Set it
+only when a gateway or reverse proxy in front of FunASR requires bearer
+authentication. If the `TRANSCRIPTION_*` variables are absent, AutoGPT
+continues to use OpenAI's `whisper-1` model and `OPENAI_API_KEY`.
+
+For model choices and deployment options, see the
+[FunASR model selection guide](https://github.com/modelscope/FunASR/blob/main/docs/model_selection.md).
 
 ## Picking a model
 
