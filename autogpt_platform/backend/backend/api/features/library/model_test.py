@@ -101,3 +101,52 @@ async def test_agent_preset_from_db(test_user_id: str):
     assert agent.name == "Test Agent"
     assert agent.description == "Test agent description"
     assert agent.inputs == {"input1": {"type": "string", "value": "test value"}}
+
+
+def test_preset_serialization_redacts_webhook_signing_material():
+    """A serialized preset must never leak the webhook's signing secret or
+    provider webhook id (GHSA-4m2w-qfr5-9f3v), while still exposing the ingress
+    URL and non-sensitive metadata the frontend needs."""
+    from backend.data.integrations import Webhook
+    from backend.integrations.providers import ProviderName
+
+    webhook = Webhook(
+        id="wh-1",
+        user_id="u1",
+        provider=ProviderName.GITHUB,
+        credentials_id="cred-1",
+        webhook_type="repo",
+        resource="owner/repo",
+        events=["pull_request"],
+        config={},
+        secret="super-secret-signing-key",
+        provider_webhook_id="gh-provider-123",
+    )
+    preset = library_model.LibraryAgentPreset(
+        id="preset-1",
+        user_id="u1",
+        created_at=datetime.datetime.now(),
+        updated_at=datetime.datetime.now(),
+        graph_id="g1",
+        graph_version=1,
+        inputs={},
+        credentials={},
+        name="p",
+        description="",
+        is_active=True,
+        webhook_id="wh-1",
+        webhook=webhook,
+    )
+
+    dumped = preset.model_dump(mode="json")
+    assert dumped["webhook"] is not None
+    assert "secret" not in dumped["webhook"]
+    assert "provider_webhook_id" not in dumped["webhook"]
+    # Non-sensitive fields callers rely on are preserved.
+    assert dumped["webhook"]["id"] == "wh-1"
+    assert dumped["webhook"]["url"]
+
+    # The secret must not leak through JSON string serialization either.
+    serialized = preset.model_dump_json()
+    assert "super-secret-signing-key" not in serialized
+    assert "gh-provider-123" not in serialized

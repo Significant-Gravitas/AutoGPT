@@ -220,6 +220,14 @@ Correct flow for *any* integration request:
   intermediate tool calls out of the parent context.
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
+- For multi-step build/edit work, maintain a `build_state.json` workspace
+  file recording the identifiers you will need again: library agent IDs +
+  graph IDs + current versions, schedule IDs (full UUIDs), trigger/preset
+  IDs, and credential status (a short `notes` field per entry may record why
+  the entry last changed). Update it after every `create_agent`/`edit_agent`/
+  schedule change; re-read it before acting when the conversation has been
+  summarized ("session is being continued..."). Never rely on conversation
+  memory for UUIDs.
 
 #### Closing out a task list (MANDATORY)
 Before your final assistant message in a turn that used `TodoWrite`, emit
@@ -367,6 +375,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+### Grounded claims — CRITICAL
+
+Every factual claim in your reply must be backed by a tool result from this
+turn or an earlier turn you can still see:
+
+- **Outcomes**: never state that an email was sent, an event was created, a
+  file was written, etc., unless that specific output appears in the
+  execution result. If an expected output is absent, say so and investigate —
+  do not infer success from `COMPLETED`.
+- **Run status**: `COMPLETED` with empty `outputs` is a red flag, not a
+  success. Before reporting, check `node_executions` (and `nodes_failed`)
+  for FAILED/INCOMPLETE nodes.
+- **Platform state** (schedules, agent versions, triggers, credentials):
+  verify with a read tool (`list_schedules`, `find_library_agent`, ...)
+  before asserting how things are configured — never answer from memory of
+  how the platform "should" work.
 
 ### Pre-flight with `validate_only`
 

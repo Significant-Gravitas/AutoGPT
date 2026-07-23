@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from .adapters.base import WebhookAdapter
 from .adapters.slack import config as slack_config
 from .adapters.slack.adapter import SlackAdapter
+from .adapters.telegram import config as telegram_config
+from .adapters.telegram.adapter import TelegramAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 
@@ -27,19 +29,25 @@ def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
     cleanup) — matching the pattern used by the socket bridge in ``app.py``.
     """
     handler = MessageHandler(api)
-    adapters = _build_webhook_adapters(api)
+    adapters = build_webhook_adapters(api)
     for adapter in adapters:
         adapter.on_message(handler.handle)
         adapter.register_routes(app)
     logger.info(f"Mounted {len(adapters)} webhook adapter(s) on the main backend API")
 
 
-def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
+def build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     """Instantiate webhook adapters from configured platform credentials.
 
     Slack / Telegram / Teams / WhatsApp adapters slot in here as they land —
     each gated on its own credentials being set, so an unconfigured platform
     mounts nothing.
+
+    Two consumers share this factory (keeping platform names confined to it):
+    ``register_webhook_adapters`` mounts the adapters' inbound routes on the
+    main backend API, and the copilot-bot bridge (``app.py``) builds them
+    outbound-only — no routes, no message handler — so proactive posts can
+    reach every configured platform.
     """
     adapters: list[WebhookAdapter] = []
     # Signing secret is always required (inbound verification, one per app). Then
@@ -51,4 +59,9 @@ def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     if slack_config.get_signing_secret() and has_credentials:
         adapters.append(SlackAdapter(api))
         logger.info("Slack adapter enabled")
+    # Telegram: one BotFather token for every chat; the webhook secret is what
+    # authenticates inbound updates, so both are required.
+    if telegram_config.get_bot_token() and telegram_config.get_webhook_secret():
+        adapters.append(TelegramAdapter(api))
+        logger.info("Telegram adapter enabled")
     return adapters

@@ -21,21 +21,23 @@ import {
   FlowArrowIcon,
   FolderIcon,
   type Icon,
-  SparkleIcon,
+  NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
-import { ComponentProps, ReactNode, Suspense } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
-import { SidebarOrgSwitcher } from "./components/SidebarOrgSwitcher/SidebarOrgSwitcher";
+import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
+import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 
 type NavLink = {
   name: string;
@@ -82,7 +84,30 @@ function NewTaskIcon() {
     return <LoadingSpinner size="small" className="shrink-0" />;
   }
 
-  return <SparkleIcon className="size-4" />;
+  return <NotePencilIcon className="size-5" />;
+}
+
+// New Task shares the nav-item styling with the main links so it sits in the
+// same section with a uniform gap, instead of being a standalone CTA button.
+function NewTaskItem() {
+  const pathname = usePathname();
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip="New Task"
+        isActive={isLinkActive(pathname, "/copilot")}
+        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+      >
+        <Link href="/copilot">
+          <NewTaskIcon />
+          <span className="truncate">New Task</span>
+          <ShortcutHint letter="O" />
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 }
 
 function NavMenu({
@@ -103,7 +128,7 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-lg p-2 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
           >
             <Link href={link.href}>
               <link.icon className="size-5" />
@@ -137,7 +162,10 @@ function CollapsibleNavGroup({
       <SidebarGroup
         className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
       >
-        <SidebarGroupLabel asChild className="text-[13px] font-medium">
+        <SidebarGroupLabel
+          asChild
+          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
+        >
           <CollapsibleTrigger>
             {label}
             <CaretDownIcon
@@ -172,6 +200,23 @@ type Props = ComponentProps<typeof Sidebar>;
 export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  const router = useRouter();
+
+  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
+  useEffect(() => {
+    function handleNewTaskShortcut(event: KeyboardEvent) {
+      if (event.repeat) return;
+      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      if (!event.shiftKey) return;
+      if (isEditableElement(document.activeElement)) return;
+      event.preventDefault();
+      router.push("/copilot");
+    }
+
+    document.addEventListener("keydown", handleNewTaskShortcut);
+    return () => document.removeEventListener("keydown", handleNewTaskShortcut);
+  }, [router]);
 
   return (
     <Sidebar
@@ -189,30 +234,17 @@ export function AppSidebar(props: Props) {
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+            <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip="New Task"
-                      className="justify-center rounded-lg bg-zinc-800 font-medium text-white group-data-[collapsible=icon]:justify-start hover:!bg-zinc-900 hover:!text-white"
-                    >
-                      <Link href="/copilot">
-                        <NewTaskIcon />
-                        <span className="truncate">New Task</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
-              <SidebarGroupContent>
-                <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
+                <NavMenu
+                  links={MAIN_LINKS}
+                  leading={
+                    <>
+                      <NewTaskItem />
+                      <SidebarSearch />
+                    </>
+                  }
+                />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
@@ -239,7 +271,7 @@ export function AppSidebar(props: Props) {
         </motion.div>
       </SidebarContent>
 
-      <SidebarOrgSwitcher />
+      <SidebarUserActions />
 
       <SidebarRail />
     </Sidebar>

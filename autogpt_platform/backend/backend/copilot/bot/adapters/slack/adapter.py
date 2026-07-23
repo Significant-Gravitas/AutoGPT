@@ -33,16 +33,17 @@ from backend.copilot.bot.adapters.base import (
     MessageContext,
     PostedRef,
     WebhookAdapter,
+    read_verified_webhook_body,
+    unauthorized_webhook_response,
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
-from backend.data.bot_installs import (
-    get_bot_install,
-    is_install_revoked,
-    revoke_bot_install,
-)
+
+# Accessor, not direct Prisma: the outbound half also runs in the Prisma-less
+# copilot-bot bridge pod, which must go through the DatabaseManager.
+from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
 from . import commands, config, oauth, signing
@@ -145,13 +146,19 @@ class SlackAdapter(WebhookAdapter):
             ):
                 return client
             self._evict(team_id)
-        install = await get_bot_install(Platform.SLACK, team_id) if team_id else None
+        install = (
+            await bot_installs_db().get_bot_install(Platform.SLACK, team_id)
+            if team_id
+            else None
+        )
         if install is None:
             # A workspace that explicitly uninstalled / revoked us gets NOTHING —
             # the static token belongs to the app's own workspace and must never
             # be used on a revoked one's behalf. Fallback is only for
             # never-installed refs (single-workspace mode, raw proactive refs).
-            if team_id and await is_install_revoked(Platform.SLACK, team_id):
+            if team_id and await bot_installs_db().is_install_revoked(
+                Platform.SLACK, team_id
+            ):
                 return None
             token = config.get_bot_token()
         else:
@@ -173,9 +180,9 @@ class SlackAdapter(WebhookAdapter):
     # -- Inbound --
 
     async def _handle_event_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        raw = await read_verified_webhook_body(request, _verify_signature)
+        if raw is None:
+            return unauthorized_webhook_response()
         payload = json.loads(raw)
         if payload.get("type") == "url_verification":
             return JSONResponse({"challenge": payload.get("challenge", "")})
@@ -192,9 +199,8 @@ class SlackAdapter(WebhookAdapter):
         return PlainTextResponse("ok")
 
     async def _handle_command_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        if await read_verified_webhook_body(request, _verify_signature) is None:
+            return unauthorized_webhook_response()
         form_data = await request.form()
         # Slack slash-command form data is always string-valued; drop anything
         # else (UploadFile etc.) defensively before passing on.
@@ -211,7 +217,7 @@ class SlackAdapter(WebhookAdapter):
         if event.get("type") in _UNINSTALL_EVENTS:
             if team_id:
                 self._evict(team_id)
-                await revoke_bot_install(Platform.SLACK, team_id)
+                await bot_installs_db().revoke_bot_install(Platform.SLACK, team_id)
             return
         if self._on_message_callback is None:
             return
@@ -400,12 +406,6 @@ class SlackAdapter(WebhookAdapter):
             return
         await client.chat_postEphemeral(channel=channel, user=user_id, text=text)
 
-    async def start_typing(self, channel_id: str) -> None:
-        pass  # Slack bot apps don't expose a typing indicator API.
-
-    async def stop_typing(self, channel_id: str) -> None:
-        pass
-
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
     ) -> Optional[str]:
@@ -413,9 +413,6 @@ class SlackAdapter(WebhookAdapter):
         # single target_id the handler passes back to the outbound send_* calls.
         team, channel, _ = _decode_target(channel_id)
         return _encode_target(team, channel, message_id)
-
-    async def rename_thread(self, thread_id: str, name: str) -> bool:
-        return False  # Slack threads have no name.
 
     # -- Proactive output --
 
@@ -468,6 +465,20 @@ class SlackAdapter(WebhookAdapter):
             return resp.get("team_id") or None
         except Exception:
             return None
+
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        # A DM link carries no workspace, so this resolves via the static
+        # single-workspace token — multi-workspace installs can't be picked
+        # without a team id on the user link.
+        client = await self._client_for("")
+        if client is None:
+            return None
+        try:
+            resp = await client.conversations_open(users=platform_user_id)
+        except Exception:
+            logger.warning(f"Cannot open Slack DM with user {platform_user_id}")
+            return None
+        return (resp.get("channel") or {}).get("id") or None
 
     async def post_channel_message(
         self, channel_id: str, text: str

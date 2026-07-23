@@ -24,6 +24,7 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.platform_linking.models import (
+    MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
     BotEventInput,
     BotGuildInput,
@@ -44,6 +45,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends
@@ -252,6 +254,17 @@ class BotBackend:
             user_id=user_id,
         )
 
+    async def get_dm_user_id(self, platform: str, user_id: str) -> str | None:
+        """Return the platform user ID behind ``user_id``'s DM link, or None.
+
+        Backs proactive DM delivery: the target is always the caller's own
+        linked account, so authorization is the link itself.
+        """
+        return await self._client.get_user_dm_id(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
+
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
     ) -> None:
@@ -436,7 +449,10 @@ class BotBackend:
             request=BotChatRequest(
                 platform=Platform(platform.upper()),
                 platform_user_id=platform_user_id,
-                message=message,
+                # A long conversation's history can push the assembled prompt
+                # past the request cap; clamp here so it never fails validation
+                # (which the turn streamer would surface as a generic error).
+                message=clamp_prompt(message, MAX_BOT_MESSAGE_CHARS),
                 session_id=session_id,
                 platform_server_id=platform_server_id,
                 file_ids=file_ids or [],

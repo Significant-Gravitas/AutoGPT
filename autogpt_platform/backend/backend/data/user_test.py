@@ -1,6 +1,7 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.errors
@@ -9,6 +10,16 @@ import pytest
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
 from backend.util.exceptions import DatabaseError
+
+
+def _application_user(user_id: str, email: str) -> user_module.User:
+    now = datetime.now(timezone.utc)
+    return user_module.User(
+        id=user_id,
+        email=email,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 class TestUpdateUserTimezone:
@@ -252,6 +263,58 @@ class TestTableBackedCredentials:
             await set_user_credentials("u1", [new])
 
 
+class TestGetOrCreateUserStatus:
+    @pytest.fixture(autouse=True)
+    def stub_user_provisioning(self):
+        with (
+            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_personal_org", new_callable=AsyncMock),
+        ):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_reports_newly_created_user(self):
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-new", "email": "alice@example.com"}
+            )
+
+        assert result.was_created is True
+
+    @pytest.mark.asyncio
+    async def test_reports_existing_user(self):
+        db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-existing", "bob@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            result = await user_module.get_or_create_user_with_status(
+                {"sub": "user-existing", "email": "bob@example.com"}
+            )
+
+        assert result.was_created is False
+        mock_prisma.user.create.assert_not_called()
+
+
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since
     the auth.users trigger that used to do this is unreliable."""
@@ -275,7 +338,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             # No existing profile, and the generated username is free.
@@ -300,7 +367,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-has", "bob@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             mock_prisma.profile.find_unique = AsyncMock(return_value=MagicMock())
@@ -318,7 +389,7 @@ class TestGetOrCreateUserProfile:
         is still resolved so login/auth isn't broken."""
         user_module.get_or_create_user.cache_clear()
         db_user = MagicMock(id="user-err", email="carol@example.com", name=None)
-        sentinel_user = MagicMock()
+        sentinel_user = _application_user("user-err", "carol@example.com")
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
@@ -347,7 +418,11 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-clash", "dave@example.com"),
+            ),
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             # userId never resolves to a Profile (so the clash is on username),
@@ -380,7 +455,11 @@ class TestGetOrCreateUserPersonalOrg:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
-            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-org", "erin@example.com"),
+            ),
             patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
             patch.object(
                 user_module, "ensure_personal_org", new_callable=AsyncMock

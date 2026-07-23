@@ -10,13 +10,29 @@ Telegram, Teams, WhatsApp).
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
+
+
+class StreamDraftOutcome(Enum):
+    """Result of a live-preview draft update — see ``send_stream_draft``.
+
+    Three outcomes, not a bool: the streamer must tell a rendered preview
+    (advance the throttle) apart from a transient no-op it should retry next
+    chunk without burning the throttle, apart from a permanent stop.
+    """
+
+    SHOWN = "shown"
+    SKIPPED = "skipped"
+    STOPPED = "stopped"
+
 
 # Where the message came from:
 # - "dm"      — 1:1 conversation, reply in-place
@@ -196,11 +212,37 @@ class PlatformAdapter(ABC):
         self, channel_id: str, user_id: str, text: str
     ) -> None: ...
 
-    @abstractmethod
-    async def start_typing(self, channel_id: str) -> None: ...
+    async def start_typing(self, channel_id: str) -> None:
+        """Show the platform's typing indicator. Default no-op — several
+        platforms (Slack bot apps, most webhook platforms) don't expose one."""
 
-    @abstractmethod
-    async def stop_typing(self, channel_id: str) -> None: ...
+    async def stop_typing(self, channel_id: str) -> None:
+        """Clear the typing indicator. Default no-op (see ``start_typing``)."""
+
+    @property
+    def supports_stream_drafts(self) -> bool:
+        """Whether ``send_stream_draft`` can show a live in-progress preview.
+
+        Default False — only platforms with a native draft-streaming API
+        (Telegram ``sendMessageDraft``) override this. When False the shared
+        streamer never calls ``send_stream_draft``.
+        """
+        return False
+
+    async def send_stream_draft(
+        self, channel_id: str, draft_id: int, text: str
+    ) -> StreamDraftOutcome:
+        """Show/update an ephemeral preview of the reply being generated.
+
+        Repeated calls with the same nonzero ``draft_id`` update the preview
+        in place. The finished reply is still delivered through the normal
+        send path, which supersedes the preview — a failed or skipped draft
+        never loses content. Returns ``SHOWN`` when the preview rendered,
+        ``SKIPPED`` for a transient no-op the caller should retry on the next
+        chunk, or ``STOPPED`` (unsupported chat, API error) to stop drafting
+        for the turn. Default: unsupported.
+        """
+        return StreamDraftOutcome.STOPPED
 
     @abstractmethod
     async def create_thread(
@@ -211,10 +253,10 @@ class PlatformAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def rename_thread(self, thread_id: str, name: str) -> bool:
-        """Rename a platform thread/conversation when supported."""
-        ...
+        """Rename a platform thread/conversation. Default: unsupported —
+        platforms with unnamed/implicit threads (Slack) simply inherit this."""
+        return False
 
     @property
     @abstractmethod
@@ -320,6 +362,16 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        """Open (or fetch) the bot's 1:1 DM channel with ``platform_user_id``.
+
+        Returns a channel ID usable with ``post_channel_message``, or ``None``
+        when the platform/configuration can't DM this user. Default:
+        unsupported — the proactive DM path then reports the platform can't
+        deliver DMs rather than attempting a send.
+        """
+        return None
+
     @abstractmethod
     async def post_channel_message(
         self, channel_id: str, text: str
@@ -373,3 +425,24 @@ class WebhookAdapter(PlatformAdapter):
         within the platform's timeout, scheduling the real work off-request.
         """
         ...
+
+
+async def read_verified_webhook_body(
+    request: Request, verify: Callable[[Request, bytes], bool]
+) -> bytes | None:
+    """Read an inbound webhook body and verify its platform signature.
+
+    Returns the raw body when the signature checks out, ``None`` otherwise —
+    the route should then return :func:`unauthorized_webhook_response`. Shared
+    so every webhook adapter verifies BEFORE parsing, against the same raw
+    bytes the platform signed.
+    """
+    raw = await request.body()
+    if not verify(request, raw):
+        return None
+    return raw
+
+
+def unauthorized_webhook_response() -> PlainTextResponse:
+    """The uniform 401 for a webhook that failed signature verification."""
+    return PlainTextResponse("invalid signature", status_code=401)

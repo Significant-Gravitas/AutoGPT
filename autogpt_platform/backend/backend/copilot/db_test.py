@@ -16,6 +16,7 @@ from backend.copilot.db import (
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
+    update_chat_message_tool_calls,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
@@ -858,3 +859,44 @@ async def test_add_chat_message_omits_metadata_when_none() -> None:
         )
     data = create.call_args.kwargs["data"]
     assert "metadata" not in data
+
+
+# ---------- update_chat_message_tool_calls ----------
+
+_TOOL_CALLS = [
+    {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "web_search", "arguments": "{}"},
+    }
+]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_success():
+    """Returns True when the unique-keyed update finds the row."""
+    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+        mock_prisma.return_value.update = AsyncMock(return_value=object())
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is True
+    where = mock_prisma.return_value.update.call_args.kwargs["where"]
+    assert where == {"sessionId_sequence": {"sessionId": "sess-1", "sequence": 7}}
+    payload = mock_prisma.return_value.update.call_args.kwargs["data"]["toolCalls"]
+    assert payload.data == _TOOL_CALLS
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_not_found():
+    """Returns False (so the caller's pending-save flag stays set) when no row matches."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update = AsyncMock(return_value=None)
+
+        result = await update_chat_message_tool_calls("sess-1", 99, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
