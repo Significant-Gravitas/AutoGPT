@@ -457,7 +457,10 @@ class TestProviderPathConfusion:
     registered under one provider must not be processable via another
     provider's path. Otherwise a secret-protected generic webhook's UUID,
     routed through an unsigned provider path (Compass/Slant3D), would run that
-    provider's no-op verifier and bypass the configured `secret_token`."""
+    provider's no-op verifier and bypass the configured `secret_token`.
+
+    A mismatch returns the same 404 as a nonexistent webhook: a distinct status
+    (e.g. 403) would confirm the ID exists under a different provider."""
 
     def _run_cross_provider(
         self, webhook, path_provider: str, url_manager_provider: ProviderName, **kwargs
@@ -485,13 +488,16 @@ class TestProviderPathConfusion:
         resp = self._run_cross_provider(
             self._secret_protected_generic(), "compass", ProviderName.COMPASS
         )
-        assert resp.status_code == 403, resp.text
+        assert resp.status_code == 404, resp.text
+        # Response is indistinguishable from a genuinely nonexistent webhook.
+        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
 
     def test_generic_secret_not_bypassable_via_slant3d_path(self):
         resp = self._run_cross_provider(
             self._secret_protected_generic(), "slant3d", ProviderName.SLANT3D
         )
-        assert resp.status_code == 403, resp.text
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
 
     def test_matching_provider_path_still_processes(self):
         # Control: the same webhook on its own path with the correct secret is
@@ -506,7 +512,7 @@ class TestProviderPathConfusion:
 
     def test_matching_provider_different_case_accepted(self):
         # The guard compares case-insensitively: a same-provider request whose
-        # path casing differs from the stored (canonical) value must not 403.
+        # path casing differs from the stored (canonical) value isn't rejected.
         webhook = _make_webhook(ProviderName.COMPASS)
         resp = self._run_cross_provider(webhook, "Compass", ProviderName.COMPASS)
         assert resp.status_code == 200, resp.text

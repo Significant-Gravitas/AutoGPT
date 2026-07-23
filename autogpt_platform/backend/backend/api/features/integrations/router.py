@@ -558,27 +558,20 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
+        # Sanity check: `provider` from URL and fetched webhook must match.
+        # Otherwise the URL provider's verifier runs instead of the webhook's
+        # own (a no-op for unsigned providers like Compass), bypassing it.
+        if webhook.provider.value.lower() != provider.value.lower():
+            logger.warning(
+                f"Webhook #{webhook_id} provider mismatch: "
+                f"registered as {webhook.provider.value}, ingress via {provider.value}"
+            )
+            # Same as the actual "webhook not found" response to conceal existence
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
-
-    # The manager is selected from the URL `provider`, so a request must not be
-    # allowed to process a webhook registered under a different provider: that
-    # would run the URL provider's verifier (a no-op for unsigned providers)
-    # instead of the stored provider's. Checked before any credential lookup so
-    # a mismatch can't touch the credential store or 500. 403, not 404 — don't
-    # leak existence. Compared case-insensitively: ingress URLs are canonical,
-    # but a non-canonical path shouldn't slip past on casing alone.
-    if webhook.provider.value.lower() != provider.value.lower():
-        logger.warning(
-            f"Webhook #{webhook_id} provider mismatch: "
-            f"registered as {webhook.provider.value}, ingress via {provider.value}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid webhook signature",
-        )
 
     user_id = webhook.user_id
     try:
