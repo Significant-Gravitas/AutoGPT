@@ -37,10 +37,13 @@ class Settings:
         self.validate()
 
     def validate(self):
-        if not self.JWT_VERIFY_KEY and not self.JWT_JWKS_URL:
+        if not self.JWT_JWKS_URL:
             raise AuthConfigError(
-                "Either JWT_JWKS_URL or JWT_VERIFY_KEY must be set. "
-                "Without a verification key, anyone could forge valid tokens."
+                "JWT_JWKS_URL must be set. Better Auth issues asymmetric (ES256) "
+                "tokens verified against the JWKS endpoint, so without it the "
+                "backend cannot verify any live session. JWT_VERIFY_KEY only "
+                "covers transient legacy (Supabase HS256) tokens during the "
+                "cutover window and is optional."
             )
 
         if self.JWT_JWKS_URL and not self.JWT_JWKS_URL.startswith(
@@ -61,16 +64,14 @@ class Settings:
 
         supported_algorithms = get_default_algorithms().keys()
 
+        # JWT_JWKS_URL is required (checked above) and asymmetric (ES256)
+        # verification needs the cryptography package, so a missing crypto lib
+        # is always a hard error now — not the soft warning it was when a
+        # JWKS-less HS256-only config was still allowed.
         if not has_crypto:
-            if self.JWT_JWKS_URL:
-                raise AuthConfigError(
-                    "JWT_JWKS_URL is set but the 'cryptography' package is not "
-                    "installed, so asymmetric JWT verification is unavailable."
-                )
-            logger.warning(
-                "⚠️ Asymmetric JWT verification is not available "
-                "because the 'cryptography' package is not installed. "
-                + ALGO_RECOMMENDATION
+            raise AuthConfigError(
+                "JWT_JWKS_URL is set but the 'cryptography' package is not "
+                "installed, so asymmetric JWT verification is unavailable."
             )
 
         if (
