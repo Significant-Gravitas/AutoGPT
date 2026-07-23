@@ -74,7 +74,10 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after `timeout` seconds."
+            "Killed after `timeout` seconds. Write anything that should persist "
+            "across sessions or be visible on the user's desktop to ~/workspace — "
+            "it is a durable volume shared live with start_desktop; files elsewhere "
+            "are scratch."
         )
 
     @property

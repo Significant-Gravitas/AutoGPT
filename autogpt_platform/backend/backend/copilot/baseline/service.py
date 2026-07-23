@@ -1678,6 +1678,7 @@ async def stream_chat_completion_baseline(
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
+            from backend.blocks.desktop._common import user_volume_name
             from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
 
             e2b_sandbox = await get_or_create_sandbox(
@@ -1686,6 +1687,7 @@ async def stream_chat_completion_baseline(
                 template=config.e2b_sandbox_template,
                 timeout=config.e2b_sandbox_timeout,
                 on_timeout=config.e2b_sandbox_on_timeout,
+                volume_name=user_volume_name(user_id) if user_id else None,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)

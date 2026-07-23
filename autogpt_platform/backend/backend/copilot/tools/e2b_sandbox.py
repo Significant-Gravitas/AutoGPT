@@ -49,8 +49,9 @@ import logging
 import math
 from typing import Any, Awaitable, Callable, Literal
 
-from e2b import AsyncSandbox, SandboxLifecycle
+from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 
+from backend.blocks.desktop._api import WORKSPACE_PATH
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
@@ -130,12 +131,33 @@ async def _try_reconnect(
     return None
 
 
+async def _resolve_volume_mounts(
+    volume_name: str | None, api_key: str
+) -> dict[str, "AsyncVolume | str"] | None:
+    """Build the ``volume_mounts`` mapping for a named durable workspace volume.
+
+    Creates the volume if it does not exist yet, otherwise mounts it by name.
+    Returns ``None`` when no volume is requested; never raises (a failure here
+    just means the sandbox is created without the shared workspace).
+    """
+    if not volume_name:
+        return None
+    volume: "AsyncVolume | str"
+    try:
+        volume = await AsyncVolume.create(volume_name, api_key=api_key)
+    except Exception:
+        # Already exists (or transient) — mount by name.
+        volume = volume_name
+    return {WORKSPACE_PATH: volume}
+
+
 async def get_or_create_sandbox(
     session_id: str,
     api_key: str,
     timeout: int,
     template: str = "base",
     on_timeout: Literal["kill", "pause"] = "pause",
+    volume_name: str | None = None,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -148,6 +170,10 @@ async def get_or_create_sandbox(
     *on_timeout* controls what happens on timeout: ``"pause"`` (default, free)
     or ``"kill"``.  When ``"pause"``, ``auto_resume`` is enabled so paused
     sandboxes wake transparently on SDK activity.
+    *volume_name*, when given, mounts that durable volume at ``WORKSPACE_PATH``
+    so the agent shell shares a persistent ``~/workspace`` with the user's
+    on-demand desktop and with user-scoped desktop blocks.  A mount failure
+    degrades to a volume-less sandbox rather than failing the session.
     """
     redis = await get_redis_async()
     key = _sandbox_key(session_id)
@@ -201,6 +227,7 @@ async def get_or_create_sandbox(
             # killed) at end_at and persist until explicitly cleaned up.
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
+            volume_mounts = await _resolve_volume_mounts(volume_name, api_key)
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
@@ -210,6 +237,7 @@ async def get_or_create_sandbox(
                             api_key=api_key,
                             timeout=timeout,
                             lifecycle=lifecycle,
+                            volume_mounts=volume_mounts,
                         ),
                         timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
                     )
@@ -224,6 +252,14 @@ async def get_or_create_sandbox(
                         session_id,
                         exc,
                     )
+                    if volume_mounts is not None:
+                        # A volume problem must not cost the user their shell —
+                        # drop the mount and retry volume-less.
+                        logger.warning(
+                            "[E2B] Retrying session %.12s without the workspace volume",
+                            session_id,
+                        )
+                        volume_mounts = None
                     if attempt < _SANDBOX_CREATE_MAX_RETRIES:
                         await asyncio.sleep(2 ** (attempt - 1))  # 1 s, 2 s
 
@@ -231,6 +267,9 @@ async def get_or_create_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
+            if volume_mounts is not None:
+                with contextlib.suppress(Exception):
+                    await sandbox.commands.run(f"mkdir -p {WORKSPACE_PATH}")
             try:
                 await _set_stored_sandbox_id(session_id, sandbox.sandbox_id)
             except Exception:

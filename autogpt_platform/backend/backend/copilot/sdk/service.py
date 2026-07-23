@@ -4145,12 +4145,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     )
                 return None
             try:
+                from backend.blocks.desktop._common import user_volume_name
+
                 sandbox = await get_or_create_sandbox(
                     session_id,
                     api_key=e2b_api_key,
                     template=config.e2b_sandbox_template,
                     timeout=config.e2b_sandbox_timeout,
                     on_timeout=config.e2b_sandbox_on_timeout,
+                    volume_name=user_volume_name(user_id) if user_id else None,
                 )
             except Exception as e2b_err:
                 logger.error(

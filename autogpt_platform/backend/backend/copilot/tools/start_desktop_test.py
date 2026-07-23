@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.desktop._api import DesktopStream
+from backend.blocks.desktop._api import DesktopStream, PersistenceInfo
+from backend.blocks.desktop._common import user_volume_name
 
 from ._test_data import make_session
 from .models import DesktopStreamToolResponse, ErrorResponse
@@ -30,6 +31,7 @@ def _make_desktop() -> MagicMock:
     desktop.sandbox_id = "sbx-desktop-1"
     desktop.ensure_display = AsyncMock()
     desktop.start_stream = AsyncMock(return_value=_STREAM)
+    desktop.is_workspace_mounted = AsyncMock(return_value=True)
     return desktop
 
 
@@ -45,7 +47,7 @@ class TestStartDesktop:
         assert result.error == "e2b_unconfigured"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_creates_desktop_and_returns_stream(self):
+    async def test_creates_desktop_on_shared_user_volume(self):
         tool = StartDesktopTool()
         session = make_session(user_id=_USER)
         desktop = _make_desktop()
@@ -59,25 +61,27 @@ class TestStartDesktop:
             patch(
                 "backend.copilot.tools.start_desktop.DesktopSession"
             ) as mock_session_cls,
-            patch(
-                "backend.copilot.tools.start_desktop.get_current_sandbox",
-                return_value=None,
-            ),
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
             mock_config.e2b_desktop_timeout = 900
             mock_config.e2b_desktop_template = "desktop"
-            mock_session_cls.create = AsyncMock(return_value=(desktop, MagicMock()))
+            mock_session_cls.create = AsyncMock(
+                return_value=(desktop, PersistenceInfo(volume_mounted=True))
+            )
 
             result = await tool._execute(user_id=_USER, session=session)
 
         assert isinstance(result, DesktopStreamToolResponse)
         assert result.desktop_stream["kind"] == "desktop_stream"
         assert result.desktop_stream["url"] == _STREAM.url
-        mock_session_cls.create.assert_awaited_once()
+        # The desktop mounts the SAME per-user volume as the agent shell.
+        assert mock_session_cls.create.await_args.kwargs[
+            "volume_name"
+        ] == user_volume_name(_USER)
         redis.set.assert_awaited()
         assert "started" in result.message
+        assert "workspace" in result.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_resumes_existing_desktop_without_creating(self):
@@ -109,3 +113,33 @@ class TestStartDesktop:
         mock_session_cls.create.assert_not_awaited()
         desktop.ensure_display.assert_awaited_once()
         assert "resumed" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_user_id_creates_ephemeral_desktop(self):
+        tool = StartDesktopTool()
+        session = make_session(user_id=_USER)
+        desktop = _make_desktop()
+        redis = _make_redis(stored=None)
+
+        with (
+            patch(
+                "backend.copilot.tools.start_desktop.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.tools.start_desktop.DesktopSession"
+            ) as mock_session_cls,
+            patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
+        ):
+            mock_config.active_e2b_api_key = "e2b_test_key"
+            mock_config.e2b_desktop_timeout = 900
+            mock_config.e2b_desktop_template = "desktop"
+            mock_session_cls.create = AsyncMock(
+                return_value=(desktop, PersistenceInfo(volume_mounted=False))
+            )
+
+            result = await tool._execute(user_id=None, session=session)
+
+        assert isinstance(result, DesktopStreamToolResponse)
+        assert mock_session_cls.create.await_args.kwargs["volume_name"] is None
+        assert "ephemeral" in result.message
