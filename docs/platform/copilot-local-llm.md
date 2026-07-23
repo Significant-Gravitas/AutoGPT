@@ -95,7 +95,7 @@ default OpenAI transcription endpoint. FunASR exposes the compatible
 Install FunASR and start the server on the Docker host:
 
 ```bash
-python -m pip install -U funasr
+python -m pip install -U funasr fastapi uvicorn python-multipart
 
 # CPU
 funasr-server --model sensevoice --device cpu
@@ -144,8 +144,12 @@ docker compose up -d --force-recreate frontend
 
 Leave `TRANSCRIPTION_API_KEY` empty for a default FunASR server. Set it
 only when a gateway or reverse proxy in front of FunASR requires bearer
-authentication. If the `TRANSCRIPTION_*` variables are absent, AutoGPT
-continues to use OpenAI's `whisper-1` model and `OPENAI_API_KEY`.
+authentication. If no `TRANSCRIPTION_*` overrides are set, AutoGPT uses
+`whisper-1` and sends requests to `OPENAI_API_BASE_URL` when configured,
+or to the default OpenAI endpoint otherwise. `OPENAI_API_KEY` is attached
+only when the resulting base URL is the default OpenAI URL. Set
+`TRANSCRIPTION_API_KEY` explicitly when a custom `OPENAI_API_BASE_URL`
+requires bearer authentication.
 
 For model choices and deployment options, see the
 [FunASR model selection guide](https://github.com/modelscope/FunASR/blob/main/docs/model_selection.md).

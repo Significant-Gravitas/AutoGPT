@@ -31,7 +31,7 @@ describe("transcribe route", () => {
 
   it("sends audio to a configured OpenAI-compatible transcription endpoint", async () => {
     process.env.TRANSCRIPTION_API_BASE_URL = "http://funasr.local:8000/v1/";
-    process.env.TRANSCRIPTION_MODEL = "iic/SenseVoiceSmall";
+    process.env.TRANSCRIPTION_MODEL = "sensevoice";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ text: "hello from funasr" }), {
         status: 200,
@@ -56,7 +56,7 @@ describe("transcribe route", () => {
     expect(fetchInit.headers).toBeInstanceOf(Headers);
     expect((fetchInit.headers as Headers).has("Authorization")).toBe(false);
     const upstreamBody = fetchInit.body as FormData;
-    expect(upstreamBody.get("model")).toBe("iic/SenseVoiceSmall");
+    expect(upstreamBody.get("model")).toBe("sensevoice");
     const file = upstreamBody.get("file") as File;
     expect(file.name).toBe("recording.webm");
   });
