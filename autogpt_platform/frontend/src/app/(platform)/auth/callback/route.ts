@@ -2,6 +2,7 @@ import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/au
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
@@ -37,6 +38,12 @@ export async function GET(request: Request) {
       revalidatePath(next, "layout");
     } catch (createUserError) {
       console.error("Error creating user:", createUserError);
+
+      // Better Auth already set the session cookie before redirecting here, so
+      // a provisioning failure would otherwise leave the browser "logged in"
+      // with no backend user. Revoke the session to match login/signup, which
+      // both rollbackSession on the same failure.
+      await rollbackSession();
 
       // Handle ApiError from the backend API client
       if (

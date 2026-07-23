@@ -244,7 +244,6 @@ function ResetPasswordContent() {
                 disabled={disabled}
                 type="submit"
                 className="mt-6 w-full"
-                onClick={() => onSendEmail(sendEmailForm.getValues())}
               >
                 Send reset email
               </Button>

@@ -212,11 +212,13 @@ def test_verify_user_none_sub():
 
 
 def test_verify_user_missing_role_admin_check():
-    """Test verifying admin when role field is missing."""
+    """A missing 'role' claim under admin_only must fail closed (403), not
+    KeyError -> 500."""
     no_role_payload = {"sub": "user-id"}
-    with pytest.raises(KeyError):
-        # This will raise KeyError when checking payload["role"]
+    with pytest.raises(HTTPException) as exc_info:
         jwt_utils.verify_user(no_role_payload, admin_only=True)
+    assert exc_info.value.status_code == 403
+    assert "Admin access required" in exc_info.value.detail
 
 
 # ======================== EDGE CASES ======================== #

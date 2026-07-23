@@ -306,7 +306,7 @@ async def get_feature_flag_value(
             )
             return default
 
-        # Get user context from Supabase
+        # Get user context (role/email) from the Better Auth user table
         context = await _fetch_user_context_data(user_id)
 
         # Evaluate flag

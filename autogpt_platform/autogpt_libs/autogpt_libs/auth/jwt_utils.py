@@ -134,7 +134,7 @@ def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    if admin_only and jwt_payload["role"] != "admin":
+    if admin_only and jwt_payload.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return User.from_payload(jwt_payload)
