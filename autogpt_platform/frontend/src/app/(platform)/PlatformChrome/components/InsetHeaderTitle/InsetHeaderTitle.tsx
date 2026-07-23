@@ -8,7 +8,7 @@ const ROUTE_TITLES: Record<string, { title: string; icon: Icon }> = {
   "/artifacts": { title: "Files", icon: FolderIcon },
 };
 
-function getRouteTitle(pathname: string | null) {
+export function getRouteTitle(pathname: string | null) {
   if (!pathname) return null;
   const match = Object.entries(ROUTE_TITLES).find(
     ([href]) => pathname === href || pathname.startsWith(`${href}/`),

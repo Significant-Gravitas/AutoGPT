@@ -225,6 +225,53 @@ async def test_block_handler_get_missing_items_splits_camelcase():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_block_handler_reembeds_stale_searchable_text():
+    """Blocks whose stored searchableText no longer matches their current
+    definition (e.g. renamed blocks) are returned for re-embedding, while
+    up-to-date blocks are skipped."""
+    handler = BlockHandler()
+
+    blocks = {
+        "renamed-block": _make_block_class(
+            name="OrchestratorBlock", description="Orchestrates tools"
+        ),
+        "fresh-block": _make_block_class(
+            name="CalculatorBlock", description="Performs calculations"
+        ),
+    }
+
+    with patch(
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ):
+        # First pass with nothing embedded to learn the current text
+        with patch(
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
+            return_value=[],
+        ):
+            baseline = await handler.get_missing_items(batch_size=10)
+        current_text = {item.content_id: item.searchable_text for item in baseline}
+        assert set(current_text) == {"renamed-block", "fresh-block"}
+
+        # Second pass: one row is stale (pre-rename text), one is current
+        with patch(
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
+            return_value=[
+                {
+                    "contentId": "renamed-block",
+                    "searchableText": "Smart Decision Maker Block Uses AI to decide",
+                },
+                {
+                    "contentId": "fresh-block",
+                    "searchableText": current_text["fresh-block"],
+                },
+            ],
+        ):
+            items = await handler.get_missing_items(batch_size=10)
+
+    assert [item.content_id for item in items] == ["renamed-block"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_handler_get_missing_items_batch_size_zero():
     """batch_size=0 returns an empty list; the DB is still queried to find missing IDs."""
     handler = BlockHandler()
@@ -629,3 +676,19 @@ async def test_library_agent_handler_stats():
     assert stats["total"] == 10
     assert stats["with_embeddings"] == 4
     assert stats["without_embeddings"] == 6
+
+
+@pytest.mark.asyncio
+async def test_documentation_handler_degrades_without_bundled_docs():
+    """A docs-less deployment must no-op (empty results), not crash the
+    indexer — get_docs_root returns None and every consumer guards."""
+    handler = DocumentationHandler()
+    with patch(
+        "backend.api.features.search.content_handlers.get_docs_root",
+        return_value=None,
+    ):
+        assert handler._get_docs_root() is None
+        assert await handler.get_missing_items(batch_size=10) == []
+        assert await handler.get_valid_content_ids() == set()
+        stats = await handler.get_stats()
+    assert stats == {"total": 0, "with_embeddings": 0, "without_embeddings": 0}

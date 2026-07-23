@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
+import { PANEL_RESERVED_WIDTH } from "../store";
 
 interface Props {
   /** CSS selector for the panel element this handle resizes (e.g. "[data-artifact-panel]"). */
@@ -18,7 +19,7 @@ export function PanelResizeHandle({
   onWidthChange,
   minWidth,
   maxWidth,
-  reservedWidth = 440,
+  reservedWidth = PANEL_RESERVED_WIDTH,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);

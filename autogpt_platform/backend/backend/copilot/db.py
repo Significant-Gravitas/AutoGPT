@@ -787,6 +787,38 @@ async def update_message_content_by_sequence(
         return False
 
 
+async def update_chat_message_tool_calls(
+    session_id: str,
+    sequence: int,
+    tool_calls: list[dict[str, Any]],
+) -> bool:
+    """Back-fill ``toolCalls`` on an already-persisted message row.
+
+    The streaming flush can persist an assistant row (assigning its sequence)
+    before the turn's tool_use blocks arrive; this updates the row so the tool
+    activity survives in session history. Same authorization reasoning as
+    ``update_message_content_by_sequence``.
+
+    Returns:
+        True if a message was updated, False if no row matched.
+
+    Raises:
+        Propagates Prisma/connection errors — the caller (the back-fill
+        loop in ``_save_session_to_db``) owns the retry policy.
+    """
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"toolCalls": SafeJson(tool_calls)},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update tool_calls for session "
+            f"{session_id}, sequence {sequence}"
+        )
+        return False
+    return True
+
+
 async def set_turn_duration(session_id: str, duration_ms: int) -> None:
     """Set durationMs on the last assistant message in a session.
 

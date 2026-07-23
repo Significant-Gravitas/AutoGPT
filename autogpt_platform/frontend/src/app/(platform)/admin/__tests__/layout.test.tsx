@@ -1,31 +1,22 @@
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import AdminLayout from "../layout";
 
-vi.mock("@/components/__legacy__/Sidebar", () => ({
-  Sidebar: ({
-    linkGroups,
-  }: {
-    linkGroups: { links: { text: string }[] }[];
-  }) => (
-    <nav data-testid="sidebar">
-      {linkGroups[0].links.map((link) => (
-        <span key={link.text}>{link.text}</span>
-      ))}
-    </nav>
-  ),
-}));
+const ADMIN_LINKS = [
+  { text: "Marketplace Management", href: "/admin/marketplace" },
+  { text: "User Spending", href: "/admin/spending" },
+  { text: "System Diagnostics", href: "/admin/diagnostics" },
+  { text: "User Impersonation", href: "/admin/impersonation" },
+  { text: "Rate Limits", href: "/admin/rate-limits" },
+  { text: "Platform Costs", href: "/admin/platform-costs" },
+  { text: "Execution Analytics", href: "/admin/execution-analytics" },
+  { text: "Bot Analytics", href: "/admin/bots" },
+  { text: "Block Cost Estimates", href: "/admin/block-cost-estimates" },
+  { text: "Memory Inspector", href: "/admin/memory" },
+  { text: "Admin User Management", href: "/admin/settings" },
+];
 
 describe("AdminLayout", () => {
-  it("renders sidebar with System Diagnostics link", () => {
-    render(
-      <AdminLayout>
-        <div>Child Content</div>
-      </AdminLayout>,
-    );
-    expect(screen.getByText("System Diagnostics")).toBeDefined();
-  });
-
   it("renders child content", () => {
     render(
       <AdminLayout>
@@ -35,19 +26,17 @@ describe("AdminLayout", () => {
     expect(screen.getByText("Test Child")).toBeDefined();
   });
 
-  it("renders all admin navigation links", () => {
+  it("renders every admin sidebar link with the correct href", () => {
     render(
       <AdminLayout>
         <div />
       </AdminLayout>,
     );
-    expect(screen.getByText("Marketplace Management")).toBeDefined();
-    expect(screen.getByText("User Spending")).toBeDefined();
-    expect(screen.getByText("System Diagnostics")).toBeDefined();
-    expect(screen.getByText("User Impersonation")).toBeDefined();
-    expect(screen.getByText("Rate Limits")).toBeDefined();
-    expect(screen.getByText("Platform Costs")).toBeDefined();
-    expect(screen.getByText("Execution Analytics")).toBeDefined();
-    expect(screen.getByText("Admin User Management")).toBeDefined();
+    const links = screen.getAllByRole("link");
+    for (const { text, href } of ADMIN_LINKS) {
+      const link = links.find((el) => el.getAttribute("href") === href);
+      expect(link).toBeDefined();
+      expect(link?.textContent).toContain(text);
+    }
   });
 });
