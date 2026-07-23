@@ -98,11 +98,14 @@ afterEach(() => {
 });
 
 describe("auth config", () => {
-  it("revokes all sessions on password reset and keeps the GoTrue minimum password length", async () => {
+  it("revokes all sessions on password reset and enforces the 12-char password floor on the raw endpoints", async () => {
     const options = await loadAuthOptions();
 
     expect(options.emailAndPassword.revokeSessionsOnPasswordReset).toBe(true);
-    expect(options.emailAndPassword.minPasswordLength).toBe(6);
+    // Must be 12, not GoTrue's old 6: the Better Auth handler mounts
+    // /sign-up/email and /reset-password directly, so this is the real floor
+    // for every set-password path (the signup zod only guards the form).
+    expect(options.emailAndPassword.minPasswordLength).toBe(12);
   });
 
   it("hashes passwords with bcrypt and verifies them round-trip", async () => {

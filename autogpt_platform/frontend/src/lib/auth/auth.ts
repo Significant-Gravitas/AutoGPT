@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
+import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
@@ -29,21 +30,25 @@ function getSocialProviders() {
   return providers;
 }
 
+// Shared with the databaseHooks below so the verified-email mirror reuses the
+// same connection/search_path instead of opening a second pool.
+const authDbPool = new Pool({
+  // Fallback matches the docker-compose db service so `make run-frontend`
+  // works against `make start-core` without a frontend/.env, mirroring the
+  // localhost fallbacks in services/environment. Production must set
+  // DATABASE_URL explicitly.
+  connectionString:
+    process.env.DATABASE_URL ||
+    "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres",
+  // Better Auth shares the platform Postgres; its tables live in the same
+  // schema as the Prisma-managed ones (created by the backend migrations).
+  options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
+});
+
 export const auth = betterAuth({
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
-  database: new Pool({
-    // Fallback matches the docker-compose db service so `make run-frontend`
-    // works against `make start-core` without a frontend/.env, mirroring the
-    // localhost fallbacks in services/environment. Production must set
-    // DATABASE_URL explicitly.
-    connectionString:
-      process.env.DATABASE_URL ||
-      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres",
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
-  }),
+  database: authDbPool,
   telemetry: { enabled: false },
   databaseHooks: {
     user: {
@@ -60,6 +65,15 @@ export const auth = betterAuth({
               message: decision.reason ?? "Signups are not allowed.",
             });
           }
+        },
+      },
+      update: {
+        // updateUserByEmail (fired when a change-email link is confirmed)
+        // runs this hook post-commit; mirror the now-verified email onto the
+        // platform User row so notifications/Stripe track the confirmed
+        // identity. See email-mirror.ts for the why.
+        after: async (user: { id: string; email: string }) => {
+          await mirrorVerifiedEmailToPlatformUser(authDbPool, user);
         },
       },
     },
@@ -81,9 +95,13 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
-    // GoTrue's minimum was 6; raising this would lock out existing users at
-    // sign-in. The signup form enforces 12+ client- and server-side.
-    minPasswordLength: 6,
+    // The 12-char policy has to hold on the raw Better Auth endpoints too
+    // (/sign-up/email, /reset-password, /change-password) — the signup server
+    // action's zod schema only guards the form path, so a direct POST would
+    // otherwise slip a 6-char password through. minPasswordLength is checked
+    // when a password is *set* (sign-up / reset / change), never on sign-in,
+    // so this does NOT lock out migrated users whose old password is shorter.
+    minPasswordLength: 12,
     // A password reset kicks every active session, matching the previous
     // flow's signOut({ scope: "global" }) — the standard defense when a
     // user resets their password to evict a stolen session.

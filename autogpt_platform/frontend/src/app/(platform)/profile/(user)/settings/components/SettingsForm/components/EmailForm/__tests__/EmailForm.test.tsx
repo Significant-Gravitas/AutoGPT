@@ -10,17 +10,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { EmailForm } from "../EmailForm";
 
 const mockToast = vi.hoisted(() => vi.fn());
-const mockMutateAsync = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
-}));
-
-vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
-  usePostV1UpdateUserEmail: () => ({
-    mutateAsync: mockMutateAsync,
-    isPending: false,
-  }),
 }));
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
@@ -39,15 +31,13 @@ const testUser = {
 describe("EmailForm", () => {
   beforeEach(() => {
     mockToast.mockReset();
-    mockMutateAsync.mockReset();
-    mockMutateAsync.mockResolvedValue({});
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  test("submits a changed email to both update endpoints", async () => {
+  test("routes the change only through Better Auth (verification-gated), never an eager platform write", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -71,16 +61,45 @@ describe("EmailForm", () => {
         body: JSON.stringify({ email: "updated@example.com" }),
       });
     });
+
+    // The Better Auth PUT is the ONLY write — the old parallel platform-email
+    // mutation is gone, so the change can't land unverified.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Toast reflects the pending confirmation, not a completed change.
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith({
-        data: "updated@example.com",
-      });
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Confirm your new email",
+        }),
+      );
     });
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Successfully updated email",
-      }),
-    );
+  });
+
+  test("surfaces a change failure as an error toast", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Email already in use" }),
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EmailForm user={testUser} />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "taken@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Error updating email",
+          description: "Email already in use",
+          variant: "destructive",
+        }),
+      );
+    });
   });
 
   test("keeps submit disabled when the email has not changed", () => {
