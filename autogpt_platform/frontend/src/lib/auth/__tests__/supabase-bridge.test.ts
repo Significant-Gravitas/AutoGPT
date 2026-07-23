@@ -146,6 +146,22 @@ describe("verifyLegacyToken", () => {
     expect(await verifyLegacyToken(token)).toBeNull();
   });
 
+  it("falls back to the default tolerance (not fail-open) when the age env is non-numeric", async () => {
+    // A non-numeric value made Number() -> NaN; clockTolerance: NaN made the
+    // expiry check always-false, accepting ANY expired token. Guard against it:
+    // a token expired well beyond the 30-day default must still be rejected.
+    vi.stubEnv("SUPABASE_JWT_SECRET", LEGACY_SECRET);
+    vi.stubEnv("SUPABASE_BRIDGE_MAX_TOKEN_AGE_DAYS", "not-a-number");
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signLegacyToken({
+      sub: "user-123",
+      issuedAt: now - 40 * 24 * 60 * 60,
+      expiresAt: now - 40 * 24 * 60 * 60,
+    });
+
+    expect(await verifyLegacyToken(token)).toBeNull();
+  });
+
   it("rejects tokens minted for a different audience", async () => {
     vi.stubEnv("SUPABASE_JWT_SECRET", LEGACY_SECRET);
     const token = await signLegacyToken({

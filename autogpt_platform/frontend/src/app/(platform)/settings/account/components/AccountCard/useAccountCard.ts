@@ -5,7 +5,7 @@ import type { User } from "@/lib/auth/types";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-import { usePostV1UpdateUserEmail } from "@/app/api/__generated__/endpoints/auth/auth";
+import { useState } from "react";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 const emailSchema = z.object({
@@ -41,16 +41,18 @@ export function useAccountCard({ user }: { user: User }) {
     mode: "onChange",
   });
 
-  const updateEmailServer = usePostV1UpdateUserEmail();
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   async function onSubmitEmail(values: EmailFormValues): Promise<boolean> {
     if (values.email === currentEmail) return false;
 
+    // Route the change only through Better Auth (verification-gated). Platform
+    // User.email converges after the link is confirmed via the
+    // databaseHooks.user.update mirror in lib/auth/auth.ts — writing it here in
+    // parallel would let it diverge to an unverified value. Mirrors EmailForm.
+    setIsUpdatingEmail(true);
     try {
-      await Promise.all([
-        updateEmailViaAuthAPI(values.email),
-        updateEmailServer.mutateAsync({ data: values.email }),
-      ]);
+      await updateEmailViaAuthAPI(values.email);
       toast({
         title: "Email update sent",
         description: "Check your inbox to confirm the change.",
@@ -64,13 +66,15 @@ export function useAccountCard({ user }: { user: User }) {
         variant: "destructive",
       });
       return false;
+    } finally {
+      setIsUpdatingEmail(false);
     }
   }
 
   return {
     emailForm,
     onSubmitEmail,
-    isUpdatingEmail: updateEmailServer.isPending,
+    isUpdatingEmail,
     currentEmail,
   };
 }

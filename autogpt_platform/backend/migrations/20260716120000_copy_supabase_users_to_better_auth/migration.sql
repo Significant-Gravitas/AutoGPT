@@ -33,10 +33,19 @@ BEGIN
   --    The NOT EXISTS email guard skips users whose email is already taken
   --    by a different Better Auth user instead of failing the whole
   --    migration on the unique(email) index.
+  --
+  --    DISTINCT ON (u.email) de-dups WITHIN this batch: two GoTrue rows can
+  --    share an email (e.g. an SSO identity + a password identity — GoTrue's
+  --    partial unique index permits it). Without it, both rows pass the
+  --    NOT EXISTS guard (neither is in "user" yet) and the second insert trips
+  --    user_email_key, aborting the ENTIRE INSERT and failing the deploy. The
+  --    ORDER BY makes the surviving row deterministic: prefer a confirmed
+  --    account, then the oldest. The dropped duplicate's credential/oauth rows
+  --    are naturally skipped below by the "id must exist in user" guards.
   INSERT INTO "user"
     (id, name, email, "emailVerified", role, banned, "preferredName",
      "createdAt", "updatedAt")
-  SELECT
+  SELECT DISTINCT ON (u.email)
     u.id::text,
     COALESCE(
       u.raw_user_meta_data->>'name',
@@ -60,6 +69,10 @@ BEGIN
       SELECT 1 FROM "user" pu
       WHERE pu.email = u.email AND pu.id <> u.id::text
     )
+  ORDER BY
+    u.email,
+    (u.email_confirmed_at IS NOT NULL) DESC,
+    COALESCE(u.created_at, now()) ASC
   ON CONFLICT (id) DO NOTHING;
   GET DIAGNOSTICS users_copied = ROW_COUNT;
 

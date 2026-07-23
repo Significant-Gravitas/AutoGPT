@@ -47,7 +47,11 @@ export async function signup(
       });
     } catch (error) {
       if (error instanceof APIError) {
-        if (isWaitlistError(error.body?.code, error.message)) {
+        // Match on the body message ("Signups are not allowed."), not
+        // error.message — the latter is the status ("FORBIDDEN"), which never
+        // matches the waitlist patterns, so rejections would slip through as a
+        // generic error.
+        if (isWaitlistError(error.body?.code, error.body?.message)) {
           logWaitlistError("Signup", error.message);
           return { success: false, error: "not_allowed" };
         }

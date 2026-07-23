@@ -83,10 +83,20 @@ export async function verifyLegacyToken(token: string): Promise<string | null> {
   const secret = process.env.SUPABASE_JWT_SECRET;
   if (!secret) return null;
 
-  const maxAgeDays = Number(
-    process.env.SUPABASE_BRIDGE_MAX_TOKEN_AGE_DAYS ||
-      DEFAULT_MAX_TOKEN_AGE_DAYS,
+  // Parse the raw env alone (not `|| DEFAULT`): a non-numeric value would make
+  // Number() -> NaN, and clockTolerance: NaN makes jose's expiry comparison
+  // always-false — i.e. ANY expired legacy token would be accepted (fail-open).
+  // Fall back to the default on NaN / non-positive so a config typo can't
+  // silently disable the age limit.
+  const parsedMaxAgeDays = Number(
+    process.env.SUPABASE_BRIDGE_MAX_TOKEN_AGE_DAYS,
   );
+  // Accept 0 (an explicit "zero tolerance" that rejects any expired token);
+  // only NaN / negative falls back to the default.
+  const maxAgeDays =
+    Number.isFinite(parsedMaxAgeDays) && parsedMaxAgeDays >= 0
+      ? parsedMaxAgeDays
+      : DEFAULT_MAX_TOKEN_AGE_DAYS;
 
   try {
     const { payload } = await jwtVerify(
@@ -151,6 +161,22 @@ export function supabaseBridge() {
 
           const user = await ctx.context.internalAdapter.findUserById(userId);
           if (!user) {
+            throw ctx.redirect(loginUrl);
+          }
+
+          // Don't let a banned account with a still-valid legacy cookie mint a
+          // fresh Better Auth session — that would bypass the admin plugin's
+          // sign-in ban gate. The bridge window can outlast a ban, so enforce
+          // it here too even though no users are banned today.
+          const bannedUser = user as {
+            banned?: boolean | null;
+            banExpires?: Date | string | null;
+          };
+          const banActive =
+            bannedUser.banned === true &&
+            (!bannedUser.banExpires ||
+              new Date(bannedUser.banExpires) > new Date());
+          if (banActive) {
             throw ctx.redirect(loginUrl);
           }
 
