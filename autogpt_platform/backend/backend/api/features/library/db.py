@@ -211,7 +211,12 @@ async def list_library_agents(
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
     elif sort_by == library_model.LibraryAgentSort.LAST_RUN:
-        order_by = {"lastRunAt": "desc"}
+        # NULLS LAST so never-run agents sort last. Prisma Python's types omit
+        # the nulls option, but the query engine honors it at runtime.
+        order_by = cast(
+            prisma.types.LibraryAgentOrderByInput,
+            {"lastRunAt": {"sort": "desc", "nulls": "last"}},
+        )
 
     library_agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where_clause,
