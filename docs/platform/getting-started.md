@@ -206,6 +206,15 @@ poetry run cli gen-encrypt-key
 
 Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
 
+#### Auth transport security (JWKS over untrusted networks)
+
+The backend verifies login tokens using signing keys it fetches from the frontend at `JWT_JWKS_URL` (`.../api/auth/jwks`). It trusts whatever keys that URL returns, so the fetch must run over a **trusted path**:
+
+- **Plain `http` is fine** for `localhost` and for container-to-container traffic on a single host (the default `http://frontend:3000` over the Docker network) — there is no network segment for an attacker to sit on.
+- **Use `https` on an untrusted network.** If you split the backend and frontend across separate machines on a LAN, or expose them publicly, a cleartext JWKS fetch can be intercepted: an attacker who swaps the published keys can forge tokens for any user. Put the frontend behind TLS (a reverse proxy), or issue **locally-trusted certificates** (e.g. [mkcert](https://github.com/FiloSottile/mkcert)), and point `JWT_JWKS_URL` at the `https://` URL.
+
+This is a property of stateless JWT/JWKS verification in general, not something specific to AutoGPT. On a standard single-host Docker install you don't need to change anything.
+
 ### 📌 Windows Installation Note
 
 When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with the platform's containers, leading to the `db` (Postgres) container being marked as **unhealthy**.
