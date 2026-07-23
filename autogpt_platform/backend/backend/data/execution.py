@@ -22,10 +22,10 @@ from prisma.enums import AgentExecutionStatus, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
-    LibraryAgent,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    LibraryAgent,
     SharedExecutionFile,
     UserWorkspace,
     UserWorkspaceFile,
@@ -929,10 +929,12 @@ async def create_graph_execution(
             },
             data={
                 "lastRunAt": datetime.now(tz=timezone.utc),
-            }
+            },
         )
     except Exception as e:
-        logger.warning(f"Failed to update LibraryAgent lastRunAt for graph {graph_id}: {e}")
+        logger.warning(
+            f"Failed to update LibraryAgent lastRunAt for graph {graph_id}: {e}"
+        )
 
     return GraphExecutionWithNodes.from_db(result)
 
