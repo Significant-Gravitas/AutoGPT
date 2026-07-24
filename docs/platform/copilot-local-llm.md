@@ -85,14 +85,15 @@ CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 CHAT_FAST_ADVANCED_MODEL=qwen3:14b-q4_K_M
 ```
 
-## Optional: local voice transcription with FunASR
+## Optional: local OpenAI-compatible voice transcription
 
-AutoPilot's microphone input can use a self-hosted
-[FunASR](https://github.com/modelscope/FunASR) server instead of the
-default OpenAI transcription endpoint. FunASR exposes the compatible
-`POST /v1/audio/transcriptions` route and uses SenseVoice by default.
+AutoPilot's microphone input can use any service that exposes the
+OpenAI-compatible `POST /v1/audio/transcriptions` route. Configure the
+base URL and model name for your service. The example below uses
+[FunASR](https://github.com/modelscope/FunASR), a self-hosted server that
+uses SenseVoice by default.
 
-Install FunASR and start the server on the Docker host:
+Install the example server and start it on the Docker host:
 
 ```bash
 python -m pip install -U funasr fastapi uvicorn python-multipart
@@ -104,7 +105,7 @@ funasr-server --model sensevoice --device cpu
 funasr-server --model sensevoice --device cuda
 ```
 
-The first start downloads the model. The server listens on
+The first start downloads the configured model. The server listens on
 `0.0.0.0:8000` and does not require an API key by default. Before
 connecting AutoGPT, verify it with a local audio file:
 
@@ -116,7 +117,9 @@ curl http://localhost:8000/v1/audio/transcriptions \
 
 Keep port 8000 on a trusted host or private network. If the endpoint is
 reachable from an untrusted network, put it behind an authenticated
-HTTPS reverse proxy.
+HTTPS reverse proxy. For another compatible service, substitute its
+startup command, port, and model name; the AutoGPT configuration below
+is otherwise the same.
 
 Then add the transcription settings to
 `autogpt_platform/frontend/.env`:
@@ -142,17 +145,17 @@ cd autogpt_platform
 docker compose up -d --force-recreate frontend
 ```
 
-Leave `TRANSCRIPTION_API_KEY` empty for a default FunASR server. Set it
-only when a gateway or reverse proxy in front of FunASR requires bearer
-authentication. If no `TRANSCRIPTION_*` overrides are set, AutoGPT uses
-`whisper-1` and sends requests to `OPENAI_API_BASE_URL` when configured,
-or to the default OpenAI endpoint otherwise. `OPENAI_API_KEY` is attached
-only when the resulting base URL is the default OpenAI URL. Set
-`TRANSCRIPTION_API_KEY` explicitly when a custom `OPENAI_API_BASE_URL`
-requires bearer authentication.
+Leave `TRANSCRIPTION_API_KEY` empty when the transcription service does
+not require authentication. Set it when the endpoint or a reverse proxy
+requires bearer authentication. If no `TRANSCRIPTION_*` overrides are
+set, AutoGPT uses `whisper-1` and sends requests to
+`OPENAI_API_BASE_URL` when configured, or to the default OpenAI endpoint
+otherwise. `OPENAI_API_KEY` is attached only when the resulting base URL
+is the default OpenAI URL. Set `TRANSCRIPTION_API_KEY` explicitly when a
+custom `OPENAI_API_BASE_URL` requires bearer authentication.
 
-For model choices and deployment options, see the
-[FunASR model selection guide](https://github.com/modelscope/FunASR/blob/main/docs/model_selection.md).
+For the example server's model choices and deployment options, see the
+[model selection guide](https://github.com/modelscope/FunASR/blob/main/docs/model_selection.md).
 
 ## Picking a model
 
