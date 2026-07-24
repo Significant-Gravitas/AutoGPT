@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth/auth";
 import { LoginProvider } from "@/types/auth";
 import { APIError } from "better-auth/api";
 import { NextResponse } from "next/server";
-import { isWaitlistError, logWaitlistError } from "../utils";
+import { isWaitlistError, logWaitlistError } from "../../utils";
 
 export async function POST(request: Request) {
   try {

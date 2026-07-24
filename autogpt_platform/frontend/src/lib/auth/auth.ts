@@ -6,6 +6,7 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 
@@ -175,7 +176,9 @@ export const auth = betterAuth({
     admin(),
     jwt({
       jwks: {
-        keyPairConfig: { alg: "ES256" },
+        // Shared with mintServiceToken — whichever signs first creates the
+        // JWKS keypair, so the two must never disagree.
+        keyPairConfig: { alg: JWKS_ALG },
       },
       jwt: {
         issuer: baseURL,

@@ -59,7 +59,7 @@ export function useLoginPage() {
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
-      const response = await fetch("/api/auth/provider", {
+      const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),

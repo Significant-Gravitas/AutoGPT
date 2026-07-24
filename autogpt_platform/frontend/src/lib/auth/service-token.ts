@@ -3,6 +3,13 @@ import { signJWT } from "better-auth/plugins/jwt";
 export const SERVICE_TOKEN_AUDIENCE = "autogpt-platform-backend";
 export const FRONTEND_SERVICE_SUBJECT = "service:frontend";
 
+/**
+ * Algorithm of the Better Auth JWKS keypair, shared with the jwt plugin config
+ * in auth.ts so the two can never drift. It lives here rather than in auth.ts
+ * because this module must not statically import ./auth (see below).
+ */
+export const JWKS_ALG = "ES256" as const;
+
 type SignJWTContext = Parameters<typeof signJWT>[0];
 
 /**
@@ -19,13 +26,16 @@ export async function mintServiceToken(scope: string) {
   const context = await auth.$context;
   const nowSeconds = Math.floor(Date.now() / 1000);
 
+  // signJWT only ever dereferences ctx.context; the `as unknown` is required
+  // because its declared type demands request-scoped fields (request, body,
+  // headers) that don't exist before a session does.
   return signJWT({ context } as unknown as SignJWTContext, {
     options: {
       // Must match the jwt plugin config in auth.ts: on a fresh install with
       // no JWKS row yet (e.g. first signup email before any login), signJWT
       // creates the key, and the alg chosen here becomes the key user tokens
       // sign with too.
-      jwks: { keyPairConfig: { alg: "ES256" } },
+      jwks: { keyPairConfig: { alg: JWKS_ALG } },
     },
     payload: {
       sub: FRONTEND_SERVICE_SUBJECT,

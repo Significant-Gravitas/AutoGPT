@@ -4,6 +4,7 @@ const getServerSessionMock = vi.fn();
 const postV1GetOrCreateUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const scheduleAccountCreatedGoalMock = vi.fn();
 
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
@@ -14,11 +15,14 @@ vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
     postV1GetOrCreateUserMock(...args),
 }));
 
-// DataFast account tracking has its own coverage (route.test.ts); stub it so
-// wasAccountCreated doesn't read .headers off the mocked provisioning result.
-vi.mock("@/services/analytics/datafast-server", () => ({
-  wasAccountCreated: () => false,
-  scheduleAccountCreatedGoal: vi.fn(),
+// Keep the real wasAccountCreated (it reads the provisioning response header);
+// only the goal dispatch, which hits cookies and the network, is stubbed.
+vi.mock("@/services/analytics/datafast-server", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/services/analytics/datafast-server")
+  >()),
+  scheduleAccountCreatedGoal: (...args: unknown[]) =>
+    scheduleAccountCreatedGoalMock(...args),
 }));
 
 vi.mock("@/app/api/helpers", () => ({
@@ -50,9 +54,20 @@ function makeCallbackRequest(
   return new Request(`${origin}${path}`, { headers });
 }
 
+// Shape of the backend provisioning call the route feeds to wasAccountCreated.
+function provisioningResponse(accountCreated = false) {
+  return {
+    status: 200,
+    data: {},
+    headers: new Headers({
+      "X-AutoGPT-User-Created": String(accountCreated),
+    }),
+  };
+}
+
 function loggedInWithCompletedSetup() {
   getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
-  postV1GetOrCreateUserMock.mockResolvedValue({ id: "user-1" });
+  postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse());
   getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 }
 
@@ -61,6 +76,7 @@ beforeEach(() => {
   postV1GetOrCreateUserMock.mockReset();
   getOnboardingStatusMock.mockReset();
   revalidatePathMock.mockReset();
+  scheduleAccountCreatedGoalMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -85,7 +101,7 @@ describe("auth callback GET — session handling", () => {
   it("sends fresh users to onboarding and revalidates the layout", async () => {
     vi.stubEnv("NODE_ENV", "development");
     getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
-    postV1GetOrCreateUserMock.mockResolvedValue({ id: "user-1" });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse());
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
 
     const response = await GET(makeCallbackRequest());
@@ -102,6 +118,32 @@ describe("auth callback GET — session handling", () => {
 
     expect(response.headers.get("location")).toBe(`${origin}/copilot`);
     expect(revalidatePathMock).toHaveBeenCalledWith("/copilot", "layout");
+  });
+});
+
+describe("auth callback GET — account creation tracking", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+  });
+
+  it("tracks a newly created Google account", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+
+    const response = await GET(makeCallbackRequest());
+
+    expect(response.headers.get("location")).toBe(`${origin}/copilot`);
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledOnce();
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("google");
+  });
+
+  it("does not track a returning Google user", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+
+    await GET(makeCallbackRequest());
+
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
   });
 });
 
@@ -191,6 +233,7 @@ describe("auth callback GET — user creation failures", () => {
     expect(response.headers.get("location")).toBe(
       `${origin}/error?message=server-error`,
     );
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
   });
 
   it("redirects to rate-limited when the backend rejects with 429", async () => {

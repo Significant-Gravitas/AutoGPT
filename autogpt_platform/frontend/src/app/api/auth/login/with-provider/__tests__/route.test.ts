@@ -21,7 +21,7 @@ vi.mock("@/app/api/auth/utils", () => ({
 import { POST } from "../route";
 
 function makeProviderRequest(body: unknown): Request {
-  return new Request("http://localhost:3000/api/auth/provider", {
+  return new Request("http://localhost:3000/api/auth/login/with-provider", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -39,7 +39,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("POST /api/auth/provider", () => {
+describe("POST /api/auth/login/with-provider", () => {
   it("returns the social sign-in URL and forwards redirectTo as the callback URL", async () => {
     signInSocialMock.mockResolvedValue({
       url: "https://accounts.google.com/o/oauth2/auth?state=xyz",
@@ -129,11 +129,14 @@ describe("POST /api/auth/provider", () => {
   });
 
   it("returns 500 when the request body is not valid JSON", async () => {
-    const request = new Request("http://localhost:3000/api/auth/provider", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{not json",
-    });
+    const request = new Request(
+      "http://localhost:3000/api/auth/login/with-provider",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{not json",
+      },
+    );
 
     const response = await POST(request);
 
