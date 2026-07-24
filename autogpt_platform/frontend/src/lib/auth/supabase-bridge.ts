@@ -1,3 +1,4 @@
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
@@ -131,14 +132,9 @@ export function supabaseBridge() {
         "/supabase-bridge",
         { method: "GET" },
         async (ctx) => {
-          const rawNext = ctx.query?.next;
-          // Only same-origin relative paths to prevent open redirects.
-          const next =
-            typeof rawNext === "string" &&
-            rawNext.startsWith("/") &&
-            !rawNext.startsWith("//")
-              ? rawNext
-              : "/";
+          // Same guard as the auth pages — one implementation, so a bypass
+          // can't be fixed in one place and left open in the other.
+          const next = sanitizeAuthNext(ctx.query?.next) ?? "/";
           const loginUrl = `${ctx.context.options.baseURL || ""}/login?next=${encodeURIComponent(next)}`;
           const nextUrl = `${ctx.context.options.baseURL || ""}${next}`;
 
