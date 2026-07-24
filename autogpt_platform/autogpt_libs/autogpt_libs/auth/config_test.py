@@ -489,3 +489,77 @@ def test_jwks_url_accepts_http_and_https(mocker: MockerFixture, good_url: str):
 
     settings = Settings()
     assert settings.JWT_JWKS_URL == good_url
+
+
+def test_jwks_url_cleartext_remote_host_warns(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    """A cleartext JWKS URL pointing at a routable host warns, but boots."""
+    insecure_url = "http://auth.example.com/api/auth/jwks"
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": insecure_url}, clear=True)
+
+    with caplog.at_level(logging.WARNING):
+        settings = Settings()
+        assert settings.JWT_JWKS_URL == insecure_url
+        assert "cleartext" in caplog.text
+        assert "JWKS_ALLOW_INSECURE_TRANSPORT" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:3000/api/auth/jwks",
+        "http://127.0.0.1:3000/api/auth/jwks",
+        "http://[::1]:3000/api/auth/jwks",
+        # Docker service name: single-label host on a private network.
+        "http://frontend:3000/api/auth/jwks",
+        "https://auth.example.com/api/auth/jwks",
+    ],
+)
+def test_jwks_url_trusted_transport_does_not_warn(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture, url: str
+):
+    """Loopback, container-internal and https URLs stay quiet."""
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": url}, clear=True)
+
+    with caplog.at_level(logging.WARNING):
+        Settings()
+        assert "cleartext" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "malformed_url",
+    ["http://[::1/api/auth/jwks", "http://]::1[/api/auth/jwks"],
+)
+def test_jwks_url_malformed_host_does_not_crash_boot(
+    mocker: MockerFixture, malformed_url: str
+):
+    """A URL urlparse() can't parse must not take the process down.
+
+    The transport check is advisory; an unbalanced IPv6 bracket makes
+    urlparse() raise ValueError, which would otherwise surface as a raw
+    'Invalid IPv6 URL' at startup instead of a clear failure at fetch time.
+    """
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": malformed_url}, clear=True)
+
+    settings = Settings()
+    assert settings.JWT_JWKS_URL == malformed_url
+
+
+@pytest.mark.parametrize("override", ["1", "true", "TRUE", "yes"])
+def test_jwks_url_cleartext_warning_can_be_silenced(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture, override: str
+):
+    """JWKS_ALLOW_INSECURE_TRANSPORT silences the warning for trusted paths."""
+    mocker.patch.dict(
+        os.environ,
+        {
+            "JWT_JWKS_URL": "http://auth.example.com/api/auth/jwks",
+            "JWKS_ALLOW_INSECURE_TRANSPORT": override,
+        },
+        clear=True,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        Settings()
+        assert "cleartext" not in caplog.text

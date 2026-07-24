@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import urlparse
 
 from jwt.algorithms import get_default_algorithms, has_crypto
 
@@ -39,11 +40,13 @@ class Settings:
     def validate(self):
         if not self.JWT_JWKS_URL:
             raise AuthConfigError(
-                "JWT_JWKS_URL must be set. Better Auth issues asymmetric (ES256) "
-                "tokens verified against the JWKS endpoint, so without it the "
-                "backend cannot verify any live session. JWT_VERIFY_KEY only "
-                "covers transient legacy (Supabase HS256) tokens during the "
-                "cutover window and is optional."
+                "JWT_JWKS_URL must be set to the JWKS endpoint of the platform "
+                "auth service (e.g. https://<frontend-host>/api/auth/jwks). "
+                "Better Auth issues asymmetric (ES256) tokens verified against "
+                "that endpoint, so without it the backend cannot verify any live "
+                "session. JWT_VERIFY_KEY is not a substitute: it only covers "
+                "transient legacy (Supabase HS256) tokens during the cutover "
+                "window."
             )
 
         if self.JWT_JWKS_URL and not self.JWT_JWKS_URL.startswith(
@@ -55,6 +58,35 @@ class Settings:
                 f"Invalid JWT_JWKS_URL: '{self.JWT_JWKS_URL}'. "
                 "Must be an http:// or https:// URL."
             )
+
+        if self.JWT_JWKS_URL.startswith("http://"):
+            try:
+                hostname = urlparse(self.JWT_JWKS_URL).hostname or ""
+            except ValueError:
+                # Malformed netloc (e.g. an unbalanced IPv6 bracket). This check
+                # is advisory, so stay quiet and let the URL fail loudly at fetch
+                # time rather than taking the process down at boot.
+                hostname = ""
+            # A single-label host is a container/service name on a private
+            # network (e.g. http://frontend:3000), as trusted as loopback.
+            host_is_local = hostname in ("localhost", "127.0.0.1", "::1") or (
+                "." not in hostname and ":" not in hostname
+            )
+            allow_insecure = os.getenv(
+                "JWKS_ALLOW_INSECURE_TRANSPORT", ""
+            ).strip().lower() in ("1", "true", "yes")
+            if not host_is_local and not allow_insecure:
+                # Best-effort operator guidance, never fatal: we can't tell a
+                # trusted private network from a hostile one from here.
+                logger.warning(
+                    "⚠️ JWT_JWKS_URL fetches keys over cleartext http:// from "
+                    f"a non-local host ('{hostname}'). The backend trusts "
+                    "whatever keys that URL returns, so on an untrusted network "
+                    "an attacker in the path can substitute them and forge "
+                    "tokens for any user. Use https://, or set "
+                    "JWKS_ALLOW_INSECURE_TRANSPORT=true to silence this if the "
+                    "path is trusted."
+                )
 
         if self.JWT_VERIFY_KEY and len(self.JWT_VERIFY_KEY) < 32:
             logger.warning(

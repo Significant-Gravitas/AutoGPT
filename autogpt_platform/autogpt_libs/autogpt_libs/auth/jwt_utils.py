@@ -52,7 +52,7 @@ async def get_jwt_payload(
         logger.debug("Token decoded successfully")
         return payload
     except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
 
 def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, Any]:
@@ -76,7 +76,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     try:
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}")
+        raise ValueError(f"Invalid token: {str(e)}") from e
 
     algorithm = header.get("alg", "")
     if algorithm.startswith("HS"):
@@ -90,7 +90,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
         try:
             key = _get_jwks_client().get_signing_key_from_jwt(token).key
         except jwt.PyJWKClientError as e:
-            raise ValueError(f"Invalid token: {str(e)}")
+            raise ValueError(f"Invalid token: {str(e)}") from e
         algorithms = settings.JWT_JWKS_ALGORITHMS
 
     try:
@@ -101,10 +101,10 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
             audience=audience,
         )
         return payload
-    except jwt.ExpiredSignatureError:
-        raise ValueError("Token has expired")
+    except jwt.ExpiredSignatureError as e:
+        raise ValueError("Token has expired") from e
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}")
+        raise ValueError(f"Invalid token: {str(e)}") from e
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:

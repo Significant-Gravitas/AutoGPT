@@ -55,19 +55,24 @@ def requires_frontend_service(scope: str):
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError as e:
-            raise fastapi.HTTPException(status_code=401, detail=f"Invalid token: {e}")
+            raise fastapi.HTTPException(
+                status_code=401, detail=f"Invalid token: {e}"
+            ) from e
         # Service tokens are only ever JWKS-signed; the legacy HS256 shared
         # secret must not be able to mint one.
         if header.get("alg", "").startswith("HS"):
             raise fastapi.HTTPException(
                 status_code=401,
-                detail="Invalid token: symmetric service tokens are not accepted",
+                detail=(
+                    "Invalid token: symmetrically signed service tokens "
+                    "are not accepted"
+                ),
             )
 
         try:
             payload = parse_jwt_token(token, audience=SERVICE_TOKEN_AUDIENCE)
         except ValueError as e:
-            raise fastapi.HTTPException(status_code=401, detail=str(e))
+            raise fastapi.HTTPException(status_code=401, detail=str(e)) from e
 
         if payload.get("sub") != FRONTEND_SERVICE_SUBJECT:
             raise fastapi.HTTPException(
