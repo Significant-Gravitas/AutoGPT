@@ -10,8 +10,11 @@ import {
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-// Post-OAuth landing: Better Auth has already set the session cookie before
-// redirecting here, so we only need to verify the session and finish setup.
+// Post-OAuth landing page, not the OAuth exchange. Better Auth's built-in
+// /api/auth/callback/{provider} does the code exchange and sets the session
+// cookie, then redirects here because this is the `callbackURL` we hand it in
+// /api/auth/login/with-provider. So by the time we run, the session already
+// exists and we only provision the backend user and decide where to send them.
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
 
