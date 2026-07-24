@@ -195,9 +195,16 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
       process.env.BETTER_AUTH_URL ||
       process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
       "http://localhost:3000";
+    // This is a request from the Next server back to itself, which the route
+    // handlers avoid by minting in-process (lib/auth/server/getServerAuthToken).
+    // This module is in the client bundle graph and so cannot import `auth`
+    // (-> `pg`), so the SSR path keeps the HTTP hop. Bound it: an unbounded
+    // self-request can occupy a worker waiting on a worker, and that deadlock
+    // is what made the Copilot page hang forever instead of erroring.
     const response = await fetch(`${baseURL}/api/auth/token`, {
       headers: { cookie: cookieHeader },
       cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) return null;
 

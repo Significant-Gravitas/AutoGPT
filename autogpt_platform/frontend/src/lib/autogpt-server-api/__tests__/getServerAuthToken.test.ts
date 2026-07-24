@@ -109,6 +109,9 @@ describe("getServerAuthToken", () => {
             "better-auth.session_token=session-fresh; other=with%20spaces",
         },
         cache: "no-store",
+        // Bounded on purpose: this is a request from the Next server to itself,
+        // so an unbounded wait can deadlock a worker instead of erroring.
+        signal: expect.any(AbortSignal),
       },
     );
   });
