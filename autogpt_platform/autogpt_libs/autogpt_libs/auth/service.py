@@ -16,7 +16,7 @@ import jwt
 from fastapi.security import HTTPAuthorizationCredentials
 
 from .config import get_settings
-from .jwt_utils import bearer_jwt_auth, parse_jwt_token
+from .jwt_utils import bearer_jwt_auth, parse_jwt_token_async
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,9 @@ def requires_frontend_service(scope: str):
             )
 
         try:
-            payload = parse_jwt_token(token, audience=SERVICE_TOKEN_AUDIENCE)
+            payload = await parse_jwt_token_async(
+                token, audience=SERVICE_TOKEN_AUDIENCE
+            )
         except ValueError as e:
             raise fastapi.HTTPException(status_code=401, detail=str(e)) from e
 
