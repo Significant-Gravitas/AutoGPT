@@ -2,19 +2,19 @@ from enum import StrEnum
 from typing import Literal
 
 
+# Stored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}
+# so adds/renames/retires are code-only. Writes are validated on the completion
+# endpoint via FrontendOnboardingStep (a Pydantic Literal); reads are validated
+# against this enum, which is why retired members are kept below.
+#
+# Lives in its own module (rather than onboarding.py) so the response model in
+# backend.data.model can type its fields with this enum without importing the
+# onboarding logic layer, which would create an import cycle.
+#
+# The class docstring ships into openapi.json (and the generated frontend
+# client) as the schema description - keep it short and user-facing.
 class OnboardingStep(StrEnum):
-    """Application-level onboarding step identifiers.
-
-    Stored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}
-    so adds/renames/retires are code-only. Boundary validation lives on the
-    completion endpoint via ``FrontendOnboardingStep`` (a Pydantic ``Literal``).
-    Legacy values that no longer appear here remain readable from existing rows
-    as inert strings.
-
-    Lives in its own module (rather than ``onboarding.py``) so the response
-    model in ``backend.data.model`` can type its fields with this enum without
-    importing the onboarding logic layer, which would create an import cycle.
-    """
+    """Application-level onboarding step identifiers."""
 
     # Retired steps are kept, never deleted: existing rows may still contain
     # them and the strict ``list[OnboardingStep]`` response model would 500 on

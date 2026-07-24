@@ -98,7 +98,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         # stays list[str]. str() works whether the value is an OnboardingStep
         # (StrEnum) or already a plain str, so it can't AttributeError.
         update["notified"] = list(
-            {str(step) for step in data.notified} | set(onboarding.notified)
+            set(onboarding.notified + [str(step) for step in data.notified])
         )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
