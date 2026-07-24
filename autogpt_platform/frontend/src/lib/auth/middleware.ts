@@ -26,9 +26,16 @@ async function getSessionUserRole(
   }
 
   try {
+    // Bounded so a stalled session lookup can't hang navigation. On any error
+    // (including this timeout) we fall through to null = "not admin", the safe
+    // default. Edge runtime here has no pg access, so this stays an HTTP call
+    // rather than the in-process auth API used elsewhere.
     const response = await fetch(
       new URL("/api/auth/get-session", request.url),
-      { headers: { cookie: request.headers.get("cookie") || "" } },
+      {
+        headers: { cookie: request.headers.get("cookie") || "" },
+        signal: AbortSignal.timeout(3000),
+      },
     );
     if (!response.ok) return null;
     const session = await response.json();

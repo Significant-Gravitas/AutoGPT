@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
+vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
@@ -11,7 +11,7 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
 
 const BACKEND = "https://backend.test";

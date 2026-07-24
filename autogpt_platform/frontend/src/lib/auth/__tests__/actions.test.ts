@@ -24,7 +24,7 @@ vi.mock("../server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
 }));
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
+vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: () => getServerAuthTokenMock(),
 }));
 

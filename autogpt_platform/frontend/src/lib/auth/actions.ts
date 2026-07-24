@@ -1,5 +1,5 @@
 "use server";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import * as Sentry from "@sentry/nextjs";
 import { cookies, headers } from "next/headers";
 import { auth } from "./auth";
