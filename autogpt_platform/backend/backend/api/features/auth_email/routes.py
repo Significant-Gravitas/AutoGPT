@@ -29,7 +29,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-auth_email_router = APIRouter(prefix="/auth-email")
+auth_email_router = APIRouter()
 
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
@@ -51,6 +51,48 @@ class AuthEmailRequest(BaseModel):
     type: Literal["reset_password", "verify_email", "change_email"]
     to: EmailStr
     url: str
+
+
+@auth_email_router.post(
+    "/send",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(requires_auth_email_service)],
+    summary="Send a Better Auth transactional email via the backend mailer",
+    # Without an explicit id the generated client name is derived from the
+    # summary, which produces an unreadable mouthful.
+    operation_id="sendAuthTransactionEmail",
+    tags=["auth-email"],
+)
+async def send_auth_email(request: AuthEmailRequest) -> None:
+    if not _url_origin_allowed(request.url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="url must point at a trusted frontend origin.",
+        )
+
+    subject = _SUBJECTS[request.type]
+    action = _ACTIONS[request.type]
+    # Escape the (host-validated) URL before embedding it in HTML — a path or
+    # query on an allowed host could still carry markup-breaking characters.
+    safe_url = html.escape(request.url, quote=True)
+    body = (
+        f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
+        f'<p><a href="{safe_url}">{safe_url}</a></p>'
+        "<p>If you didn't request this, you can safely ignore this email.</p>"
+    )
+
+    # The blocking RPC to the notification service runs off the event loop; a
+    # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
+    # loudly instead of dropping the auth email.
+    await asyncio.to_thread(
+        get_notification_manager_client().send_transactional_email,
+        request.to,
+        subject,
+        body,
+    )
+    # Don't log the recipient address — auth emails go to arbitrary users and
+    # the address is PII we don't want in application logs.
+    logger.info(f"Sent {request.type} auth email")
 
 
 def _origin_of(url: str) -> str | None:
@@ -91,42 +133,3 @@ def _url_origin_allowed(url: str) -> bool:
     if origin in exact:
         return True
     return any(re.fullmatch(pattern, origin) for pattern in patterns)
-
-
-@auth_email_router.post(
-    "/send",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Security(requires_auth_email_service)],
-    summary="Send a Better Auth transactional email via the backend mailer",
-    tags=["auth-email"],
-)
-async def send_auth_email(request: AuthEmailRequest) -> None:
-    if not _url_origin_allowed(request.url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="url must point at a trusted frontend origin.",
-        )
-
-    subject = _SUBJECTS[request.type]
-    action = _ACTIONS[request.type]
-    # Escape the (host-validated) URL before embedding it in HTML — a path or
-    # query on an allowed host could still carry markup-breaking characters.
-    safe_url = html.escape(request.url, quote=True)
-    body = (
-        f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        f'<p><a href="{safe_url}">{safe_url}</a></p>'
-        "<p>If you didn't request this, you can safely ignore this email.</p>"
-    )
-
-    # The blocking RPC to the notification service runs off the event loop; a
-    # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
-    # loudly instead of dropping the auth email.
-    await asyncio.to_thread(
-        get_notification_manager_client().send_transactional_email,
-        request.to,
-        subject,
-        body,
-    )
-    # Don't log the recipient address — auth emails go to arbitrary users and
-    # the address is PII we don't want in application logs.
-    logger.info("Sent %s auth email", request.type)

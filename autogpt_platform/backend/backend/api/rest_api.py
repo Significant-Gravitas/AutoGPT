@@ -347,7 +347,7 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     auth_email_routes.auth_email_router,
-    prefix="/api",
+    prefix="/api/auth/email",
     tags=["auth-email"],
 )
 app.include_router(

@@ -2569,11 +2569,11 @@
         }
       }
     },
-    "/api/auth-email/send": {
+    "/api/auth/email/send": {
       "post": {
         "tags": ["auth-email", "auth-email"],
         "summary": "Send a Better Auth transactional email via the backend mailer",
-        "operationId": "postAuth-emailSend a better auth transactional email via the backend mailer",
+        "operationId": "sendAuthTransactionEmail",
         "requestBody": {
           "content": {
             "application/json": {

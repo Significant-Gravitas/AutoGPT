@@ -44,7 +44,7 @@ describe("sendAuthEmail", () => {
     expect(mintServiceTokenMock).toHaveBeenCalledWith("auth-email:send");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://backend.example.com/api/auth-email/send");
+    expect(url).toBe("https://backend.example.com/api/auth/email/send");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["Authorization"]).toBe(
       "Bearer svc-token",

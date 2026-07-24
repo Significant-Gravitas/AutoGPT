@@ -11,7 +11,9 @@ from pytest_mock import MockerFixture
 from backend.api.features.auth_email import routes as auth_email_routes
 
 app = fastapi.FastAPI()
-app.include_router(auth_email_routes.auth_email_router, prefix="/api")
+# Mirror the prefix rest_api.py mounts it under, so these tests exercise the
+# same paths the service actually serves.
+app.include_router(auth_email_routes.auth_email_router, prefix="/api/auth/email")
 client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
 VALID_BODY = {
@@ -48,7 +50,7 @@ def send_mock(monkeypatch):
 
 
 def _post(body=None):
-    return client.post("/api/auth-email/send", json=body or VALID_BODY)
+    return client.post("/api/auth/email/send", json=body or VALID_BODY)
 
 
 def test_valid_request_sends_and_returns_204(send_mock):

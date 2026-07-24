@@ -24,7 +24,7 @@ interface SendAuthEmailArgs {
 export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
   try {
     const token = await mintServiceToken("auth-email:send");
-    const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth-email/send`;
+    const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth/email/send`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
