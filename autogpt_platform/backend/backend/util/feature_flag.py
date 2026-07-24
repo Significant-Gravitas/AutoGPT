@@ -246,11 +246,27 @@ async def _fetch_user_context(user_id: str) -> Context:
     that raise, so a degraded context can't be cached here — the caller
     handles the fallback outside the cache.
     """
-    # Local import to avoid a util <-> data import cycle.
+    # Local imports to avoid a util <-> data import cycle.
     from backend.data.db import prisma
 
-    user = await prisma.authuser.find_unique(where={"id": user_id})
-    if user is None:
+    # Only REST/WS/DatabaseManager processes hold a locally-connected Prisma
+    # client. Prisma-less workers (scheduler, copilot-executor, ...) must reach
+    # the auth table through the DatabaseManager RPC client — a direct Prisma
+    # call there raises ClientNotConnectedError, silently degrading this context
+    # to anonymous and breaking email/role-targeted flags (e.g. the domain-
+    # cohorted DREAM_PASS_ENABLED, evaluated in the Prisma-less scheduler).
+    if prisma.is_connected():
+        from backend.data.user import get_auth_user_flag_fields
+
+        fields = await get_auth_user_flag_fields(user_id)
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        fields = await get_database_manager_async_client().get_auth_user_flag_fields(
+            user_id
+        )
+
+    if fields is None:
         # Do NOT cache a not-found as anonymous. During the auth-migration
         # bridge window a user's row may not exist yet (or is mid-copy); a
         # 24h-cached anonymous context would keep them out of email/role-
@@ -262,17 +278,17 @@ async def _fetch_user_context(user_id: str) -> Context:
     builder = Context.builder(user_id).kind("user").anonymous(False)
     # Keep the same role values previously issued in JWTs so existing
     # LaunchDarkly targeting rules keep matching.
-    role = "admin" if user.role == "admin" else "authenticated"
+    role = "admin" if fields.role == "admin" else "authenticated"
     builder.set("role", role)
     # It's weird, I know, but it is what it is.
     builder.set("custom", {"role": role})
-    if user.email:
-        builder.set("email", user.email)
-        builder.set("email_domain", user.email.split("@")[-1])
-    if user.createdAt:
+    if fields.email:
+        builder.set("email", fields.email)
+        builder.set("email_domain", fields.email.split("@")[-1])
+    if fields.created_at:
         # ISO-8601 string — LD supports RFC3339 date targeting on
         # this attribute (e.g. cohort users by signup window).
-        builder.set("created_at", user.createdAt.isoformat())
+        builder.set("created_at", fields.created_at.isoformat())
 
     return builder.build()
 

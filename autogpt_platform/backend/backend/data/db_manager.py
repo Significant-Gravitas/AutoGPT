@@ -131,6 +131,7 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_auth_user_flag_fields,
     get_user_by_id,
     get_user_credentials,
     get_user_email_by_id,
@@ -305,6 +306,9 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
+    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -597,6 +601,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
