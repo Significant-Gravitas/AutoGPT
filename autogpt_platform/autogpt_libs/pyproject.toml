@@ -35,3 +35,7 @@ line-length = 88
 
 [tool.ruff.lint]
 extend-select = ["I"]  # sort dependencies
+
+[tool.pytest.ini_options]
+# Run bare `async def` tests without a per-test marker, matching the backend.
+asyncio_mode = "auto"

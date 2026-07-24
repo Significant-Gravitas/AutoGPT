@@ -136,11 +136,7 @@ def test_garbage_token_is_401(jwks_config):
     assert _post("not-a-jwt").status_code == 401
 
 
-def test_service_auth_unavailable_without_jwks_url(mocker: MockerFixture):
-    """Without JWT_JWKS_URL there is no trust root for service tokens: 503."""
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": MOCK_JWT_SECRET}, clear=True)
-    mocker.patch.object(config, "_settings", Settings())
-
-    private_key, _ = make_es256_keypair()
-    token = create_es256_token(SERVICE_PAYLOAD, private_key)
-    assert _post(token).status_code == 503
+# Note: the "503 when JWT_JWKS_URL is unset" path is unreachable via a valid
+# Settings() — JWT_JWKS_URL is now mandatory (config.validate raises without
+# it), so that guard in requires_frontend_service is dead code. Config-level
+# enforcement is covered by config_test.py.

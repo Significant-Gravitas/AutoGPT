@@ -64,6 +64,50 @@ jobs:
       CI: true
       PLAIN_OUTPUT: True
 
+  # autogpt_libs is a standalone package with its own env; the backend `test`
+  # job (scoped to autogpt_platform/backend) never collects its tests, so run
+  # them here. Pure unit tests — no database or external services needed.
+  autogpt-libs-test:
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/autogpt_libs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.12-libs-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry ../backend/poetry.lock)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run pytest
+        run: poetry run pytest -q
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+
   type-check:
     permissions:
       contents: read

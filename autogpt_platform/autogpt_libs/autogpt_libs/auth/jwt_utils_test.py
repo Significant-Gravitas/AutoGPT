@@ -36,7 +36,14 @@ TEST_ADMIN_PAYLOAD = {
 
 @pytest.fixture(autouse=True)
 def mock_config(mocker: MockerFixture):
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": MOCK_JWT_SECRET}, clear=True)
+    # JWT_JWKS_URL is required by Settings.validate(); the HS256 tests never
+    # touch the JWKS client (they verify against JWT_VERIFY_KEY), so a URL that
+    # is present-but-unused is enough to satisfy config validation.
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_VERIFY_KEY": MOCK_JWT_SECRET, "JWT_JWKS_URL": MOCK_JWKS_URL},
+        clear=True,
+    )
     mocker.patch.object(config, "_settings", Settings())
     mocker.patch.object(jwt_utils, "_jwks_client", None)
     mocker.patch.object(jwt_utils, "_jwks_client_url", None)
@@ -394,13 +401,10 @@ def test_parse_jwt_token_es256_wrong_key(jwks_config):
         jwt_utils.parse_jwt_token(token)
 
 
-def test_parse_jwt_token_asymmetric_rejected_without_jwks_url():
-    """Asymmetric tokens are rejected when no JWKS endpoint is configured."""
-    private_key, _ = make_es256_keypair()
-    token = create_es256_token(TEST_USER_PAYLOAD, private_key)
-
-    with pytest.raises(ValueError, match="asymmetric tokens are not accepted"):
-        jwt_utils.parse_jwt_token(token)
+# Note: "asymmetric rejected without JWKS_URL" is not testable via a valid
+# Settings() — JWT_JWKS_URL is now mandatory (config.validate raises without
+# it), so that guard in parse_jwt_token is unreachable dead code. The positive
+# path is covered by test_parse_jwt_token_es256_via_jwks.
 
 
 def test_parse_jwt_token_symmetric_rejected_without_shared_secret(
