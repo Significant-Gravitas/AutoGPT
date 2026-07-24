@@ -686,6 +686,7 @@ model LibraryAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  lastRunAt DateTime?
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
