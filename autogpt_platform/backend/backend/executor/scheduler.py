@@ -107,6 +107,29 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
+
+
+def _init_launchdarkly_for_scheduler() -> None:
+    """Eagerly initialize LaunchDarkly unless running LOCAL.
+
+    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
+    check) fail closed, so evaluating them against a lazily-initialized LD
+    client right after a pod restart would silently skip registrations
+    until the first lazy init completed. Skipped LOCAL, where LD is
+    unconfigured and flags resolve to their mock defaults.
+    """
+    if config.app_env != AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+
+
+def _shutdown_launchdarkly_for_scheduler() -> None:
+    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
+    LD client when it was actually initialized (non-LOCAL)."""
+    if config.app_env != AppEnvironment.LOCAL:
+        shutdown_launchdarkly()
+
+
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -1349,14 +1372,10 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
-        # Eagerly initialize LaunchDarkly (mirrors rest_api.py's
-        # launch_darkly_context). The @expose flag gates (e.g.
-        # add_nightly_batch_schedule's DREAM_PASS_ENABLED check) fail
-        # closed, so evaluating them against a lazily-initialized LD
-        # client right after a pod restart would silently skip
-        # registrations until the first lazy init completed.
-        if config.app_env != AppEnvironment.LOCAL:
-            initialize_launchdarkly()
+        # Eagerly initialize LaunchDarkly before any @expose flag gate can
+        # run (see the helper for why lazy init would skip registrations
+        # after a pod restart).
+        _init_launchdarkly_for_scheduler()
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -1582,8 +1601,7 @@ class Scheduler(AppService):
 
         # Reverse order of run_service: LD was initialized before the
         # scheduler started, so close it after all jobs have drained.
-        if config.app_env != AppEnvironment.LOCAL:
-            shutdown_launchdarkly()
+        _shutdown_launchdarkly_for_scheduler()
 
         super().cleanup()
 

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from backend.copilot.config import ChatConfig
 from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .apply import apply_operations
+from .apply import apply_operations, drain_status_from_stats
 from .billing import check_dream_budget, record_phase_cost
 from .fetch import DreamInput, gather_dream_input
 from .llm import (
@@ -95,27 +95,35 @@ SANITIZE_MAX_TOKENS = 16384
 # alone — past both SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS (1800s,
 # scheduler.py) and DEFAULT_LOCK_TTL_SECONDS (1800s, locks.py) before
 # fetch/apply even run. So the phases get values that fit the envelope
-# instead. Budget math:
+# instead. Budget math (three explicit line items, with real slack):
 #
-#   consolidate 240s + recombine 600s + sanitize 480s = 1320s LLM ceiling
-#   + DREAM_NON_LLM_HEADROOM_SECONDS 480s (budget check + fetch + apply
-#     + cost logging)
-#   = 1800s == SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
-#            == DEFAULT_LOCK_TTL_SECONDS  (fully allocated, zero slack)
+#   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
+#   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
+#   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
+#     + demotions + summary + cost logging, EXCLUDING the drain)
+#   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The drain no longer counts against the lock TTL: apply renews the dream
+# lock to a fresh budget right before the drain (see
+# apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
+# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
+# with genuine margin, and the drain itself runs under the renewed lock.
+# Both invariants are pinned by
+# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
+# bumping any value here fails that test until the budget is re-balanced.
 #
 # Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
 # on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
-# Consolidate's 4096-token budget fits 240s at ~17 tok/s. The envelope
-# invariant is pinned by
-# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
-# bumping any value here fails that test until the budget is re-balanced.
+# Consolidate's 4096-token budget fits 240s at ~17 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
-# Reserved for the non-LLM segments of the pass (budget check, fetch,
-# apply, cost logging) inside the 1800s scheduler/lock envelope.
-DREAM_NON_LLM_HEADROOM_SECONDS = 480
+# Reserved for the non-LLM segments of the pass OTHER than the ingestion
+# drain (budget check, fetch, enqueue, demotions, summary write, cost
+# logging). The drain is budgeted separately as
+# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+DREAM_NON_LLM_HEADROOM_SECONDS = 120
 
 # Entity invalidation is the most destructive op the sanitizer can emit:
 # each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
@@ -719,6 +727,7 @@ async def _execute_dream_pass_async(
                 pass_id,
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                lock_handle=dream_lock_handle,
             )
 
             completed_at = datetime.now(timezone.utc)
@@ -728,8 +737,9 @@ async def _execute_dream_pass_async(
                 v = apply_stats.get(key, 0)
                 return int(v) if isinstance(v, (int, str)) and v else 0
 
-            raw_drained = apply_stats.get("ingestion_drained", True)
-            ingestion_drained = raw_drained if isinstance(raw_drained, bool) else True
+            # Fail-closed: a missing/malformed drain flag reads as
+            # ``timed_out`` (writes at risk), never a confirmed drain.
+            ingestion_drain_status = drain_status_from_stats(apply_stats)
 
             return DreamPassResult(
                 user_id=user_id,
@@ -743,7 +753,7 @@ async def _execute_dream_pass_async(
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
                 summary_for_user=ops.summary_for_user,
-                ingestion_drained=ingestion_drained,
+                ingestion_drain_status=ingestion_drain_status,
                 dream_session_id=str(apply_stats.get("session_id") or ""),
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None

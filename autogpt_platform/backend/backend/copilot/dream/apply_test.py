@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.ingest import IngestionCompletion
+
 from . import apply as apply_mod
 from .fetch import DreamInput
 from .schemas import (
@@ -23,6 +25,7 @@ from .schemas import (
     DreamDemotion,
     DreamOperations,
     EntityInvalidation,
+    IngestionDrainStatus,
     ProposedFinding,
 )
 
@@ -400,8 +403,9 @@ async def test_summary_written_after_memory_ops(mocker):
 
 @pytest.mark.asyncio
 async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
-    """With writes enqueued, apply must await wait_for_ingestion (bounded
-    by the drain timeout) and report ingestion_drained=True on success."""
+    """With writes enqueued, apply must await wait_for_ingestion (scoped to
+    the pass's own episodes, bounded by the drain timeout) and report
+    ingestion_drain_status=drained on success."""
     drain = mocker.patch.object(
         apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
     )
@@ -413,16 +417,22 @@ async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
         user_id="u-drain", pass_id="p-drain", ops=ops
     )
 
-    drain.assert_awaited_once_with("u-drain", apply_mod.INGESTION_DRAIN_TIMEOUT_SECONDS)
-    assert stats["ingestion_drained"] is True
+    drain.assert_awaited_once()
+    # Waited on the pass's own completion tracker, not the whole queue, with
+    # the sync drain timeout.
+    completion, timeout = drain.await_args.args
+    assert isinstance(completion, IngestionCompletion)
+    assert completion.registered == 1
+    assert timeout == apply_mod.INGESTION_DRAIN_TIMEOUT_SECONDS
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.drained
 
 
 @pytest.mark.asyncio
 async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, caplog):
-    """When the queue doesn't drain inside the cap, the pass must still
-    succeed (partial visibility beats a failed pass): counts are returned,
-    ingestion_drained=False flags the overflow, and a WARNING records the
-    revert to fire-and-forget behavior."""
+    """When the pass's episodes don't drain inside the cap, the pass must
+    still succeed (partial visibility beats a failed pass): counts are
+    returned, ingestion_drain_status=timed_out flags the overflow, and a
+    WARNING records the revert to fire-and-forget behavior."""
     mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=False))
     ops = DreamOperations(
         writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
@@ -433,7 +443,7 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
             user_id="u-slow", pass_id="p-slow", ops=ops
         )
 
-    assert stats["ingestion_drained"] is False
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
     assert stats["consolidated_count"] == 1
     assert any(
         "did not drain" in record.getMessage()
@@ -443,11 +453,11 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
 
 
 @pytest.mark.asyncio
-async def test_zero_drain_timeout_skips_wait_and_reports_not_drained(mocker, caplog):
+async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog):
     """The batch path passes ``ingestion_drain_timeout=0`` so apply never
     stalls the shared, serial BatchExecutor.walk_once loop: even with writes
-    enqueued, wait_for_ingestion is NOT awaited, and the pass honestly
-    reports ingestion_drained=False (episodes process fire-and-forget)."""
+    enqueued, wait_for_ingestion is NOT awaited, and the pass reports
+    ingestion_drain_status=skipped (a by-design skip, not a failure)."""
     drain = mocker.patch.object(
         apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
     )
@@ -464,7 +474,7 @@ async def test_zero_drain_timeout_skips_wait_and_reports_not_drained(mocker, cap
         )
 
     drain.assert_not_awaited()
-    assert stats["ingestion_drained"] is False
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.skipped
     assert stats["consolidated_count"] == 1
     assert any("drain skipped" in record.getMessage() for record in caplog.records)
 
@@ -483,7 +493,40 @@ async def test_no_enqueued_writes_skips_ingestion_drain(mocker):
     )
 
     drain.assert_not_awaited()
-    assert stats["ingestion_drained"] is True
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.drained
+
+
+@pytest.mark.asyncio
+async def test_sync_path_renews_lock_before_drain(mocker):
+    """The dream lock is renewed to a fresh budget right before the drain so
+    it cannot expire while the pass's writes are still landing (which would
+    admit a concurrent pass onto the same graph)."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=None)
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    await apply_mod.apply_operations(
+        user_id="u-lock", pass_id="p-lock", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_empty_pass_does_not_renew_lock(mocker):
+    """A pass with nothing to drain needn't touch the lock TTL."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=None)
+    ops = DreamOperations(summary_for_user="Nothing new today.")
+    await apply_mod.apply_operations(
+        user_id="u-empty", pass_id="p-empty", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

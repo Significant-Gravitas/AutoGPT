@@ -572,14 +572,21 @@ async def test_clear_registration_marker_deletes_the_single_per_cron_key():
 
 
 @pytest.mark.asyncio
-async def test_clear_registration_marker_swallows_redis_failure():
+async def test_clear_registration_marker_swallows_redis_failure(caplog):
     """Best-effort: a Redis outage during clear must never break the
-    delete RPC — the marker self-heals via its 7-day TTL."""
+    delete RPC — the marker self-heals via its 7-day TTL. The except block
+    must still emit the WARNING (with exc_info) that documents the fallback,
+    so a silent-swallow regression is caught."""
     with patch(
         "backend.data.redis_client.get_redis_async",
         new=AsyncMock(side_effect=ConnectionError("redis down")),
-    ):
+    ), caplog.at_level(logging.WARNING, logger=scheduling.logger.name):
         await scheduling.clear_registration_marker("abc", "x_registered")
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("marker will expire via TTL" in r.getMessage() for r in warnings)
+    # The fallback warning must carry the traceback for operators.
+    assert any(r.exc_info is not None for r in warnings)
 
 
 # ---------------------------------------------------------------------------

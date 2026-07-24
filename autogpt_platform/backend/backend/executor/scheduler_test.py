@@ -740,3 +740,57 @@ def test_build_trigger_unix_dow_various_cases(
     nxt = trigger.get_next_fire_time(None, start)
     assert nxt is not None
     assert nxt.strftime("%A") == expected_dow
+
+
+# ---------------------------------------------------------------------------
+# LaunchDarkly lifecycle — the scheduler eagerly inits LD in run_service (so
+# @expose flag gates don't fail-closed right after a pod restart) and tears
+# it down in cleanup, both gated on the non-LOCAL app env. Test the gate at
+# the boundary where the LD symbols are used (the scheduler module).
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchDarklyLifecycle:
+    def test_init_runs_when_app_env_not_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
+            patch.object(sched, "initialize_launchdarkly") as init,
+        ):
+            sched._init_launchdarkly_for_scheduler()
+        init.assert_called_once()
+
+    def test_init_skipped_when_app_env_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
+            patch.object(sched, "initialize_launchdarkly") as init,
+        ):
+            sched._init_launchdarkly_for_scheduler()
+        init.assert_not_called()
+
+    def test_shutdown_runs_when_app_env_not_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
+            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+        ):
+            sched._shutdown_launchdarkly_for_scheduler()
+        shutdown.assert_called_once()
+
+    def test_shutdown_skipped_when_app_env_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
+            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+        ):
+            sched._shutdown_launchdarkly_for_scheduler()
+        shutdown.assert_not_called()

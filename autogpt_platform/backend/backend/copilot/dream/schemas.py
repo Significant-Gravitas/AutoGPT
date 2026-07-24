@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -19,6 +20,33 @@ from pydantic import BaseModel, Field, model_validator
 from backend.copilot.graphiti.memory_model import MemoryKind
 
 logger = logging.getLogger(__name__)
+
+
+class IngestionDrainStatus(str, Enum):
+    """Fate of a dream pass's enqueued graph writes at the moment the pass
+    was reported complete.
+
+    A plain boolean conflated two opposite states, so consumers (and a
+    future Memory Visualizer) could not tell a healthy by-design skip from
+    a real failure. The tri-state makes the distinction explicit in the API
+    contract:
+
+      * ``drained`` — the pass's own episodes were confirmed landed in the
+        graph before the pass returned (sync path), or the pass enqueued
+        nothing to drain. Healthy.
+      * ``skipped`` — the drain was intentionally not run to avoid stalling
+        a shared serial loop (batch path). The episodes process
+        fire-and-forget; healthy by design, NOT a failure signal.
+      * ``timed_out`` — the sync-path drain was attempted but did not finish
+        within its budget. The reported write/proposal counts include
+        episodes still queued in-process, which are lost if the worker's pod
+        restarts. This is the only value that warrants an operator warning.
+    """
+
+    drained = "drained"
+    skipped = "skipped"
+    timed_out = "timed_out"
+
 
 # ---------------------------------------------------------------------------
 # Phase 1 — Consolidation
@@ -309,16 +337,14 @@ class DreamPassResult(BaseModel):
     summary_for_user: str = ""
     dream_session_id: str | None = None
 
-    # Whether the dream's enqueued graph writes were confirmed drained from
-    # the in-process ingestion queue before the pass was reported complete.
-    # ``False`` means the counts above were reported while episodes were still
-    # queued in-process — the drain timed out (sync path) or was skipped to
-    # avoid stalling the shared executor loop (batch path). Those writes are
-    # processing fire-and-forget and are lost if the worker's pod restarts, so
-    # an operator can distinguish a fully-landed pass from one whose writes are
-    # still pending. Defaults True so results serialized before this field
-    # existed still validate.
-    ingestion_drained: bool = True
+    # Fate of the dream's enqueued graph writes when the pass was reported
+    # complete — see ``IngestionDrainStatus``. ``drained`` is a fully-landed
+    # (or nothing-to-drain) pass, ``skipped`` is the by-design batch skip
+    # (healthy), ``timed_out`` is a sync-path drain that overran its budget
+    # with writes still queued in-process (at risk on pod restart). Defaults
+    # to ``drained`` so results serialized before this field existed still
+    # validate as the old ``True`` did.
+    ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained
 
     # Detailed per-operation rollup. ``None`` when the pass was skipped
     # or errored before phase 3 produced operations; ``DreamOperationsSnapshot()``

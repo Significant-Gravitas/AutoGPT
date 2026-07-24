@@ -18,6 +18,7 @@ from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 from . import orchestrator as orchestrator_mod
+from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
 from .locks import DEFAULT_LOCK_TTL_SECONDS
@@ -27,6 +28,7 @@ from .schemas import (
     DreamDemotion,
     DreamOperations,
     EntityInvalidation,
+    IngestionDrainStatus,
     ProposedFinding,
     RecombinationOutput,
 )
@@ -230,9 +232,9 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
                 "demotion_count": 0,
                 "demotion_failed_count": 0,
                 "entity_invalidation_count": 0,
-                # Non-default value so the assertion below proves the flag is
-                # threaded from apply_stats, not left at the schema default.
-                "ingestion_drained": False,
+                # Non-default value so the assertion below proves the status
+                # is threaded from apply_stats, not left at the schema default.
+                "ingestion_drain_status": IngestionDrainStatus.timed_out,
             }
         ),
     )
@@ -245,8 +247,41 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     assert result.proposal_count == 1
     assert result.summary_for_user == "Dream consolidated 1 fact."
     assert result.dream_session_id == "s1"
-    assert result.ingestion_drained is False
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
     apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
+    """When apply_stats omits the drain key entirely (e.g. an upstream bug),
+    the result must fail closed to ``timed_out`` — writes potentially at
+    risk — never silently read as a confirmed ``drained`` success."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(summary_for_user="quiet night")
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        # No ``ingestion_drain_status`` key at all.
+        AsyncMock(return_value={"session_id": "s1", "consolidated_count": 1}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
 
 
 @pytest.mark.asyncio
@@ -313,21 +348,39 @@ def test_long_output_phase_timeouts_exceed_the_shared_request_default():
 
 
 def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
-    """Budget-math invariant: the scheduler abandons the whole pass at
-    ``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` and the dream lock
-    expires at ``DEFAULT_LOCK_TTL_SECONDS`` (both 1800s). The per-phase
-    LLM ceilings plus the non-LLM headroom (budget check + fetch +
-    apply + cost logging) must fit inside both envelopes — a future
-    bump to any phase timeout (or a cut to either envelope) fails here
-    loudly instead of producing passes that outlive their lock."""
-    worst_case = (
+    """Budget-math invariant with the drain budgeted as its OWN line item.
+
+    The scheduler abandons the whole pass at
+    ``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` (1800s), so the full pass
+    — LLM phases + the ingestion drain + the remaining non-LLM headroom —
+    must fit inside it with slack. The dream lock (``DEFAULT_LOCK_TTL_SECONDS``,
+    1800s) is a separate, data-integrity boundary: apply RENEWS the lock to
+    a fresh budget right before the drain (``LOCK_DRAIN_RENEWAL_SECONDS``),
+    so the drain no longer counts against the original lock TTL — only the
+    LLM phases + non-drain headroom do, and those must clear a 90%-of-TTL
+    bar so a near-worst-case pass never reaches the lock expiry while writes
+    are landing. A future bump to any phase timeout (or a cut to either
+    envelope) fails here loudly."""
+    llm = (
         orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
         + orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
         + orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
-        + orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
     )
-    assert worst_case <= SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
-    assert worst_case <= DEFAULT_LOCK_TTL_SECONDS
+    non_drain_headroom = orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
+    drain = INGESTION_DRAIN_TIMEOUT_SECONDS
+
+    # Whole pass (including the drain) must fit the scheduler abandonment
+    # boundary with real margin.
+    worst_case = llm + drain + non_drain_headroom
+    assert worst_case < SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+
+    # The lock only has to cover everything UP TO the drain, because the
+    # drain runs under a freshly renewed lock. Require 10% slack so the lock
+    # never expires mid-write.
+    assert llm + non_drain_headroom <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+
+    # The renewal must comfortably outlast the drain cap it protects.
+    assert LOCK_DRAIN_RENEWAL_SECONDS > drain
 
 
 @pytest.mark.asyncio
@@ -393,7 +446,9 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -454,7 +509,9 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -564,7 +621,9 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
