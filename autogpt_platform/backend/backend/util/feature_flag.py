@@ -246,25 +246,16 @@ async def _fetch_user_context(user_id: str) -> Context:
     that raise, so a degraded context can't be cached here — the caller
     handles the fallback outside the cache.
     """
-    # Local imports to avoid a util <-> data import cycle.
-    from backend.data.db import prisma
+    # Local import to avoid a util <-> data import cycle.
+    from backend.data.db_accessors import user_db
 
     # Only REST/WS/DatabaseManager processes hold a locally-connected Prisma
-    # client. Prisma-less workers (scheduler, copilot-executor, ...) must reach
-    # the auth table through the DatabaseManager RPC client — a direct Prisma
-    # call there raises ClientNotConnectedError, silently degrading this context
-    # to anonymous and breaking email/role-targeted flags (e.g. the domain-
-    # cohorted DREAM_PASS_ENABLED, evaluated in the Prisma-less scheduler).
-    if prisma.is_connected():
-        from backend.data.user import get_auth_user_flag_fields
-
-        fields = await get_auth_user_flag_fields(user_id)
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        fields = await get_database_manager_async_client().get_auth_user_flag_fields(
-            user_id
-        )
+    # client; user_db() falls back to the DatabaseManager RPC client elsewhere.
+    # Prisma-less workers (scheduler, copilot-executor, ...) must go through it —
+    # a direct Prisma call there raises ClientNotConnectedError, silently
+    # degrading this context to anonymous and breaking email/role-targeted flags
+    # (e.g. the domain-cohorted DREAM_PASS_ENABLED, evaluated in the scheduler).
+    fields = await user_db().get_auth_user_flag_fields(user_id)
 
     if fields is None:
         # Do NOT cache a not-found as anonymous. During the auth-migration
