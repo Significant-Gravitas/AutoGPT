@@ -11,10 +11,17 @@ interface Props {
 }
 
 export function InitialAvatar({ src, name, className }: Props) {
+  const normalizedName = name?.trim();
+
   return (
     <Avatar className={cn("h-10 w-10", className)}>
-      <AvatarImage src={src} alt={name ? `${name}'s avatar` : "User avatar"} />
-      <AvatarFallback>{name?.trim() || "User"}</AvatarFallback>
+      <AvatarImage
+        src={src}
+        alt={normalizedName ? `${normalizedName}'s avatar` : "User avatar"}
+      />
+      <AvatarFallback className={cn("h-10 w-10", className)}>
+        {normalizedName || "User"}
+      </AvatarFallback>
     </Avatar>
   );
 }
