@@ -20,7 +20,9 @@ import asyncio
 import logging
 import re
 import uuid as uuidlib
+from collections.abc import Sequence
 from datetime import datetime, timezone
+from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -60,6 +62,7 @@ from .schemas import (
     DreamPassResult,
     DreamPassUsage,
     PhaseUsage,
+    ProposedFinding,
     RecombinationOutput,
 )
 
@@ -131,8 +134,16 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
 # preference phrased "wants to know when X happens" is dropped; separating
 # it from a one-off "wants to know when the deploy is" isn't reliably
 # regex-able, so it's left to the sanitize prompt + human review.
+#
+# Subject scope: the gate deliberately anchors on the generic ``user``
+# subject only. Name-phrased transient intent ("Nick is asking how the
+# auth flow works") is intentionally NOT matched here — broadening the
+# subject to arbitrary proper nouns would risk false-positives on
+# non-user entities ("Kubernetes is asking for more nodes"), so
+# name-first phrasing is left to the sanitize prompt's LLM judgment. The
+# leading auxiliary allows perfect-progressive forms ("has been asking").
 _TRANSIENT_INTENT_RE = re.compile(
-    r"^(the\s+)?user\s+(is\s+|has\s+|was\s+)?"
+    r"^(the\s+)?user\s+(?:(?:is|has|was)\s+(?:been\s+)?)?"
     r"(asking\s+(how|what|why|whether|if|when|where|who|which|about)\b"
     r"|wondering\b"
     r"|curious\s+about\b"
@@ -155,7 +166,12 @@ def _is_transient_intent(content: str) -> bool:
     return bool(_TRANSIENT_INTENT_RE.match(content.strip()))
 
 
-def _drop_transient_intent(items: list) -> tuple[list, int]:
+_ContentItem = TypeVar("_ContentItem", ConsolidatedFact, ProposedFinding)
+
+
+def _drop_transient_intent(
+    items: Sequence[_ContentItem],
+) -> tuple[list[_ContentItem], int]:
     """Filter ConsolidatedFact / ProposedFinding items whose ``.content``
     is a transient intent. Returns (kept, dropped_count)."""
     kept = [it for it in items if not _is_transient_intent(it.content)]
@@ -425,13 +441,13 @@ def _clamp_operations(
     # Drop transient-intent pollution ("user is asking…") before the cap
     # slice so a leaked question never displaces a real fact (#13388).
     writes, w_intent_dropped = _drop_transient_intent(ops.writes)
-    proposals, p_dropped = _drop_transient_intent(ops.proposals)
-    if w_intent_dropped or p_dropped:
+    proposals, p_intent_dropped = _drop_transient_intent(ops.proposals)
+    if w_intent_dropped or p_intent_dropped:
         logger.info(
             "Dream clamp: dropped %d transient-intent write(s) and %d "
             "proposal(s) (questions captured as facts)",
             w_intent_dropped,
-            p_dropped,
+            p_intent_dropped,
         )
     # Collapse intra-pass near-duplicate writes before the cap slice so the
     # cap counts distinct facts, not paraphrases of one (#13387).

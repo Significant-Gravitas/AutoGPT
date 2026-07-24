@@ -725,6 +725,17 @@ class TestTransientIntentFilter:
             "User is interested in learning what the credit markup is",
             "User wants to understand how the auth flow works",
             "User wants to find out what the credit markup is",
+            # 'confused about' / 'unsure about' require the 'about' complement
+            # and drop the transient question form (#3623648910 / #3623648918).
+            "User is confused about the auth flow",
+            "User is unsure about the migration risk",
+            # 'asking' interrogatives beyond 'how' — 'which' / 'about' branches
+            # must fire too (#3623648935).
+            "User is asking which regions are cheapest",
+            "User asked about the credit markup",
+            # Perfect-progressive auxiliary ('has been asking') must be caught
+            # by the widened leading-auxiliary group (#3623648975).
+            "User has been asking how the auth flow works",
         ],
     )
     def test_flags_transient_intent(self, content):
@@ -751,6 +762,15 @@ class TestTransientIntentFilter:
             # Durable personality trait — 'curious by nature' needs no
             # 'about' complement, so it must survive (#3622917543).
             "User is curious by nature",
+            # 'confused'/'unsure' without the 'about' complement are durable
+            # traits, not questions — keep-pins the complement guard so a
+            # future broadening fails loudly (#3623648910).
+            "User is confused by nature",
+            # Name-subject scope guard: the deterministic gate only covers the
+            # generic 'user' subject; name-phrased transient intent is left to
+            # the sanitize prompt, so it must NOT be dropped here
+            # (#3623649071 / #3623649079).
+            "Nick is asking how to scale the cluster",
             # Bare 'interested in <noun>' must never match — pins the carve-out
             # so a future broadening of the regex fails loudly here.
             "User is interested in lighthouses",
@@ -796,6 +816,33 @@ class TestTransientIntentFilter:
         assert [p.content for p in clamped.proposals] == [
             "Nick and Sarah both work on auth"
         ]
+
+    def test_drop_transient_intent_returns_kept_and_count(self):
+        """Directly pins both outputs of _drop_transient_intent so an
+        off-by-one in the dropped_count feeding logger.info is caught."""
+        items = [
+            ConsolidatedFact(content="User is asking how K8s works", confidence=0.5),
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ConsolidatedFact(
+                content="User wants to know the credit markup", confidence=0.4
+            ),
+            ConsolidatedFact(content="Nick deploys to us-east1", confidence=0.8),
+        ]
+        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == [
+            "Nick prefers Python",
+            "Nick deploys to us-east1",
+        ]
+        assert dropped_count == 2
+
+    def test_drop_transient_intent_empty_and_none_dropped(self):
+        """No transient items → all kept, zero dropped."""
+        items = [
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+        ]
+        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == ["Nick prefers Python"]
+        assert dropped_count == 0
 
 
 class TestNearDuplicateWriteDedup:
