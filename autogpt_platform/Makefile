@@ -10,7 +10,7 @@ stop-core:
 
 reset-db:
 	docker compose stop db
-	rm -rf volumes/db/data
+	rm -rf data/db/data
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
 	cd backend && poetry run gen-prisma-stub

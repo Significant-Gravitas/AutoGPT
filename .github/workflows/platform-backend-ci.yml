@@ -367,7 +367,7 @@ jobs:
             -e POSTGRES_DB=postgres \
             -p 5432:5432 \
             -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
-            pgvector/pgvector:pg16
+            pgvector/pgvector:pg15
           for _ in $(seq 1 30); do
             if docker exec postgres-test pg_isready -U postgres >/dev/null 2>&1; then
               echo "Postgres ready"

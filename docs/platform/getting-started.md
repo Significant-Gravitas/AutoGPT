@@ -120,7 +120,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make init-env`        | Create `.env` files from `.env.default` (root, backend, and frontend)         |
+| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) |
 | `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
@@ -168,23 +168,126 @@ stack. If you self-hosted before the switch to the built-in auth service,
 three things changed:
 
 1. **Environment files**: refresh your `.env` files against the new
-   `.env.default`s (`make init-env` creates missing ones; merge your secrets
-   back in). The `SUPABASE_*` URL/key variables are gone; the frontend now
-   uses `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+   `.env.default`s. `make init-env` copies `.env.default` → `.env` for
+   `autogpt_platform`, `backend` and `frontend`, but only where no `.env`
+   exists yet (it uses `cp -n`): it creates missing `.env` *files* and never
+   overwrites an existing one. It does **not** merge newly-added variables
+   into an `.env` you already have — for an existing install, diff each
+   `.env` against its `.env.default` and copy the new keys across yourself.
+   The `SUPABASE_*` URL/key variables are gone; the frontend now uses
+   `BETTER_AUTH_SECRET` and `DATABASE_URL`.
 2. **Database location**: the database now lives in a plain Postgres
-   container with its data in `autogpt_platform/volumes/db/data`. Your old
-   data is untouched at `autogpt_platform/db/docker/volumes/db/data` but is
-   no longer mounted. To carry your data over, dump it from the old volume
-   and restore it into the new `db` service before starting the rest of the
-   stack (`pg_dump`/`psql` against a temporary container using the old
-   volume), then run `docker compose run --rm migrate`.
-3. **User accounts**: after restoring, run the one-time auth migration so
-   existing logins keep working:
+   container (`pgvector/pgvector:pg15`) with its data in
+   `autogpt_platform/data/db/data`. Your old data is untouched at
+   `autogpt_platform/db/docker/volumes/db/data` but is no longer mounted.
+
+   If you already booted the new stack while that folder was still called
+   `volumes/`, move your data across before starting it again:
    ```sh
-   cd frontend && DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npx tsx scripts/migrate-supabase-auth.ts
+   mkdir -p autogpt_platform/data/db
+   mv autogpt_platform/volumes/db/data autogpt_platform/data/db/data
    ```
-   Keep `SUPABASE_JWT_SECRET` set in `frontend/.env` for a while so users
-   with old sessions are signed in automatically on their next visit.
+
+   To carry the old Supabase data over, pick one of the two routes below.
+   **Neither has been validated against a real old volume yet, so back up
+   `autogpt_platform/db/docker/volumes/db/data` before you start.**
+
+   The old bundled stack ran `supabase/postgres:15.8.1.049` and the new `db`
+   service runs `pgvector/pgvector:pg15` — the same Postgres major, so
+   reusing the data directory as-is is plausible rather than impossible. It
+   is not guaranteed: a data directory is only portable between servers on
+   the same major *and* with a compatible extension set /
+   `shared_preload_libraries`. The Supabase image ships extensions and roles
+   (`supabase_admin`, `pgjwt`, `pgsodium`, `pg_graphql`, …) that the plain
+   pgvector image does not have, so a moved directory can fail to start, or
+   start and then fail on objects that reference the missing extensions.
+
+   *Fast path — reuse the data directory:*
+   ```sh
+   cd autogpt_platform
+   docker compose down
+   mkdir -p data/db
+   rm -rf data/db/data                            # discards a freshly-initialised new DB
+   cp -a db/docker/volumes/db/data data/db/data   # copy, so the old dir stays intact
+   docker compose up -d db
+   docker compose logs -f db
+   ```
+   On Linux the data directory is mode `0700` owned by the container's
+   `postgres` user, so the copy needs `sudo cp -a` (the plain Postgres
+   entrypoint fixes ownership on first boot). On Docker Desktop for
+   macOS/Windows the plain `cp -a` is enough.
+   It worked if the log settles on `database system is ready to accept
+   connections` and your data is there:
+   ```sh
+   docker compose exec db psql -U postgres -c '\dn'
+   docker compose exec db psql -U postgres -c 'select count(*) from platform."User"'
+   ```
+   It did not work if the container restart-loops with errors such as
+   `could not open configuration file`, `could not access file "$libdir/…"`,
+   `unrecognized configuration parameter`, `extension "…" is not available`,
+   `data directory … has wrong ownership`, or `Permission denied` — Postgres
+   is either missing something the Supabase image provided, or can't read the
+   copied files. In that case `rm -rf data/db/data` and use the fallback.
+
+   *Fallback — same-major dump and restore:*
+
+   Step 1 starts a real Postgres server against your **original** data
+   directory, read-write. Make sure you took the backup above first.
+   ```sh
+   cd autogpt_platform
+   # 1. Bring the OLD image up against the OLD data directory, on a spare port.
+   docker run --rm -d --name old-db -p 5433:5432 \
+     -e POSTGRES_PASSWORD=your-super-secret-and-long-postgres-password \
+     -v "$(pwd)/db/docker/volumes/db/data:/var/lib/postgresql/data" \
+     supabase/postgres:15.8.1.049
+   # 2. Dump without Supabase-owned ownership/ACL metadata.
+   docker exec old-db pg_dump -U postgres -d postgres \
+     --no-owner --no-privileges -Fc -f /tmp/old.dump
+   docker cp old-db:/tmp/old.dump ./old.dump
+   docker stop old-db
+   # 3. Restore into the new db service (fresh volume).
+   docker compose up -d db
+   # A fresh volume runs db/init/00-init.sql, which creates an EMPTY auth.users
+   # shim with only the columns the migrations need. Drop it first, or the
+   # restore of your real auth.users collides with it and copies no users.
+   docker compose exec db psql -U postgres -c 'DROP SCHEMA IF EXISTS auth CASCADE;'
+   docker compose cp ./old.dump db:/tmp/old.dump
+   docker compose exec db pg_restore -U postgres -d postgres \
+     --no-owner --no-privileges /tmp/old.dump
+   # 4. Confirm your accounts actually landed BEFORE migrating.
+   docker compose exec db psql -U postgres -c 'select count(*) from auth.users'
+   ```
+   `pg_restore` reports errors for objects belonging to Supabase-only
+   extensions and roles (`storage`, `realtime`, `supabase_admin`, `pgsodium`,
+   …). Those are harmless. An error on **`auth.users`** is not: that table is
+   where your accounts live, and the migration in step 3 below copies them out
+   of it. If the count above is `0` — or `pg_restore` failed on `auth.users` —
+   stop and fix the restore before continuing, or you will bring the stack up
+   with no user accounts.
+
+   Either way, finish with the migrations before bringing up the rest:
+   ```sh
+   docker compose run --rm migrate
+   docker compose up -d
+   ```
+3. **User accounts and sessions**: a normal upgrade (stack stopped, then
+   restarted on the new version) needs no extra step here.
+
+    - Existing users are copied from the Supabase `auth.users` table into the
+      Better Auth tables by the backend Prisma migration
+      `20260716120000_copy_supabase_users_to_better_auth`, which runs as part
+      of the `docker compose run --rm migrate` step above.
+    - Existing browser sessions keep working because the frontend recognises
+      old Supabase JWT cookies and swaps them for a Better Auth session on
+      the user's next visit. Keep `SUPABASE_JWT_SECRET` set in
+      `frontend/.env` for as long as you want that bridge open.
+    - `frontend/scripts/migrate-supabase-auth.ts` is **optional** and only
+      applies to a *live* cutover, where Supabase kept accepting signups
+      while the new stack was already running. It is a re-runnable sweep for
+      those stragglers; if you stopped the stack to upgrade, skip it.
+      ```sh
+      cd frontend && DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npx tsx scripts/migrate-supabase-auth.ts
+      ```
 
 A fresh install (empty database) needs none of this.
 
@@ -212,6 +315,8 @@ The backend verifies login tokens using signing keys it fetches from the fronten
 
 - **Plain `http` is fine** for `localhost` and for container-to-container traffic on a single host (the default `http://frontend:3000` over the Docker network) — there is no network segment for an attacker to sit on.
 - **Use `https` on an untrusted network.** If you split the backend and frontend across separate machines on a LAN, or expose them publicly, a cleartext JWKS fetch can be intercepted: an attacker who swaps the published keys can forge tokens for any user. Put the frontend behind TLS (a reverse proxy), or issue **locally-trusted certificates** (e.g. [mkcert](https://github.com/FiloSottile/mkcert)), and point `JWT_JWKS_URL` at the `https://` URL.
+
+The backend logs a warning at startup if `JWT_JWKS_URL` is a cleartext `http://` URL pointing at a non-local host. It is advisory only — it never blocks startup, and it can't tell a trusted private network from a hostile one. If your path is trusted and you want it quiet, set `JWKS_ALLOW_INSECURE_TRANSPORT=true`.
 
 This is a property of stateless JWT/JWKS verification in general, not something specific to AutoGPT. On a standard single-host Docker install you don't need to change anything.
 

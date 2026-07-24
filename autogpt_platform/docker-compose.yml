@@ -143,7 +143,9 @@ services:
   # cascades to the rest of the stack.
   db:
     <<: *agpt-services
-    image: pgvector/pgvector:pg16
+    # Pinned to pg15 to track the managed Postgres major that prod and dev
+    # run; testing on a newer major than production is skew we don't want.
+    image: pgvector/pgvector:pg15
     restart: unless-stopped
     ports:
       - 5432:5432
@@ -155,7 +157,7 @@ services:
       # Creates the platform schema + the legacy auth.users shim that
       # historical Prisma migrations reference. Only runs on a fresh volume.
       - ./db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
-      - ./volumes/db/data:/var/lib/postgresql/data
+      - ./data/db/data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
       interval: 5s

@@ -488,10 +488,6 @@ services:
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres
       AUTH_DB_SCHEMA: platform
-      # Dev-only default. MUST be overridden with a real secret in production.
-      BETTER_AUTH_SECRET: dev-only-better-auth-secret-9f4e8c2a71b6d05e3a8f12c4b7d9e6a1
-      # Browser-facing base URL of the auth routes (/api/auth/*).
-      BETTER_AUTH_URL: http://localhost:3000
 volumes:
   workspace-data:
   falkordb_data:

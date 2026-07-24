@@ -152,7 +152,7 @@ jobs:
             "rabbitmq:management"
             "clamav/clamav-debian:latest"
             "busybox:latest"
-            "pgvector/pgvector:pg16"
+            "pgvector/pgvector:pg15"
           )
           
           # Check if any cached tar files exist (more reliable than cache-hit)

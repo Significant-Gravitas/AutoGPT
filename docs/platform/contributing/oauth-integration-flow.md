@@ -7,15 +7,15 @@ The AutoGPT platform implements OAuth 2.0 in two distinct contexts:
 1. **User Authentication (SSO)**: Handled by Better Auth, embedded in the Next.js frontend at `/api/auth/*`
 2. **API Integration Credentials**: Custom OAuth implementation for third-party service access
 
-This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `/backend/backend/integrations/providers.py`. For user authentication documentation, see the Better Auth implementation in `/frontend/src/lib/auth/`.
+This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `autogpt_platform/backend/backend/integrations/providers.py`. For user authentication documentation, see `autogpt_platform/frontend/src/lib/auth/SESSION_VALIDATION.md`.
 
 ## Trust Boundaries
 
 ### 1. Frontend Trust Boundary
 - **Location**: Browser/Client-side application
 - **Components**: 
-  - `CredentialsInput` component (`/frontend/src/components/integrations/credentials-input.tsx`)
-  - OAuth callback route (`/frontend/src/app/(platform)/auth/integrations/oauth_callback/route.ts`)
+  - `CredentialsInput` component (`autogpt_platform/frontend/src/components/contextual/CredentialsInput/CredentialsInput.tsx`)
+  - OAuth callback route (`autogpt_platform/frontend/src/app/(platform)/auth/integrations/oauth_callback/route.ts`)
 - **Trust Level**: Untrusted - user-controlled environment
 - **Security Measures**:
   - CSRF protection via state tokens
@@ -25,9 +25,9 @@ This document focuses on the **API Integration OAuth flow** used for connecting 
 ### 2. Backend API Trust Boundary
 - **Location**: Server-side FastAPI application
 - **Components**:
-  - Integration router (`/backend/backend/api/features/integrations/router.py`)
-  - OAuth handlers (`/backend/backend/integrations/oauth/`)
-  - Credentials store (`/backend/backend/integrations/credentials_store.py`)
+  - Integration router (`autogpt_platform/backend/backend/api/features/integrations/router.py`)
+  - OAuth handlers (`autogpt_platform/backend/backend/integrations/oauth/`)
+  - Credentials store (`autogpt_platform/backend/backend/integrations/credentials_store.py`)
 - **Trust Level**: Trusted - server-controlled environment
 - **Security Measures**:
   - JWT-based authentication
@@ -334,8 +334,8 @@ stateDiagram-v2
 
 - **Purpose**: Grant AutoGPT access to user's third-party services
 - **Providers**: Examples include GitHub, Google APIs, Notion, and others
-  - Full list in `/backend/backend/integrations/providers.py`
-  - OAuth handlers in `/backend/backend/integrations/oauth/`
+  - Full list in `autogpt_platform/backend/backend/integrations/providers.py`
+  - OAuth handlers in `autogpt_platform/backend/backend/integrations/oauth/`
 - **Flow Path**: Integration settings → `/api/integrations/{provider}/login` → `/auth/integrations/oauth_callback`
 - **Credential Storage**: Encrypted in PostgreSQL
 - **Token Management**: Custom refresh logic with mutex locking
@@ -387,8 +387,8 @@ stateDiagram-v2
 ### Supported Providers
 
 The platform supports various OAuth providers including GitHub, Google, Notion, Twitter, and others. For the complete list, see:
-- `/backend/backend/integrations/providers.py` - All supported providers
-- `/backend/backend/integrations/oauth/` - OAuth implementations
+- `autogpt_platform/backend/backend/integrations/providers.py` - All supported providers
+- `autogpt_platform/backend/backend/integrations/oauth/` - OAuth implementations
 
 ### Provider-Specific Security Considerations
 
