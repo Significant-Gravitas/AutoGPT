@@ -33,9 +33,9 @@ function makeJwt(expSecondsFromNow: number): string {
   return `header.${payload}.signature`;
 }
 
-// The module keeps a token cache at module scope, so each test imports a
-// fresh copy to stay isolated. React's cache() wrapper is shimmed to identity
-// in the global vitest setup, so per-request memoization is inert here.
+// Each test imports a fresh copy of the module to stay isolated. React's
+// cache() wrapper is shimmed to identity in the global vitest setup, so
+// per-request memoization is inert here — every call really does re-mint.
 async function importGetServerAuthToken() {
   vi.resetModules();
   const helpers = await import("../helpers");
@@ -84,14 +84,19 @@ describe("getServerAuthToken", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("mints a token via the Better Auth token endpoint and serves repeats from the cache", async () => {
+  it("re-mints on every call rather than caching across requests", async () => {
+    // A cross-request cache would return a token without re-checking the
+    // session, outliving logout / password-reset revocation. Going back to
+    // /api/auth/token each time is what re-validates it.
     const jwt = makeJwt(3600);
     getAllCookiesMock.mockReturnValue([
       { name: "better-auth.session_token", value: "session-fresh" },
       { name: "other", value: "with spaces" },
     ]);
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ token: jwt }), { status: 200 }),
+    // A fresh Response per call — a body can only be consumed once, so a shared
+    // instance would make the second call look like a failure.
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify({ token: jwt }), { status: 200 }),
     );
     const getServerAuthToken = await importGetServerAuthToken();
 
@@ -100,7 +105,7 @@ describe("getServerAuthToken", () => {
 
     expect(first).toBe(jwt);
     expect(second).toBe(jwt);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://auth.internal:3000/api/auth/token",
       {

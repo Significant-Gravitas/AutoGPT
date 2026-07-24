@@ -30,9 +30,9 @@ function cookieStore(cookies: { name: string; value: string }[]) {
   return { getAll: () => cookies };
 }
 
-// Fresh module per test to reset the module-scope token cache. React's cache()
-// wrapper is shimmed to identity in the global vitest setup, so per-request
-// memoization is inert here.
+// Fresh module per test for isolation. React's cache() wrapper is shimmed to
+// identity in the global vitest setup, so per-request memoization is inert
+// here — every call really does re-mint.
 async function importModule() {
   vi.resetModules();
   return await import("../getServerAuthToken");
@@ -62,7 +62,12 @@ describe("getServerAuthToken", () => {
     expect(getTokenMock).not.toHaveBeenCalled();
   });
 
-  it("mints a token via auth.api.getToken and serves repeats from the cache", async () => {
+  it("re-mints on every call rather than caching across requests", async () => {
+    // A cross-request cache keyed on the session cookie would hand back a token
+    // without re-checking the session, so a stolen cookie would keep working
+    // after logout or revokeSessionsOnPasswordReset deleted the session row —
+    // the backend only verifies the signature, never session existence.
+    // Re-minting is what makes revocation actually take effect.
     const jwt = makeJwt(3600);
     cookiesMock.mockResolvedValue(
       cookieStore([
@@ -77,7 +82,7 @@ describe("getServerAuthToken", () => {
 
     expect(first).toBe(jwt);
     expect(second).toBe(jwt);
-    expect(getTokenMock).toHaveBeenCalledTimes(1);
+    expect(getTokenMock).toHaveBeenCalledTimes(2);
     expect(getTokenMock).toHaveBeenCalledWith({ headers: expect.any(Headers) });
   });
 
@@ -123,42 +128,5 @@ describe("getServerAuthToken", () => {
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
-  });
-});
-
-describe("server token cache", () => {
-  it("reads the exp claim from a JWT", async () => {
-    const { readJwtExpiryMs } = await importModule();
-    const token = makeJwt(3600);
-
-    const expiry = readJwtExpiryMs(token);
-
-    expect(expiry).toBeGreaterThan(Date.now() + 3500 * 1000);
-    expect(expiry).toBeLessThan(Date.now() + 3700 * 1000);
-  });
-
-  it("falls back to a conservative default for malformed tokens", async () => {
-    const { readJwtExpiryMs } = await importModule();
-
-    const expiry = readJwtExpiryMs("not-a-jwt");
-
-    expect(expiry).toBeGreaterThan(Date.now());
-  });
-
-  it("returns a cached token until its expiry margin", async () => {
-    const { cacheServerToken, getCachedServerToken } = await importModule();
-    const token = makeJwt(3600);
-    cacheServerToken("session-cookie-1", token);
-
-    expect(getCachedServerToken("session-cookie-1")).toBe(token);
-    expect(getCachedServerToken("other-session")).toBeNull();
-  });
-
-  it("does not return tokens that are within the expiry margin", async () => {
-    const { cacheServerToken, getCachedServerToken } = await importModule();
-    // 60s to expiry is inside the 5-minute refresh margin
-    cacheServerToken("session-cookie-2", makeJwt(60));
-
-    expect(getCachedServerToken("session-cookie-2")).toBeNull();
   });
 });

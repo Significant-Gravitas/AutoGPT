@@ -110,47 +110,9 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
   );
 }
 
-// JWT-per-session cache so every proxied backend call doesn't re-request a
-// token. Entries expire 5 minutes before the JWT itself does.
-const TOKEN_EXPIRY_MARGIN_MS = 5 * 60 * 1000;
-const MAX_TOKEN_CACHE_ENTRIES = 1000;
-const serverTokenCache = new Map<
-  string,
-  { token: string; expiresAt: number }
->();
-
-export function readJwtExpiryMs(token: string): number {
-  try {
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64url").toString("utf-8"),
-    );
-    if (typeof payload.exp === "number") return payload.exp * 1000;
-  } catch {
-    // fall through to a conservative default
-  }
-  return Date.now() + TOKEN_EXPIRY_MARGIN_MS * 2;
-}
-
-export function cacheServerToken(sessionCookie: string, token: string): void {
-  if (serverTokenCache.size >= MAX_TOKEN_CACHE_ENTRIES) {
-    const oldestKey = serverTokenCache.keys().next().value;
-    if (oldestKey) serverTokenCache.delete(oldestKey);
-  }
-  serverTokenCache.set(sessionCookie, {
-    token,
-    expiresAt: readJwtExpiryMs(token) - TOKEN_EXPIRY_MARGIN_MS,
-  });
-}
-
-export function getCachedServerToken(sessionCookie: string): string | null {
-  const cached = serverTokenCache.get(sessionCookie);
-  if (cached && cached.expiresAt > Date.now()) return cached.token;
-  return null;
-}
-
 /**
- * Mints (or returns a cached) backend-API JWT for the current request's
- * session by calling the Better Auth token endpoint on this same server.
+ * Mints a backend-API JWT for the current request's session by calling the
+ * Better Auth token endpoint on this same server.
  * The Python backend validates the JWT against /api/auth/jwks.
  *
  * Deliberately uses an HTTP call instead of importing the Better Auth server
@@ -160,6 +122,14 @@ export function getCachedServerToken(sessionCookie: string): string | null {
  * the previous Supabase client did here) so that a session cookie set
  * earlier in the SAME server action — e.g. right after sign-in — is visible
  * immediately, not just on the next request.
+ *
+ * Only React's `cache()` memoizes it — deliberately per-request, not a
+ * cross-request Map keyed on the session cookie. Such a cache hands back a
+ * token without re-checking the session, so it silently outlives revocation:
+ * a stolen cookie would keep minting backend access for the rest of the JWT's
+ * lifetime after logout or `revokeSessionsOnPasswordReset` deleted the session
+ * row, since the backend only verifies the signature and never session
+ * existence. Going back to /api/auth/token each render re-validates it.
  */
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
   if (environment.isClientSide()) {
@@ -182,9 +152,6 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
           name === "__Secure-better-auth.session_token",
       );
     if (!sessionCookie) return null;
-
-    const cached = getCachedServerToken(sessionCookie.value);
-    if (cached) return cached;
 
     const cookieHeader = cookieStore
       .getAll()
@@ -209,10 +176,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     if (!response.ok) return null;
 
     const { token } = (await response.json()) as { token?: string };
-    if (!token) return null;
-
-    cacheServerToken(sessionCookie.value, token);
-    return token;
+    return token ?? null;
   } catch (error) {
     console.error("Failed to get auth token:", error);
     return null;
