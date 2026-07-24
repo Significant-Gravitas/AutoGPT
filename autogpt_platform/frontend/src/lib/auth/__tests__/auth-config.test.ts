@@ -54,10 +54,12 @@ interface CapturedAuthOptions {
   user: {
     changeEmail: {
       enabled: boolean;
-      sendChangeEmailVerification: (args: {
+      updateEmailWithoutVerification: boolean;
+      sendChangeEmailConfirmation: (args: {
         user: { email: string };
         newEmail: string;
         url: string;
+        token: string;
       }) => Promise<void>;
     };
   };
@@ -246,10 +248,11 @@ describe("change email", () => {
 
     expect(options.user.changeEmail.enabled).toBe(true);
 
-    await options.user.changeEmail.sendChangeEmailVerification({
+    await options.user.changeEmail.sendChangeEmailConfirmation({
       user: { email: "old@example.com" },
       newEmail: "new@example.com",
       url: "https://app/approve?token=t",
+      token: "t",
     });
 
     expect(sendAuthEmailMock).toHaveBeenCalledWith({
@@ -257,5 +260,24 @@ describe("change email", () => {
       type: "change_email",
       url: "https://app/approve?token=t",
     });
+  });
+
+  it("uses only change-email option names Better Auth actually supports", async () => {
+    // Regression guard: the config previously used `sendChangeEmailVerification`,
+    // which does not exist in Better Auth. Unknown keys are silently ignored, so
+    // the approval mail quietly fell through to the default handler and went to
+    // the NEW address instead of the current one — losing the anti-takeover
+    // protection. Assert the supported names, and that the dead one is gone.
+    const options = await loadAuthOptions();
+    const changeEmail = options.user.changeEmail as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(typeof changeEmail.sendChangeEmailConfirmation).toBe("function");
+    expect(changeEmail.sendChangeEmailVerification).toBeUndefined();
+    // Unverified users have no current address worth protecting, so their change
+    // applies immediately rather than being blocked behind a mail they can't get.
+    expect(changeEmail.updateEmailWithoutVerification).toBe(true);
   });
 });

@@ -142,18 +142,25 @@ export const auth = betterAuth({
     },
     changeEmail: {
       // Off by default in Better Auth; the settings page's email form
-      // depends on it. Verified users approve the change via a link sent
-      // to their CURRENT address (anti-takeover), so the backend mailer
-      // (Postmark) must be configured for email changes to work in
-      // production.
+      // depends on it. Verified users — every migrated Supabase user, since
+      // the migration sets emailVerified=true — approve the change via a
+      // confirmation link sent to their CURRENT address. That's the
+      // anti-takeover protection Supabase's secure-email-change gave us, so
+      // the backend mailer (Postmark) must be configured for it to work in
+      // production. Unverified users (email verification is off) have the
+      // change applied immediately with no email. `sendChangeEmailVerification`
+      // is NOT a Better Auth key; the real ones are `sendChangeEmailConfirmation`
+      // (verified path) + `updateEmailWithoutVerification` (unverified path).
       enabled: true,
-      sendChangeEmailVerification: async ({
+      updateEmailWithoutVerification: true,
+      sendChangeEmailConfirmation: async ({
         user,
         url,
       }: {
         user: { email: string };
         newEmail: string;
         url: string;
+        token: string;
       }) => {
         await sendAuthEmail({
           to: user.email,

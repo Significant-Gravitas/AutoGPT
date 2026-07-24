@@ -46,18 +46,29 @@ export function useAccountCard({ user }: { user: User }) {
   async function onSubmitEmail(values: EmailFormValues): Promise<boolean> {
     if (values.email === currentEmail) return false;
 
-    // Route the change only through Better Auth (verification-gated). Platform
-    // User.email converges after the link is confirmed via the
-    // databaseHooks.user.update mirror in lib/auth/auth.ts — writing it here in
-    // parallel would let it diverge to an unverified value. Mirrors EmailForm.
+    // Route the change only through Better Auth. A verified user approves it via
+    // a confirmation link sent to their CURRENT address (anti-takeover); an
+    // unverified user's change applies immediately. Platform User.email
+    // converges via the databaseHooks.user.update mirror in lib/auth/auth.ts —
+    // writing it here in parallel would let it diverge to an unverified value.
+    // Mirrors EmailForm.
     setIsUpdatingEmail(true);
     try {
       await updateEmailViaAuthAPI(values.email);
-      toast({
-        title: "Email update sent",
-        description: "Check your inbox to confirm the change.",
-        variant: "success",
-      });
+      toast(
+        user.email_verified
+          ? {
+              title: "Confirm your new email",
+              description:
+                "We sent a confirmation link to your current email address. Your email changes once you click it.",
+              variant: "success",
+            }
+          : {
+              title: "Email updated",
+              description: `Your email is now ${values.email}.`,
+              variant: "success",
+            },
+      );
       return true;
     } catch (err) {
       toast({

@@ -19,14 +19,19 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// Verified by default: every user migrated from Supabase lands with
+// emailVerified=true, so this is the path virtually all real users take.
 const testUser = {
   id: "user-1",
   email: "user@example.com",
+  email_verified: true,
   app_metadata: {},
   user_metadata: {},
   aud: "authenticated",
   created_at: "2026-01-01T00:00:00.000Z",
 } as User;
+
+const unverifiedUser = { ...testUser, email_verified: false } as User;
 
 describe("EmailForm", () => {
   beforeEach(() => {
@@ -71,6 +76,33 @@ describe("EmailForm", () => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Confirm your new email",
+        }),
+      );
+    });
+  });
+
+  test("tells an unverified user the change already applied", async () => {
+    // Better Auth only sends the current-address confirmation when the user is
+    // verified; for an unverified user it applies the change immediately, so
+    // promising them a confirmation email would be a lie.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EmailForm user={unverifiedUser} />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "updated@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Email updated",
         }),
       );
     });
