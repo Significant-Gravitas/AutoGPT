@@ -383,9 +383,8 @@ async def _create_dream_session(user_id: str, pass_id: str) -> str:
         )
     except Exception:
         logger.warning(
-            "Failed to title dream session %s for user %s",
-            session_id[:12],
-            user_id[:12],
+            f"Failed to title dream session {session_id[:12]} "
+            f"for user {user_id[:12]}",
             exc_info=True,
         )
     return session_id
@@ -461,10 +460,8 @@ async def apply_operations(
         # consumers read it via ``.get("session_id")`` and both the
         # orchestrator and batch_callbacks treat the missing key as None.
         logger.info(
-            "Dream pass %s for user %s produced no operations — "
-            "skipping dream session creation",
-            pass_id,
-            user_id[:12],
+            f"Dream pass {pass_id} for user {user_id[:12]} produced "
+            f"no operations — skipping dream session creation"
         )
         return {
             "consolidated_count": 0,
