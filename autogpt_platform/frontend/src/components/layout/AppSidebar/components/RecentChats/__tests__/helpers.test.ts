@@ -35,28 +35,27 @@ describe("getDateGroupLabel", () => {
     expect(getDateGroupLabel(isoDaysAgo(1))).toBe("Yesterday");
   });
 
-  it("labels an older same-year date with an ordinal day and month", () => {
-    // 2026-06-20 -> "20th June"
-    const label = getDateGroupLabel("2026-06-20T08:00:00");
-    expect(label).toBe("20th June");
+  it("formats older same-year dates with the browser locale date order", () => {
+    const date = new Date("2026-06-20T08:00:00");
+    const label = getDateGroupLabel(date.toISOString());
+    expect(label).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        month: "long",
+        day: "numeric",
+      }).format(date),
+    );
   });
 
-  it("includes the year for dates in a previous year", () => {
-    const label = getDateGroupLabel("2024-12-01T08:00:00");
-    expect(label).toBe("1st December 2024");
-  });
-
-  it("uses 'st', 'nd', 'rd', 'th' ordinal suffixes correctly", () => {
-    expect(getDateGroupLabel("2026-06-01T08:00:00")).toBe("1st June");
-    expect(getDateGroupLabel("2026-06-02T08:00:00")).toBe("2nd June");
-    expect(getDateGroupLabel("2026-06-03T08:00:00")).toBe("3rd June");
-    expect(getDateGroupLabel("2026-06-04T08:00:00")).toBe("4th June");
-  });
-
-  it("uses 'th' for the 11th–13th teen exceptions", () => {
-    expect(getDateGroupLabel("2026-06-11T08:00:00")).toBe("11th June");
-    expect(getDateGroupLabel("2026-06-12T08:00:00")).toBe("12th June");
-    expect(getDateGroupLabel("2026-06-13T08:00:00")).toBe("13th June");
+  it("includes the year for dates in a previous year using locale order", () => {
+    const date = new Date("2024-12-01T08:00:00");
+    const label = getDateGroupLabel(date.toISOString());
+    expect(label).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }).format(date),
+    );
   });
 });
 
