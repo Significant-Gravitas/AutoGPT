@@ -55,6 +55,11 @@ export function useAccountCard({ user }: { user: User }) {
     setIsUpdatingEmail(true);
     try {
       await updateEmailViaAuthAPI(values.email);
+      // Reset to the still-current address: on the verified path the row isn't
+      // written until the link is clicked, so leaving the new value in the
+      // field would let every further click send another email. Mirrors
+      // EmailForm.
+      emailForm.reset({ email: currentEmail });
       toast(
         user.email_verified
           ? {

@@ -5,8 +5,16 @@ import { NextResponse } from "next/server";
 import { isWaitlistError, logWaitlistError } from "../../utils";
 
 export async function POST(request: Request) {
+  let body: { provider?: LoginProvider; redirectTo?: string };
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    // A malformed body is the caller's mistake, not ours — reporting 500 would
+    // put client syntax errors in our server-error telemetry and invite retries.
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  try {
     const provider: LoginProvider | undefined = body?.provider;
     const redirectTo: string | undefined = body?.redirectTo;
 
@@ -33,9 +41,11 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "not_allowed" }, { status: 403 });
         }
 
+        // Preserve Better Auth's status so callers can tell throttling (429)
+        // or auth failure (401) apart from a bad request.
         return NextResponse.json(
           { error: error.body?.message || error.message },
-          { status: 400 },
+          { status: error.statusCode ?? 400 },
         );
       }
       throw error;

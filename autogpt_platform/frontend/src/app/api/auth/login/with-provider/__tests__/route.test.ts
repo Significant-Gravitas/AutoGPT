@@ -128,7 +128,7 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
-  it("returns 500 when the request body is not valid JSON", async () => {
+  it("returns 400 when the request body is not valid JSON", async () => {
     const request = new Request(
       "http://localhost:3000/api/auth/login/with-provider",
       {
@@ -140,9 +140,9 @@ describe("POST /api/auth/login/with-provider", () => {
 
     const response = await POST(request);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "Failed to initiate OAuth",
+      error: "Invalid JSON body",
     });
   });
 });

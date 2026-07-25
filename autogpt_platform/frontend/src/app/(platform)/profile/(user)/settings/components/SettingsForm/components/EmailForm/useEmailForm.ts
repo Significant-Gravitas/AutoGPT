@@ -62,6 +62,11 @@ export function useEmailForm({ user }: { user: User }) {
     setIsSubmitting(true);
     try {
       await requestEmailChange(values.email);
+      // Reset to the still-current address. On the verified path Better Auth
+      // deliberately doesn't write the row until the link is clicked, so
+      // `user.email` stays old — leaving the new value in the field would keep
+      // the submit button enabled and fire another email on every click.
+      form.reset({ email: currentEmail });
       toast(
         user.email_verified
           ? {

@@ -19,8 +19,9 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-// Verified by default: every user migrated from Supabase lands with
-// emailVerified=true, so this is the path virtually all real users take.
+// Verified by default: the Supabase copy migration carries email_confirmed_at
+// across, so users who had confirmed take this path. Unverified ones (never
+// confirmed, or signed up since — signup verification is off) take the other.
 const testUser = {
   id: "user-1",
   email: "user@example.com",
@@ -144,5 +145,38 @@ describe("EmailForm", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  test("does not re-send after a successful request until the address changes again", async () => {
+    // On the verified path Better Auth doesn't write the row until the link is
+    // clicked, so user.email stays old. Without resetting the form the submit
+    // button stays enabled and every further click sends another email.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EmailForm user={testUser} />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "updated@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    // The field is back to the current address, so the guard now short-circuits.
+    await waitFor(() => {
+      expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+        testUser.email,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

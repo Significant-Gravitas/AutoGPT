@@ -94,7 +94,15 @@ export async function getWebSocketToken(): Promise<{
 }
 
 export type ServerLogoutOptions = {
-  globalLogout?: boolean;
+  /**
+   * Revoke every session for the user, not just this device's.
+   *
+   * Pre-migration this mapped to Supabase's `signOut({ scope: "global" })`. It
+   * is intentionally absent rather than accepted-and-ignored: no caller passes
+   * it today, and an option that silently fails to revoke is worse than none.
+   * To restore it, branch here on `auth.api.revokeSessions`.
+   */
+  globalLogout?: never;
 };
 
 export async function serverLogout(_options: ServerLogoutOptions = {}) {
@@ -108,7 +116,11 @@ export async function serverLogout(_options: ServerLogoutOptions = {}) {
         // default "local" scope).
         await auth.api.signOut({ headers: await headers() });
       } catch (error) {
+        // Cookies are cleared below regardless, so the user is logged out
+        // locally — but the session row may still be live, which matters if
+        // the token was stolen. Surface it rather than only console.error.
         console.error("Logout error:", error);
+        Sentry.captureException(error);
       }
 
       // Always expire the auth cookies, even when signOut() fails (revoked or

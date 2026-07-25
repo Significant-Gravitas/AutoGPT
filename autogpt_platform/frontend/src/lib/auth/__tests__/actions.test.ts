@@ -51,12 +51,15 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
+const captureExceptionMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@sentry/nextjs", () => ({
   withServerActionInstrumentation: (
     _name: string,
     _options: object,
     fn: () => unknown,
   ) => fn(),
+  captureException: captureExceptionMock,
 }));
 
 import {
@@ -217,13 +220,17 @@ describe("serverLogout", () => {
   it("still clears the cookies and reports success when sign-out throws", async () => {
     // A failed server-side revocation must not leave a half-dead session
     // whose surviving cookie bounces the user back into the app.
-    signOutMock.mockRejectedValue(new Error("session revocation failed"));
+    const revocationError = new Error("session revocation failed");
+    signOutMock.mockRejectedValue(revocationError);
     cookieJar.set("better-auth.session_token", "tok");
 
     const result = await serverLogout();
 
     expect(result).toEqual({ success: true });
     expect(cookieJar.has("better-auth.session_token")).toBe(false);
+    // The user is logged out locally, but the session row may still be live —
+    // that's only actionable if it's reported, not just console.error'd.
+    expect(captureExceptionMock).toHaveBeenCalledWith(revocationError);
   });
 
   it("expires __Secure- cookies WITH the Secure attribute so HTTPS logout isn't rejected", async () => {

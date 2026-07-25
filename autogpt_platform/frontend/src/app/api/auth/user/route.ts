@@ -48,6 +48,19 @@ export async function PUT(request: Request) {
       );
     }
 
+    // The two writes below can't be made atomic: the profile update commits
+    // immediately while the email change is a separate, verification-gated
+    // flow. Combining them means a failing email change (e.g. "Email is the
+    // same") reports 400 for the whole request even though the name was
+    // already saved, and the client won't refetch. Reject the combination
+    // instead of silently half-applying it.
+    if (email && (fullName || preferredName)) {
+      return NextResponse.json(
+        { error: "Update email separately from profile fields" },
+        { status: 400 },
+      );
+    }
+
     try {
       if (fullName || preferredName) {
         await auth.api.updateUser({
