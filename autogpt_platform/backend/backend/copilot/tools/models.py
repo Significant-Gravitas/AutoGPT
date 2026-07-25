@@ -984,6 +984,18 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
+class MemoryForgetFailureCode(str, Enum):
+    """Stable, machine-switchable reason a forget delete failed.
+
+    The frontend/model can branch on this code (retry vs. give up) without
+    parsing the free-text ``reason``. New codes may be added over time, so
+    consumers must tolerate unknown values.
+    """
+
+    NO_MATCH = "no_match"
+    QUERY_ERROR = "query_error"
+
+
 class MemoryForgetFailure(BaseModel):
     """One edge that could not be deleted, with an actionable reason.
 
@@ -993,6 +1005,7 @@ class MemoryForgetFailure(BaseModel):
     """
 
     uuid: str
+    code: MemoryForgetFailureCode
     reason: str
 
 

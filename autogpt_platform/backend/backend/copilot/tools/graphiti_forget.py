@@ -19,6 +19,7 @@ from .models import (
     MemoryForgetCandidatesResponse,
     MemoryForgetConfirmResponse,
     MemoryForgetFailure,
+    MemoryForgetFailureCode,
     ToolResponseBase,
 )
 
@@ -338,7 +339,13 @@ async def _retract_edges(
             if records:
                 deleted.append(uuid)
             else:
-                failures.append(MemoryForgetFailure(uuid=uuid, reason=_NO_MATCH_REASON))
+                failures.append(
+                    MemoryForgetFailure(
+                        uuid=uuid,
+                        code=MemoryForgetFailureCode.NO_MATCH,
+                        reason=_NO_MATCH_REASON,
+                    )
+                )
         except Exception as exc:
             logger.warning(
                 "Failed to retract edge %s for user %s",
@@ -347,7 +354,11 @@ async def _retract_edges(
                 exc_info=True,
             )
             failures.append(
-                MemoryForgetFailure(uuid=uuid, reason=_delete_error_reason(exc))
+                MemoryForgetFailure(
+                    uuid=uuid,
+                    code=MemoryForgetFailureCode.QUERY_ERROR,
+                    reason=_delete_error_reason(exc),
+                )
             )
     return deleted, failures
 
@@ -537,7 +548,13 @@ async def _hard_delete_edges(
                 uuid=uuid,
             )
             if not records:
-                failures.append(MemoryForgetFailure(uuid=uuid, reason=_NO_MATCH_REASON))
+                failures.append(
+                    MemoryForgetFailure(
+                        uuid=uuid,
+                        code=MemoryForgetFailureCode.NO_MATCH,
+                        reason=_NO_MATCH_REASON,
+                    )
+                )
                 continue
             # Edge was deleted — report success regardless of cleanup outcome.
             deleted.append(uuid)
@@ -566,6 +583,10 @@ async def _hard_delete_edges(
                 exc_info=True,
             )
             failures.append(
-                MemoryForgetFailure(uuid=uuid, reason=_delete_error_reason(exc))
+                MemoryForgetFailure(
+                    uuid=uuid,
+                    code=MemoryForgetFailureCode.QUERY_ERROR,
+                    reason=_delete_error_reason(exc),
+                )
             )
     return deleted, failures

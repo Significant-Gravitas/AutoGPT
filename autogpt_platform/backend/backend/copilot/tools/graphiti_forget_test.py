@@ -13,7 +13,10 @@ from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
-from backend.copilot.tools.models import MemoryForgetConfirmResponse
+from backend.copilot.tools.models import (
+    MemoryForgetConfirmResponse,
+    MemoryForgetFailureCode,
+)
 
 
 class TestSoftDeleteOverReportsSuccess:
@@ -83,6 +86,7 @@ class TestHardDeleteBasicFlow:
         assert deleted == []
         assert [f.uuid for f in failed] == ["nonexistent-uuid"]
         assert failed[0].reason  # actionable, non-empty reason
+        assert failed[0].code == MemoryForgetFailureCode.NO_MATCH
         # Only the delete query should run — cleanup skipped
         assert driver.execute_query.call_count == 1
 
@@ -133,6 +137,7 @@ class TestRetractEdgesSnodgrass:
         assert [f.uuid for f in failed] == ["missing"]
         # No-match must carry an actionable reason, not a bare count.
         assert failed[0].reason
+        assert failed[0].code == MemoryForgetFailureCode.NO_MATCH
 
 
 class TestForgetFailuresAreActionable:
@@ -154,6 +159,7 @@ class TestForgetFailuresAreActionable:
         assert deleted == []
         assert [f.uuid for f in failed] == ["u1"]
         assert "datetime" in failed[0].reason
+        assert failed[0].code == MemoryForgetFailureCode.QUERY_ERROR
 
     @pytest.mark.asyncio
     async def test_retract_distinguishes_no_match_from_error(self) -> None:
@@ -169,10 +175,13 @@ class TestForgetFailuresAreActionable:
         )
 
         assert deleted == []
-        reasons = {f.uuid: f.reason for f in failed}
-        assert "boom" in reasons["errored"]
+        by_uuid = {f.uuid: f for f in failed}
+        assert "boom" in by_uuid["errored"].reason
         # No-match reason must be distinct from the error reason.
-        assert reasons["missing"] != reasons["errored"]
+        assert by_uuid["missing"].reason != by_uuid["errored"].reason
+        # ...and the machine-switchable codes distinguish them too.
+        assert by_uuid["errored"].code == MemoryForgetFailureCode.QUERY_ERROR
+        assert by_uuid["missing"].code == MemoryForgetFailureCode.NO_MATCH
 
     @pytest.mark.asyncio
     async def test_hard_delete_surfaces_query_exception_reason(self) -> None:
@@ -184,6 +193,7 @@ class TestForgetFailuresAreActionable:
         assert deleted == []
         assert [f.uuid for f in failed] == ["u1"]
         assert "edge locked" in failed[0].reason
+        assert failed[0].code == MemoryForgetFailureCode.QUERY_ERROR
 
     @pytest.mark.asyncio
     async def test_confirm_tool_reports_reasons_in_response(self, monkeypatch) -> None:
@@ -217,6 +227,7 @@ class TestForgetFailuresAreActionable:
         assert response.deleted_uuids == []
         assert [f.uuid for f in response.failures] == ["missing-uuid"]
         assert response.failed_uuids == ["missing-uuid"]
+        assert response.failures[0].code == MemoryForgetFailureCode.NO_MATCH
         # The reason must reach the model-visible message, not just the count.
         assert response.failures[0].reason in response.message
         assert "missing-uuid" in response.message

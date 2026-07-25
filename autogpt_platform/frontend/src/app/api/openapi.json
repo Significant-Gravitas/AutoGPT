@@ -18552,12 +18552,34 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Failed Uuids"
+          },
+          "failures": {
+            "items": { "$ref": "#/components/schemas/MemoryForgetFailure" },
+            "type": "array",
+            "title": "Failures"
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
+      },
+      "MemoryForgetFailure": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "code": { "$ref": "#/components/schemas/MemoryForgetFailureCode" },
+          "reason": { "type": "string", "title": "Reason" }
+        },
+        "type": "object",
+        "required": ["uuid", "code", "reason"],
+        "title": "MemoryForgetFailure",
+        "description": "One edge that could not be deleted, with an actionable reason.\n\nSurfaced so the assistant (and user) can tell *why* a delete failed —\ne.g. the edge was not found vs. the query itself errored — instead of a\nbare \"N failed\" count that gives the model nothing to act on."
+      },
+      "MemoryForgetFailureCode": {
+        "type": "string",
+        "enum": ["no_match", "query_error"],
+        "title": "MemoryForgetFailureCode",
+        "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
       "MemoryOverview": {
         "properties": {
