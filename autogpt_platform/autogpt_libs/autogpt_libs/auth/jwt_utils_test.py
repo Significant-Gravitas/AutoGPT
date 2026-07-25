@@ -439,3 +439,18 @@ def test_jwks_client_rekeys_when_url_changes(mocker: MockerFixture):
 
     assert second is not first
     assert second.uri == "http://second/jwks"
+
+
+def test_verify_user_missing_role_is_not_a_server_error():
+    """A token with no `role` claim must resolve as a plain user, not KeyError.
+
+    verify_user already fails closed for admin_only; this covers the ordinary
+    path, where indexing payload["role"] would surface as a 500 instead of a
+    normal authenticated request.
+    """
+    no_role_payload = {"sub": "user-id", "email": "user@example.com"}
+
+    user = jwt_utils.verify_user(no_role_payload, admin_only=False)
+
+    assert user.user_id == "user-id"
+    assert user.role == "user"
