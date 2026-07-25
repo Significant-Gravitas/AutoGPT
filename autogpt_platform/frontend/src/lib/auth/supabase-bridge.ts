@@ -124,6 +124,22 @@ export async function verifyLegacyToken(token: string): Promise<string | null> {
  * request carries Supabase auth cookies but no Better Auth session cookie.
  * Either way the legacy cookies are cleared so the bridge runs at most once.
  */
+/**
+ * Whether the bridge may consume (clear) the caller's legacy Supabase cookies.
+ *
+ * Clearing them is what stops the middleware redirecting back here forever, so
+ * it happens on every path that reaches a verdict — but not before the bridge
+ * is capable of reaching one. Without `SUPABASE_JWT_SECRET` verification can
+ * only fail, and clearing first would turn a missing env var into permanent,
+ * unrecoverable session loss for every migrating user: the cookie would be gone
+ * before anyone noticed the misconfiguration.
+ */
+export function canConsumeLegacyCookies(
+  secret: string | undefined = process.env.SUPABASE_JWT_SECRET,
+): boolean {
+  return Boolean(secret);
+}
+
 export function supabaseBridge() {
   return {
     id: "supabase-bridge",
@@ -141,6 +157,12 @@ export function supabaseBridge() {
           const cookieHeader = ctx.headers?.get("cookie") || "";
           const { accessToken, cookieNames } =
             parseSupabaseSessionCookie(cookieHeader);
+
+          if (!canConsumeLegacyCookies()) {
+            // Leave the cookies intact: once the secret is configured, the
+            // user's next request bridges normally instead of being stranded.
+            throw ctx.redirect(loginUrl);
+          }
 
           for (const name of cookieNames) {
             ctx.setCookie(name, "", { path: "/", maxAge: 0 });

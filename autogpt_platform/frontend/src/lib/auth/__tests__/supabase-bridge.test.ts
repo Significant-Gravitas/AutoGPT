@@ -1,6 +1,7 @@
 import { SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  canConsumeLegacyCookies,
   parseSupabaseSessionCookie,
   verifyLegacyToken,
 } from "../supabase-bridge";
@@ -190,5 +191,22 @@ describe("verifyLegacyToken", () => {
     const token = await signLegacyToken();
 
     expect(await verifyLegacyToken(token)).toBeNull();
+  });
+});
+
+describe("canConsumeLegacyCookies", () => {
+  it("refuses to consume the legacy cookie when no secret is configured", () => {
+    // Verification can only fail without the secret, so clearing the cookie
+    // first would turn a missing env var into permanent session loss: the
+    // cookie is gone before anyone notices, and configuring the secret
+    // afterwards can no longer recover the user's session.
+    expect(canConsumeLegacyCookies(undefined)).toBe(false);
+    expect(canConsumeLegacyCookies("")).toBe(false);
+  });
+
+  it("consumes it once the bridge can actually reach a verdict", () => {
+    // Clearing on every decided path is what stops the middleware redirecting
+    // back to the bridge forever.
+    expect(canConsumeLegacyCookies(LEGACY_SECRET)).toBe(true);
   });
 });
