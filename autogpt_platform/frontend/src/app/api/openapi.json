@@ -2577,6 +2577,12 @@
         "responses": {
           "200": {
             "description": "Successful Response",
+            "headers": {
+              "X-AutoGPT-User-Created": {
+                "description": "Whether this request created a new user",
+                "schema": { "type": "string", "enum": ["true", "false"] }
+              }
+            },
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
@@ -17764,6 +17770,13 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
@@ -18096,7 +18109,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastRunAt"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },

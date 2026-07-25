@@ -175,6 +175,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    last_run_at: datetime.datetime | None = None
 
     name: str
     description: str
@@ -347,6 +348,7 @@ class LibraryAgent(pydantic.BaseModel):
             status=status,
             created_at=created_at,
             updated_at=updated_at,
+            last_run_at=agent.lastRunAt,
             name=graph.name,
             description=graph.description,
             instructions=graph.instructions,
@@ -584,6 +586,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_RUN = "lastRunAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):
