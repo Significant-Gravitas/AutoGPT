@@ -20,6 +20,7 @@ from backend.copilot.graphiti.ingest import IngestionCompletion
 
 from . import apply as apply_mod
 from .fetch import DreamInput
+from .locks import DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DreamDemotion,
@@ -503,7 +504,7 @@ async def test_sync_path_renews_lock_before_drain(mocker):
     admit a concurrent pass onto the same graph)."""
     mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
     lock_handle = mocker.MagicMock()
-    lock_handle.extend = AsyncMock(return_value=None)
+    lock_handle.extend = AsyncMock(return_value=True)
     ops = DreamOperations(
         writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
         summary_for_user="ok",
@@ -513,6 +514,33 @@ async def test_sync_path_renews_lock_before_drain(mocker):
     )
 
     lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
+    """A failed renewal means the lock expired (a newer pass may own the
+    graph), so apply must abort before the drain and the destructive
+    demotions/summary writes instead of continuing as if it held exclusive
+    ownership. The orchestrator's catch-all turns the raise into an errored
+    ``DreamPassResult``."""
+    drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
+    demote = mocker.patch.object(
+        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
+    )
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=False)
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+
+    with pytest.raises(DreamLockLostError):
+        await apply_mod.apply_operations(
+            user_id="u-lost", pass_id="p-lost", ops=ops, lock_handle=lock_handle
+        )
+
+    drain.assert_not_awaited()
+    demote.assert_not_awaited()
 
 
 @pytest.mark.asyncio

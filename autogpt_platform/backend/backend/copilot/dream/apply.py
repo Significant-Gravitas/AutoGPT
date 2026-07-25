@@ -43,7 +43,7 @@ from backend.copilot.tools.graphiti_forget import (
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
-from .locks import DreamLockHandle
+from .locks import DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DemotionSummary,
@@ -617,9 +617,15 @@ async def apply_operations(
     # ingestion drain plus the demotions / summary write that follow) so the
     # lock cannot expire mid-write and let a second pass touch the same
     # graph. Only when there is something to drain; the batch path passes no
-    # handle (it disowned the lock to its callback).
+    # handle (it disowned the lock to its callback). A failed renewal means
+    # the lock already expired — a newer pass may own the graph — so abort
+    # before the drain and the destructive demotions/summary writes below.
+    # The write/proposal episodes already enqueued above keep processing
+    # fire-and-forget (they cannot be recalled), but the pass is reported
+    # errored instead of pretending exclusive ownership.
     if lock_handle is not None and completion.registered:
-        await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS)
+        if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
+            raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
     # treats the writes as landed (and before we return and the caller
