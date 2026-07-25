@@ -8,7 +8,13 @@ import pytest
 
 from . import context
 from ._format import extract_episode_body
-from .context import _format_context, _is_non_global_scope, fetch_warm_context
+from .context import (
+    _format_context,
+    _is_non_global_scope,
+    fetch_warm_context,
+    refresh_warm_context,
+    should_refresh_warm_context,
+)
 from .memory_model import MemoryEnvelope, MemoryKind, SourceKind
 
 
@@ -373,3 +379,102 @@ class TestRatificationHitHookFiresFireAndForget:
         user_id, uuids = captured_calls[0]
         assert user_id == "user-xyz"
         assert uuids == ["edge-a", "edge-b"]
+
+
+# ---------------------------------------------------------------------------
+# SECRT-2378: follow-up-turn warm context refresh
+# ---------------------------------------------------------------------------
+
+
+class TestShouldRefreshWarmContext:
+    """Pure deterministic cost gate for follow-up refreshes."""
+
+    def test_empty_message_is_skipped(self) -> None:
+        assert should_refresh_warm_context("") is False
+        assert should_refresh_warm_context(None) is False
+
+    def test_short_acknowledgement_is_skipped(self) -> None:
+        assert should_refresh_warm_context("ok") is False
+        assert should_refresh_warm_context("yes thanks") is False
+
+    def test_substantive_message_triggers_refresh(self) -> None:
+        assert should_refresh_warm_context("deploy the staging environment now") is True
+
+
+class TestRefreshWarmContext:
+    """Follow-up refresh uses the cheap RRF recipe and honours the gate."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_empty_user_id(self) -> None:
+        with patch.object(
+            context, "fetch_warm_context", new_callable=AsyncMock
+        ) as mock_fetch:
+            result = await refresh_warm_context("", "deploy the staging environment")
+        assert result is None
+        mock_fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_trivial_message_skips_fetch(self) -> None:
+        with patch.object(
+            context, "fetch_warm_context", new_callable=AsyncMock
+        ) as mock_fetch:
+            result = await refresh_warm_context("user-abc", "ok")
+        assert result is None
+        mock_fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_substantive_message_fetches_without_cross_encoder(self) -> None:
+        with patch.object(
+            context,
+            "fetch_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>x</temporal_context>",
+        ) as mock_fetch:
+            result = await refresh_warm_context(
+                "user-abc", "deploy the staging environment now"
+            )
+        assert result == "<temporal_context>x</temporal_context>"
+        mock_fetch.assert_awaited_once()
+        assert mock_fetch.await_args.kwargs["use_cross_encoder"] is False
+
+    @pytest.mark.asyncio
+    async def test_force_bypasses_gate_for_trivial_message(self) -> None:
+        """A post-compaction turn (force=True) refreshes even on a short message."""
+        with patch.object(
+            context,
+            "fetch_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>x</temporal_context>",
+        ) as mock_fetch:
+            result = await refresh_warm_context("user-abc", "go on", force=True)
+        assert result is not None
+        mock_fetch.assert_awaited_once()
+        assert mock_fetch.await_args.kwargs["use_cross_encoder"] is False
+
+
+class TestFetchRecipeSelection:
+    """``use_cross_encoder`` toggles the search recipe passed to graphiti."""
+
+    @pytest.mark.asyncio
+    async def test_rrf_recipe_used_when_cross_encoder_disabled(self) -> None:
+        from graphiti_core.search.search_config import EdgeReranker
+
+        mock_client = AsyncMock()
+        mock_client.search_.return_value = _search_results([])
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ),
+        ):
+            await context._fetch("test-user", "hello world", use_cross_encoder=False)
+
+        cfg = mock_client.search_.await_args.kwargs["config"]
+        assert cfg.edge_config is not None
+        assert cfg.edge_config.reranker == EdgeReranker.rrf
+        assert cfg.limit == context.graphiti_config.context_max_facts

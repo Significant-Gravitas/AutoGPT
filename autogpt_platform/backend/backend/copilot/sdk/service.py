@@ -4640,6 +4640,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, user_id, is_user_message, query_message
         )
 
+        # SECRT-2378: refresh warm context on FOLLOW-UP user turns. The first
+        # turn pre-loads memory via inject_user_context(warm_ctx=...) above;
+        # later turns (a new task started mid-session, or the turn right after
+        # a compaction) otherwise get no deterministic recall and depend on the
+        # model choosing to call the memory tool, which it often skips. Keyed
+        # on the CURRENT user message and appended to the per-turn query — not
+        # persisted to the transcript (append_user records current_message), so
+        # stale temporal context never leaks into a future turn's --resume,
+        # matching the builder/attachment blocks appended above. Forced after a
+        # compaction so a short "continue"-style turn still re-injects memory.
+        if graphiti_enabled and has_history and is_user_message and user_id:
+            from ..graphiti.context import refresh_warm_context
+
+            refreshed_ctx = await refresh_warm_context(
+                user_id, current_message, force=was_compacted
+            )
+            if refreshed_ctx:
+                query_message = f"{query_message}\n\n{refreshed_ctx}"
+
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
         # upload_transcript saves a compact version for future turns.

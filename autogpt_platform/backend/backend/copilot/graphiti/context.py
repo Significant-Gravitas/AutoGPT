@@ -1,4 +1,12 @@
-"""Warm context retrieval — pre-loads relevant facts at session start."""
+"""Warm context retrieval — deterministic memory recall for a chat turn.
+
+The first turn of a session pre-loads relevant facts via
+``fetch_warm_context`` (cross-encoder recipe, highest precision).  Later
+turns — a new task started mid-session, or the turn right after a context
+compaction — refresh via ``refresh_warm_context`` (cheap RRF recipe, gated
+on message substance) so recall never depends solely on the model choosing
+to call the memory tool.  See SECRT-2378.
+"""
 
 import asyncio
 import logging
@@ -16,13 +24,67 @@ from .config import graphiti_config
 
 logger = logging.getLogger(__name__)
 
+# Minimum word count for a follow-up user message to trigger a warm-context
+# refresh.  Short acknowledgements ("ok", "thanks", "yes go ahead") carry no
+# new retrieval signal, so refreshing on them would waste a graph search +
+# embedding call every turn.  A post-compaction turn bypasses this gate via
+# ``refresh_warm_context(..., force=True)``.
+WARM_CONTEXT_REFRESH_MIN_WORDS = 4
 
-async def fetch_warm_context(user_id: str, message: str) -> str | None:
+
+def should_refresh_warm_context(message: str | None) -> bool:
+    """Whether a follow-up user message carries enough signal to re-fetch.
+
+    Pure, deterministic cost gate: only messages with at least
+    ``WARM_CONTEXT_REFRESH_MIN_WORDS`` words re-run retrieval, keeping the
+    added per-turn graph-search cost off trivial acknowledgement turns.
+    """
+    if not message:
+        return False
+    return len(message.split()) >= WARM_CONTEXT_REFRESH_MIN_WORDS
+
+
+async def refresh_warm_context(
+    user_id: str | None,
+    message: str | None,
+    *,
+    force: bool = False,
+) -> str | None:
+    """Re-fetch warm context on a FOLLOW-UP turn, keyed on the current message.
+
+    The first turn pre-loads memory via ``fetch_warm_context`` (cross-encoder,
+    high precision).  Later turns — a new task mid-session, or the turn right
+    after a context compaction — otherwise get no deterministic recall and
+    depend on the model choosing to call the memory tool, which it often skips
+    (SECRT-2378).  This refresh closes that gap.
+
+    Cost is bounded two ways: ``should_refresh_warm_context`` skips trivial
+    turns (unless ``force`` — e.g. just after a compaction, where the current
+    message may be short), and the fetch runs the RRF recipe
+    (``use_cross_encoder=False``) — graph search + embeddings only, no
+    per-candidate cross-encoder LLM prompts.
+
+    Returns the ``<temporal_context>`` block, or ``None`` when skipped/empty.
+    """
+    if not user_id:
+        return None
+    if not force and not should_refresh_warm_context(message):
+        return None
+    return await fetch_warm_context(user_id, message or "", use_cross_encoder=False)
+
+
+async def fetch_warm_context(
+    user_id: str, message: str, *, use_cross_encoder: bool = True
+) -> str | None:
     """Fetch relevant temporal context for the current user and message.
 
-    Called at the start of a session (first turn) to pre-load facts from
-    prior conversations.  Returns a formatted ``<temporal_context>`` block
-    suitable for appending to the system prompt, or ``None`` on failure.
+    Returns a formatted ``<temporal_context>`` block suitable for appending
+    to the current turn's user message, or ``None`` on failure/empty.
+
+    ``use_cross_encoder`` selects the search recipe: ``True`` (first turn)
+    uses the cross-encoder recipe for maximum precision at the cost of one
+    batch of classifier prompts; ``False`` (follow-up refresh) uses the
+    cheaper RRF recipe — BM25 + cosine + BFS with no LLM rerank.
 
     Graceful degradation: any error (timeout, connection, graphiti-core bug)
     returns ``None`` so the copilot continues without temporal context.
@@ -32,7 +94,7 @@ async def fetch_warm_context(user_id: str, message: str) -> str | None:
 
     try:
         return await asyncio.wait_for(
-            _fetch(user_id, message),
+            _fetch(user_id, message, use_cross_encoder=use_cross_encoder),
             timeout=graphiti_config.context_timeout,
         )
     except asyncio.TimeoutError:
@@ -46,25 +108,34 @@ async def fetch_warm_context(user_id: str, message: str) -> str | None:
         return None
 
 
-async def _fetch(user_id: str, message: str) -> str | None:
+async def _fetch(
+    user_id: str, message: str, *, use_cross_encoder: bool = True
+) -> str | None:
     # Imported lazily so the module can be imported without graphiti-core
     # installed (matches the pattern in client.py).
     from graphiti_core.search.search_config_recipes import (
         EDGE_HYBRID_SEARCH_CROSS_ENCODER,
+        EDGE_HYBRID_SEARCH_RRF,
     )
 
     group_id = derive_group_id(user_id)
     client = await get_graphiti_client(group_id)
 
-    # P-1.4: warm context is the single most-impactful retrieval per
-    # session — the one place where the cross-encoder rerank earns its
-    # ~10–15% precision lift (per the audit) at the cost of one extra
-    # batch of boolean-classifier prompts. The EDGE_HYBRID_SEARCH_CROSS_ENCODER
-    # recipe combines BM25 + cosine + BFS edge search with cross-encoder
-    # reranking. The recipe defaults ``limit=10``; we override to our
+    # P-1.4: the first-turn warm context is the single most-impactful
+    # retrieval per session — the one place where the cross-encoder rerank
+    # earns its ~10–15% precision lift (per the audit) at the cost of one
+    # extra batch of boolean-classifier prompts. Follow-up refreshes
+    # (SECRT-2378) drop to the RRF recipe (no LLM rerank) so re-running
+    # recall every substantive turn stays cheap. Both recipes combine BM25 +
+    # cosine + BFS edge search; each defaults ``limit=10``, overridden to our
     # configured ``context_max_facts`` so existing operator tuning still
     # applies.
-    search_config = EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(
+    recipe = (
+        EDGE_HYBRID_SEARCH_CROSS_ENCODER
+        if use_cross_encoder
+        else EDGE_HYBRID_SEARCH_RRF
+    )
+    search_config = recipe.model_copy(
         update={"limit": graphiti_config.context_max_facts}
     )
     edge_results, episodes = await asyncio.gather(
