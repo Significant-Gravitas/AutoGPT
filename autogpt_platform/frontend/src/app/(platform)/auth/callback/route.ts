@@ -1,6 +1,10 @@
+import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
-import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import {
+  scheduleAccountCreatedGoal,
+  wasAccountCreated,
+} from "@/services/analytics/datafast-server";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -22,8 +26,10 @@ export async function GET(request: Request) {
 
     if (!error) {
       try {
-        const api = new BackendAPI();
-        await api.createUser();
+        const createUserResponse = await postV1GetOrCreateUser();
+        if (wasAccountCreated(createUserResponse)) {
+          await scheduleAccountCreatedGoal("google");
+        }
 
         const { shouldShowOnboarding } = await getOnboardingStatus();
         next = shouldShowOnboarding ? "/onboarding" : "/copilot";
