@@ -4,13 +4,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
+    MemoryForgetConfirmTool,
     _hard_delete_edges,
     _retract_edges,
     _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
+from backend.copilot.tools.models import MemoryForgetConfirmResponse
 
 
 class TestSoftDeleteOverReportsSuccess:
@@ -78,7 +81,8 @@ class TestHardDeleteBasicFlow:
             driver, ["nonexistent-uuid"], "test-user"
         )
         assert deleted == []
-        assert failed == ["nonexistent-uuid"]
+        assert [f.uuid for f in failed] == ["nonexistent-uuid"]
+        assert failed[0].reason  # actionable, non-empty reason
         # Only the delete query should run — cleanup skipped
         assert driver.execute_query.call_count == 1
 
@@ -104,13 +108,118 @@ class TestRetractEdgesSnodgrass:
         assert "invalid_at" not in query
 
     @pytest.mark.asyncio
+    async def test_retract_never_uses_falkordb_incompatible_datetime(self) -> None:
+        """Root cause of SECRT-2371: the shipped soft delete used Cypher's
+        no-arg ``datetime()``, which FalkorDB rejects with "Unknown function
+        'datetime'". The raised error was swallowed, so every soft delete
+        reported "0 invalidated, N failed" while hard delete (no datetime())
+        worked. The timestamp must be bound from Python as ``$now``."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        await _retract_edges(driver, ["u1"], "test-user")
+
+        query = driver.execute_query.call_args.args[0]
+        assert "datetime()" not in query
+        assert "$now" in query
+
+    @pytest.mark.asyncio
     async def test_retract_reports_failure_on_no_match(self) -> None:
         driver = AsyncMock()
         driver.execute_query.return_value = ([], None, None)
 
         deleted, failed = await _retract_edges(driver, ["missing"], "test-user")
         assert deleted == []
-        assert failed == ["missing"]
+        assert [f.uuid for f in failed] == ["missing"]
+        # No-match must carry an actionable reason, not a bare count.
+        assert failed[0].reason
+
+
+class TestForgetFailuresAreActionable:
+    """SECRT-2371: soft delete must not fail silently. Every failure — whether
+    the query errored or matched nothing — has to carry a per-UUID reason so
+    the model can act (retry, hard-delete, or tell the user) instead of seeing
+    a bare "0 invalidated, N failed"."""
+
+    @pytest.mark.asyncio
+    async def test_retract_surfaces_query_exception_reason(self) -> None:
+        driver = AsyncMock()
+        # Reproduces the original root cause: FalkorDB rejected the no-arg
+        # Cypher datetime() with "Unknown function 'datetime'". The exception
+        # used to be swallowed, leaving the model no clue why it failed.
+        driver.execute_query.side_effect = RuntimeError("Unknown function 'datetime'")
+
+        deleted, failed = await _retract_edges(driver, ["u1"], "test-user")
+
+        assert deleted == []
+        assert [f.uuid for f in failed] == ["u1"]
+        assert "datetime" in failed[0].reason
+
+    @pytest.mark.asyncio
+    async def test_retract_distinguishes_no_match_from_error(self) -> None:
+        driver = AsyncMock()
+        # First uuid errors, second matches nothing.
+        driver.execute_query.side_effect = [
+            RuntimeError("boom"),
+            ([], None, None),
+        ]
+
+        deleted, failed = await _retract_edges(
+            driver, ["errored", "missing"], "test-user"
+        )
+
+        assert deleted == []
+        reasons = {f.uuid: f.reason for f in failed}
+        assert "boom" in reasons["errored"]
+        # No-match reason must be distinct from the error reason.
+        assert reasons["missing"] != reasons["errored"]
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_surfaces_query_exception_reason(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = RuntimeError("edge locked")
+
+        deleted, failed = await _hard_delete_edges(driver, ["u1"], "test-user")
+
+        assert deleted == []
+        assert [f.uuid for f in failed] == ["u1"]
+        assert "edge locked" in failed[0].reason
+
+    @pytest.mark.asyncio
+    async def test_confirm_tool_reports_reasons_in_response(self, monkeypatch) -> None:
+        """End to end: a soft delete that matches nothing must return the
+        per-UUID reason in both the structured `failures` field and the
+        human-readable message — not a bare "0 invalidated, 1 failed"."""
+
+        async def _enabled(_user_id: str) -> bool:
+            return True
+
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+        client = type("Client", (), {"graph_driver": driver})()
+
+        async def _get_client(_group_id: str):
+            return client
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
+        )
+
+        session = ChatSession.new("user-abc", dry_run=False)
+        response = await MemoryForgetConfirmTool()._execute(
+            "user-abc", session, uuids=["missing-uuid"]
+        )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.deleted_uuids == []
+        assert [f.uuid for f in response.failures] == ["missing-uuid"]
+        assert response.failed_uuids == ["missing-uuid"]
+        # The reason must reach the model-visible message, not just the count.
+        assert response.failures[0].reason in response.message
+        assert "missing-uuid" in response.message
 
 
 class TestSoftDeleteContradictionPath:

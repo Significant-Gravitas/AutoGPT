@@ -18,7 +18,15 @@ from .models import (
     ErrorResponse,
     MemoryForgetCandidatesResponse,
     MemoryForgetConfirmResponse,
+    MemoryForgetFailure,
     ToolResponseBase,
+)
+
+# Reason shown when the delete query ran fine but matched no edge — the UUID
+# is stale, already deleted, or not a forgettable edge type.
+_NO_MATCH_REASON = (
+    "No matching edge found — it may already be deleted, or the UUID is not a "
+    "forgettable edge (RELATES_TO, MENTIONS, HAS_MEMBER)."
 )
 
 
@@ -36,6 +44,16 @@ def _now_iso() -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _delete_error_reason(exc: Exception) -> str:
+    """Actionable reason string for a delete query that raised.
+
+    Keeps the exception type + message (e.g. FalkorDB's
+    ``Unknown function 'datetime'``) so the model can distinguish a real
+    query error from a plain no-match and react accordingly.
+    """
+    return f"Deletion query failed: {type(exc).__name__}: {exc}"
 
 
 class MemoryForgetSearchTool(BaseTool):
@@ -249,30 +267,43 @@ class MemoryForgetConfirmTool(BaseTool):
             )
 
         if hard_delete:
-            deleted, failed = await _hard_delete_edges(driver, uuids, user_id)
+            deleted, failures = await _hard_delete_edges(driver, uuids, user_id)
             mode = "permanently deleted"
         else:
             # User-initiated forget is a *system* retraction, not a world
             # change. Per Snodgrass bi-temporal semantics, only `expired_at`
             # is set. `_soft_delete_edges` (which also sets `invalid_at`)
             # is reserved for the contradiction detector.
-            deleted, failed = await _retract_edges(driver, uuids, user_id)
+            deleted, failures = await _retract_edges(driver, uuids, user_id)
             mode = "retracted from memory"
 
         return MemoryForgetConfirmResponse(
-            message=(
-                f"{len(deleted)} memory edge(s) {mode}."
-                + (f" {len(failed)} failed." if failed else "")
-            ),
+            message=_build_confirm_message(len(deleted), mode, failures),
             session_id=session.session_id,
             deleted_uuids=deleted,
-            failed_uuids=failed,
+            failed_uuids=[f.uuid for f in failures],
+            failures=failures,
         )
+
+
+def _build_confirm_message(
+    deleted_count: int, mode: str, failures: list[MemoryForgetFailure]
+) -> str:
+    """Human/model-readable summary that spells out *why* edges failed.
+
+    A bare "N failed" gives the model nothing to act on (SECRT-2371); listing
+    each UUID with its reason lets it retry, hard-delete, or tell the user.
+    """
+    summary = f"{deleted_count} memory edge(s) {mode}."
+    if not failures:
+        return summary
+    detail = "; ".join(f"{f.uuid}: {f.reason}" for f in failures)
+    return f"{summary} {len(failures)} failed — {detail}"
 
 
 async def _retract_edges(
     driver, uuids: list[str], user_id: str
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[MemoryForgetFailure]]:
     """System retraction — set ONLY ``expired_at`` on the edge.
 
     Per Snodgrass bi-temporal semantics (see ``dream/dreaming-graphiti.md``
@@ -286,9 +317,13 @@ async def _retract_edges(
 
     Matches the same edge types as ``_hard_delete_edges`` so that edges of
     any type (RELATES_TO, MENTIONS, HAS_MEMBER) can be retracted.
+
+    Returns ``(succeeded_uuids, failures)`` where each failure carries an
+    actionable reason (SECRT-2371) — a swallowed error used to look
+    identical to a no-op no-match.
     """
-    deleted = []
-    failed = []
+    deleted: list[str] = []
+    failures: list[MemoryForgetFailure] = []
     for uuid in uuids:
         try:
             records, _, _ = await driver.execute_query(
@@ -303,16 +338,18 @@ async def _retract_edges(
             if records:
                 deleted.append(uuid)
             else:
-                failed.append(uuid)
-        except Exception:
+                failures.append(MemoryForgetFailure(uuid=uuid, reason=_NO_MATCH_REASON))
+        except Exception as exc:
             logger.warning(
                 "Failed to retract edge %s for user %s",
                 uuid,
                 user_id[:12],
                 exc_info=True,
             )
-            failed.append(uuid)
-    return deleted, failed
+            failures.append(
+                MemoryForgetFailure(uuid=uuid, reason=_delete_error_reason(exc))
+            )
+    return deleted, failures
 
 
 async def _soft_delete_edges(
@@ -472,16 +509,19 @@ async def invalidate_entity_direct_neighbors(
 
 async def _hard_delete_edges(
     driver, uuids: list[str], user_id: str
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[MemoryForgetFailure]]:
     """Permanent removal — delete edges and clean up back-references.
 
     Uses graphiti's ``Edge.delete()`` pattern (handles MENTIONS,
     RELATES_TO, HAS_MEMBER in one query).  Does NOT delete orphaned
     entity nodes — they may have summaries, embeddings, or future
     connections.  Cleans up episode ``entity_edges`` back-references.
+
+    Returns ``(succeeded_uuids, failures)`` with a per-UUID reason on each
+    failure (SECRT-2371).
     """
-    deleted = []
-    failed = []
+    deleted: list[str] = []
+    failures: list[MemoryForgetFailure] = []
     for uuid in uuids:
         try:
             # Use WITH to capture the uuid before DELETE so we don't
@@ -497,7 +537,7 @@ async def _hard_delete_edges(
                 uuid=uuid,
             )
             if not records:
-                failed.append(uuid)
+                failures.append(MemoryForgetFailure(uuid=uuid, reason=_NO_MATCH_REASON))
                 continue
             # Edge was deleted — report success regardless of cleanup outcome.
             deleted.append(uuid)
@@ -518,12 +558,14 @@ async def _hard_delete_edges(
                     user_id[:12],
                     exc_info=True,
                 )
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "Failed to hard-delete edge %s for user %s",
                 uuid,
                 user_id[:12],
                 exc_info=True,
             )
-            failed.append(uuid)
-    return deleted, failed
+            failures.append(
+                MemoryForgetFailure(uuid=uuid, reason=_delete_error_reason(exc))
+            )
+    return deleted, failures
