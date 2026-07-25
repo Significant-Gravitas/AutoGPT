@@ -61,7 +61,13 @@ class AuthEmailRequest(BaseModel):
     # Without an explicit id the generated client name is derived from the
     # summary, which produces an unreadable mouthful.
     operation_id="sendAuthTransactionEmail",
-    tags=["auth-email"],
+    responses={
+        400: {"description": "url does not point at a trusted frontend origin"},
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+    # The tag comes from the router include in rest_api.py; repeating it here
+    # duplicates it in the generated spec.
 )
 async def send_auth_email(request: AuthEmailRequest) -> None:
     if not _url_origin_allowed(request.url):
@@ -95,15 +101,24 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     logger.info(f"Sent {request.type} auth email")
 
 
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
 def _origin_of(url: str) -> str | None:
     """Return the scheme://host[:port] origin of an http(s) URL, or None.
     Built from hostname/port (not netloc) so embedded credentials in a crafted
-    URL can't smuggle a different effective host past the allowlist."""
+    URL can't smuggle a different effective host past the allowlist.
+
+    A port that is the scheme's default is dropped, because urlparse keeps an
+    explicit one: without this, `https://app.example:443/reset` and
+    `https://app.example` produce different origins and the comparison below
+    fails closed, refusing to send a legitimate auth email."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return None
-    port = f":{parsed.port}" if parsed.port else ""
-    return f"{parsed.scheme}://{parsed.hostname}{port}"
+    port = parsed.port
+    suffix = "" if port is None or port == _DEFAULT_PORTS[parsed.scheme] else f":{port}"
+    return f"{parsed.scheme}://{parsed.hostname}{suffix}"
 
 
 def _trusted_frontend_origins() -> tuple[set[str], list[str]]:
@@ -116,7 +131,9 @@ def _trusted_frontend_origins() -> tuple[set[str], list[str]]:
         entries.append(frontend_origin)
     entries.extend(settings.config.trusted_frontend_origins)
 
-    exact = {e for e in entries if not e.startswith("regex:")}
+    # Normalize configured origins through the same parser as the incoming URL,
+    # so an explicit default port on either side can't cause a false mismatch.
+    exact = {_origin_of(e) or e for e in entries if not e.startswith("regex:")}
     patterns = [e[len("regex:") :] for e in entries if e.startswith("regex:")]
     return exact, patterns
 

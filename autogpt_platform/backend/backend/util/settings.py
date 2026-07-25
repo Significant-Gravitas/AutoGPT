@@ -600,6 +600,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
     )
 
+    @field_validator("trusted_frontend_origins")
+    @classmethod
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
+        """Reject unusable entries at startup rather than at send time.
+
+        These patterns are compiled per request in the auth-email route, so a
+        malformed one would otherwise boot fine and then 500 every password
+        reset and verification email.
+        """
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if not origin.startswith("regex:"):
+                continue
+            pattern = origin[len("regex:") :]
+            if not pattern:
+                raise ValueError("Invalid regex pattern: pattern cannot be empty")
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
+        return v
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:

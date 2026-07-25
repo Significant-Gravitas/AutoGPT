@@ -2571,7 +2571,7 @@
     },
     "/api/auth/email/send": {
       "post": {
-        "tags": ["auth-email", "auth-email"],
+        "tags": ["auth-email"],
         "summary": "Send a Better Auth transactional email via the backend mailer",
         "operationId": "sendAuthTransactionEmail",
         "requestBody": {
@@ -2584,8 +2584,14 @@
         },
         "responses": {
           "204": { "description": "Successful Response" },
+          "400": {
+            "description": "url does not point at a trusted frontend origin"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
           },
           "422": {
             "description": "Validation Error",
@@ -2594,6 +2600,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]

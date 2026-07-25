@@ -153,3 +153,58 @@ def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
 
     assert res.status_code == 401
     send.assert_not_called()
+
+
+def test_allows_origin_with_explicit_default_port(send_mock, monkeypatch):
+    """An explicit :443 must not read as a different origin than the bare host.
+
+    urlparse keeps an explicit default port, so without normalization the
+    comparison fails closed and a legitimate reset email is never sent.
+    """
+    monkeypatch.setattr(
+        auth_email_routes.settings.config,
+        "trusted_frontend_origins",
+        ["https://app.selfhosted.example"],
+    )
+    res = _post(
+        {**VALID_BODY, "url": "https://app.selfhosted.example:443/reset?token=x"}
+    )
+    assert res.status_code == 204
+    send_mock.assert_called_once()
+
+
+def test_allows_configured_origin_carrying_a_default_port(send_mock, monkeypatch):
+    """...and the same when the explicit port is on the configured side."""
+    monkeypatch.setattr(
+        auth_email_routes.settings.config,
+        "trusted_frontend_origins",
+        ["https://app.selfhosted.example:443"],
+    )
+    res = _post({**VALID_BODY, "url": "https://app.selfhosted.example/reset?token=x"})
+    assert res.status_code == 204
+    send_mock.assert_called_once()
+
+
+def test_non_default_port_still_distinguishes_origins(send_mock, monkeypatch):
+    """Normalizing default ports must not collapse genuinely different ones."""
+    monkeypatch.setattr(
+        auth_email_routes.settings.config,
+        "trusted_frontend_origins",
+        ["https://app.selfhosted.example:8443"],
+    )
+    res = _post({**VALID_BODY, "url": "https://app.selfhosted.example:9443/reset"})
+    assert res.status_code == 400
+    send_mock.assert_not_called()
+
+
+def test_rejects_malformed_trusted_origin_regex_at_startup():
+    """A bad pattern must fail at config time, not on every email send."""
+    import pytest
+
+    from backend.util.settings import Config
+
+    with pytest.raises(ValueError, match="Invalid regex pattern"):
+        Config(trusted_frontend_origins=["regex:https://(unclosed"])
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        Config(trusted_frontend_origins=["regex:"])
