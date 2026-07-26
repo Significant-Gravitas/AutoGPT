@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
+# Imported after the sys.path insert above so the backend package resolves.
+from backend.util.docs import make_doc_url  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 # Default output directory relative to repo root
@@ -517,8 +520,6 @@ def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") 
     lines.append("")
     # Build public doc URLs via the shared helper so the host/shape can't drift
     # from the copilot docs tools (see backend/util/docs.py).
-    from backend.util.docs import make_doc_url
-
     lines.append(
         f"* [Build your own Blocks]({make_doc_url('platform/new_blocks.md')}) - Step-by-step tutorial with examples"
     )
