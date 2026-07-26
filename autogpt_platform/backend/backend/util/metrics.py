@@ -75,20 +75,35 @@ _PIKA_RECONNECT_SIGNATURES = (
 # its redis.asyncio connection — the fire-and-forget cache-eviction close or a
 # per-request ``driver.close()`` in a finally block. Chat degrades gracefully
 # (memory callers swallow it), so these are benign. Drop only the two teardown
-# signatures, scoped to the graphiti driver logger, so genuine query errors
-# (Cypher typos, missing graphs) still reach Sentry. (SENTRY-1387.)
+# signatures, scoped to the graphiti driver (by logger for log events, by
+# traceback for exceptions) so genuine query errors (Cypher typos, missing
+# graphs) — and unrelated main-redis outages — still reach Sentry. (SENTRY-1387.)
 _FALKORDB_DRIVER_LOGGER = "graphiti_core.driver.falkordb_driver"
 _FALKORDB_TEARDOWN_SIGNATURES = (
     "buffer is closed",
     "connection closed by server",
 )
-_FALKORDB_MODULE_INDICATORS = ("falkordb", "redis")
+
+
+def _raised_from_graphiti_falkordb(exc_tb) -> bool:
+    """True if the graphiti FalkorDB driver module appears in the traceback.
+
+    graphiti-core's ``execute_query`` re-raises from that module, so its frame
+    is on the traceback of a teardown error originating there. Scoping to it
+    keeps unrelated redis exceptions (e.g. the platform's main redis) reaching
+    Sentry even when they share the ``connection closed by server`` message.
+    """
+    while exc_tb is not None:
+        if exc_tb.tb_frame.f_globals.get("__name__") == _FALKORDB_DRIVER_LOGGER:
+            return True
+        exc_tb = exc_tb.tb_next
+    return False
 
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
     if "exc_info" in hint:
-        exc_type, exc_value, _ = hint["exc_info"]
+        exc_type, exc_value, exc_tb = hint["exc_info"]
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
@@ -105,15 +120,13 @@ def _before_send(event, hint):
             ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
                 return None
 
-        # FalkorDB/redis connection-teardown races (eviction/shutdown) — benign
-        if any(sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES):
-            exc_module = getattr(exc_type, "__module__", "") or ""
-            exc_name = getattr(exc_type, "__name__", "") or ""
-            if any(
-                ind in exc_module.lower() or ind in exc_name.lower()
-                for ind in _FALKORDB_MODULE_INDICATORS
-            ):
-                return None
+        # FalkorDB connection-teardown races (eviction/shutdown) — benign, but
+        # only when raised from the graphiti driver, so an unrelated main-redis
+        # outage sharing the message still reaches Sentry.
+        if any(
+            sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES
+        ) and _raised_from_graphiti_falkordb(exc_tb):
+            return None
 
         # User-caused credential/auth/integration errors — not platform bugs
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):

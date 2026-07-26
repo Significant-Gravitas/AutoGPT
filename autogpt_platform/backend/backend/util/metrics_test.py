@@ -9,6 +9,8 @@ rather than a Sentry alert flood.
 
 from __future__ import annotations
 
+import sys
+
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
     _FALKORDB_TEARDOWN_SIGNATURES,
@@ -26,10 +28,17 @@ def _log_event(logger: str, message: str) -> dict:
     }
 
 
-class _RedisConnectionError(Exception):
-    """Stand-in whose ``__module__`` mimics a redis.asyncio teardown error."""
-
-    __module__ = "redis.exceptions"
+def _exc_info_raised_from(module: str, message: str):
+    """Build an ``exc_info`` triple whose traceback contains a frame in
+    ``module`` — mimics an exception re-raised from that module (e.g. the
+    graphiti FalkorDB driver, or the platform's main redis)."""
+    namespace: dict = {"__name__": module}
+    exec("def _raise(msg):\n    raise ConnectionError(msg)", namespace)
+    try:
+        namespace["_raise"](message)
+    except ConnectionError:
+        return sys.exc_info()
+    raise AssertionError("expected ConnectionError")
 
 
 # ---------- pika reconnect noise → dropped ----------
@@ -139,13 +148,22 @@ def test_falkordb_connection_closed_by_server_log_dropped() -> None:
     assert _before_send(evt, hint={}) is None
 
 
-def test_falkordb_buffer_is_closed_exc_info_dropped() -> None:
+def test_falkordb_buffer_is_closed_exc_from_graphiti_dropped() -> None:
     """If the re-raised teardown error reaches Sentry as an exception (a caller
-    that doesn't swallow it), the redis-originated ``Buffer is closed`` is still
-    benign and must be dropped."""
-    exc = _RedisConnectionError("Buffer is closed.")
-    evt = {"level": "error"}
-    assert _before_send(evt, hint={"exc_info": (type(exc), exc, None)}) is None
+    that doesn't swallow it), a ``Buffer is closed`` raised from the graphiti
+    FalkorDB driver is still benign and must be dropped."""
+    exc_info = _exc_info_raised_from(_FALKORDB_DRIVER_LOGGER, "Buffer is closed.")
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
+
+
+def test_main_redis_connection_closed_exc_kept() -> None:
+    """A genuine ``Connection closed by server`` from the platform's main redis
+    (NOT raised from the graphiti driver) is a real incident and must NOT be
+    swallowed by the teardown-noise rule."""
+    exc_info = _exc_info_raised_from(
+        "redis.asyncio.connection", "Connection closed by server."
+    )
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
 
 
 def test_falkordb_real_query_error_kept() -> None:
