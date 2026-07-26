@@ -515,11 +515,15 @@ def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") 
     lines.append("")
     lines.append("Want to create your own custom blocks? Check out our guides:")
     lines.append("")
+    # Build public doc URLs via the shared helper so the host/shape can't drift
+    # from the copilot docs tools (see backend/util/docs.py).
+    from backend.util.docs import make_doc_url
+
     lines.append(
-        "* [Build your own Blocks](https://docs.agpt.co/platform/new_blocks/) - Step-by-step tutorial with examples"
+        f"* [Build your own Blocks]({make_doc_url('platform/new_blocks.md')}) - Step-by-step tutorial with examples"
     )
     lines.append(
-        "* [Block SDK Guide](https://docs.agpt.co/platform/block-sdk-guide/) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
+        f"* [Block SDK Guide]({make_doc_url('platform/block-sdk-guide.md')}) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
     )
     lines.append("{% endhint %}")
     lines.append("")
