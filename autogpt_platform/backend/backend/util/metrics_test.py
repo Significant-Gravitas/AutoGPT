@@ -28,17 +28,26 @@ def _log_event(logger: str, message: str) -> dict:
     }
 
 
-def _exc_info_raised_from(module: str, message: str):
+class _RedisConnectionError(Exception):
+    """Exception whose *type* module mimics redis — so tests can tell the old
+    module-based scoping (checked ``exc_type.__module__``) apart from the new
+    traceback-based scoping (checks the raising frame's module)."""
+
+    __module__ = "redis.exceptions"
+
+
+def _exc_info_raised_from(module: str, message: str, exc_type=ConnectionError):
     """Build an ``exc_info`` triple whose traceback contains a frame in
-    ``module`` — mimics an exception re-raised from that module (e.g. the
-    graphiti FalkorDB driver, or the platform's main redis)."""
-    namespace: dict = {"__name__": module}
-    exec("def _raise(msg):\n    raise ConnectionError(msg)", namespace)
+    ``module`` and whose exception is ``exc_type`` — lets tests control both
+    the traceback origin (what the new scoping checks) and the exception
+    type's module (what the old module-based scoping checked)."""
+    namespace: dict = {"__name__": module, "_Exc": exc_type}
+    exec("def _raise(msg):\n    raise _Exc(msg)", namespace)
     try:
         namespace["_raise"](message)
-    except ConnectionError:
+    except exc_type:
         return sys.exc_info()
-    raise AssertionError("expected ConnectionError")
+    raise AssertionError("expected exception")
 
 
 # ---------- pika reconnect noise → dropped ----------
@@ -159,9 +168,13 @@ def test_falkordb_buffer_is_closed_exc_from_graphiti_dropped() -> None:
 def test_main_redis_connection_closed_exc_kept() -> None:
     """A genuine ``Connection closed by server`` from the platform's main redis
     (NOT raised from the graphiti driver) is a real incident and must NOT be
-    swallowed by the teardown-noise rule."""
+    swallowed by the teardown-noise rule. Uses a redis-module exception type so
+    the OLD module-based scoping would have dropped it — this test fails if the
+    traceback-based narrowing is reverted."""
     exc_info = _exc_info_raised_from(
-        "redis.asyncio.connection", "Connection closed by server."
+        "redis.asyncio.connection",
+        "Connection closed by server.",
+        _RedisConnectionError,
     )
     assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
 

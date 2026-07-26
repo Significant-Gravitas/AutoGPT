@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from types import TracebackType
 
 from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
@@ -85,7 +86,7 @@ _FALKORDB_TEARDOWN_SIGNATURES = (
 )
 
 
-def _raised_from_graphiti_falkordb(exc_tb) -> bool:
+def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
     """True if the graphiti FalkorDB driver module appears in the traceback.
 
     graphiti-core's ``execute_query`` re-raises from that module, so its frame
