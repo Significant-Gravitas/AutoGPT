@@ -70,6 +70,20 @@ _PIKA_RECONNECT_SIGNATURES = (
     "connection_lost",
 )
 
+# FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
+# ``execute_query`` logs ERROR + re-raises whenever a query races the closing of
+# its redis.asyncio connection — the fire-and-forget cache-eviction close or a
+# per-request ``driver.close()`` in a finally block. Chat degrades gracefully
+# (memory callers swallow it), so these are benign. Drop only the two teardown
+# signatures, scoped to the graphiti driver logger, so genuine query errors
+# (Cypher typos, missing graphs) still reach Sentry. (SENTRY-1387.)
+_FALKORDB_DRIVER_LOGGER = "graphiti_core.driver.falkordb_driver"
+_FALKORDB_TEARDOWN_SIGNATURES = (
+    "buffer is closed",
+    "connection closed by server",
+)
+_FALKORDB_MODULE_INDICATORS = ("falkordb", "redis")
+
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
@@ -89,6 +103,16 @@ def _before_send(event, hint):
                 ind in exc_module.lower() or ind in exc_name.lower()
                 for ind in _AMQP_INDICATORS
             ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
+                return None
+
+        # FalkorDB/redis connection-teardown races (eviction/shutdown) — benign
+        if any(sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES):
+            exc_module = getattr(exc_type, "__module__", "") or ""
+            exc_name = getattr(exc_type, "__name__", "") or ""
+            if any(
+                ind in exc_module.lower() or ind in exc_name.lower()
+                for ind in _FALKORDB_MODULE_INDICATORS
+            ):
                 return None
 
         # User-caused credential/auth/integration errors — not platform bugs
@@ -133,6 +157,9 @@ def _before_send(event, hint):
     logger_name = event.get("logger")
     if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
         if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
+        if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
             return None
     if logger_name and log_msg:
         msg = log_msg.lower()

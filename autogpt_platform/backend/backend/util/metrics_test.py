@@ -10,6 +10,8 @@ rather than a Sentry alert flood.
 from __future__ import annotations
 
 from backend.util.metrics import (
+    _FALKORDB_DRIVER_LOGGER,
+    _FALKORDB_TEARDOWN_SIGNATURES,
     _PIKA_RECONNECT_LOGGERS,
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
@@ -22,6 +24,12 @@ def _log_event(logger: str, message: str) -> dict:
         "logentry": {"formatted": message, "message": message},
         "level": "error",
     }
+
+
+class _RedisConnectionError(Exception):
+    """Stand-in whose ``__module__`` mimics a redis.asyncio teardown error."""
+
+    __module__ = "redis.exceptions"
 
 
 # ---------- pika reconnect noise → dropped ----------
@@ -105,3 +113,63 @@ def test_pika_reconnect_signatures_cover_all_four_known_patterns() -> None:
         "connection_lost",
     }
     assert expected == set(_PIKA_RECONNECT_SIGNATURES)
+
+
+# ---------- FalkorDB connection-teardown noise → dropped ----------
+
+
+def test_falkordb_buffer_is_closed_log_dropped() -> None:
+    """SENTRY-1387: ``Buffer is closed`` logged by graphiti-core's FalkorDB
+    driver is a benign connection-teardown race — a query racing the cache
+    eviction close or a per-request ``driver.close()``."""
+    evt = _log_event(
+        _FALKORDB_DRIVER_LOGGER,
+        "Error executing FalkorDB query: Buffer is closed.\nMATCH (n) RETURN n\n{}",
+    )
+    assert _before_send(evt, hint={}) is None
+
+
+def test_falkordb_connection_closed_by_server_log_dropped() -> None:
+    """The sibling teardown message from the same race — the driver docstring
+    pairs it with ``Buffer is closed``."""
+    evt = _log_event(
+        _FALKORDB_DRIVER_LOGGER,
+        "Error executing FalkorDB query: Connection closed by server.",
+    )
+    assert _before_send(evt, hint={}) is None
+
+
+def test_falkordb_buffer_is_closed_exc_info_dropped() -> None:
+    """If the re-raised teardown error reaches Sentry as an exception (a caller
+    that doesn't swallow it), the redis-originated ``Buffer is closed`` is still
+    benign and must be dropped."""
+    exc = _RedisConnectionError("Buffer is closed.")
+    evt = {"level": "error"}
+    assert _before_send(evt, hint={"exc_info": (type(exc), exc, None)}) is None
+
+
+def test_falkordb_real_query_error_kept() -> None:
+    """A genuine Cypher/query failure from the same driver logger is load-
+    bearing and must NOT be filtered out by the teardown-noise rule."""
+    evt = _log_event(
+        _FALKORDB_DRIVER_LOGGER,
+        "Error executing FalkorDB query: Invalid input 'RETRUN': expected...",
+    )
+    assert _before_send(evt, hint={}) is not None
+
+
+def test_falkordb_buffer_is_closed_from_other_logger_kept() -> None:
+    """The teardown signatures are only suppressed for the graphiti FalkorDB
+    driver logger; the same string from any other logger is kept."""
+    evt = _log_event(
+        "backend.data.redis_client",
+        "Buffer is closed.",
+    )
+    assert _before_send(evt, hint={}) is not None
+
+
+def test_falkordb_teardown_signatures_cover_known_patterns() -> None:
+    """Sanity check: the teardown-signature list still covers both messages the
+    graphiti FalkorDB driver docstring pairs together."""
+    expected = {"buffer is closed", "connection closed by server"}
+    assert expected == set(_FALKORDB_TEARDOWN_SIGNATURES)
