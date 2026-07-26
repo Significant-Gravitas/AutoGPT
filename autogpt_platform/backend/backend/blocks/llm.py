@@ -106,12 +106,6 @@ class ModelMetadata(NamedTuple):
     provider_name: str
     creator_name: str
     price_tier: Literal[1, 2, 3]
-    input_modalities: tuple[str, ...] = ("text",)
-    thinking: tuple[str, ...] = ()
-    input_price_per_million: float | None = None
-    output_price_per_million: float | None = None
-    cache_read_price_per_million: float | None = None
-    cache_write_price_per_million: float | None = None
 
 
 class LlmModelMeta(EnumMeta):
@@ -261,12 +255,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
                 "provider_name": metadata.provider_name,
                 "name": model_name,
                 "price_tier": metadata.price_tier,
-                "input_modalities": metadata.input_modalities,
-                "thinking": metadata.thinking,
-                "input_price_per_million": metadata.input_price_per_million,
-                "output_price_per_million": metadata.output_price_per_million,
-                "cache_read_price_per_million": metadata.cache_read_price_per_million,
-                "cache_write_price_per_million": metadata.cache_write_price_per_million,
             }
         json_schema["llm_model"] = True
         json_schema["llm_model_metadata"] = llm_model_metadata
@@ -317,11 +305,6 @@ MODEL_METADATA = {
         "MiniMax",
         "MiniMax",
         2,
-        ("text", "image", "video"),
-        ("adaptive", "disabled"),
-        0.6,
-        2.4,
-        0.12,
     ),
     LlmModel.MINIMAX_M2_7: ModelMetadata(
         "minimax",
@@ -331,12 +314,6 @@ MODEL_METADATA = {
         "MiniMax",
         "MiniMax",
         1,
-        ("text",),
-        ("always_on",),
-        0.3,
-        1.2,
-        0.06,
-        0.375,
     ),
     # https://platform.openai.com/docs/models
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),

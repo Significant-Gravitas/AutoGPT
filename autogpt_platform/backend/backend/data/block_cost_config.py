@@ -176,6 +176,8 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.KIMI_K2_5: 1,
     LlmModel.KIMI_K2_6: 2,
     LlmModel.KIMI_K2_THINKING: 2,
+    LlmModel.MINIMAX_M3: 2,
+    LlmModel.MINIMAX_M2_7: 1,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
     # Z.ai (Zhipu) models
@@ -295,6 +297,11 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.KIMI_K2_5: TokenRate(input=66, output=300),
     LlmModel.KIMI_K2_6: TokenRate(input=112, output=698),
     LlmModel.KIMI_K2_THINKING: TokenRate(input=90, output=375),
+    # MiniMax
+    LlmModel.MINIMAX_M3: TokenRate(input=90, output=360, cache_read=18),
+    LlmModel.MINIMAX_M2_7: TokenRate(
+        input=45, output=180, cache_read=9, cache_creation=56
+    ),
     # Perplexity Sonar
     LlmModel.PERPLEXITY_SONAR: TokenRate(input=150, output=150),
     LlmModel.PERPLEXITY_SONAR_PRO: TokenRate(input=450, output=2250),

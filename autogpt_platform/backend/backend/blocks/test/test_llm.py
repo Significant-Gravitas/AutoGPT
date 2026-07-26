@@ -1178,27 +1178,15 @@ class TestMiniMaxModelMetadata:
         metadata = llm.LlmModel.MINIMAX_M3.metadata
         assert metadata.provider == "minimax"
         assert metadata.context_window == 1_000_000
-        assert metadata.input_modalities == ("text", "image", "video")
-        assert metadata.thinking == ("adaptive", "disabled")
-        assert (
-            metadata.input_price_per_million,
-            metadata.output_price_per_million,
-        ) == (0.6, 2.4)
-        assert metadata.cache_read_price_per_million == 0.12
+        assert metadata.display_name == "MiniMax M3"
+        assert metadata.price_tier == 2
 
     def test_m2_7_metadata(self):
         metadata = llm.LlmModel.MINIMAX_M2_7.metadata
+        assert metadata.provider == "minimax"
         assert metadata.context_window == 204_800
-        assert metadata.input_modalities == ("text",)
-        assert metadata.thinking == ("always_on",)
-        assert (
-            metadata.input_price_per_million,
-            metadata.output_price_per_million,
-        ) == (0.3, 1.2)
-        assert (
-            metadata.cache_read_price_per_million,
-            metadata.cache_write_price_per_million,
-        ) == (0.06, 0.375)
+        assert metadata.display_name == "MiniMax M2.7"
+        assert metadata.price_tier == 1
 
 
 class TestExtractOpenRouterCost:
