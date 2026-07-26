@@ -170,6 +170,16 @@ export function getAnimationText(part: {
   }
 }
 
+export function getStreamingLoadingText(part: { input?: unknown }): string {
+  const input = part.input as RunAgentInput | undefined;
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  return isSchedule
+    ? "Scheduling agent, this might take a minute"
+    : "Running agent, this might take a minute";
+}
+
 export function ToolIcon({
   isStreaming,
   isError,

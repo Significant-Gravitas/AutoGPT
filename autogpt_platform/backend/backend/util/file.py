@@ -119,6 +119,7 @@ async def store_media_file(
     execution_context: "ExecutionContext",
     *,
     return_format: MediaReturnFormat,
+    organization_id: str | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path

@@ -15,11 +15,11 @@ export function SuccessView({ linkType, platform, serverName }: Props) {
   const label =
     forUser || !serverName ? `your ${platform} account` : serverName;
   const detail = forUser
-    ? `You can now chat with AutoPilot in your ${platform} DMs.`
-    : `Everyone in the server can start using AutoPilot right away.`;
+    ? `You can now chat with AutoGPT in your ${platform} DMs.`
+    : `Everyone in the server can start using AutoGPT right away.`;
 
   return (
-    <AuthCard title="AutoPilot is ready!">
+    <AuthCard title="AutoGPT is ready!">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
           <CheckCircle size={40} weight="fill" className="text-green-600" />

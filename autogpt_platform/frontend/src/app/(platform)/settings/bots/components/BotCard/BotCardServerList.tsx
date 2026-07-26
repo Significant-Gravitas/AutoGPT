@@ -27,7 +27,8 @@ export function BotCardServerList({
       <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
         <Text variant="small" as="span" className="text-zinc-500">
           No servers linked yet. Use &quot;Add bot to {platformName}&quot; to
-          invite the bot.
+          invite the bot — already added it? Run <code>/setup</code> there to
+          finish connecting.
         </Text>
       </div>
     );

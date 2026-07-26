@@ -8,13 +8,16 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import starlette.datastructures
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
+    SkillLimitError,
     SkillNotFoundError,
 )
 from backend.data.credit import AutoTopUpConfig
@@ -23,6 +26,21 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationE
 from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
+
+
+def _test_ctx(user_id: str) -> RequestContext:
+    return RequestContext(
+        user_id=user_id,
+        org_id="test-org",
+        team_id="test-workspace",
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=True,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
@@ -34,14 +52,34 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user, setup_test_user):
+def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from autogpt_libs.auth.models import RequestContext
 
     # setup_test_user fixture already executed and user is created in database
     # It returns the user_id which we don't need to await
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    # Override get_request_context too — the real one queries Prisma to
+    # resolve the user's personal org when no X-Org-Id header is set,
+    # which closes/leaks the test event loop across sync TestClient calls.
+    async def _fake_request_context() -> RequestContext:
+        return RequestContext(
+            user_id=test_user_id,
+            org_id="test-org",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+
+    app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
 
@@ -60,21 +98,54 @@ def test_get_or_create_user_route(
         "email": "test@example.com",
         "name": "Test User",
     }
+    mock_result = Mock(user=mock_user, was_created=False)
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user",
-        return_value=mock_user,
+        "backend.api.features.v1.get_or_create_user_with_status",
+        return_value=mock_result,
     )
 
     response = client.post("/auth/user")
 
     assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "false"
     response_data = response.json()
 
     configured_snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_user",
     )
+
+
+def test_get_or_create_user_route_reports_creation(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_user = Mock()
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {
+        "id": test_user_id,
+        "email": "test@example.com",
+    }
+
+    mocker.patch(
+        "backend.api.features.v1.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=True),
+    )
+
+    response = client.post("/auth/user")
+
+    assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "true"
+
+
+def test_get_or_create_user_route_documents_creation_header() -> None:
+    response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
+
+    assert response_schema["headers"]["X-AutoGPT-User-Created"] == {
+        "description": "Whether this request created a new user",
+        "schema": {"type": "string", "enum": ["true", "false"]},
+    }
 
 
 def test_update_user_email_route(
@@ -180,7 +251,7 @@ def test_execute_graph_block(
     )
     mock_credit_model = mocker.AsyncMock()
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -372,7 +443,7 @@ def test_get_user_credits(
     mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -399,7 +470,7 @@ def test_request_top_up(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -427,7 +498,7 @@ def test_request_top_up_forwards_datafast_headers(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -492,7 +563,7 @@ def test_configure_auto_top_up(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -522,7 +593,7 @@ def test_configure_auto_top_up_validation_errors(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -566,7 +637,7 @@ def test_list_invoices_returns_mapped_payload(
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[invoice])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -591,7 +662,7 @@ def test_list_invoices_clamps_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -606,7 +677,7 @@ def test_list_invoices_default_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -1026,6 +1097,7 @@ async def test_upload_file_success(test_user_id: str):
         result = await upload_file(
             file=upload_file_mock,
             user_id=test_user_id,
+            ctx=_test_ctx(test_user_id),
             expiration_hours=24,
         )
 
@@ -1076,7 +1148,9 @@ async def test_upload_file_no_filename(test_user_id: str):
 
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
-        result = await upload_file(file=upload_file_mock, user_id=test_user_id)
+        result = await upload_file(
+            file=upload_file_mock, user_id=test_user_id, ctx=_test_ctx(test_user_id)
+        )
 
         assert result.file_name == "uploaded_file"
         assert result.content_type == "application/octet-stream"
@@ -1098,7 +1172,10 @@ async def test_upload_file_invalid_expiration(test_user_id: str):
     # Test expiration too short
     with pytest.raises(HTTPException) as exc_info:
         await upload_file(
-            file=upload_file_mock, user_id=test_user_id, expiration_hours=0
+            file=upload_file_mock,
+            user_id=test_user_id,
+            ctx=_test_ctx(test_user_id),
+            expiration_hours=0,
         )
     assert exc_info.value.status_code == 400
     assert "between 1 and 48" in exc_info.value.detail
@@ -1106,7 +1183,10 @@ async def test_upload_file_invalid_expiration(test_user_id: str):
     # Test expiration too long
     with pytest.raises(HTTPException) as exc_info:
         await upload_file(
-            file=upload_file_mock, user_id=test_user_id, expiration_hours=49
+            file=upload_file_mock,
+            user_id=test_user_id,
+            ctx=_test_ctx(test_user_id),
+            expiration_hours=49,
         )
     assert exc_info.value.status_code == 400
     assert "between 1 and 48" in exc_info.value.detail
@@ -1130,7 +1210,11 @@ async def test_upload_file_virus_scan_failure(test_user_id: str):
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
         with pytest.raises(RuntimeError, match="Virus detected!"):
-            await upload_file(file=upload_file_mock, user_id=test_user_id)
+            await upload_file(
+                file=upload_file_mock,
+                user_id=test_user_id,
+                ctx=_test_ctx(test_user_id),
+            )
 
 
 @pytest.mark.asyncio
@@ -1158,7 +1242,11 @@ async def test_upload_file_cloud_storage_failure(test_user_id: str):
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
         with pytest.raises(RuntimeError, match="Storage error!"):
-            await upload_file(file=upload_file_mock, user_id=test_user_id)
+            await upload_file(
+                file=upload_file_mock,
+                user_id=test_user_id,
+                ctx=_test_ctx(test_user_id),
+            )
 
 
 @pytest.mark.asyncio
@@ -1176,7 +1264,11 @@ async def test_upload_file_size_limit_exceeded(test_user_id: str):
     upload_file_mock.read = AsyncMock(return_value=large_file_content)
 
     with pytest.raises(HTTPException) as exc_info:
-        await upload_file(file=upload_file_mock, user_id=test_user_id)
+        await upload_file(
+            file=upload_file_mock,
+            user_id=test_user_id,
+            ctx=_test_ctx(test_user_id),
+        )
 
     assert exc_info.value.status_code == 400
     assert "exceeds the maximum allowed size of 256MB" in exc_info.value.detail
@@ -1206,7 +1298,11 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
 
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
-        result = await upload_file(file=upload_file_mock, user_id=test_user_id)
+        result = await upload_file(
+            file=upload_file_mock,
+            user_id=test_user_id,
+            ctx=_test_ctx(test_user_id),
+        )
 
         # Verify fallback behavior
         assert result.file_name == "test.txt"
@@ -1420,3 +1516,85 @@ def test_read_copilot_skill_returns_404_when_missing(
 
     response = client.get("/skills/missing")
     assert response.status_code == 404
+
+
+_VALID_SKILL_MD = (
+    "---\n"
+    "name: oauth_flow\n"
+    "description: OAuth handshake recipe\n"
+    "triggers:\n"
+    "  - auth\n"
+    "---\n\n"
+    "# OAuth flow\n\nStep 1: redirect to /authorize\n"
+)
+
+
+def test_upload_copilot_skill_creates_skill(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """POST /skills parses the SKILL.md and persists it via store_user_skill."""
+    store_mock = AsyncMock(
+        return_value=ParsedSkill(
+            name="oauth_flow",
+            description="OAuth handshake recipe",
+            body="# OAuth flow",
+            triggers=("auth",),
+        )
+    )
+    mocker.patch("backend.api.features.v1.store_user_skill", store_mock)
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "oauth_flow"
+    assert body["triggers"] == ["auth"]
+    store_mock.assert_awaited_once()
+    assert store_mock.await_args.kwargs["name"] == "oauth_flow"
+
+
+def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
+    """A file without valid frontmatter returns 400 before touching storage."""
+    response = client.post(
+        "/skills", json={"content": "just some text, no frontmatter"}
+    )
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_409_when_at_cap(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The per-user cap surfaces as 409 so the UI can prompt a delete."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=SkillLimitError("Skill limit reached (50).")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 409
+
+
+def test_upload_copilot_skill_returns_400_on_validation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A validation failure from store_user_skill maps to 400."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=ValueError("name must be a slug")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+
+
+def test_upload_copilot_skill_returns_400_on_virus_detection(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A virus-scan rejection surfaces as a 400 client error, not a 500."""
+    mocker.patch(
+        "backend.api.features.v1.store_user_skill",
+        AsyncMock(side_effect=VirusDetectedError("nasty")),
+    )
+
+    response = client.post("/skills", json={"content": _VALID_SKILL_MD})
+    assert response.status_code == 400
+    assert "virus scan" in response.json()["detail"]

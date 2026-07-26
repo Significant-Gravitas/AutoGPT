@@ -39,12 +39,14 @@ describe("ContextPanelAutoOpen", () => {
     }));
   });
 
-  test("opens the panel to the Files tab when the session has files", async () => {
+  test("opens the last generated file in the artifact panel when the session has files", async () => {
     server.use(getListWorkspaceFilesMockHandler200(withFiles()));
     render(<ContextPanelAutoOpen sessionId={SESSION} />);
     await waitFor(() =>
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true),
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
     );
-    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
 });

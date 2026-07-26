@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.providers import ProviderLiteral
@@ -53,7 +53,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4.7"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 
@@ -202,7 +202,7 @@ class ChatConfig(BaseSettings):
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
     fast_standard_model: str = Field(
-        default="anthropic/claude-sonnet-4-6",
+        default="anthropic/claude-sonnet-5",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
@@ -220,7 +220,7 @@ class ChatConfig(BaseSettings):
         "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-4-6",
+        default="anthropic/claude-sonnet-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
@@ -229,7 +229,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-4.7",
+        default="anthropic/claude-opus-4-8",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -732,7 +732,8 @@ class ChatConfig(BaseSettings):
         while ``main_client_credentials`` still routes to OpenRouter (gated on
         ``openrouter_active``) would send direct-Anthropic shape to an
         OpenRouter endpoint.  ``local`` is checked first because its default
-        ``api_key="ollama"`` also satisfies the shape-only ``openrouter_active``.
+        ``api_key`` of ``ollama`` also satisfies the shape-only
+        ``openrouter_active``.
         """
         if self.transport.name == "local":
             return "local"
@@ -1049,7 +1050,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-4.7`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-4-8`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1058,7 +1059,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4.7`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.
@@ -1351,17 +1352,16 @@ class ChatConfig(BaseSettings):
         "onboarding": "prompts/onboarding_system.md",
     }
 
-    class Config:
-        """Pydantic config."""
-
-        env_prefix = "CHAT_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = SettingsConfigDict(
+        env_prefix="CHAT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra environment variables
         # Accept both the Python attribute name and the validation_alias when
         # constructing a ``ChatConfig`` directly (e.g. in tests passing
         # ``thinking_standard_model=...``).  Without this, pydantic only
         # accepts the alias names (``CHAT_THINKING_STANDARD_MODEL`` env) and
         # rejects field-name kwargs — breaking ``ChatConfig(field=...)`` in
         # every test that constructs a config.
-        populate_by_name = True
+        populate_by_name=True,
+    )

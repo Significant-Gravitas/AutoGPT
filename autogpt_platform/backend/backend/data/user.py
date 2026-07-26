@@ -3,6 +3,8 @@ import base64
 import hashlib
 import hmac
 import logging
+import random
+import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -10,12 +12,26 @@ from urllib.parse import quote_plus
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
 from prisma.models import User as PrismaUser
-from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
+from prisma.types import (
+    JsonFilter,
+    ProfileCreateInput,
+    UserCreateInput,
+    UserUpdateInput,
+)
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma
-from backend.data.model import User, UserIntegrations, UserMetadata
+from backend.data.model import (
+    CREDENTIALS_ADAPTER,
+    Credentials,
+    User,
+    UserIntegrations,
+    UserMetadata,
+)
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.org_migration import ensure_personal_org
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError
@@ -32,8 +48,23 @@ settings = Settings()
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
+class UserCreationResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user: User
+    was_created: bool
+
+
 @cache_user_lookup
 async def get_or_create_user(user_data: dict) -> User:
+    return (await _get_or_create_user(user_data)).user
+
+
+async def get_or_create_user_with_status(user_data: dict) -> UserCreationResult:
+    return await _get_or_create_user(user_data)
+
+
+async def _get_or_create_user(user_data: dict) -> UserCreationResult:
     try:
         user_id = user_data.get("sub")
         if not user_id:
@@ -52,10 +83,121 @@ async def get_or_create_user(user_data: dict) -> User:
                     name=user_data.get("user_metadata", {}).get("name"),
                 )
             )
+            was_created = True
+        else:
+            was_created = False
 
-        return User.from_db(user)
+        # Ensure every user has a marketplace Profile (required to publish
+        # agents). Best-effort: a failure must not block user resolution — the
+        # user self-heals on their next request or via the profile settings page.
+        try:
+            await _ensure_user_profile(user.id, user.email)
+        except Exception:
+            logger.warning(
+                "Failed to ensure marketplace profile for user %s",
+                user.id,
+                exc_info=True,
+            )
+
+        # Ensure every user owns a personal org + default team. Unlike the
+        # Profile above this is NOT best-effort: without an org, every
+        # org-scoped endpoint (save graph, chat, ...) fails with "No
+        # organization context available", so a failure here must fail the
+        # request loudly instead of returning a bricked account. Idempotent and
+        # race-safe (see ensure_personal_org).
+        await ensure_personal_org(user.id)
+
+        return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
+
+
+# Word lists mirror the legacy generate_username() SQL function so that app-
+# and DB-generated handles look consistent.
+_PROFILE_USERNAME_ADJECTIVES = (
+    "happy",
+    "clever",
+    "swift",
+    "bright",
+    "wise",
+    "funny",
+    "cool",
+    "awesome",
+    "amazing",
+    "fantastic",
+    "wonderful",
+)
+_PROFILE_USERNAME_ANIMALS = (
+    "fox",
+    "wolf",
+    "bear",
+    "eagle",
+    "owl",
+    "tiger",
+    "lion",
+    "elephant",
+    "giraffe",
+    "zebra",
+)
+
+
+async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
+    """Create a default marketplace Profile for *user_id* if none exists.
+
+    Idempotent and race-safe. A UniqueViolationError has two possible sources:
+    a concurrent request that already created this user's Profile (done), or a
+    collision on the unique username with *another* user (retry with a fresh
+    handle — otherwise the user would be left without a Profile).
+    """
+    if await prisma.profile.find_unique(where={"userId": user_id}):
+        return
+
+    name = (email or "").split("@", 1)[0] or "user"
+    for _ in range(3):
+        try:
+            await prisma.profile.create(
+                data=ProfileCreateInput(
+                    userId=user_id,
+                    name=name,
+                    username=await _generate_profile_username(),
+                    description="I'm new here",
+                    links=[],
+                    avatarUrl="",
+                )
+            )
+            return
+        except UniqueViolationError:
+            if await prisma.profile.find_unique(where={"userId": user_id}):
+                # Another in-flight request (or the legacy auth.users trigger)
+                # created this user's Profile — nothing to do.
+                logger.debug(
+                    "Profile for user %s already created concurrently", user_id
+                )
+                return
+            # The generated username collided with another user — loop and
+            # retry with a fresh handle.
+    logger.warning(
+        "Failed to create a unique profile handle for user %s after retries",
+        user_id,
+    )
+
+
+async def _generate_profile_username() -> str:
+    """Generate a human-friendly profile handle, avoiding obvious collisions.
+
+    The unique constraint on Profile.username is the real guarantee; this
+    pre-check just avoids retrying a create in the common case. Falls back to a
+    UUID-based handle if we can't find a free friendly name.
+    """
+    for _ in range(10):
+        candidate = (
+            f"{random.choice(_PROFILE_USERNAME_ADJECTIVES)}-"
+            f"{random.choice(_PROFILE_USERNAME_ANIMALS)}-"
+            f"{random.randint(10000, 99999)}"
+        )
+        if not await prisma.profile.find_unique(where={"username": candidate}):
+            return candidate
+    return f"user-{uuid.uuid4().hex[:12]}"
 
 
 @cache_user_lookup
@@ -159,6 +301,99 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
     )
     # Invalidate cache for this user
     get_user_by_id.cache_delete(user_id)
+
+
+async def get_user_credentials(user_id: str) -> list[Credentials]:
+    """Read the user's credentials from the IntegrationCredential table.
+
+    Source of truth post blob→table migration (the UserIntegrations blob
+    is retained only as a rollback artifact). Returns USER-scoped active
+    rows; TEAM/ORG-scoped credentials are resolved separately via
+    ``backend.integrations.scoped_credentials``.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
+        order={"createdAt": "asc"},
+    )
+    cryptor = JSONCryptor()
+    credentials: list[Credentials] = []
+    for row in rows:
+        try:
+            credentials.append(
+                CREDENTIALS_ADAPTER.validate_python(
+                    cryptor.decrypt(row.encryptedPayload)
+                )
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {user_id}; skipping",
+                exc_info=True,
+            )
+    return credentials
+
+
+async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
+    """Full-list replace of the user's USER-scoped credential rows.
+
+    Mirrors the old blob replace semantics the credential store is built
+    around: rows missing from ``credentials`` are revoked (soft delete),
+    new ids are created, existing ids get their payload refreshed
+    (OAuth token rotation runs through here constantly).
+    """
+    cryptor = JSONCryptor()
+    existing_rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "ownerId": user_id},
+    )
+    existing_by_id = {row.id: row for row in existing_rows}
+    incoming_ids = {c.id for c in credentials}
+
+    org_id: str | None = None
+    for cred in credentials:
+        row = existing_by_id.get(cred.id)
+        encrypted = cryptor.encrypt(cred.model_dump())
+        if row is not None:
+            await prisma.integrationcredential.update(
+                where={"id": cred.id},
+                data={
+                    "encryptedPayload": encrypted,
+                    "displayName": cred.title or cred.provider,
+                    "status": "active",
+                },
+            )
+            continue
+        if org_id is None:
+            org_row = await prisma.organization.find_first(
+                where={
+                    "isPersonal": True,
+                    "Members": {"some": {"userId": user_id, "isOwner": True}},
+                }
+            )
+            if org_row is None:
+                raise DatabaseError(
+                    f"Cannot store credentials for user {user_id}: "
+                    "personal org not bootstrapped"
+                )
+            org_id = org_row.id
+        await prisma.integrationcredential.create(
+            data={
+                "id": cred.id,
+                "organizationId": org_id,
+                "ownerType": "USER",
+                "ownerId": user_id,
+                "provider": cred.provider,
+                "credentialType": cred.type,
+                "displayName": cred.title or cred.provider,
+                "encryptedPayload": encrypted,
+                "createdByUserId": user_id,
+            }
+        )
+
+    for row in existing_rows:
+        if row.id not in incoming_ids and row.status == "active":
+            await prisma.integrationcredential.update(
+                where={"id": row.id},
+                data={"status": "revoked"},
+            )
 
 
 async def migrate_and_encrypt_user_integrations():

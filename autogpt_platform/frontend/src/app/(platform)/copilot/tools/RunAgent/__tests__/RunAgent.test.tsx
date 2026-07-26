@@ -6,7 +6,11 @@ vi.mock("@sentry/nextjs", async (importOriginal) => ({
 }));
 
 import * as Sentry from "@sentry/nextjs";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  normalizeWhitespace,
+} from "@/tests/integrations/test-utils";
 import { RunAgentTool, type RunAgentToolPart } from "../RunAgent";
 
 function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
@@ -18,6 +22,36 @@ function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
     ...overrides,
   };
 }
+
+describe("RunAgentTool streaming state", () => {
+  it("shows the plain loading line (no mini-game) while streaming", () => {
+    const { container } = render(
+      <RunAgentTool part={makePart({ state: "input-streaming" })} />,
+    );
+
+    expect(normalizeWhitespace(container)).toContain(
+      "Running agent, this might take a minute",
+    );
+    expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
+    expect(normalizeWhitespace(container)).not.toContain("WASD");
+  });
+
+  it("shows the scheduling loading line when the input is a schedule", () => {
+    const { container } = render(
+      <RunAgentTool
+        part={makePart({
+          state: "input-streaming",
+          input: { agent_id: "a1", cron: "0 0 * * *" },
+        })}
+      />,
+    );
+
+    expect(normalizeWhitespace(container)).toContain(
+      "Scheduling agent, this might take a minute",
+    );
+    expect(normalizeWhitespace(container)).not.toContain("Running agent");
+  });
+});
 
 describe("RunAgentTool corrupted output", () => {
   beforeEach(() => {

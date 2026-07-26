@@ -37,10 +37,11 @@ import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
+import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
-import { getLatestTaskList } from "../ContextPanel/components/ProgressTab/helpers";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -102,6 +103,14 @@ function renderSegments(
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    if (seg.kind === "reasoning-group") {
+      return (
+        <ReasoningGroup
+          key={`${messageID}-reasoning-${seg.index}`}
+          parts={seg.parts}
+        />
+      );
     }
     return (
       <MessagePartRenderer
@@ -314,14 +323,18 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  // The in-chat "progress in the sidebar" notice only applies to the old
+  // sidebar surface — hide it entirely when the task bar is on.
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
-  const latestTaskList = getLatestTaskList(messages);
   const isChatStreaming = status === "streaming" || status === "submitted";
-  const hasActiveTaskList = shouldShowTaskListNotice({
-    isContextPanelEnabled,
-    isChatStreaming,
-    latestTaskList,
-  });
+  const hasActiveTaskList =
+    !isTaskBarEnabled &&
+    shouldShowTaskListNotice({
+      isContextPanelEnabled,
+      isChatStreaming,
+      latestTaskList: getLatestTaskList(messages),
+    });
 
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -575,6 +588,7 @@ export function ChatMessagesContainer({
               from={message.role}
               key={message.id}
               data-message-id={message.id}
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
               <MessageContent
                 className={
@@ -690,7 +704,10 @@ export function ChatMessagesContainer({
           </div>
         )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
+          <Message
+            from="assistant"
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+          >
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>

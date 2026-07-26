@@ -121,6 +121,40 @@ describe("LibraryAgentList — Scheduled status filter", () => {
     });
   });
 
+  test("excludes agents that only have recommended_schedule_cron (not actually scheduled by the user) from the scheduled filter", async () => {
+    setupHandlers([
+      makeAgent({
+        id: "a-recommendation-only",
+        graph_id: "g-recommendation-only",
+        name: "Recommendation Only Agent",
+        is_scheduled: false,
+        recommended_schedule_cron: "0 9 * * *",
+      }),
+    ]);
+
+    renderList("scheduled");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Recommendation Only Agent")).toBeNull();
+    });
+  });
+
+  test("includes agents that only have recommended_schedule_cron in the idle filter", async () => {
+    setupHandlers([
+      makeAgent({
+        id: "a-recommendation-only",
+        graph_id: "g-recommendation-only",
+        name: "Recommendation Only Agent",
+        is_scheduled: false,
+        recommended_schedule_cron: "0 9 * * *",
+      }),
+    ]);
+
+    renderList("idle");
+
+    expect(await screen.findByText("Recommendation Only Agent")).toBeDefined();
+  });
+
   test("excludes idle agents (no schedule, no recommendation) from the scheduled filter", async () => {
     setupHandlers([
       makeAgent({
