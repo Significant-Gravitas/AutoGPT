@@ -104,11 +104,21 @@ class TestPlainStrings:
     def test_short_string_is_unchanged(self):
         assert truncate("hello", 100) == "hello"
 
-    def test_long_string_is_truncated_to_the_limit(self):
+    def test_long_string_keeps_limit_chars_plus_the_omission_marker(self):
+        # A `str` passed directly does not go through the search, so it is the
+        # one input that overshoots `size_limit`: `_truncate_string_middle`
+        # keeps exactly `limit` characters and then appends the marker. This
+        # is long-standing behaviour, identical before and after the fast path
+        # above, and it is why the size_limit bound asserted elsewhere in this
+        # module is about the searched (dict/list) path rather than about
+        # every input.
+        marker = "… (omitted 400 chars)…"
+
         result = truncate("x" * 500, 100)
 
-        assert len(result) > 0
-        assert OMISSION_MARKER in result
+        assert result == ("x" * 50) + marker + ("x" * 50)
+        assert len(result) == 100 + len(marker)
+        assert len(result) < len("x" * 500)
 
 
 class TestRepeatedCalls:

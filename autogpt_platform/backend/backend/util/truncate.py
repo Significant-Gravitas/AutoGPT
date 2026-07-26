@@ -77,6 +77,10 @@ def truncate(value: Any, size_limit: int) -> Any:
     Truncate the given value (recursively) so that its string representation
     does not exceed size_limit characters. Uses binary search to find the
     largest str_limit and list_limit that fit.
+
+    A `str` passed directly is the exception: it keeps size_limit characters
+    and then gains the "… (omitted N chars)…" marker, so it overshoots the
+    limit by the marker's length.
     """
 
     # Fast path: plain strings don't need the binary search machinery.
