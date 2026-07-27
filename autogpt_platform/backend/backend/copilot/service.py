@@ -30,6 +30,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLlmModel
+from .expert_context import build_expert_context
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -534,6 +535,7 @@ async def inject_user_context(
     session_ctx: str = "",
     skills_ctx: str = "",
     user_id: str | None = None,
+    expert_id: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -577,6 +579,11 @@ async def inject_user_context(
             ``<available_skills>`` block.  Same trust contract as ``env_ctx``
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
+        expert_id: Hired expert this session is scoped to, or ``None`` for a
+            plain Autopilot session.  Used to build the ``<expert_identity>``
+            / ``<expert_workflows>`` (expert session) or ``<team_context>``
+            (plain session) prefix via ``build_expert_context``.  Lookup
+            failures degrade silently to no block.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
@@ -658,6 +665,14 @@ async def inject_user_context(
             f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
             + final_message
         )
+    # Prepend the expert identity/workflows block (expert session) or team
+    # awareness block (plain session).  Server-injected after sanitisation
+    # like the other trusted blocks; degrades to "" on any lookup failure so
+    # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
+    # below the cached <available_skills> prefix.
+    expert_ctx = await build_expert_context(user_id, expert_id)
+    if expert_ctx:
+        final_message = expert_ctx + final_message
     # Prepend Graphiti warm context as a <memory_context> block AFTER
     # sanitization so the trusted server-injected block is never stripped by
     # ``sanitize_user_supplied_context``.  Memory must land BELOW
