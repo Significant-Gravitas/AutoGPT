@@ -36,7 +36,9 @@ describe("getDateGroupLabel", () => {
   });
 
   it("formats older same-year dates with the browser locale date order", () => {
-    const date = new Date("2026-06-20T08:00:00");
+    const date = new Date(NOW);
+    date.setDate(date.getDate() - 10);
+    date.setHours(8, 0, 0, 0);
     const label = getDateGroupLabel(date.toISOString());
     expect(label).toBe(
       new Intl.DateTimeFormat(undefined, {
@@ -47,7 +49,9 @@ describe("getDateGroupLabel", () => {
   });
 
   it("includes the year for dates in a previous year using locale order", () => {
-    const date = new Date("2024-12-01T08:00:00");
+    const date = new Date(NOW);
+    date.setFullYear(date.getFullYear() - 2);
+    date.setHours(8, 0, 0, 0);
     const label = getDateGroupLabel(date.toISOString());
     expect(label).toBe(
       new Intl.DateTimeFormat(undefined, {
