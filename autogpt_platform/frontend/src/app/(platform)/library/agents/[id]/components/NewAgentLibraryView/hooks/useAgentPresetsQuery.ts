@@ -1,25 +1,63 @@
-import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
-import { okData } from "@/app/api/helpers";
+import { useEffect } from "react";
+
+import { useGetV2ListPresetsInfinite } from "@/app/api/__generated__/endpoints/presets/presets";
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { retryUnlessClientError } from "../helpers";
 
-// Single-page cap; beyond it unknown IDs fall back to a by-ID preset fetch
-// (see deriveSelectedTriggerKind). Unpaginating the endpoint would remove
-// this — tracked in #13633.
+// Per-request page size. The hook eagerly pages through every preset for the
+// agent (up to MAX_PRESET_PAGES) so membership routing has the complete set at
+// mount — see deriveSelectedTriggerKind.
 export const PRESETS_PAGE_SIZE = 100;
 
+// Safety bound on eager pagination: 20 * 100 = 2000 presets per agent. Beyond
+// it we stop paginating and the graceful by-ID fallback in
+// deriveSelectedTriggerKind takes over for unknown IDs.
+const MAX_PRESET_PAGES = 20;
+
 /**
- * The agent's presets (webhook triggers + templates). Shared by the sidebar
- * and the detail-pane router so both read one React Query cache entry.
+ * The agent's presets (webhook triggers + templates), paged into a single
+ * list. Shared by the sidebar and the detail-pane router so both read one
+ * React Query cache entry.
+ *
+ * `presetsComplete` is true once every page has loaded, so membership is
+ * authoritative. `presetsSettled` is true once no more pages will be fetched
+ * (either complete, or stopped at the page cap) — the router waits while it's
+ * false rather than resolving a selection against a partial list.
  */
 export function useAgentPresetsQuery(graphId: string | undefined) {
-  return useGetV2ListPresets(
+  const query = useGetV2ListPresetsInfinite(
     { graph_id: graphId ?? "", page: 1, page_size: PRESETS_PAGE_SIZE },
     {
       query: {
         enabled: !!graphId,
-        select: okData,
+        getNextPageParam: getPaginationNextPageNumber,
         retry: retryUnlessClientError,
       },
     },
   );
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  const reachedPageCap = (query.data?.pages.length ?? 0) >= MAX_PRESET_PAGES;
+  const morePagesPending = hasNextPage && !reachedPageCap;
+
+  useEffect(() => {
+    if (morePagesPending && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [morePagesPending, isFetchingNextPage, fetchNextPage]);
+
+  const presets = query.data ? unpaginate(query.data, "presets") : undefined;
+  const presetsComplete = query.isSuccess && !hasNextPage;
+  const presetsSettled = query.isSuccess && !morePagesPending;
+
+  return {
+    presets,
+    presetsComplete,
+    presetsSettled,
+    isSuccess: query.isSuccess,
+    isError: query.isError,
+    isStale: query.isStale,
+    error: query.error,
+    refetch: query.refetch,
+  };
 }

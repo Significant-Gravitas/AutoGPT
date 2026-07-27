@@ -618,19 +618,36 @@ describe("Library agent view — trigger agents", () => {
     });
   });
 
-  test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
+  test("a preset beyond the first page resolves from membership once all pages load", async () => {
     const beyondPagePreset = makeWebhookPreset({
       id: "beyond-page-1",
       name: "Beyond Page Trigger",
     });
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
 
     server.use(
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
-      // The first page doesn't contain the selected ID, but total_items says
-      // the page is incomplete — membership must NOT conclude "not-found".
-      singlePresetListHandler(makeWebhookPreset(), 150),
+      // 101 presets over two pages; the selected ID lives on page 2. The hook
+      // pages through everything, so membership resolves it as a webhook
+      // trigger rather than assuming "not-found".
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: page <= 1 ? firstPage : [beyondPagePreset],
+          pagination: {
+            total_items: firstPage.length + 1,
+            total_pages: 2,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
       getGetV2GetASpecificPresetMockHandler(beyondPagePreset),
     );
 
@@ -639,9 +656,65 @@ describe("Library agent view — trigger agents", () => {
       "activeTab=triggers&activeItem=beyond-page-1",
     );
 
-    await screen.findByText("Trigger Details");
+    // Paging through every preset then fetching the detail is a longer async
+    // chain than a single-page load, so allow extra time.
+    await screen.findByText("Trigger Details", undefined, { timeout: 5000 });
     screen.getByDisplayValue("Beyond Page Trigger");
     expect(screen.queryByText("Trigger not found")).toBeNull();
+  });
+
+  test("unknown ID across a fully paginated presets list resolves to not-found without a by-ID fetch", async () => {
+    // 150 presets over two pages (page_size 100). The selected ID is on
+    // neither page, so once every page has loaded membership is authoritative
+    // and the router must land on not-found WITHOUT a throwaway by-ID fetch.
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
+    const secondPage = Array.from({ length: 50 }, (_, i) =>
+      makeWebhookPreset({
+        id: `page2-preset-${i + 1}`,
+        name: `Trigger ${i + 100}`,
+      }),
+    );
+    const totalItems = firstPage.length + secondPage.length;
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: page <= 1 ? firstPage : secondPage,
+          pagination: {
+            total_items: totalItems,
+            total_pages: 2,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      // Fires only if the router wrongly assumes the unknown ID is a preset —
+      // the degraded behavior this fix removes.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return getGetV2GetASpecificPresetResponseMock();
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=deleted-preset-id",
+    );
+
+    // Paging through every preset before concluding not-found is a longer
+    // async chain than a single-page load, so allow extra time.
+    await screen.findByText("Trigger not found", undefined, { timeout: 5000 });
+    await screen.findByText(/doesn't exist or is no longer available/i);
+    expect(presetGetCalls).toBe(0);
   });
 
   test("webhook trigger deleted between list and detail fetch renders the not-found card", async () => {
