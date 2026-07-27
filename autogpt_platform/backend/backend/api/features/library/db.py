@@ -189,7 +189,12 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
+        # Match both the snapshotted marketplace name/description (shown on the
+        # card for downloaded agents) and the underlying graph's own values, so
+        # searching the displayed title always finds the agent.
         where_clause["OR"] = [
+            {"name": {"contains": search_term, "mode": "insensitive"}},
+            {"description": {"contains": search_term, "mode": "insensitive"}},
             {
                 "AgentGraph": {
                     "is": {"name": {"contains": search_term, "mode": "insensitive"}}
@@ -1151,10 +1156,10 @@ async def add_store_agent_to_library(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, store_listing_version = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=False
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1168,10 +1173,10 @@ async def add_store_agent_to_library_as_admin(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, store_listing_version = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=True
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
 
 ##############################################
