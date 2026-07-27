@@ -36,7 +36,7 @@ export function GlobalSearchOverlay() {
     if (!isEnabled) return;
     function handleSearchShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "k") return;
+      if (!event.key || event.key.toLocaleLowerCase() !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
       // The new layout binds Cmd/Ctrl+Shift+K; the classic chat-search path
       // keeps its original plain Cmd/Ctrl+K, so only require Shift on the new
