@@ -164,8 +164,8 @@ async def auto_lookup_mcp_credential(
     so the comparison with ``mcp_server_url`` in credential metadata matches.
 
     Matches both OAuth2 credentials and static API-key / bearer tokens.
-    Returns the credential with the latest expiry, refreshed if needed (OAuth2
-    only), or ``None`` when no match is found.
+    Returns the highest-ranked credential (see :func:`_mcp_credential_rank`),
+    refreshed if needed (OAuth2 only), or ``None`` when no match is found.
     """
     try:
         mgr = IntegrationCredentialsManager()
@@ -173,11 +173,11 @@ async def auto_lookup_mcp_credential(
             user_id, ProviderName.MCP.value
         )
         # Collect all matching credentials and pick the best one.
-        # Primary sort: latest expiry (tokens with expiry are preferred over
-        # non-expiring ones).  Secondary sort: last in iteration order, which
-        # corresponds to the most recently created row — this acts as a
-        # tiebreaker when multiple bearer tokens have no expiry (e.g. after a
-        # failed old-credential cleanup).
+        # Primary sort: rank (non-expiring credentials highest, then latest
+        # expiry — see _mcp_credential_rank).  Secondary sort: last in
+        # iteration order, which corresponds to the most recently created row —
+        # this acts as a tiebreaker when several equally-ranked tokens exist
+        # (e.g. after a failed old-credential cleanup).
         best: MCPCredential | None = None
         for cred in mcp_creds:
             if is_mcp_credential_for_server(cred, server_url):
