@@ -17760,6 +17760,13 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
@@ -18092,7 +18099,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastRunAt"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },
