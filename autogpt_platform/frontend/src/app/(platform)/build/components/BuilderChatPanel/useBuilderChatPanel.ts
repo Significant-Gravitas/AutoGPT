@@ -13,8 +13,6 @@ import {
 import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import type { SetActiveGraphVersionResponse } from "@/app/api/__generated__/models/setActiveGraphVersionResponse";
-import { notifySkippedWebhookPresets } from "../../helpers/skippedWebhookPresets";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
@@ -436,10 +434,7 @@ export function useBuilderChatPanel({
       const response = (await setActiveVersion({
         graphId: flowID,
         data: { active_graph_version: revertTargetVersion },
-      })) as unknown as {
-        status: number;
-        data?: SetActiveGraphVersionResponse;
-      };
+      })) as unknown as { status: number };
       if (response.status !== 200) {
         throw new Error("failed_to_revert");
       }
@@ -458,10 +453,6 @@ export function useBuilderChatPanel({
         title: "Reverted to the previous version",
         description: `Now viewing version ${revertTargetVersion}.`,
       });
-      notifySkippedWebhookPresets(
-        toast,
-        response.data?.skipped_webhook_presets,
-      );
     } catch (err) {
       Sentry.captureException(err);
       toast({

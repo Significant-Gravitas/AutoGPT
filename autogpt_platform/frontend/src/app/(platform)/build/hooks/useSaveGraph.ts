@@ -97,8 +97,7 @@ export const useSaveGraph = ({
     usePutV1UpdateGraphVersion({
       mutation: {
         onSuccess: async (response) => {
-          const result = response.data as UpdateGraphResponse;
-          const data = result.graph;
+          const data = (response.data as UpdateGraphResponse).graph;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
