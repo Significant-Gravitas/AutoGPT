@@ -29,6 +29,7 @@ interface FakeResponse {
   status: number;
   statusText?: string;
   json?: () => unknown;
+  text?: () => string | Promise<string>;
 }
 
 function mockFetchOnce(response: FakeResponse) {
@@ -96,7 +97,8 @@ describe("uploadSubmissionMediaDirect", () => {
     mockFetchOnce({
       ok: false,
       status: 400,
-      json: () => ({ detail: "File too large. Maximum size is 50MB" }),
+      text: () =>
+        JSON.stringify({ detail: "File too large. Maximum size is 50MB" }),
     });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
@@ -171,14 +173,25 @@ describe("authentication", () => {
 });
 
 describe("readUploadError fallbacks", () => {
-  it("uses statusText when the body is not JSON", async () => {
+  it("surfaces the raw response body when it is not JSON", async () => {
     mockFetchOnce({
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
-      json: () => {
-        throw new Error("not json");
-      },
+      text: () => "upstream connection reset",
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "upstream connection reset",
+    );
+  });
+
+  it("falls back to statusText when the body is empty", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      text: () => "",
     });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
@@ -191,9 +204,7 @@ describe("readUploadError fallbacks", () => {
       ok: false,
       status: 500,
       statusText: "",
-      json: () => {
-        throw new Error("not json");
-      },
+      text: () => "",
     });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
@@ -205,7 +216,8 @@ describe("readUploadError fallbacks", () => {
     mockFetchOnce({
       ok: false,
       status: 400,
-      json: () => ({ detail: { message: "nested detail message" } }),
+      text: () =>
+        JSON.stringify({ detail: { message: "nested detail message" } }),
     });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
@@ -217,7 +229,7 @@ describe("readUploadError fallbacks", () => {
     mockFetchOnce({
       ok: false,
       status: 400,
-      json: () => ({ message: "top level message" }),
+      text: () => JSON.stringify({ message: "top level message" }),
     });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(

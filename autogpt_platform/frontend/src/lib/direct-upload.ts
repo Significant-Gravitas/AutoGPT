@@ -47,11 +47,6 @@ interface FileSizeGuardArgs {
   }) => void;
 }
 
-/**
- * Shows a destructive "File too large" toast and returns true when `file`
- * exceeds the limit, so callers can guard an upload with
- * `if (isFileTooLarge({ ... })) return;`.
- */
 export function isFileTooLarge({
   file,
   maxSizeMB,
@@ -108,8 +103,9 @@ async function readUploadError(res: Response): Promise<string> {
   if (res.status === 413) {
     return "File is too large. Please choose a smaller file.";
   }
+  const text = await res.text();
   try {
-    const body = (await res.json()) as {
+    const body = JSON.parse(text) as {
       detail?: string | { message?: string };
       message?: string;
     };
@@ -119,7 +115,8 @@ async function readUploadError(res: Response): Promise<string> {
     if (typeof detail?.message === "string") return detail.message;
     if (typeof body?.message === "string") return body.message;
   } catch {
-    // Response body wasn't JSON.
+    // Response body wasn't JSON — surface the raw text so it reaches the toast.
+    if (text) return text;
   }
   return res.statusText || `Upload failed (HTTP ${res.status})`;
 }
