@@ -33,7 +33,8 @@ interface FakeResponse {
 
 function mockFetchOnce(response: FakeResponse) {
   const fetchMock = vi.fn(
-    async (_url: string, _init?: RequestInit) => response as unknown as Response,
+    async (_url: string, _init?: RequestInit) =>
+      response as unknown as Response,
   );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
