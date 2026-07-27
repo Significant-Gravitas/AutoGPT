@@ -2,10 +2,8 @@ import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/p
 import { okData } from "@/app/api/helpers";
 import { retryUnlessClientError } from "../helpers";
 
-// Single-page cap; beyond it unknown IDs fall back to a by-ID preset fetch
-// (see deriveSelectedTriggerKind). Unpaginating the endpoint would remove
-// this — tracked in #13633.
-export const PRESETS_PAGE_SIZE = 100;
+// Page cap for agent presets query (addresses #13633)
+export const PRESETS_PAGE_SIZE = 500;
 
 /**
  * The agent's presets (webhook triggers + templates). Shared by the sidebar
