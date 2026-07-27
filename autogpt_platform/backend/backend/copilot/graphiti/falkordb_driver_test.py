@@ -182,9 +182,11 @@ async def test_execute_query_retries_pending_queue_overflow_then_succeeds(
         [_overflow(), _overflow(), _FakeResult([("x", "count")], [[1]])],
     )
 
+    # max_attempts=5 (non-default) so the third attempt succeeds well within
+    # budget — proves retries continue past the first failure.
     with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch(
         "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
-        3,
+        5,
     ):
         records, _, _ = await driver.execute_query("MATCH (n) RETURN 1")
 
@@ -201,18 +203,36 @@ async def test_execute_query_raises_after_exhausting_retries(
     one terminal error under the upstream logger (so Sentry sees one event)."""
     query = _set_query(driver, _overflow())
 
+    # max_attempts=4 (non-default) proves the knob controls the attempt count.
     with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch.object(
         fdb, "_UPSTREAM_QUERY_LOGGER"
     ) as upstream_logger, patch(
         "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
-        3,
+        4,
     ):
         with pytest.raises(Exception, match="Max pending queries exceeded"):
             await driver.execute_query("MATCH (n) RETURN 1")
 
-    assert query.await_count == 3
-    assert sleep.await_count == 2
+    assert query.await_count == 4
+    assert sleep.await_count == 3
     upstream_logger.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pending_queue_retry_delay_is_bounded_and_jittered() -> None:
+    """Backoff grows exponentially within [base*2**n, base*2**n + base) and is
+    capped so a high max_attempts can't balloon a single wait."""
+    with patch(
+        "backend.copilot.graphiti.config.graphiti_config.falkordb_query_backoff_base",
+        0.1,
+    ):
+        assert 0.1 <= AutoGPTFalkorDriver._pending_queue_retry_delay(0) < 0.2
+        assert 0.2 <= AutoGPTFalkorDriver._pending_queue_retry_delay(1) < 0.3
+        # attempt 20 would be ~100k*base uncapped; the cap holds it near the max.
+        capped = AutoGPTFalkorDriver._pending_queue_retry_delay(20)
+        assert (
+            fdb._MAX_RETRY_DELAY_SECONDS <= capped < fdb._MAX_RETRY_DELAY_SECONDS + 0.1
+        )
 
 
 @pytest.mark.asyncio

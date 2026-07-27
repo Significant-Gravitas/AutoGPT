@@ -26,6 +26,11 @@ _UPSTREAM_QUERY_LOGGER = logging.getLogger("graphiti_core.driver.falkordb_driver
 # is side-effect-free and safe even for writes.
 _PENDING_QUEUE_OVERFLOW = "max pending queries exceeded"
 
+# Cap a single retry's backoff so a mis-tuned high ``falkordb_query_max_attempts``
+# can't balloon one wait into minutes, and total backoff stays inside the
+# warm-context timeout budget.
+_MAX_RETRY_DELAY_SECONDS = 2.0
+
 
 def _is_pending_queue_overflow(exc: Exception) -> bool:
     return _PENDING_QUEUE_OVERFLOW in str(exc).lower()
@@ -125,10 +130,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
     @staticmethod
     def _pending_queue_retry_delay(attempt: int) -> float:
-        """Jittered exponential backoff so retries drain the queue over time
-        (and don't synchronize across concurrent callers)."""
+        """Jittered exponential backoff (capped) so retries drain the queue over
+        time and don't synchronize across concurrent callers."""
         base = graphiti_config.falkordb_query_backoff_base
-        return base * (2**attempt) + random.uniform(0, base)
+        delay = min(base * (2**attempt), _MAX_RETRY_DELAY_SECONDS)
+        return delay + random.uniform(0, base)
 
     @staticmethod
     def _to_records(result) -> tuple[list[dict[str, Any]], list[str], None]:
