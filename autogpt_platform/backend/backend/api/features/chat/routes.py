@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.api.features.experts import experts_db
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -277,6 +278,10 @@ class CreateSessionRequest(BaseModel):
       — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
       (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
 
+    ``expert_id`` scopes the session to a hired expert. It must reference
+    an expert owned by the caller that is neither a template nor archived,
+    otherwise the request is rejected with 404.
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
@@ -284,6 +289,7 @@ class CreateSessionRequest(BaseModel):
 
     dry_run: bool = False
     builder_graph_id: str | None = Field(default=None, max_length=128)
+    expert_id: str | None = Field(default=None, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -293,6 +299,7 @@ class CreateSessionResponse(BaseModel):
     created_at: str
     user_id: str | None
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    expert_id: str | None = None
 
 
 class ActiveStreamInfo(BaseModel):
@@ -335,6 +342,7 @@ class SessionSummaryResponse(BaseModel):
     is_processing: bool
     source_platform: str | None = None
     is_pinned: bool = False
+    expert_id: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -383,6 +391,7 @@ async def list_sessions(
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    expert_id: str | None = Query(default=None),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -394,12 +403,13 @@ async def list_sessions(
         user_id: The authenticated user's ID.
         limit: Maximum number of sessions to return (1-100).
         offset: Number of sessions to skip for pagination.
+        expert_id: Restrict the listing to sessions scoped to this expert.
 
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
     sessions, total_count = await get_user_sessions(
-        user_id, limit, offset, organization_id=ctx.org_id
+        user_id, limit, offset, organization_id=ctx.org_id, expert_id=expert_id
     )
 
     # Batch-check Redis for active stream status on each session
@@ -438,6 +448,7 @@ async def list_sessions(
                 is_processing=session.session_id in processing_set,
                 source_platform=session.metadata.source_platform,
                 is_pinned=session.is_pinned,
+                expert_id=session.expert_id,
             )
             for session in sessions
         ],
@@ -471,20 +482,27 @@ async def create_session(
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
-        request: Optional request body with ``dry_run`` and/or
-            ``builder_graph_id``.
+        request: Optional request body with ``dry_run``,
+            ``builder_graph_id`` and/or ``expert_id``.
 
     Returns:
         CreateSessionResponse: Details of the resulting session.
     """
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
+    expert_id = request.expert_id if request else None
+
+    if expert_id is not None:
+        expert = await experts_db.get_expert(user_id, expert_id)
+        if expert is None or expert.is_archived:
+            raise HTTPException(status_code=404, detail="Expert not found")
 
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
         f"{', dry_run=True' if dry_run else ''}"
         f"{f', builder_graph_id={builder_graph_id}' if builder_graph_id else ''}"
+        f"{f', expert_id={expert_id}' if expert_id else ''}"
     )
 
     if builder_graph_id:
@@ -500,6 +518,7 @@ async def create_session(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            expert_id=expert_id,
         )
 
     return CreateSessionResponse(
@@ -507,6 +526,7 @@ async def create_session(
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
         metadata=session.metadata,
+        expert_id=session.expert_id,
     )
 
 
