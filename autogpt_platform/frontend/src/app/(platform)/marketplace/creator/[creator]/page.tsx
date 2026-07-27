@@ -4,9 +4,11 @@ import {
   prefetchGetV2ListStoreAgentsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { MainCreatorPage } from "./components/MainCreatorPage/MainCreatorPage";
 
 export const dynamic = "force-dynamic";
@@ -21,13 +23,21 @@ export async function generateMetadata({
   params: Promise<MarketplaceCreatorPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const { data: creator } = await getV2GetCreatorDetails(
-    params.creator.toLowerCase(),
-  );
+
+  let creator: CreatorDetails;
+  try {
+    const { data } = await getV2GetCreatorDetails(params.creator.toLowerCase());
+    creator = data as CreatorDetails;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
 
   return {
-    title: `${(creator as CreatorDetails).name} - AutoGPT Store`,
-    description: (creator as CreatorDetails).description,
+    title: `${creator.name} - AutoGPT Store`,
+    description: creator.description,
   };
 }
 
