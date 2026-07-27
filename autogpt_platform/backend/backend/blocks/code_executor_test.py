@@ -72,8 +72,9 @@ class TestBuildVariableInjection:
         variables = {"x": 42, "name": "Blake", "items": [1, 2, 3]}
         envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
 
-        # Data travels in the env var, JSON-encoded.
-        assert envs == {VARIABLES_ENV_KEY: json.dumps(variables)}
+        # Data travels in the env var, JSON-encoded with ensure_ascii=True
+        # so that surrogate pairs (emoji) don't crash os.environ.
+        assert envs == {VARIABLES_ENV_KEY: json.dumps(variables, ensure_ascii=True)}
 
         # Prefix is constant code that reads the env var as data and unpacks it.
         assert "json.loads" in prefix
@@ -89,7 +90,7 @@ class TestBuildVariableInjection:
             variables, ProgrammingLanguage.JAVASCRIPT
         )
 
-        assert envs == {VARIABLES_ENV_KEY: json.dumps(variables)}
+        assert envs == {VARIABLES_ENV_KEY: json.dumps(variables, ensure_ascii=True)}
         assert "JSON.parse" in prefix
         assert "Object.assign(globalThis" in prefix
         assert "process.env" in prefix
@@ -101,7 +102,19 @@ class TestBuildVariableInjection:
         envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
         # The dangerous string lives only in the env payload, never in the code.
         assert "os.system" not in prefix
-        assert envs[VARIABLES_ENV_KEY] == json.dumps(variables)
+        assert envs[VARIABLES_ENV_KEY] == json.dumps(variables, ensure_ascii=True)
+
+    def test_emoji_and_surrogate_pairs_produce_ascii_only_payload(self):
+        """Regression test for #13551: emoji (UTF-16 surrogate pairs) must not
+        appear literally in the env var payload, only as \\uXXXX escapes."""
+        variables = {"greeting": "Holidays \U0001F385\U0001F471\U0001F3FD"}
+        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        payload = envs[VARIABLES_ENV_KEY]
+        # Payload must be pure ASCII — no raw surrogate characters.
+        assert payload.isascii(), f"Non-ASCII characters in payload: {payload!r}"
+        # json.loads must reconstruct the original emoji.
+        assert json.loads(payload) == variables
 
     @pytest.mark.parametrize(
         "language",
@@ -151,7 +164,9 @@ class TestExecuteCodeBlockRun:
         assert kwargs["code"].endswith("print(name)")
         assert "globals().update" in kwargs["code"]
         # Variables travel via the env var, JSON-encoded.
-        assert kwargs["envs"] == {VARIABLES_ENV_KEY: json.dumps({"name": "blake"})}
+        assert kwargs["envs"] == {
+            VARIABLES_ENV_KEY: json.dumps({"name": "blake"}, ensure_ascii=True)
+        }
 
     async def test_run_prefixes_javascript_code_and_passes_envs(self):
         block = ExecuteCodeBlock()
@@ -169,7 +184,9 @@ class TestExecuteCodeBlockRun:
         kwargs = mock.call_args.kwargs
         assert kwargs["code"].endswith("console.log(name)")
         assert "Object.assign(globalThis" in kwargs["code"]
-        assert kwargs["envs"] == {VARIABLES_ENV_KEY: json.dumps({"name": "blake"})}
+        assert kwargs["envs"] == {
+            VARIABLES_ENV_KEY: json.dumps({"name": "blake"}, ensure_ascii=True)
+        }
 
     async def test_run_without_variables_sends_no_envs_and_unmodified_code(self):
         block = ExecuteCodeBlock()
