@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import uuid
 
@@ -17,6 +18,8 @@ from backend.sdk import (
 )
 
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, tenki
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxExecution(BaseModel):
@@ -202,12 +205,26 @@ class TenkiRunCodeBlock(Block):
 
     @staticmethod
     async def _cleanup(client: AsyncClient, sandbox: AsyncSandbox | None) -> None:
+        """Best-effort teardown; must not mask the run's result or exception."""
+
         async def close_resources() -> None:
             try:
                 if sandbox is not None:
                     await sandbox.close_if_open()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                sandbox_id = sandbox.id if sandbox else ""
+                logger.warning(
+                    f"Failed to close Tenki sandbox {sandbox_id}", exc_info=True
+                )
             finally:
-                await client.close()
+                try:
+                    await client.close()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.warning("Failed to close Tenki client", exc_info=True)
 
         cleanup_task = asyncio.create_task(close_resources())
         try:

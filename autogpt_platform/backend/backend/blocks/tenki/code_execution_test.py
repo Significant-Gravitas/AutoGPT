@@ -34,6 +34,7 @@ class FakeSandbox:
         self.close_calls = 0
         self.wait_error: Exception | None = None
         self.shell_error: Exception | None = None
+        self.close_error: Exception | None = None
         self.shell_started = asyncio.Event()
         self.shell_release: asyncio.Event | None = None
 
@@ -53,6 +54,8 @@ class FakeSandbox:
     async def close_if_open(self):
         self.close_calls += 1
         self.state = "TERMINATED"
+        if self.close_error:
+            raise self.close_error
 
 
 class FakeClient:
@@ -61,6 +64,7 @@ class FakeClient:
         self.project_count = project_count
         self.create_kwargs: dict = {}
         self.closed = False
+        self.close_error: Exception | None = None
 
     async def who_am_i(self):
         projects = [
@@ -77,6 +81,8 @@ class FakeClient:
 
     async def close(self):
         self.closed = True
+        if self.close_error:
+            raise self.close_error
 
 
 def _input(**overrides) -> TenkiRunCodeBlock.Input:
@@ -159,6 +165,34 @@ async def test_remote_command_exception_closes(monkeypatch, error):
     outputs = await _outputs(TenkiRunCodeBlock())
 
     assert outputs == [("error", f"Tenki sandbox execution failed: {error}")]
+    assert sandbox.close_calls == 1
+    assert client.closed
+
+
+async def test_cleanup_failure_does_not_mask_result(monkeypatch):
+    sandbox = FakeSandbox()
+    sandbox.close_error = RuntimeError("sandbox teardown transport failed")
+    client = FakeClient(sandbox)
+    client.close_error = RuntimeError("client teardown failed")
+    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock())
+
+    assert outputs[0:3] == [("stdout", "hello"), ("stderr", ""), ("exit_code", 0)]
+    assert sandbox.close_calls == 1
+    assert client.closed
+
+
+async def test_cleanup_failure_does_not_mask_command_exception(monkeypatch):
+    sandbox = FakeSandbox()
+    sandbox.shell_error = RuntimeError("transport failed")
+    sandbox.close_error = RuntimeError("sandbox teardown transport failed")
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock())
+
+    assert outputs == [("error", "Tenki sandbox execution failed: transport failed")]
     assert sandbox.close_calls == 1
     assert client.closed
 
