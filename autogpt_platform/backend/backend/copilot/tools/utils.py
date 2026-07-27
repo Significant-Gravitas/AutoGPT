@@ -8,6 +8,7 @@ from backend.api.features.library import model as library_model
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
@@ -485,13 +486,18 @@ def _credential_is_for_mcp_server(
     credential: Credentials,
     requirements: CredentialsFieldInfo,
 ) -> bool:
-    """Check if an MCP OAuth credential matches the required server URL."""
+    """Check if an MCP credential matches the required server URL.
+
+    Covers both OAuth2 tokens and static API-key / bearer tokens — the latter
+    is how servers that don't support OAuth (e.g. a token issued in the
+    vendor's dashboard) store their credential.
+    """
     if not requirements.discriminator_values:
         return True
 
     server_url = (
         credential.metadata.get("mcp_server_url")
-        if isinstance(credential, OAuth2Credentials)
+        if isinstance(credential, (OAuth2Credentials, APIKeyCredentials))
         else None
     )
     return server_url in requirements.discriminator_values if server_url else False

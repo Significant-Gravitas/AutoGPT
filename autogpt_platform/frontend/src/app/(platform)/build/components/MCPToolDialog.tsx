@@ -142,10 +142,19 @@ export function MCPToolDialog({
       setStep("tool");
     } catch (e: any) {
       if (e?.status === 401 || e?.status === 403) {
+        setLoading(false);
+        // If the user supplied a token and the server still rejected it, the
+        // token is wrong — don't bounce them into an OAuth flow that will just
+        // fail again. Surface a clear "check your token" message instead.
+        if (authToken) {
+          setError(
+            "Authentication failed. Please check your API key / bearer token and try again.",
+          );
+          return;
+        }
         setAuthRequired(true);
         setError(null);
         // Automatically start OAuth sign-in instead of requiring a second click
-        setLoading(false);
         startOAuthRef.current = true;
         return;
       } else {

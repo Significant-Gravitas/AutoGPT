@@ -18,6 +18,55 @@ def _make_regular_field() -> CredentialsFieldInfo:
     )
 
 
+def _make_mcp_field(server_url: str) -> CredentialsFieldInfo:
+    return CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["mcp"],
+            "credentials_types": ["oauth2", "api_key"],
+            "discriminator": "server_url",
+            "discriminator_values": [server_url],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+
+def test_credential_is_for_mcp_server_matches_both_credential_types():
+    """A static API-key MCP token must match the server URL just like an
+    OAuth2 token — otherwise copilot reports the credential as missing."""
+    from pydantic import SecretStr
+
+    from backend.copilot.tools.utils import _credential_is_for_mcp_server
+    from backend.data.model import APIKeyCredentials, OAuth2Credentials
+
+    server_url = "https://mcp.example.com/mcp"
+    field = _make_mcp_field(server_url)
+
+    oauth_cred = OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("t"),
+        scopes=[],
+        title="MCP",
+        metadata={"mcp_server_url": server_url},
+    )
+    api_key_cred = APIKeyCredentials(
+        provider="mcp",
+        api_key=SecretStr("t"),
+        title="MCP",
+        metadata={"mcp_server_url": server_url},
+    )
+    other_server = APIKeyCredentials(
+        provider="mcp",
+        api_key=SecretStr("t"),
+        title="MCP",
+        metadata={"mcp_server_url": "https://other.example.com/mcp"},
+    )
+
+    assert _credential_is_for_mcp_server(oauth_cred, field)
+    assert _credential_is_for_mcp_server(api_key_cred, field)
+    assert not _credential_is_for_mcp_server(other_server, field)
+
+
 def test_build_missing_credentials_excludes_auto_creds():
     """
     build_missing_credentials_from_graph() should use regular_credentials_inputs
