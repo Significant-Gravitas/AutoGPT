@@ -1,8 +1,12 @@
 """Unit tests for the shared MCP helpers."""
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
 from pydantic import SecretStr
 
 from backend.blocks.mcp.helpers import (
+    auto_lookup_mcp_credential,
     is_mcp_credential_for_server,
     mcp_auth_token,
     normalize_mcp_url,
@@ -156,3 +160,83 @@ def test_is_mcp_credential_for_server_normalizes_trailing_slash():
 def test_is_mcp_credential_for_server_rejects_other_server():
     cred = _api_key_cred("https://other.example.com/mcp")
     assert not is_mcp_credential_for_server(cred, "https://mcp.example.com/mcp")
+
+
+# ---------------------------------------------------------------------------
+# auto_lookup_mcp_credential — mixed-type selection + OAuth-only refresh guard
+# ---------------------------------------------------------------------------
+
+_MCP_URL = "https://mcp.example.com/mcp"
+
+
+def _patched_manager(stored: list, refreshed=None):
+    """Patch IntegrationCredentialsManager used by auto_lookup with a fake store."""
+    mgr = AsyncMock()
+    mgr.store.get_creds_by_provider = AsyncMock(return_value=stored)
+    mgr.refresh_if_needed = AsyncMock(side_effect=lambda uid, cred: refreshed or cred)
+    return (
+        patch(
+            "backend.blocks.mcp.helpers.IntegrationCredentialsManager",
+            return_value=mgr,
+        ),
+        mgr,
+    )
+
+
+@pytest.mark.asyncio
+async def test_auto_lookup_prefers_non_expiring_api_key_over_expired_oauth():
+    """A valid non-expiring bearer token must win over a stale OAuth row that
+    once had an expiry — and the api-key path must NOT attempt a refresh."""
+    expired_oauth = OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("old"),
+        scopes=[],
+        access_token_expires_at=1000,  # long past
+        title="MCP",
+        metadata={"mcp_server_url": _MCP_URL},
+    )
+    api_key = _api_key_cred(_MCP_URL)
+
+    ctx, mgr = _patched_manager([expired_oauth, api_key])
+    with ctx:
+        result = await auto_lookup_mcp_credential("user", _MCP_URL)
+
+    assert result is api_key
+    mgr.refresh_if_needed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_lookup_refreshes_selected_oauth_credential():
+    """When the best match is an OAuth2 credential, it is refreshed."""
+    oauth = OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("live"),
+        scopes=[],
+        access_token_expires_at=9999999999,
+        title="MCP",
+        metadata={"mcp_server_url": _MCP_URL},
+    )
+    refreshed = OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("rotated"),
+        scopes=[],
+        title="MCP",
+        metadata={"mcp_server_url": _MCP_URL},
+    )
+    ctx, mgr = _patched_manager([oauth], refreshed=refreshed)
+    with ctx:
+        result = await auto_lookup_mcp_credential("user", _MCP_URL)
+
+    assert result is refreshed
+    mgr.refresh_if_needed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_auto_lookup_returns_none_when_no_match():
+    other = _api_key_cred("https://other.example.com/mcp")
+    ctx, mgr = _patched_manager([other])
+    with ctx:
+        result = await auto_lookup_mcp_credential("user", _MCP_URL)
+
+    assert result is None
+    mgr.refresh_if_needed.assert_not_called()
