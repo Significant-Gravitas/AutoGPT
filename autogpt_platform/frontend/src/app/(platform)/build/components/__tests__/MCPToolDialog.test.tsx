@@ -15,12 +15,14 @@ vi.mock("@/lib/oauth-popup", () => ({
 const mockDiscover = vi.fn();
 const mockStoreToken = vi.fn();
 const mockOAuthLogin = vi.fn();
+const mockExchangeCode = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2DiscoverAvailableToolsOnAnMcpServer: (...args: unknown[]) =>
     mockDiscover(...args),
   postV2InitiateOauthLoginForAnMcpServer: (...args: unknown[]) =>
     mockOAuthLogin(...args),
-  postV2ExchangeOauthCodeForMcpTokens: vi.fn(),
+  postV2ExchangeOauthCodeForMcpTokens: (...args: unknown[]) =>
+    mockExchangeCode(...args),
   postV2StoreABearerTokenForAnMcpServer: (...args: unknown[]) =>
     mockStoreToken(...args),
 }));
@@ -49,6 +51,7 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     mockDiscover.mockReset();
     mockStoreToken.mockReset();
     mockOAuthLogin.mockReset();
+    mockExchangeCode.mockReset();
   });
 
   it("persists a manually entered token and attaches it as the block credential", async () => {
