@@ -14,10 +14,12 @@ vi.mock("@/lib/oauth-popup", () => ({
 
 const mockDiscover = vi.fn();
 const mockStoreToken = vi.fn();
+const mockOAuthLogin = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2DiscoverAvailableToolsOnAnMcpServer: (...args: unknown[]) =>
     mockDiscover(...args),
-  postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
+  postV2InitiateOauthLoginForAnMcpServer: (...args: unknown[]) =>
+    mockOAuthLogin(...args),
   postV2ExchangeOauthCodeForMcpTokens: vi.fn(),
   postV2StoreABearerTokenForAnMcpServer: (...args: unknown[]) =>
     mockStoreToken(...args),
@@ -46,6 +48,7 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     cleanup();
     mockDiscover.mockReset();
     mockStoreToken.mockReset();
+    mockOAuthLogin.mockReset();
   });
 
   it("persists a manually entered token and attaches it as the block credential", async () => {
@@ -122,5 +125,31 @@ describe("MCPToolDialog — static API key / bearer token", () => {
 
     expect(mockStoreToken).not.toHaveBeenCalled();
     expect(onConfirm.mock.calls[0][0].credentials).toBeNull();
+  });
+
+  it("shows an invalid-token error instead of bouncing into OAuth when a manual token is rejected", async () => {
+    // The generated client throws an ApiError (carrying .status) on non-2xx.
+    mockDiscover.mockRejectedValue({ status: 401, detail: "invalid token" });
+    const onConfirm = vi.fn();
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    fireEvent.change(screen.getByLabelText(/api key \/ bearer token/i), {
+      target: { value: "wrong-token" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect with token/i }),
+    );
+
+    expect(await screen.findByText(/authentication failed/i)).toBeDefined();
+    // A rejected manual token must NOT trigger the OAuth login flow.
+    expect(mockOAuthLogin).not.toHaveBeenCalled();
+    expect(mockStoreToken).not.toHaveBeenCalled();
   });
 });
