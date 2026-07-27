@@ -1,10 +1,12 @@
 "use client";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
+import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
@@ -12,6 +14,7 @@ import { useMainMarketplacePage } from "./useMainMarketplacePage";
 export const MainMarkeplacePage = () => {
   const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
     useMainMarketplacePage();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -46,6 +49,7 @@ export const MainMarkeplacePage = () => {
         {/* 100px margin because our featured sections button are placed 40px below the container */}
         <Separator className="mb-6 mt-24 bg-transparent" />
 
+        {isHireExpertsEnabled ? <ExpertsSection /> : null}
         {topAgents && (
           <AgentsSection sectionTitle="All Agents" agents={topAgents.agents} />
         )}
