@@ -46,7 +46,10 @@ export function ExpertsSection() {
           ))}
         </div>
       )}
-      <ExpertProfileSheet templateId={selectedTemplateId} onClose={closeSheet} />
+      <ExpertProfileSheet
+        templateId={selectedTemplateId}
+        onClose={closeSheet}
+      />
     </section>
   );
 }

@@ -1,4 +1,5 @@
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
+import type { Expert } from "@/app/api/__generated__/models/expert";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export interface ExpertIdentity {
@@ -15,7 +16,7 @@ export function useExpertMap(): ExpertIdentityMap {
   const expertsQuery = useListExperts({
     query: {
       enabled: isExpertsEnabled,
-      select: (response) => response.data,
+      select: (response) => response.data as Expert[],
     },
   });
   if (!isExpertsEnabled || !expertsQuery.data) return EMPTY_MAP;

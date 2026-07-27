@@ -168,7 +168,9 @@ export function useChatSession({
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
       const body =
-        Object.keys(sessionData).length > 0 ? { data: sessionData } : { data: null };
+        Object.keys(sessionData).length > 0
+          ? { data: sessionData }
+          : { data: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await (createSessionMutation as any)(body);
       if (response.status !== 200 || !response.data?.id) {

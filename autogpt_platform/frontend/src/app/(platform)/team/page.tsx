@@ -11,7 +11,8 @@ import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { useTeamPage } from "./useTeamPage";
 
-const MAIN_CLASS = "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
+const MAIN_CLASS =
+  "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
 const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
 
 export default function TeamPage() {

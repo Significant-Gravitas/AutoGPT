@@ -1,6 +1,4 @@
-import {
-  getGetV2ListSessionsMockHandler200,
-} from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -33,9 +31,12 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-vi.mock("../../copilot/components/UsageLimits/UsagePopover/UsagePopover", () => ({
-  UsagePopover: () => null,
-}));
+vi.mock(
+  "../../copilot/components/UsageLimits/UsagePopover/UsagePopover",
+  () => ({
+    UsagePopover: () => null,
+  }),
+);
 vi.mock(
   "../components/ChatSidebar/components/NotificationToggle/NotificationToggle",
   () => ({
@@ -116,9 +117,12 @@ vi.mock(
 vi.mock("../components/ChatMessagesContainer/components/QueueBadge", () => ({
   QueueBadge: () => null,
 }));
-vi.mock("../components/ChatMessagesContainer/components/ReasoningGroup", () => ({
-  ReasoningGroup: () => null,
-}));
+vi.mock(
+  "../components/ChatMessagesContainer/components/ReasoningGroup",
+  () => ({
+    ReasoningGroup: () => null,
+  }),
+);
 vi.mock(
   "../components/ChatMessagesContainer/components/ThinkingIndicator",
   () => ({
@@ -141,12 +145,9 @@ vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
 vi.mock("../components/JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
-vi.mock(
-  "../components/CopilotPendingReviews/CopilotPendingReviews",
-  () => ({
-    CopilotPendingReviews: () => null,
-  }),
-);
+vi.mock("../components/CopilotPendingReviews/CopilotPendingReviews", () => ({
+  CopilotPendingReviews: () => null,
+}));
 
 const mariaExpert: Expert = {
   id: "expert-maria",
@@ -328,9 +329,9 @@ describe("ChatSidebar — expert groups", () => {
       "expert-group-header-expert-maria",
     );
     expect(mariaHeader.textContent).toBe("Maria");
-    expect(screen.getByTestId("expert-group-header-autopilot").textContent).toBe(
-      "Autopilot",
-    );
+    expect(
+      screen.getByTestId("expert-group-header-autopilot").textContent,
+    ).toBe("Autopilot");
     expect(screen.getByText("Campaign ideas")).toBeDefined();
   });
 

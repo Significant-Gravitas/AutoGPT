@@ -59,7 +59,10 @@ export function useInstallWorkflowPicker({
         (workflow) => workflow.store_listing_version_id === versionId,
       )
     ) {
-      toast({ title: `Already installed on ${expert.name}`, variant: "success" });
+      toast({
+        title: `Already installed on ${expert.name}`,
+        variant: "success",
+      });
       onClose();
       return;
     }

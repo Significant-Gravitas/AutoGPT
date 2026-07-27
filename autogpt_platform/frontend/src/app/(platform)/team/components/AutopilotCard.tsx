@@ -1,7 +1,4 @@
-import {
-  Avatar,
-  AvatarFallback,
-} from "@/components/atoms/Avatar/Avatar";
+import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { RobotIcon } from "@phosphor-icons/react";
@@ -23,8 +20,8 @@ export function AutopilotCard() {
         </div>
       </div>
       <Text variant="body">
-        Your built-in generalist. It runs your workflows, answers questions,
-        and hands work to your hired experts.
+        Your built-in generalist. It runs your workflows, answers questions, and
+        hands work to your hired experts.
       </Text>
       <div className="mt-auto flex gap-2">
         <Button as="NextLink" href="/copilot" variant="secondary" size="small">

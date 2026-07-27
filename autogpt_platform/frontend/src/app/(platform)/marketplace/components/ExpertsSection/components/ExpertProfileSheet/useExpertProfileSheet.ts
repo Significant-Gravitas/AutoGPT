@@ -25,9 +25,7 @@ export function useExpertProfileSheet(
     query: { select: (x) => x.data as Expert[] },
   });
 
-  const template = (templatesQuery.data ?? []).find(
-    (t) => t.id === templateId,
-  );
+  const template = (templatesQuery.data ?? []).find((t) => t.id === templateId);
   const isHired =
     templateId !== null &&
     (expertsQuery.data ?? []).some(
