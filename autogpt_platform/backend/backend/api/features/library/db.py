@@ -2158,7 +2158,7 @@ async def set_preset_webhook(
 async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
-) -> int:
+) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
 
@@ -2193,12 +2193,13 @@ async def migrate_webhook_presets_to_new_version(
         new_graph: The newly activated graph version to migrate presets to.
 
     Returns:
-        The number of presets migrated.
+        The migration outcome: the number of presets migrated and the presets
+        that were skipped (left pinned) because the new trigger is incompatible.
     """
     new_trigger_node = new_graph.webhook_input_node
     if not (new_trigger_node and new_trigger_node.block.webhook_config):
         # New version has no webhook trigger to migrate presets onto.
-        return 0
+        return library_model.WebhookPresetMigrationResult()
 
     candidates = await prisma.models.AgentPreset.prisma().find_many(
         where={
@@ -2210,7 +2211,7 @@ async def migrate_webhook_presets_to_new_version(
         },
     )
     if not candidates:
-        return 0
+        return library_model.WebhookPresetMigrationResult()
 
     # Resolve the trigger block of each pinned version once. A preset is
     # compatible only if its pinned version uses the same trigger block as the
@@ -2230,6 +2231,7 @@ async def migrate_webhook_presets_to_new_version(
         == new_trigger_node.block_id
     }
 
+    skipped_presets: list[library_model.SkippedWebhookPreset] = []
     for preset in candidates:
         if preset.id in compatible_ids:
             continue
@@ -2241,9 +2243,18 @@ async def migrate_webhook_presets_to_new_version(
             f"Preset left pinned to v{preset.agentGraphVersion}; trigger needs "
             f"reconfiguration."
         )
+        skipped_presets.append(
+            library_model.SkippedWebhookPreset(
+                id=preset.id,
+                name=preset.name,
+                pinned_version=preset.agentGraphVersion,
+            )
+        )
 
     if not compatible_ids:
-        return 0
+        return library_model.WebhookPresetMigrationResult(
+            skipped_presets=skipped_presets
+        )
 
     # Preserve candidate order for a deterministic query. Re-assert userId and
     # the version guard so a concurrent activation that already bumped a preset
@@ -2264,7 +2275,10 @@ async def migrate_webhook_presets_to_new_version(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
-    return count
+    return library_model.WebhookPresetMigrationResult(
+        migrated_count=count,
+        skipped_presets=skipped_presets,
+    )
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:
