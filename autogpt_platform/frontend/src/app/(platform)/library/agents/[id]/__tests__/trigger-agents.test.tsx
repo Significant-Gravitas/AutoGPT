@@ -656,8 +656,15 @@ describe("Library agent view — trigger agents", () => {
       "activeTab=triggers&activeItem=beyond-page-1",
     );
 
+    // The Triggers tab count reflects the full membership (101), not just the
+    // first page (100) — this is what fails without eager pagination.
     // Paging through every preset then fetching the detail is a longer async
     // chain than a single-page load, so allow extra time.
+    await screen.findByRole(
+      "tab",
+      { name: /triggers\s*101/i },
+      { timeout: 5000 },
+    );
     await screen.findByText("Trigger Details", undefined, { timeout: 5000 });
     screen.getByDisplayValue("Beyond Page Trigger");
     expect(screen.queryByText("Trigger not found")).toBeNull();

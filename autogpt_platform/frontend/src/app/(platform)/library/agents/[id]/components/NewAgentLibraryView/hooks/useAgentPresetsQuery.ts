@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useGetV2ListPresetsInfinite } from "@/app/api/__generated__/endpoints/presets/presets";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
@@ -36,9 +36,17 @@ export function useAgentPresetsQuery(graphId: string | undefined) {
     },
   );
 
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  const {
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+  } = query;
   const reachedPageCap = (query.data?.pages.length ?? 0) >= MAX_PRESET_PAGES;
-  const morePagesPending = hasNextPage && !reachedPageCap;
+  // Stop paginating at the cap, or once a page fetch has errored — otherwise a
+  // persistently failing page keeps hasNextPage true and re-fires forever.
+  const morePagesPending =
+    hasNextPage && !reachedPageCap && !isFetchNextPageError;
 
   useEffect(() => {
     if (morePagesPending && !isFetchingNextPage) {
@@ -46,7 +54,10 @@ export function useAgentPresetsQuery(graphId: string | undefined) {
     }
   }, [morePagesPending, isFetchingNextPage, fetchNextPage]);
 
-  const presets = query.data ? unpaginate(query.data, "presets") : undefined;
+  const presets = useMemo(
+    () => (query.data ? unpaginate(query.data, "presets") : undefined),
+    [query.data],
+  );
   const presetsComplete = query.isSuccess && !hasNextPage;
   const presetsSettled = query.isSuccess && !morePagesPending;
 
