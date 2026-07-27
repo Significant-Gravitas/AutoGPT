@@ -26,9 +26,7 @@ export async function generateMetadata({
 
   let creator: CreatorDetails;
   try {
-    const { data } = await getV2GetCreatorDetails(
-      params.creator.toLowerCase(),
-    );
+    const { data } = await getV2GetCreatorDetails(params.creator.toLowerCase());
     creator = data as CreatorDetails;
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
