@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 
@@ -40,7 +40,9 @@ def mcp_auth_token(cred: MCPCredential) -> str:
     return cred.access_token.get_secret_value()
 
 
-def is_mcp_credential_for_server(cred: object, server_url: str) -> bool:
+def is_mcp_credential_for_server(
+    cred: Credentials, server_url: str
+) -> TypeGuard[MCPCredential]:
     """True if *cred* is an MCP credential stored for *server_url*.
 
     Matches both OAuth2 and API-key credentials so bearer-token and OAuth
