@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
@@ -55,11 +56,20 @@ def is_mcp_credential_for_server(
     return normalize_mcp_url(stored) == server_url
 
 
-def _mcp_credential_expiry(cred: MCPCredential) -> int:
-    """Unix expiry timestamp of an MCP credential, or 0 if it never expires."""
-    if isinstance(cred, APIKeyCredentials):
-        return cred.expires_at or 0
-    return cred.access_token_expires_at or 0
+def _mcp_credential_rank(cred: MCPCredential) -> int:
+    """Ranking key for picking the best MCP credential when several match.
+
+    Non-expiring credentials rank highest (they never go stale); among
+    expiring ones, the later expiry wins. Returning 0 for non-expiring — the
+    naive approach — would make a valid static bearer token lose to any stale
+    row that merely once had an expiry set.
+    """
+    expiry = (
+        cred.expires_at
+        if isinstance(cred, APIKeyCredentials)
+        else cred.access_token_expires_at
+    )
+    return expiry if expiry is not None else sys.maxsize
 
 
 def server_host(server_url: str) -> str:
@@ -172,7 +182,7 @@ async def auto_lookup_mcp_credential(
         for cred in mcp_creds:
             if is_mcp_credential_for_server(cred, server_url):
                 if best is None or (
-                    _mcp_credential_expiry(cred) >= _mcp_credential_expiry(best)
+                    _mcp_credential_rank(cred) >= _mcp_credential_rank(best)
                 ):
                     best = cred
         if best is not None and isinstance(best, OAuth2Credentials):
