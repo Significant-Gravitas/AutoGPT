@@ -3,7 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import prisma.errors
 import pytest
 
-from ._add_to_library import add_graph_to_library
+from ._add_to_library import _get_marketplace_metadata, add_graph_to_library
+
+MARKETPLACE = {
+    "name": "Marketplace Title",
+    "description": "Marketplace description",
+    "imageUrl": "https://cdn.example.com/agent.png",
+}
 
 
 @pytest.mark.asyncio
@@ -25,6 +31,10 @@ async def test_add_graph_to_library_create_new_agent() -> None:
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
         ),
+        patch(
+            "backend.api.features.library._add_to_library._get_marketplace_metadata",
+            new=AsyncMock(return_value=dict(MARKETPLACE)),
+        ),
     ):
         mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
 
@@ -41,6 +51,10 @@ async def test_add_graph_to_library_create_new_agent() -> None:
     }
     assert create_data["isCreatedByUser"] is False
     assert create_data["useGraphIsActiveVersion"] is False
+    # Marketplace metadata is snapshotted onto the new LibraryAgent
+    assert create_data["name"] == "Marketplace Title"
+    assert create_data["description"] == "Marketplace description"
+    assert create_data["imageUrl"] == "https://cdn.example.com/agent.png"
 
 
 @pytest.mark.asyncio
@@ -61,6 +75,10 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._get_marketplace_metadata",
+            new=AsyncMock(return_value=dict(MARKETPLACE)),
         ),
     ):
         mock_prisma.return_value.create = AsyncMock(
@@ -86,3 +104,43 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     update_data = update_call.kwargs["data"]
     assert update_data["isDeleted"] is False
     assert update_data["isArchived"] is False
+    # Restoring a soft-deleted agent refreshes the marketplace snapshot too
+    assert update_data["name"] == "Marketplace Title"
+    assert update_data["description"] == "Marketplace description"
+    assert update_data["imageUrl"] == "https://cdn.example.com/agent.png"
+
+
+@pytest.mark.asyncio
+async def test_get_marketplace_metadata_returns_first_image() -> None:
+    """Pulls name/description and the first image URL from the listing version."""
+    slv = MagicMock(
+        description="Marketplace description",
+        imageUrls=["https://cdn.example.com/a.png", "https://cdn.example.com/b.png"],
+    )
+    slv.name = "Marketplace Title"  # `name` is reserved in the MagicMock ctor
+
+    with patch(
+        "backend.api.features.library._add_to_library.prisma.models.StoreListingVersion.prisma"
+    ) as mock_prisma:
+        mock_prisma.return_value.find_unique = AsyncMock(return_value=slv)
+
+        result = await _get_marketplace_metadata("slv-id")
+
+    assert result == {
+        "name": "Marketplace Title",
+        "description": "Marketplace description",
+        "imageUrl": "https://cdn.example.com/a.png",
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_marketplace_metadata_missing_listing_returns_nulls() -> None:
+    """A missing listing version yields all-null metadata (graph values win)."""
+    with patch(
+        "backend.api.features.library._add_to_library.prisma.models.StoreListingVersion.prisma"
+    ) as mock_prisma:
+        mock_prisma.return_value.find_unique = AsyncMock(return_value=None)
+
+        result = await _get_marketplace_metadata("missing")
+
+    assert result == {"name": None, "description": None, "imageUrl": None}

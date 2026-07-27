@@ -349,8 +349,10 @@ class LibraryAgent(pydantic.BaseModel):
             created_at=created_at,
             updated_at=updated_at,
             last_run_at=agent.lastRunAt,
-            name=graph.name,
-            description=graph.description,
+            # Prefer the marketplace title/description snapshotted at download
+            # time; fall back to the graph's own values for user-created agents.
+            name=agent.name or graph.name,
+            description=agent.description or graph.description,
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,

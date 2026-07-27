@@ -55,6 +55,28 @@ async def resolve_graph_for_library(
     return graph_model
 
 
+async def _get_marketplace_metadata(
+    store_listing_version_id: str,
+) -> dict[str, str | None]:
+    """Snapshot the marketplace listing's title/description/image.
+
+    Returns the published ``name``, ``description`` and first image URL so a
+    downloaded agent shows up in the library exactly as it appears in the
+    marketplace. Missing values fall back to ``None``, in which case the graph's
+    own values are used at read time.
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
+    )
+    if not slv:
+        return {"name": None, "description": None, "imageUrl": None}
+    return {
+        "name": slv.name,
+        "description": slv.description,
+        "imageUrl": slv.imageUrls[0] if slv.imageUrls else None,
+    }
+
+
 async def add_graph_to_library(
     store_listing_version_id: str,
     graph_model: GraphModel,
@@ -71,6 +93,7 @@ async def add_graph_to_library(
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
+    marketplace = await _get_marketplace_metadata(store_listing_version_id)
 
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(
@@ -87,11 +110,15 @@ async def add_graph_to_library(
                 "isCreatedByUser": False,
                 "useGraphIsActiveVersion": False,
                 "settings": settings_json,
+                "name": marketplace["name"],
+                "description": marketplace["description"],
+                "imageUrl": marketplace["imageUrl"],
             },
             include=_include,
         )
     except prisma.errors.UniqueViolationError:
         # Already exists — update to restore if previously soft-deleted/archived
+        # and refresh the marketplace snapshot in case the listing changed.
         added_agent = await prisma.models.LibraryAgent.prisma().update(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
@@ -104,6 +131,9 @@ async def add_graph_to_library(
                 "isDeleted": False,
                 "isArchived": False,
                 "settings": settings_json,
+                "name": marketplace["name"],
+                "description": marketplace["description"],
+                "imageUrl": marketplace["imageUrl"],
             },
             include=_include,
         )
