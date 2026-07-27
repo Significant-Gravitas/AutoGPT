@@ -76,8 +76,12 @@ describe("uploadSubmissionMediaDirect", () => {
     expect(url).toBe("https://cdn.test/uploaded.png");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://backend.test/api/store/submissions/media",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer test-token" },
+      }),
     );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
   });
 
   it("surfaces a clear size message on HTTP 413 instead of a bare status", async () => {
@@ -113,8 +117,12 @@ describe("uploadOAuthAppLogoDirect", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://backend.test/api/oauth/apps/app-123/logo/upload",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer test-token" },
+      }),
     );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
   });
 
   it("throws a clear size message on 413", async () => {

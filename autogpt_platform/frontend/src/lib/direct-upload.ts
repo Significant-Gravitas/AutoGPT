@@ -36,6 +36,36 @@ export function getFileSizeError(file: File, maxSizeMB: number): string | null {
   return `File is too large (${sizeMB}MB). Maximum size is ${maxSizeMB}MB — please choose a smaller file.`;
 }
 
+interface FileSizeGuardArgs {
+  file: File;
+  maxSizeMB: number;
+  toast: (options: {
+    title: string;
+    description?: string;
+    variant?: "destructive";
+  }) => void;
+}
+
+/**
+ * Shows a destructive "File too large" toast and returns true when `file`
+ * exceeds the limit, so callers can guard an upload with
+ * `if (isFileTooLarge({ ... })) return;`.
+ */
+export function isFileTooLarge({
+  file,
+  maxSizeMB,
+  toast,
+}: FileSizeGuardArgs): boolean {
+  const error = getFileSizeError(file, maxSizeMB);
+  if (!error) return false;
+  toast({
+    title: "File too large",
+    description: error,
+    variant: "destructive",
+  });
+  return true;
+}
+
 interface DirectUploadArgs {
   path: string;
   file: File;
@@ -117,7 +147,8 @@ export async function uploadSubmissionMediaDirect(file: File): Promise<string> {
   });
   if (!res.ok) throw new Error(await readUploadError(res));
   // The endpoint returns the URL as a JSON string.
-  return res.json();
+  const url = (await res.json()) as unknown;
+  return typeof url === "string" ? url : String(url);
 }
 
 /** Uploads an OAuth application logo directly to the backend. */

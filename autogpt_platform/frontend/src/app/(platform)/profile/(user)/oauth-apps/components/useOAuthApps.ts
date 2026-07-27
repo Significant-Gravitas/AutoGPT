@@ -9,7 +9,7 @@ import {
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
-  getFileSizeError,
+  isFileTooLarge,
   OAUTH_LOGO_MAX_SIZE_MB,
   uploadOAuthAppLogoDirect,
 } from "@/lib/direct-upload";
@@ -63,15 +63,8 @@ export const useOAuthApps = () => {
   };
 
   const handleUploadLogo = async (appId: string, file: File) => {
-    const sizeError = getFileSizeError(file, OAUTH_LOGO_MAX_SIZE_MB);
-    if (sizeError) {
-      toast({
-        title: "File too large",
-        description: sizeError,
-        variant: "destructive",
-      });
+    if (isFileTooLarge({ file, maxSizeMB: OAUTH_LOGO_MAX_SIZE_MB, toast }))
       return;
-    }
 
     try {
       setUploadingAppId(appId);

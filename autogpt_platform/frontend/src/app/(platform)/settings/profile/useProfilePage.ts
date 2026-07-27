@@ -11,7 +11,7 @@ import {
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
-  getFileSizeError,
+  isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
@@ -155,15 +155,10 @@ export function useProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   async function uploadAvatar(file: File): Promise<string | null> {
-    const sizeError = getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB);
-    if (sizeError) {
-      toast({
-        title: "File too large",
-        description: sizeError,
-        variant: "destructive",
-      });
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
       return null;
-    }
 
     setIsUploadingAvatar(true);
     try {

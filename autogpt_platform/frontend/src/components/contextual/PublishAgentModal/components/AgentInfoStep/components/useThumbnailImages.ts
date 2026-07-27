@@ -3,7 +3,7 @@ import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
-  getFileSizeError,
+  isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
@@ -104,15 +104,10 @@ export function useThumbnailImages({
   }
 
   async function uploadImage(file: File) {
-    const sizeError = getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB);
-    if (sizeError) {
-      toast({
-        title: "File too large",
-        description: sizeError,
-        variant: "destructive",
-      });
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
       return;
-    }
 
     setIsUploading(true);
     try {

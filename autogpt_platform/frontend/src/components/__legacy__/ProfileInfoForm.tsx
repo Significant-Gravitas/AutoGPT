@@ -11,7 +11,7 @@ import { resolveResponse } from "@/app/api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
-  getFileSizeError,
+  isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
@@ -48,15 +48,10 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
   }
 
   async function handleImageUpload(file: File) {
-    const sizeError = getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB);
-    if (sizeError) {
-      toast({
-        title: "File too large",
-        description: sizeError,
-        variant: "destructive",
-      });
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
       return;
-    }
 
     try {
       const mediaUrl = await uploadSubmissionMediaDirect(file);
