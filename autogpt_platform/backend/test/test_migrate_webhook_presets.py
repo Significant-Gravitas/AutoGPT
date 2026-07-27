@@ -358,7 +358,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     migrate_mock = mocker.patch.object(
         library_db,
         "migrate_webhook_presets_to_new_version",
-        return_value=1,
+        return_value=library_model.WebhookPresetMigrationResult(migrated_count=1),
     )
 
     await library_db.update_graph_in_library(graph=incoming, user_id="user-1")
@@ -397,7 +397,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
     migrate_mock = mocker.patch.object(
         library_db,
         "migrate_webhook_presets_to_new_version",
-        return_value=0,
+        return_value=library_model.WebhookPresetMigrationResult(),
     )
 
     await library_db.update_graph_in_library(graph=incoming, user_id="user-1")

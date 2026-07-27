@@ -829,6 +829,11 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
+        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # flow, which has no user-facing channel for skipped-preset warnings,
+        # so the migration result is intentionally discarded here. Skipped
+        # presets are surfaced on the interactive graph-activation endpoints
+        # (update_graph / set_graph_active_version) instead.
         if created_graph.webhook_input_node:
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
