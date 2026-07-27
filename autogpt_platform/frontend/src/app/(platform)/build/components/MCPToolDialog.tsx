@@ -128,7 +128,7 @@ export function MCPToolDialog({
         });
         if (tokenRes.status !== 200)
           throw new Error(
-            "Connected, but saving your API token failed. Please try again.",
+            "Discovered the server, but saving your API token failed. Please try again.",
           );
         setCredentials({
           id: tokenRes.data.id,
@@ -143,8 +143,9 @@ export function MCPToolDialog({
       setAuthRequired(false);
       setShowManualToken(false);
       setStep("tool");
-    } catch (e: any) {
-      if (e?.status === 401 || e?.status === 403) {
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string; detail?: string };
+      if (err?.status === 401 || err?.status === 403) {
         setLoading(false);
         // If the user supplied a token and the server still rejected it, the
         // token is wrong — don't bounce them into an OAuth flow that will just
@@ -162,7 +163,7 @@ export function MCPToolDialog({
         return;
       } else {
         const message =
-          e?.message || e?.detail || "Failed to connect to MCP server";
+          err?.message || err?.detail || "Failed to connect to MCP server";
         setError(
           typeof message === "string" ? message : JSON.stringify(message),
         );

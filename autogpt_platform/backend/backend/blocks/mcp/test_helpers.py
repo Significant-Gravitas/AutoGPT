@@ -162,6 +162,19 @@ def test_is_mcp_credential_for_server_rejects_other_server():
     assert not is_mcp_credential_for_server(cred, "https://mcp.example.com/mcp")
 
 
+def test_is_mcp_credential_for_server_rejects_non_oauth_non_apikey():
+    """The TypeGuard must reject credential types that aren't OAuth2/APIKey
+    even when the provider is MCP (e.g. a host-scoped credential)."""
+    from backend.data.model import HostScopedCredentials
+
+    cred = HostScopedCredentials(
+        provider="mcp",
+        host="mcp.example.com",
+        headers={"Authorization": SecretStr("secret")},
+    )
+    assert not is_mcp_credential_for_server(cred, "https://mcp.example.com/mcp")
+
+
 # ---------------------------------------------------------------------------
 # auto_lookup_mcp_credential — mixed-type selection + OAuth-only refresh guard
 # ---------------------------------------------------------------------------
@@ -240,3 +253,16 @@ async def test_auto_lookup_returns_none_when_no_match():
 
     assert result is None
     mgr.refresh_if_needed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_lookup_tiebreaks_equal_rank_by_recency():
+    """Among equally-ranked (non-expiring) credentials for the same server,
+    the most recently created — last in iteration order — wins."""
+    older = _api_key_cred(_MCP_URL)
+    newer = _api_key_cred(_MCP_URL)
+    ctx, mgr = _patched_manager([older, newer])
+    with ctx:
+        result = await auto_lookup_mcp_credential("user", _MCP_URL)
+
+    assert result is newer

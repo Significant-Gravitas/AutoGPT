@@ -159,6 +159,42 @@ class TestDiscoverTools:
         )
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_discover_tools_auto_uses_stored_api_key_credential(self, client):
+        """A stored static api_key credential is used for discovery, with the
+        token pulled from ``api_key`` (not ``access_token``)."""
+        stored_cred = APIKeyCredentials(
+            provider="mcp",
+            title="MCP: example.com",
+            api_key=SecretStr("static-key-999"),
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=stored_cred,
+            ),
+        ):
+            instance = MockClient.return_value
+            instance.initialize = AsyncMock(
+                return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
+            )
+            instance.list_tools = AsyncMock(return_value=[])
+
+            response = await client.post(
+                "/discover-tools",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        MockClient.assert_called_once_with(
+            "https://mcp.example.com/mcp",
+            auth_token="static-key-999",
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
