@@ -152,4 +152,46 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     expect(mockOAuthLogin).not.toHaveBeenCalled();
     expect(mockStoreToken).not.toHaveBeenCalled();
   });
+
+  it("surfaces an error and adds no block when persisting the token fails", async () => {
+    mockDiscover.mockResolvedValue(discoverOk());
+    mockStoreToken.mockRejectedValue({ detail: "could not store token" });
+    const onConfirm = vi.fn();
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    fireEvent.change(screen.getByLabelText(/api key \/ bearer token/i), {
+      target: { value: "df_live_secret" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect with token/i }),
+    );
+
+    // Discovery succeeded but persistence failed → error shown, no tool step,
+    // no block added.
+    expect(await screen.findByText(/could not store token/i)).toBeDefined();
+    expect(screen.queryByText("get_analytics")).toBeNull();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("can switch back from token entry to OAuth sign-in", () => {
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    expect(screen.getByLabelText(/api key \/ bearer token/i)).toBeDefined();
+
+    fireEvent.click(screen.getByText(/use oauth sign-in instead/i));
+    expect(screen.queryByLabelText(/api key \/ bearer token/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /discover tools/i }),
+    ).toBeDefined();
+  });
 });
