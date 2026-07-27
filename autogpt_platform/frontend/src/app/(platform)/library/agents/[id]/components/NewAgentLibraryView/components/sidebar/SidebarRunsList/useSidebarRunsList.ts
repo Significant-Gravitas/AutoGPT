@@ -128,7 +128,7 @@ export function useSidebarRunsList({
   const loading =
     !runsQuery.isSuccess ||
     !schedulesQuery.isSuccess ||
-    !presetsQuery.isSuccess ||
+    !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const stale =
     runsQuery.isStale ||

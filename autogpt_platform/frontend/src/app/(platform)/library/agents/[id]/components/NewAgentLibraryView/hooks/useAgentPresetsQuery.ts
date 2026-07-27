@@ -21,8 +21,10 @@ const MAX_PRESET_PAGES = 20;
  *
  * `presetsComplete` is true once every page has loaded, so membership is
  * authoritative. `presetsSettled` is true once no more pages will be fetched
- * (either complete, or stopped at the page cap) — the router waits while it's
- * false rather than resolving a selection against a partial list.
+ * (complete, stopped at the page cap, or a later page errored) — the router
+ * waits while it's false rather than resolving against a partial list. A
+ * later-page failure only degrades gracefully; `isError` flags a hard failure
+ * (the first page failed, so there's no data at all).
  */
 export function useAgentPresetsQuery(graphId: string | undefined) {
   const query = useGetV2ListPresetsInfinite(
@@ -36,12 +38,8 @@ export function useAgentPresetsQuery(graphId: string | undefined) {
     },
   );
 
-  const {
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    fetchNextPage,
-  } = query;
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } =
+    query;
   const reachedPageCap = (query.data?.pages.length ?? 0) >= MAX_PRESET_PAGES;
   // Stop paginating at the cap, or once a page fetch has errored — otherwise a
   // persistently failing page keeps hasNextPage true and re-fires forever.
@@ -49,26 +47,34 @@ export function useAgentPresetsQuery(graphId: string | undefined) {
     hasNextPage && !reachedPageCap && !isFetchNextPageError;
 
   useEffect(() => {
-    if (morePagesPending && !isFetchingNextPage) {
+    // Guard on isFetching (not just isFetchingNextPage) so this never races an
+    // initial load or background refetch.
+    if (morePagesPending && !isFetching) {
       fetchNextPage();
     }
-  }, [morePagesPending, isFetchingNextPage, fetchNextPage]);
+  }, [morePagesPending, isFetching, fetchNextPage]);
 
   const presets = useMemo(
     () => (query.data ? unpaginate(query.data, "presets") : undefined),
     [query.data],
   );
   const presetsComplete = query.isSuccess && !hasNextPage;
-  const presetsSettled = query.isSuccess && !morePagesPending;
+  // A later-page failure flips the query to error while keeping the earlier
+  // pages, so settle on it too — routing then resolves against the partial
+  // list and the by-ID fallback instead of stalling on "loading".
+  const presetsSettled =
+    !morePagesPending && (query.isSuccess || isFetchNextPageError);
+  // Only a first-page failure (no data at all) is a hard error worth surfacing;
+  // a mid-pagination failure leaves partial data the UI can still use.
+  const hasHardFailure = query.isError && presets === undefined;
 
   return {
     presets,
     presetsComplete,
     presetsSettled,
-    isSuccess: query.isSuccess,
-    isError: query.isError,
+    isError: hasHardFailure,
     isStale: query.isStale,
-    error: query.error,
+    error: hasHardFailure ? query.error : null,
     refetch: query.refetch,
   };
 }

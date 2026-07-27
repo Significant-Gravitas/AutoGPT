@@ -724,6 +724,52 @@ describe("Library agent view — trigger agents", () => {
     expect(presetGetCalls).toBe(0);
   });
 
+  test("a later presets page failing degrades gracefully instead of blanking the sidebar", async () => {
+    // Page 1 loads 100 webhook presets; page 2 fails. The loaded page stays
+    // usable — the Triggers list must still render rather than being replaced
+    // by a full error card.
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets",
+        ({ request }) => {
+          const page = Number(
+            new URL(request.url).searchParams.get("page") ?? "1",
+          );
+          if (page > 1) {
+            return new HttpResponse(JSON.stringify({ detail: "boom" }), {
+              status: 422,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          return HttpResponse.json({
+            presets: firstPage,
+            pagination: {
+              total_items: firstPage.length + 50,
+              total_pages: 2,
+              current_page: 1,
+              page_size: PRESETS_PAGE_SIZE,
+            },
+          });
+        },
+      ),
+      getGetV2GetASpecificPresetMockHandler(firstPage[0]),
+    );
+
+    renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
+
+    // The sidebar keeps rendering the loaded page-1 triggers instead of being
+    // replaced by an error card.
+    await screen.findByText("Webhook Triggers", undefined, { timeout: 5000 });
+    expect(screen.queryByText(/when retrieving/i)).toBeNull();
+  });
+
   test("webhook trigger deleted between list and detail fetch renders the not-found card", async () => {
     const webhookPreset = makeWebhookPreset({ name: "Just Deleted" });
 
