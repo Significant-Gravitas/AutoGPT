@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  postV2UploadSubmissionMedia,
-  postV2GenerateSubmissionImage,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getFileSizeError,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
 
 interface UseThumbnailImagesProps {
   agentId: string | null;
@@ -102,12 +104,19 @@ export function useThumbnailImages({
   }
 
   async function uploadImage(file: File) {
+    const sizeError = getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB);
+    if (sizeError) {
+      toast({
+        title: "File too large",
+        description: sizeError,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
     try {
-      const mediaRes = await resolveResponse(
-        postV2UploadSubmissionMedia({ file }),
-      );
-      const imageUrl = mediaRes.replace(/^"(.*)"$/, "$1");
+      const imageUrl = await uploadSubmissionMediaDirect(file);
 
       setImagesWithValidation([...images, imageUrl]);
       if (!selectedImage) {
