@@ -17,7 +17,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { ChangeEvent, KeyboardEvent, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  KeyboardEvent,
+  useEffect,
+  useState,
+} from "react";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import {
   type Attachment,
@@ -35,6 +41,7 @@ import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -218,6 +225,14 @@ export function ChatInput({
     voiceHandleKeyDown(e);
   }
 
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (isBusy) return;
+    const files = getFilesFromClipboard(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesSelected(files);
+  }
+
   const resolvedPlaceholder = isRecording
     ? ""
     : isTranscribing
@@ -293,6 +308,7 @@ export function ChatInput({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onBlur={mentions.close}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
