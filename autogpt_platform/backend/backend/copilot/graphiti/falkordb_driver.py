@@ -26,8 +26,9 @@ _UPSTREAM_QUERY_LOGGER = logging.getLogger("graphiti_core.driver.falkordb_driver
 # is side-effect-free and safe even for writes.
 _PENDING_QUEUE_OVERFLOW = "max pending queries exceeded"
 
-# Cap a single retry's backoff so a mis-tuned high ``falkordb_query_max_attempts``
-# can't balloon one wait into minutes, and total backoff stays inside the
+# Cap each retry's total wait (jitter included) so a mis-tuned high
+# ``falkordb_query_max_attempts`` / ``falkordb_query_backoff_base`` can't balloon
+# one wait into minutes. At default settings total backoff stays well within the
 # warm-context timeout budget.
 _MAX_RETRY_DELAY_SECONDS = 2.0
 
@@ -122,8 +123,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                     )
                     await asyncio.sleep(delay)
                     continue
+                # ``params`` hold user memory content (names, facts) — omit them
+                # from this Sentry-routed log to avoid leaking PII. The exception
+                # and query text are enough to triage a genuine failure.
                 _UPSTREAM_QUERY_LOGGER.error(
-                    f"Error executing FalkorDB query: {e}\n{cypher_query_}\n{params}"
+                    f"Error executing FalkorDB query: {e}\n{cypher_query_}"
                 )
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
@@ -133,8 +137,8 @@ class AutoGPTFalkorDriver(FalkorDriver):
         """Jittered exponential backoff (capped) so retries drain the queue over
         time and don't synchronize across concurrent callers."""
         base = graphiti_config.falkordb_query_backoff_base
-        delay = min(base * (2**attempt), _MAX_RETRY_DELAY_SECONDS)
-        return delay + random.uniform(0, base)
+        delay = base * (2**attempt) + random.uniform(0, base)
+        return min(delay, _MAX_RETRY_DELAY_SECONDS)
 
     @staticmethod
     def _to_records(result) -> tuple[list[dict[str, Any]], list[str], None]:

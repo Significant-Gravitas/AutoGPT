@@ -137,6 +137,7 @@ class GraphitiConfig(BaseSettings):
     # Sentry). Only an exhausted budget surfaces the error. (SENTRY-1384.)
     falkordb_query_max_attempts: int = Field(
         default=3,
+        ge=1,
         description=(
             "Total attempts (including the first) for a FalkorDB query before "
             "surfacing a 'Max pending queries exceeded' backpressure error."
@@ -144,6 +145,7 @@ class GraphitiConfig(BaseSettings):
     )
     falkordb_query_backoff_base: float = Field(
         default=0.1,
+        ge=0.0,
         description=(
             "Base delay in seconds for jittered exponential backoff between "
             "FalkorDB pending-queue overflow retries."
