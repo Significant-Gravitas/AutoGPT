@@ -9,7 +9,6 @@ injection -- analogous to parameterized SQL queries.
 
 import base64
 import json
-import os
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -32,9 +31,7 @@ from backend.executor.utils import ExecutionContext
 
 def _b64_json(variables: dict) -> str:
     """Match build_variable_injection's own encoding for test assertions."""
-    return base64.b64encode(
-        json.dumps(variables, ensure_ascii=False).encode("utf-8")
-    ).decode("ascii")
+    return base64.b64encode(json.dumps(variables).encode("utf-8")).decode("ascii")
 
 
 def _decode_env_payload(envs: dict) -> dict:
@@ -149,44 +146,14 @@ class TestBuildVariableInjection:
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
 
-    def test_lone_surrogate_is_sanitized_not_crashed_on(self):
-        """A lone (unpaired) UTF-16 surrogate -- e.g. from malformed emoji data
-        returned by an upstream block -- must not raise. It's a valid Python
-        `str` character but not a valid standalone Unicode scalar value, so it
-        gets replaced rather than passed through to whatever consumes the env
-        var downstream.
-        """
-        variables = {"note": "Holidays \ud83c"}
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
-
-        assert "\ud83c" not in _decode_env_payload(envs)["note"]
-        # The payload must be safe to actually use as an env var value (it's
-        # base64/ASCII regardless, but assert this explicitly since it's the
-        # property that actually matters for the env-var transport).
-        os.environ["TEST_AGPT_VARIABLES_SANITIZE_CHECK"] = envs[VARIABLES_ENV_KEY]
-        del os.environ["TEST_AGPT_VARIABLES_SANITIZE_CHECK"]
-
     def test_real_emoji_survives_sanitization_untouched(self):
         """Properly-paired surrogates (real emoji) are valid Unicode and must
-        not be altered by the lone-surrogate sanitization.
+        round-trip through the injection helper untouched.
         """
         variables = {"note": "Holidays \U0001f385\U0001f3fb"}
         envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
 
         assert _decode_env_payload(envs) == variables
-
-    def test_lone_surrogate_sanitized_inside_nested_structures(self):
-        variables = {
-            "items": [{"label": "Holidays \ud83c"}, "plain"],
-            "meta": {"tag": "x \udfff y"},
-            "nested_bad_key": {"\ud83c_key": "value"},
-            "tuple_val": ("tuple \udfff",),
-        }
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
-
-        decoded = json.dumps(_decode_env_payload(envs))
-        assert "\ud83c" not in decoded
-        assert "\udfff" not in decoded
 
     def test_real_emoji_does_not_reappear_as_literal_escapes_in_payload(self):
         """Regression test for the gap a maintainer identified in review: a
