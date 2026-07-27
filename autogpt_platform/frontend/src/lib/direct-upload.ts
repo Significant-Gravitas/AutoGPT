@@ -25,6 +25,7 @@ export const SUBMISSION_MEDIA_MAX_SIZE_MB = 50;
 export const OAUTH_LOGO_MAX_SIZE_MB = 3;
 
 const BYTES_PER_MB = 1024 * 1024;
+const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Returns a user-facing message when a file exceeds `maxSizeMB`, or null when
@@ -94,6 +95,9 @@ async function postFileToBackend({
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
+    // Guard against a stalled connection leaving the UI stuck "Uploading…".
+    // Generous so large (up to 50MB) uploads on slow links aren't cut off.
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
 }
 
