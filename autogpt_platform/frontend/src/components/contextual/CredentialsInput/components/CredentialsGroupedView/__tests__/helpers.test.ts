@@ -5,14 +5,14 @@ function makeProviders(creds: unknown[]) {
   return { mcp: { savedCredentials: creds } } as never;
 }
 
-function apiKeyCred(id: string, host: string) {
+function APIKeyCred(id: string, host: string) {
   return { id, provider: "mcp", type: "api_key", title: `MCP: ${host}`, host };
 }
 
 describe("findSavedUserCredentialByProviderAndType — MCP api_key host matching", () => {
   it("does not auto-assign an api_key MCP credential belonging to a different server", () => {
     const providers = makeProviders([
-      apiKeyCred("b", "https://mcp.serverB.com/mcp"),
+      APIKeyCred("b", "https://mcp.serverB.com/mcp"),
     ]);
 
     const result = findSavedUserCredentialByProviderAndType(
@@ -30,8 +30,8 @@ describe("findSavedUserCredentialByProviderAndType — MCP api_key host matching
 
   it("auto-assigns the api_key MCP credential whose host matches the server", () => {
     const providers = makeProviders([
-      apiKeyCred("a", "https://mcp.serverA.com/mcp"),
-      apiKeyCred("b", "https://mcp.serverB.com/mcp"),
+      APIKeyCred("a", "https://mcp.serverA.com/mcp"),
+      APIKeyCred("b", "https://mcp.serverB.com/mcp"),
     ]);
 
     const result = findSavedUserCredentialByProviderAndType(
