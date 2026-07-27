@@ -75,7 +75,7 @@ def build_variable_injection(
     _validate_keys(variables)
 
     try:
-        serialized = json.dumps(variables)
+        serialized = json.dumps(variables, ensure_ascii=True)
     except (TypeError, ValueError) as e:
         bad_keys = [k for k, v in variables.items() if not _is_json_serializable(v)]
         raise ValueError(
@@ -120,7 +120,7 @@ def _validate_keys(variables: dict[str, Any]) -> None:
 
 def _is_json_serializable(value: Any) -> bool:
     try:
-        json.dumps(value)
+        json.dumps(value, ensure_ascii=True)
         return True
     except (TypeError, ValueError):
         return False
