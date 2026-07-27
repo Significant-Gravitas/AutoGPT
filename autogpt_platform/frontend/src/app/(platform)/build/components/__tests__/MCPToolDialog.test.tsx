@@ -153,9 +153,11 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     expect(mockStoreToken).not.toHaveBeenCalled();
   });
 
-  it("surfaces an error and adds no block when persisting the token fails", async () => {
+  it("surfaces a clear error and adds no block when persisting the token fails", async () => {
     mockDiscover.mockResolvedValue(discoverOk());
-    mockStoreToken.mockRejectedValue({ detail: "could not store token" });
+    // Non-2xx from /token: the dialog must show a token-specific message, not
+    // a misleading "failed to connect" one.
+    mockStoreToken.mockResolvedValue({ status: 500, data: {} });
     const onConfirm = vi.fn();
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
@@ -175,7 +177,9 @@ describe("MCPToolDialog — static API key / bearer token", () => {
 
     // Discovery succeeded but persistence failed → error shown, no tool step,
     // no block added.
-    expect(await screen.findByText(/could not store token/i)).toBeDefined();
+    expect(
+      await screen.findByText(/saving your api token failed/i),
+    ).toBeDefined();
     expect(screen.queryByText("get_analytics")).toBeNull();
     expect(onConfirm).not.toHaveBeenCalled();
   });

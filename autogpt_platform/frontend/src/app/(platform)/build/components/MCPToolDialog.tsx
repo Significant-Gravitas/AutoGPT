@@ -126,7 +126,10 @@ export function MCPToolDialog({
           server_url: url,
           token: authToken,
         });
-        if (tokenRes.status !== 200) throw tokenRes.data;
+        if (tokenRes.status !== 200)
+          throw new Error(
+            "Connected, but saving your API token failed. Please try again.",
+          );
         setCredentials({
           id: tokenRes.data.id,
           provider: tokenRes.data.provider,
