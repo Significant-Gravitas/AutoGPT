@@ -1,4 +1,5 @@
 import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
@@ -54,6 +55,29 @@ export function flattenSessions(data: SessionListInfiniteData | undefined) {
   return data.pages.flatMap((page) =>
     page.status === 200 ? page.data.sessions : [],
   );
+}
+
+export interface SessionGroup {
+  expertId: string | null;
+  sessions: SessionSummaryResponse[];
+}
+
+export function groupSessionsByExpert(
+  sessions: SessionSummaryResponse[],
+): SessionGroup[] {
+  const byExpert = new Map<string | null, SessionSummaryResponse[]>();
+  for (const session of sessions) {
+    const key = session.expert_id ?? null;
+    const bucket = byExpert.get(key);
+    if (bucket) {
+      bucket.push(session);
+    } else {
+      byExpert.set(key, [session]);
+    }
+  }
+  return [...byExpert.entries()]
+    .map(([expertId, grouped]) => ({ expertId, sessions: grouped }))
+    .sort((a, b) => (a.expertId === null ? 1 : b.expertId === null ? -1 : 0));
 }
 
 function countLoadedSessions(pages: SessionListPage[]) {

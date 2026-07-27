@@ -20,6 +20,7 @@ import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import type { ExpertIdentity } from "../../useExpertMap";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -63,6 +64,9 @@ export interface ChatContainerProps {
   onDroppedFilesConsumed?: () => void;
   /** Per-message stats (durationMs, createdAt), keyed by message ID. */
   turnStats?: TurnStatsMap;
+  /** Expert identity for expert-scoped sessions (thread header + assistant
+   * avatar/name). Null = default header. */
+  expertIdentity?: ExpertIdentity | null;
 }
 export const ChatContainer = ({
   messages,
@@ -90,6 +94,7 @@ export const ChatContainer = ({
   droppedFiles,
   onDroppedFilesConsumed,
   turnStats,
+  expertIdentity,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -177,6 +182,7 @@ export const ChatContainer = ({
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 bottomContentPadding={usageCardHeight}
+                expertIdentity={expertIdentity}
               />
               <motion.div
                 initial={{ opacity: 0 }}

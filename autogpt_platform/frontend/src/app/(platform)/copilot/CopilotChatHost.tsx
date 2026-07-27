@@ -46,6 +46,7 @@ export function CopilotChatHost({
     dismissRateLimit,
     sessionDryRun,
     sessionChatStatus,
+    expertIdentity,
   } = useCopilotPage();
 
   return (
@@ -86,6 +87,7 @@ export function CopilotChatHost({
           droppedFiles={droppedFiles}
           onDroppedFilesConsumed={onDroppedFilesConsumed}
           turnStats={turnStats}
+          expertIdentity={expertIdentity}
         />
       </div>
       <RateLimitGate

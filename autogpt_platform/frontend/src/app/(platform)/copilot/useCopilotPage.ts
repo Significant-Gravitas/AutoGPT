@@ -2,6 +2,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
+import { parseAsString, useQueryState } from "nuqs";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
@@ -14,6 +15,7 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
@@ -39,6 +41,11 @@ function hasAssistantTail(messages: UIMessage[]) {
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const expertMap = useExpertMap();
+  const expertIdentity = expertId ? (expertMap.get(expertId) ?? null) : null;
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
 
@@ -58,7 +65,7 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun });
+  } = useChatSession({ dryRun: isDryRun, expertId });
 
   const {
     messages: currentMessages,
@@ -261,5 +268,6 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    expertIdentity,
   };
 }

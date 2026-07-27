@@ -1,6 +1,7 @@
 import {
   getGetV2GetSessionQueryKey,
   useGetV2GetSession,
+  useGetV2ListSessions,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
@@ -17,9 +18,13 @@ import { resolveSessionDryRun } from "./helpers";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
+  expertId?: string | null;
 }
 
-export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
+export function useChatSession({
+  dryRun = false,
+  expertId = null,
+}: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
 
@@ -67,6 +72,30 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
       });
     }
   }, [sessionId, queryClient]);
+
+  const latestExpertSessionQuery = useGetV2ListSessions(
+    { expert_id: expertId ?? undefined, limit: 1 },
+    {
+      query: {
+        enabled: !!expertId && !sessionId,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+
+  // Deep link /copilot?expertId=<id>: adopt the expert's latest thread once
+  // per expert. The latch lets "New Chat" stay on a fresh expert session
+  // instead of bouncing back to the latest thread.
+  const redirectedExpertRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!expertId || sessionId) return;
+    if (redirectedExpertRef.current === expertId) return;
+    if (latestExpertSessionQuery.data?.status !== 200) return;
+    const latest = latestExpertSessionQuery.data.data.sessions[0];
+    if (!latest) return;
+    redirectedExpertRef.current = expertId;
+    setSessionId(latest.id);
+  }, [expertId, sessionId, latestExpertSessionQuery.data, setSessionId]);
 
   const freshSessionData =
     !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
@@ -135,7 +164,11 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   async function createSession() {
     if (sessionId) return sessionId;
     try {
-      const body = dryRun ? { data: { dry_run: true } } : { data: null };
+      const sessionData: Record<string, unknown> = {};
+      if (dryRun) sessionData.dry_run = true;
+      if (expertId) sessionData.expert_id = expertId;
+      const body =
+        Object.keys(sessionData).length > 0 ? { data: sessionData } : { data: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await (createSessionMutation as any)(body);
       if (response.status !== 200 || !response.data?.id) {
