@@ -1,16 +1,22 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getFileSizeError,
   OAUTH_LOGO_MAX_SIZE_MB,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadFileDirect,
   uploadOAuthAppLogoDirect,
   uploadSubmissionMediaDirect,
 } from "../direct-upload";
 
+const getTokenMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/supabase/actions", () => ({
-  getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
+  getWebSocketToken: getTokenMock,
 }));
+
+beforeEach(() => {
+  getTokenMock.mockResolvedValue({ token: "test-token" });
+});
 
 vi.mock("@/services/environment", () => ({
   environment: {
@@ -26,7 +32,9 @@ interface FakeResponse {
 }
 
 function mockFetchOnce(response: FakeResponse) {
-  const fetchMock = vi.fn(async () => response as unknown as Response);
+  const fetchMock = vi.fn(
+    async (_url: string, _init?: RequestInit) => response as unknown as Response,
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -114,5 +122,97 @@ describe("uploadOAuthAppLogoDirect", () => {
     await expect(
       uploadOAuthAppLogoDirect("app-123", makeFile(10)),
     ).rejects.toThrow(/too large/i);
+  });
+});
+
+describe("uploadFileDirect (workspace)", () => {
+  it("hits the workspace endpoint with overwrite and session params", async () => {
+    const fetchMock = mockFetchOnce({
+      ok: true,
+      status: 200,
+      json: () => ({
+        file_id: "f1",
+        name: "a.png",
+        path: "p",
+        mime_type: "image/png",
+        size_bytes: 10,
+      }),
+    });
+
+    const result = await uploadFileDirect(makeFile(10), "sess-1");
+
+    expect(result.file_id).toBe("f1");
+    const calledUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toContain(
+      "http://backend.test/api/workspace/files/upload",
+    );
+    expect(calledUrl).toContain("overwrite=true");
+    expect(calledUrl).toContain("session_id=sess-1");
+  });
+});
+
+describe("authentication", () => {
+  it("throws an auth error when no token is available", async () => {
+    getTokenMock.mockResolvedValueOnce({ token: null, error: "no session" });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      /sign in again/i,
+    );
+  });
+});
+
+describe("readUploadError fallbacks", () => {
+  it("uses statusText when the body is not JSON", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: () => {
+        throw new Error("not json");
+      },
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "Internal Server Error",
+    );
+  });
+
+  it("falls back to the HTTP status when there is no statusText or body", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 500,
+      statusText: "",
+      json: () => {
+        throw new Error("not json");
+      },
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "Upload failed (HTTP 500)",
+    );
+  });
+
+  it("reads a nested detail.message object", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 400,
+      json: () => ({ detail: { message: "nested detail message" } }),
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "nested detail message",
+    );
+  });
+
+  it("reads a top-level message field", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 400,
+      json: () => ({ message: "top level message" }),
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "top level message",
+    );
   });
 });

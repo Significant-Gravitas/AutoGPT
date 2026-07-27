@@ -32,13 +32,8 @@ const BYTES_PER_MB = 1024 * 1024;
  */
 export function getFileSizeError(file: File, maxSizeMB: number): string | null {
   if (file.size <= maxSizeMB * BYTES_PER_MB) return null;
-  return `File is too large (${formatFileSize(file.size)}). Maximum size is ${maxSizeMB}MB — please choose a smaller file.`;
-}
-
-function formatFileSize(bytes: number): string {
-  const mb = bytes / BYTES_PER_MB;
-  if (mb >= 1) return `${mb.toFixed(1)}MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  const sizeMB = (file.size / BYTES_PER_MB).toFixed(1);
+  return `File is too large (${sizeMB}MB). Maximum size is ${maxSizeMB}MB — please choose a smaller file.`;
 }
 
 interface DirectUploadArgs {
