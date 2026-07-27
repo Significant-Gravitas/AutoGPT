@@ -3,6 +3,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
 import { AutopilotCard } from "./components/AutopilotCard";
@@ -15,8 +16,15 @@ const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const { hiredExperts, isLoading, isError, refetch, installWorkflow } =
-    useTeamPage();
+  const {
+    hiredExperts,
+    isLoading,
+    isError,
+    refetch,
+    installWorkflow,
+    pickerExpertId,
+    closeWorkflowPicker,
+  } = useTeamPage();
 
   if (!ready) {
     return (
@@ -66,6 +74,12 @@ export default function TeamPage() {
       {!isLoading && !isError && hiredExperts.length === 0 ? (
         <EmptyTeamState />
       ) : null}
+      <InstallWorkflowPicker
+        mode="pick-workflow"
+        expertId={pickerExpertId ?? undefined}
+        open={pickerExpertId !== null}
+        onClose={closeWorkflowPicker}
+      />
     </main>
   );
 }

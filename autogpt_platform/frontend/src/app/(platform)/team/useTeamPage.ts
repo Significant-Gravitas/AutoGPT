@@ -1,7 +1,10 @@
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { useState } from "react";
 
 export function useTeamPage() {
+  const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
+
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
   });
@@ -11,7 +14,11 @@ export function useTeamPage() {
   );
 
   function installWorkflow(expertId: string) {
-    void expertId;
+    setPickerExpertId(expertId);
+  }
+
+  function closeWorkflowPicker() {
+    setPickerExpertId(null);
   }
 
   return {
@@ -20,5 +27,7 @@ export function useTeamPage() {
     isError: expertsQuery.isError,
     refetch: expertsQuery.refetch,
     installWorkflow,
+    pickerExpertId,
+    closeWorkflowPicker,
   };
 }
