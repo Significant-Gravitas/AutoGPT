@@ -164,3 +164,27 @@ async def test_install_workflow_duplicate_returns_existing(
     assert a.id == b.id
     assert a.library_agent_id is not None
     assert a.store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_round_trip(server: SpinTestServer):
+    from backend.api.features.experts import seed
+
+    first_ids = await seed.seed_roster()
+    assert len(first_ids) == 3
+
+    templates = await experts_db.list_templates()
+    seeded = {t.name: t for t in templates if t.id in first_ids}
+    assert {e["name"] for e in seed.ROSTER} == set(seeded)
+    for entry in seed.ROSTER:
+        template = seeded[entry["name"]]
+        assert template.is_template
+        assert template.role == entry["role"]
+        assert template.identity == entry["identity"]
+
+    second_ids = await seed.seed_roster()
+    assert first_ids == second_ids
+
+    templates_after = await experts_db.list_templates()
+    seeded_after = [t for t in templates_after if t.id in second_ids]
+    assert len(seeded_after) == 3
