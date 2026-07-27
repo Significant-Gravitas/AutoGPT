@@ -724,6 +724,67 @@ describe("Library agent view — trigger agents", () => {
     expect(presetGetCalls).toBe(0);
   });
 
+  test("an unknown ID beyond the pagination cap falls back to the by-ID preset fetch", async () => {
+    // More presets than the eager pagination cap (MAX_PRESET_PAGES * 100 =
+    // 2000) can page through: the hook stops at the cap, so `presetsComplete`
+    // stays false and list membership is NOT authoritative. An unknown/stale
+    // selection must therefore fall back to the graceful by-ID webhook-trigger
+    // fetch — the beyond-cap path that the fully-paginated test above
+    // deliberately does not exercise (it asserts zero by-ID fetches).
+    const cappedPreset = makeWebhookPreset({
+      id: "beyond-cap-preset",
+      name: "Beyond Cap Trigger",
+    });
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      // Report far more presets than the cap can reach, but return one row per
+      // page so the test stays light — it's the pagination metadata (not the
+      // row count) that keeps `hasNextPage` true past the cap and leaves
+      // membership incomplete.
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: [
+            makeWebhookPreset({
+              id: `page${page}-preset`,
+              name: `Trigger ${page}`,
+            }),
+          ],
+          pagination: {
+            total_items: 5000,
+            total_pages: 50,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      // The selected ID lives beyond the paginated window, so with membership
+      // incomplete the router resolves it as a webhook trigger and this fires.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return cappedPreset;
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=${cappedPreset.id}`,
+    );
+
+    // Paging through the full cap before the by-ID fallback resolves the detail
+    // is a long async chain, so allow extra time.
+    await screen.findByText("Trigger Details", undefined, { timeout: 8000 });
+    screen.getByDisplayValue("Beyond Cap Trigger");
+    // The beyond-cap fallback fired the by-ID fetch it's meant to.
+    expect(presetGetCalls).toBeGreaterThan(0);
+  });
+
   test("a later presets page failing degrades gracefully instead of blanking the sidebar", async () => {
     // Page 1 loads 100 webhook presets; page 2 fails. The loaded page stays
     // usable — the Triggers list must still render rather than being replaced
