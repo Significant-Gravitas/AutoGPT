@@ -189,7 +189,12 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
+        # Match both the snapshotted marketplace name/description (shown on the
+        # card for downloaded agents) and the underlying graph's own values, so
+        # searching the displayed title always finds the agent.
         where_clause["OR"] = [
+            {"name": {"contains": search_term, "mode": "insensitive"}},
+            {"description": {"contains": search_term, "mode": "insensitive"}},
             {
                 "AgentGraph": {
                     "is": {"name": {"contains": search_term, "mode": "insensitive"}}
