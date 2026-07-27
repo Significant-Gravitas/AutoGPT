@@ -341,7 +341,11 @@ export function MCPToolDialog({
                 OAuth (e.g. a token issued in the vendor's own dashboard). */}
             {!showManualToken && (
               <button
-                onClick={() => setShowManualToken(true)}
+                type="button"
+                onClick={() => {
+                  setShowManualToken(true);
+                  setError(null);
+                }}
                 className="self-start text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
               >
                 Use an API key / bearer token instead
@@ -356,9 +360,11 @@ export function MCPToolDialog({
                     API Key / Bearer Token
                   </Label>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowManualToken(false);
                       setManualToken("");
+                      setError(null);
                     }}
                     className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
                   >
@@ -377,7 +383,11 @@ export function MCPToolDialog({
               </div>
             )}
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p role="alert" className="text-sm text-red-500">
+                {error}
+              </p>
+            )}
           </div>
         )}
 
