@@ -164,6 +164,13 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
             "is": {"name": {"contains": "Published Title", "mode": "insensitive"}}
         }
     } in where["OR"]
+    assert {
+        "AgentGraph": {
+            "is": {
+                "description": {"contains": "Published Title", "mode": "insensitive"}
+            }
+        }
+    } in where["OR"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
