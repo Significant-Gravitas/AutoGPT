@@ -26,11 +26,14 @@ async def resolve_graph_for_library(
     user_id: str,
     *,
     admin: bool,
-) -> GraphModel:
+) -> tuple[GraphModel, prisma.models.StoreListingVersion]:
     """Look up a StoreListingVersion and resolve its graph.
 
     When ``admin=True``, uses ``get_graph_as_admin`` to bypass the marketplace
     APPROVED-only check.  Otherwise uses the regular ``get_graph``.
+
+    Returns the resolved graph together with the StoreListingVersion, so callers
+    can snapshot marketplace metadata without re-querying it.
     """
     slv = await prisma.models.StoreListingVersion.prisma().find_unique(
         where={"id": store_listing_version_id}, include={"AgentGraph": True}
@@ -52,35 +55,33 @@ async def resolve_graph_for_library(
 
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
-    return graph_model
+    return graph_model, slv
 
 
-async def _get_marketplace_metadata(
-    store_listing_version_id: str,
+def _marketplace_metadata(
+    store_listing_version: prisma.models.StoreListingVersion,
 ) -> dict[str, str | None]:
     """Snapshot the marketplace listing's title/description/image.
 
     Returns the published ``name``, ``description`` and first image URL so a
     downloaded agent shows up in the library exactly as it appears in the
-    marketplace. Missing values fall back to ``None``, in which case the graph's
-    own values are used at read time.
+    marketplace.
     """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
-    )
-    if not slv:
-        return {"name": None, "description": None, "imageUrl": None}
     return {
-        "name": slv.name,
-        "description": slv.description,
-        "imageUrl": slv.imageUrls[0] if slv.imageUrls else None,
+        "name": store_listing_version.name,
+        "description": store_listing_version.description,
+        "imageUrl": (
+            store_listing_version.imageUrls[0]
+            if store_listing_version.imageUrls
+            else None
+        ),
     }
 
 
 async def add_graph_to_library(
-    store_listing_version_id: str,
     graph_model: GraphModel,
     user_id: str,
+    store_listing_version: prisma.models.StoreListingVersion,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
@@ -93,7 +94,7 @@ async def add_graph_to_library(
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
-    marketplace = await _get_marketplace_metadata(store_listing_version_id)
+    marketplace = _marketplace_metadata(store_listing_version)
 
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(
@@ -145,7 +146,7 @@ async def add_graph_to_library(
 
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
-        f"for store listing version #{store_listing_version_id} "
+        f"for store listing version #{store_listing_version.id} "
         f"to library for user #{user_id}"
     )
     schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)

@@ -68,6 +68,19 @@ def test_from_db_falls_back_to_graph_name_and_description():
     assert result.description == "Desc"
 
 
+def test_from_db_preserves_empty_marketplace_description():
+    """An intentionally-empty published value is kept, not replaced by the graph.
+
+    Only a missing snapshot (None) falls back; an empty string is a real value.
+    """
+    agent = _make_library_agent(name="Published Title", description="")
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Published Title"
+    assert result.description == ""
+
+
 def test_from_db_execution_count_override_covers_success_rate():
     """Covers execution_count_override is not None branch and executions/count > 0 block."""
     now = datetime.datetime.now(datetime.timezone.utc)

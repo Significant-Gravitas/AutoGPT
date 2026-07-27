@@ -350,9 +350,15 @@ class LibraryAgent(pydantic.BaseModel):
             updated_at=updated_at,
             last_run_at=agent.lastRunAt,
             # Prefer the marketplace title/description snapshotted at download
-            # time; fall back to the graph's own values for user-created agents.
-            name=agent.name or graph.name,
-            description=agent.description or graph.description,
+            # time; fall back to the graph's own values for user-created agents
+            # (which have no snapshot). `is not None` so an intentionally empty
+            # published value is preserved rather than replaced by the graph's.
+            name=agent.name if agent.name is not None else graph.name,
+            description=(
+                agent.description
+                if agent.description is not None
+                else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
