@@ -7,10 +7,14 @@ import {
   getGetV2GetUserProfileQueryKey,
   useGetV2GetUserProfile,
   usePostV2UpdateUserProfile,
-  usePostV2UploadSubmissionMedia,
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  isFileTooLarge,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
 import { ApiError, isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
@@ -148,28 +152,29 @@ export function useProfilePage() {
     setFormState(pristineState);
   }
 
-  const uploadMutation = usePostV2UploadSubmissionMedia({
-    mutation: {
-      onError: (err) => {
-        toast({
-          title: "Failed to upload photo",
-          description: err instanceof Error ? err.message : undefined,
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   async function uploadAvatar(file: File): Promise<string | null> {
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
+      return null;
+
+    setIsUploadingAvatar(true);
     try {
-      const res = await uploadMutation.mutateAsync({ data: { file } });
-      if (res.status !== 200) return null;
-      const url = String(res.data ?? "").trim();
+      const url = (await uploadSubmissionMediaDirect(file)).trim();
       if (!url) return null;
       patchField("avatar_url", url);
       return url;
-    } catch {
+    } catch (err) {
+      toast({
+        title: "Failed to upload photo",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
       return null;
+    } finally {
+      setIsUploadingAvatar(false);
     }
   }
 
@@ -220,7 +225,7 @@ export function useProfilePage() {
     removeLink,
     discardChanges,
     uploadAvatar,
-    isUploading: uploadMutation.isPending,
+    isUploading: isUploadingAvatar,
     saveProfile,
     isSaving: updateMutation.isPending,
     dirty,
