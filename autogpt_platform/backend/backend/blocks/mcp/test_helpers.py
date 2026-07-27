@@ -1,6 +1,15 @@
 """Unit tests for the shared MCP helpers."""
 
-from backend.blocks.mcp.helpers import normalize_mcp_url, parse_mcp_content, server_host
+from pydantic import SecretStr
+
+from backend.blocks.mcp.helpers import (
+    is_mcp_credential_for_server,
+    mcp_auth_token,
+    normalize_mcp_url,
+    parse_mcp_content,
+    server_host,
+)
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 
 # ---------------------------------------------------------------------------
 # normalize_mcp_url
@@ -96,3 +105,54 @@ def test_parse_multi_item():
 
 def test_parse_empty():
     assert parse_mcp_content([]) is None
+
+
+# ---------------------------------------------------------------------------
+# mcp_auth_token / is_mcp_credential_for_server
+# ---------------------------------------------------------------------------
+
+
+def _oauth_cred(url: str) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("oauth-token"),
+        scopes=[],
+        title="MCP",
+        metadata={"mcp_server_url": url},
+    )
+
+
+def _api_key_cred(url: str) -> APIKeyCredentials:
+    return APIKeyCredentials(
+        provider="mcp",
+        api_key=SecretStr("static-token"),
+        title="MCP",
+        metadata={"mcp_server_url": url},
+    )
+
+
+def test_mcp_auth_token_oauth():
+    assert mcp_auth_token(_oauth_cred("https://mcp.example.com/mcp")) == "oauth-token"
+
+
+def test_mcp_auth_token_api_key():
+    assert (
+        mcp_auth_token(_api_key_cred("https://mcp.example.com/mcp")) == "static-token"
+    )
+
+
+def test_is_mcp_credential_for_server_matches_both_types():
+    url = "https://mcp.example.com/mcp"
+    assert is_mcp_credential_for_server(_oauth_cred(url), url)
+    assert is_mcp_credential_for_server(_api_key_cred(url), url)
+
+
+def test_is_mcp_credential_for_server_normalizes_trailing_slash():
+    # Stored with a trailing slash, looked up without — must still match.
+    cred = _api_key_cred("https://mcp.example.com/mcp/")
+    assert is_mcp_credential_for_server(cred, "https://mcp.example.com/mcp")
+
+
+def test_is_mcp_credential_for_server_rejects_other_server():
+    cred = _api_key_cred("https://other.example.com/mcp")
+    assert not is_mcp_credential_for_server(cred, "https://mcp.example.com/mcp")

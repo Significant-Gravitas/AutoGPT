@@ -13,15 +13,20 @@ from autogpt_libs.auth import get_user_id
 from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr
 
-from backend.api.features.integrations.router import CredentialsMetaResponse
+from backend.api.features.integrations.router import (
+    CredentialsMetaResponse,
+    to_meta_response,
+)
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    is_mcp_credential_for_server,
+    mcp_auth_token,
     normalize_mcp_url,
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler
-from backend.data.model import OAuth2Credentials
+from backend.data.model import APIKeyCredentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.request import HTTPClientError, Requests, validate_url_host
@@ -92,7 +97,7 @@ async def discover_tools(
             user_id, normalize_mcp_url(request.server_url)
         )
         if best_cred:
-            auth_token = best_cred.access_token.get_secret_value()
+            auth_token = mcp_auth_token(best_cred)
 
     client = MCPClient(request.server_url, auth_token=auth_token)
 
@@ -361,16 +366,14 @@ async def mcp_oauth_callback(
     hostname = server_host(meta["server_url"])
     credentials.title = f"MCP: {hostname}"
 
-    # Remove old MCP credentials for the same server to prevent stale token buildup.
+    # Remove old MCP credentials for the same server to prevent stale token
+    # buildup — covers both OAuth tokens and previously-stored bearer tokens.
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
         for old in old_creds:
-            if (
-                isinstance(old, OAuth2Credentials)
-                and (old.metadata or {}).get("mcp_server_url") == meta["server_url"]
-            ):
+            if is_mcp_credential_for_server(old, normalize_mcp_url(meta["server_url"])):
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
                     "Removed old MCP credential %s for %s",
@@ -437,27 +440,27 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
-    # Collect IDs of old credentials to clean up after successful create.
+    # Collect IDs of old credentials to clean up after successful create —
+    # covers both bearer tokens and any OAuth token for the same server.
     old_cred_ids: list[str] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
         old_cred_ids = [
-            old.id
-            for old in old_creds
-            if isinstance(old, OAuth2Credentials)
-            and normalize_mcp_url((old.metadata or {}).get("mcp_server_url", ""))
-            == server_url
+            old.id for old in old_creds if is_mcp_credential_for_server(old, server_url)
         ]
     except Exception:
         logger.debug("Could not query old MCP token credentials", exc_info=True)
 
-    credentials = OAuth2Credentials(
+    # Store as a first-class API-key credential (type ``api_key``) rather than
+    # masquerading it as an OAuth2 token — this is the credential type the
+    # MCPToolBlock now advertises for servers that authenticate with a static
+    # bearer token issued in the vendor's own dashboard.
+    credentials = APIKeyCredentials(
         provider=ProviderName.MCP.value,
         title=f"MCP: {hostname}",
-        access_token=SecretStr(token),
-        scopes=[],
+        api_key=SecretStr(token),
         metadata={"mcp_server_url": server_url},
     )
     await creds_manager.create(user_id, credentials)
@@ -469,22 +472,7 @@ async def mcp_store_token(
         except Exception:
             logger.debug("Could not clean up old MCP token credential", exc_info=True)
 
-    return CredentialsMetaResponse(
-        id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=credentials.scopes,
-        username=credentials.username,
-        # Use the full ``mcp_server_url`` for parity with the OAuth callback
-        # response and with ``to_meta_response``'s ``get_host`` (which reads
-        # the same metadata key for MCP creds).  The list endpoint already
-        # normalizes both flows to full URL via ``get_host``, so the matching
-        # logic in ``MCPSetupCard.liveHasCred`` works either way — but
-        # returning the same shape from POST keeps the contract consistent
-        # for any consumer that uses the immediate POST response.
-        host=credentials.metadata.get("mcp_server_url"),
-    )
+    return to_meta_response(credentials)
 
 
 # ======================== Helpers ======================== #

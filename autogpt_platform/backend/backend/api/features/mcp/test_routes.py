@@ -15,7 +15,7 @@ from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
-from backend.data.model import OAuth2Credentials
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.request import HTTPClientError
 
 app = fastapi.FastAPI()
@@ -475,13 +475,21 @@ class TestStoreToken:
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "mcp"
-        assert data["type"] == "oauth2"
+        # A static token is stored as a first-class API-key credential
+        # (type ``api_key``), not masqueraded as an OAuth2 token.
+        assert data["type"] == "api_key"
         # ``host`` carries the full normalized ``mcp_server_url`` (not just
         # the bare hostname) so the response is parity with the OAuth
         # callback path — ``MCPSetupCard`` matches against this URL to
         # render the Connected/Reconnect state on chat refresh.
         assert data["host"] == "https://mcp.example.com/mcp"
         mock_cm.create.assert_called_once()
+        # The persisted credential is an APIKeyCredentials carrying the token
+        # in ``api_key`` with the server URL in metadata for later lookup.
+        stored_cred = mock_cm.create.call_args.args[1]
+        assert isinstance(stored_cred, APIKeyCredentials)
+        assert stored_cred.api_key.get_secret_value() == "my-api-key-123"
+        assert stored_cred.metadata["mcp_server_url"] == "https://mcp.example.com/mcp"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_blank_rejected(self, client):
@@ -522,6 +530,52 @@ class TestStoreToken:
         mock_cm.store.delete_creds_by_id.assert_called_once_with(
             "test-user-id", old_cred.id
         )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_replaces_legacy_and_api_key_credentials(self, client):
+        """Both a legacy OAuth2-masqueraded token and an api_key token for the
+        same server are cleaned up when a new bearer token is stored."""
+        legacy_oauth = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("legacy-oauth-token"),
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        existing_api_key = APIKeyCredentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            api_key=SecretStr("existing-api-key"),
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        other_server = APIKeyCredentials(
+            provider="mcp",
+            title="MCP: other.example.com",
+            api_key=SecretStr("other-key"),
+            metadata={"mcp_server_url": "https://other.example.com/mcp"},
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(
+                return_value=[legacy_oauth, existing_api_key, other_server]
+            )
+            mock_cm.create = AsyncMock()
+            mock_cm.store.delete_creds_by_id = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "new-token",
+                },
+            )
+
+        assert response.status_code == 200
+        deleted_ids = {
+            call.args[1] for call in mock_cm.store.delete_creds_by_id.call_args_list
+        }
+        assert deleted_ids == {legacy_oauth.id, existing_api_key.id}
+        # A credential for a different server must not be touched.
+        assert other_server.id not in deleted_ids
 
 
 class TestSSRFValidation:

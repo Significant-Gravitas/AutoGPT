@@ -7,11 +7,16 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
-from backend.data.model import OAuth2Credentials
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
+
+# MCP credentials can be either a full OAuth2 token or a static API key /
+# bearer token entered by the user. Both are sent to the server as
+# ``Authorization: Bearer <token>`` (see ``MCPClient._build_headers``).
+MCPCredential = OAuth2Credentials | APIKeyCredentials
 
 
 def normalize_mcp_url(url: str) -> str:
@@ -22,6 +27,37 @@ def normalize_mcp_url(url: str) -> str:
     the same stored credential.
     """
     return url.strip().rstrip("/")
+
+
+def mcp_auth_token(cred: MCPCredential) -> str:
+    """Extract the bearer token string from an MCP credential.
+
+    OAuth2 credentials carry it in ``access_token``; static API-key / bearer
+    tokens carry it in ``api_key``. The MCP client adds the ``Bearer`` prefix.
+    """
+    if isinstance(cred, APIKeyCredentials):
+        return cred.api_key.get_secret_value()
+    return cred.access_token.get_secret_value()
+
+
+def is_mcp_credential_for_server(cred: object, server_url: str) -> bool:
+    """True if *cred* is an MCP credential stored for *server_url*.
+
+    Matches both OAuth2 and API-key credentials so bearer-token and OAuth
+    flows share the same lookup/cleanup logic. *server_url* should be
+    normalized (via :func:`normalize_mcp_url`).
+    """
+    if not isinstance(cred, (OAuth2Credentials, APIKeyCredentials)):
+        return False
+    stored = (cred.metadata or {}).get("mcp_server_url", "")
+    return normalize_mcp_url(stored) == server_url
+
+
+def _mcp_credential_expiry(cred: MCPCredential) -> int:
+    """Unix expiry timestamp of an MCP credential, or 0 if it never expires."""
+    if isinstance(cred, APIKeyCredentials):
+        return cred.expires_at or 0
+    return cred.access_token_expires_at or 0
 
 
 def server_host(server_url: str) -> str:
@@ -109,14 +145,15 @@ async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
 
 async def auto_lookup_mcp_credential(
     user_id: str, server_url: str
-) -> OAuth2Credentials | None:
+) -> MCPCredential | None:
     """Look up the best stored MCP credential for *server_url*.
 
     The caller should pass a **normalized** URL (via :func:`normalize_mcp_url`)
     so the comparison with ``mcp_server_url`` in credential metadata matches.
 
-    Returns the credential with the latest ``access_token_expires_at``, refreshed
-    if needed, or ``None`` when no match is found.
+    Matches both OAuth2 credentials and static API-key / bearer tokens.
+    Returns the credential with the latest expiry, refreshed if needed (OAuth2
+    only), or ``None`` when no match is found.
     """
     try:
         mgr = IntegrationCredentialsManager()
@@ -124,24 +161,21 @@ async def auto_lookup_mcp_credential(
             user_id, ProviderName.MCP.value
         )
         # Collect all matching credentials and pick the best one.
-        # Primary sort: latest access_token_expires_at (tokens with expiry
-        # are preferred over non-expiring ones).  Secondary sort: last in
-        # iteration order, which corresponds to the most recently created
-        # row — this acts as a tiebreaker when multiple bearer tokens have
-        # no expiry (e.g. after a failed old-credential cleanup).
-        best: OAuth2Credentials | None = None
+        # Primary sort: latest expiry (tokens with expiry are preferred over
+        # non-expiring ones).  Secondary sort: last in iteration order, which
+        # corresponds to the most recently created row — this acts as a
+        # tiebreaker when multiple bearer tokens have no expiry (e.g. after a
+        # failed old-credential cleanup).
+        best: MCPCredential | None = None
         for cred in mcp_creds:
-            if (
-                isinstance(cred, OAuth2Credentials)
-                and (cred.metadata or {}).get("mcp_server_url") == server_url
-            ):
+            if is_mcp_credential_for_server(cred, server_url):
                 if best is None or (
-                    (cred.access_token_expires_at or 0)
-                    >= (best.access_token_expires_at or 0)
+                    _mcp_credential_expiry(cred) >= _mcp_credential_expiry(best)
                 ):
                     best = cred
-        if best:
+        if best is not None and isinstance(best, OAuth2Credentials):
             best = await mgr.refresh_if_needed(user_id, best)
+        if best is not None:
             logger.info("Auto-resolved MCP credential %s for %s", best.id, server_url)
         return best
     except Exception:
