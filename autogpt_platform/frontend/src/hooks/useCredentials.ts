@@ -27,8 +27,9 @@ export function classifyCredentials(
   for (const c of allSaved) {
     if (!supportedTypes.includes(c.type)) continue;
 
-    // MCP OAuth2 credentials filter by server URL — not upgradeable
-    if (c.type === "oauth2" && c.provider === "mcp") {
+    // MCP credentials (OAuth2 tokens and static API-key / bearer tokens)
+    // filter by server URL — not upgradeable.
+    if ((c.type === "oauth2" || c.type === "api_key") && c.provider === "mcp") {
       if (discriminatorValue != null && c.host === discriminatorValue) {
         savedCredentials.push(c);
       }

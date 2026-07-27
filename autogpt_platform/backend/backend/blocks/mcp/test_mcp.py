@@ -595,6 +595,43 @@ class TestMCPToolBlock:
         assert captured_tokens == ["resolved-token"]
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_run_with_api_key_credentials(self):
+        """Verify the block accepts a static API-key / bearer token and pulls
+        the token from ``api_key`` (not ``access_token``)."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url="https://mcp.example.com/mcp",
+            selected_tool="test_tool",
+        )
+
+        captured_tokens: list[str | None] = []
+
+        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+            captured_tokens.append(auth_token)
+            return "ok"
+
+        block._call_mcp_tool = mock_call  # type: ignore
+
+        test_creds = APIKeyCredentials(
+            id="cred-apikey-1",
+            provider="mcp",
+            api_key=SecretStr("static-bearer-token"),
+            title="MCP: mcp.example.com",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+
+        async for _ in block.run(
+            input_data, user_id=MOCK_USER_ID, credentials=test_creds
+        ):
+            pass
+
+        assert captured_tokens == ["static-bearer-token"]
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_without_credentials(self):
         """Verify the block works without credentials (public server)."""
         block = MCPToolBlock()

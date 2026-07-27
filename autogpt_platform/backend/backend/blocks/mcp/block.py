@@ -20,7 +20,9 @@ from backend.blocks._base import (
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
+    MCPCredential,
     auto_lookup_mcp_credential,
+    mcp_auth_token,
     normalize_mcp_url,
     parse_mcp_content,
 )
@@ -52,7 +54,9 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-MCPCredentials = CredentialsMetaInput[Literal[ProviderName.MCP], Literal["oauth2"]]
+MCPCredentials = CredentialsMetaInput[
+    Literal[ProviderName.MCP], Literal["oauth2", "api_key"]
+]
 
 
 class MCPToolBlock(Block):
@@ -75,7 +79,7 @@ class MCPToolBlock(Block):
         )
         credentials: MCPCredentials = CredentialsField(
             discriminator="server_url",
-            description="MCP server OAuth credentials",
+            description="MCP server credentials (OAuth token or API key / bearer token)",
             default={},
         )
         selected_tool: str = SchemaField(
@@ -194,7 +198,7 @@ class MCPToolBlock(Block):
     @staticmethod
     async def _auto_lookup_credential(
         user_id: str, server_url: str
-    ) -> "OAuth2Credentials | None":
+    ) -> "MCPCredential | None":
         """Auto-lookup stored MCP credential for a server URL.
 
         Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
@@ -207,7 +211,7 @@ class MCPToolBlock(Block):
         input_data: Input,
         *,
         user_id: str,
-        credentials: OAuth2Credentials | None = None,
+        credentials: MCPCredential | None = None,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.server_url:
@@ -240,9 +244,7 @@ class MCPToolBlock(Block):
                 user_id, normalize_mcp_url(input_data.server_url)
             )
 
-        auth_token = (
-            credentials.access_token.get_secret_value() if credentials else None
-        )
+        auth_token = mcp_auth_token(credentials) if credentials else None
 
         try:
             result = await self._call_mcp_tool(

@@ -1,0 +1,126 @@
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  cleanup,
+} from "@/tests/integrations/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MCPToolDialog } from "../MCPToolDialog";
+
+vi.mock("@/lib/oauth-popup", () => ({
+  openOAuthPopup: vi.fn(),
+}));
+
+const mockDiscover = vi.fn();
+const mockStoreToken = vi.fn();
+vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
+  postV2DiscoverAvailableToolsOnAnMcpServer: (...args: unknown[]) =>
+    mockDiscover(...args),
+  postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
+  postV2ExchangeOauthCodeForMcpTokens: vi.fn(),
+  postV2StoreABearerTokenForAnMcpServer: (...args: unknown[]) =>
+    mockStoreToken(...args),
+}));
+
+const SERVER_URL = "https://mcp.datafa.st/mcp";
+
+function discoverOk() {
+  return {
+    status: 200,
+    data: {
+      tools: [
+        {
+          name: "get_analytics",
+          description: "Fetch analytics",
+          input_schema: { type: "object", properties: {}, required: [] },
+        },
+      ],
+      server_name: "datafa.st",
+    },
+  };
+}
+
+describe("MCPToolDialog — static API key / bearer token", () => {
+  afterEach(() => {
+    cleanup();
+    mockDiscover.mockReset();
+    mockStoreToken.mockReset();
+  });
+
+  it("persists a manually entered token and attaches it as the block credential", async () => {
+    mockDiscover.mockResolvedValue(discoverOk());
+    mockStoreToken.mockResolvedValue({
+      status: 200,
+      data: {
+        id: "cred-abc",
+        provider: "mcp",
+        type: "api_key",
+        title: "MCP: datafa.st",
+        host: SERVER_URL,
+      },
+    });
+    const onConfirm = vi.fn();
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+
+    // Proactively choose the token flow without triggering a failed OAuth
+    // round-trip first.
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    fireEvent.change(screen.getByLabelText(/api key \/ bearer token/i), {
+      target: { value: "df_live_secret" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect with token/i }),
+    );
+
+    // The token is persisted via the /token endpoint so the block can
+    // authenticate at runtime (discovery alone would discard it).
+    await waitFor(() =>
+      expect(mockStoreToken).toHaveBeenCalledWith({
+        server_url: SERVER_URL,
+        token: "df_live_secret",
+      }),
+    );
+
+    // Land on the tool-selection step, pick a tool, add the block.
+    const toolButton = await screen.findByText("get_analytics");
+    fireEvent.click(toolButton);
+    fireEvent.click(screen.getByRole("button", { name: /add block/i }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const result = onConfirm.mock.calls[0][0];
+    expect(result.credentials).toEqual({
+      id: "cred-abc",
+      provider: "mcp",
+      type: "api_key",
+      title: "MCP: datafa.st",
+    });
+    expect(result.selectedTool).toBe("get_analytics");
+  });
+
+  it("does not attach credentials for a public server (no token)", async () => {
+    mockDiscover.mockResolvedValue(discoverOk());
+    const onConfirm = vi.fn();
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+
+    const toolButton = await screen.findByText("get_analytics");
+    fireEvent.click(toolButton);
+    fireEvent.click(screen.getByRole("button", { name: /add block/i }));
+
+    expect(mockStoreToken).not.toHaveBeenCalled();
+    expect(onConfirm.mock.calls[0][0].credentials).toBeNull();
+  });
+});

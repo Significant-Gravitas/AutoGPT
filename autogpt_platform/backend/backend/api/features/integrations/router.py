@@ -157,7 +157,9 @@ class CredentialsMetaResponse(BaseModel):
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider in (
+        if isinstance(
+            cred, (OAuth2Credentials, APIKeyCredentials)
+        ) and cred.provider in (
             ProviderName.MCP,
             ProviderName.MCP.value,
             "ProviderName.MCP",

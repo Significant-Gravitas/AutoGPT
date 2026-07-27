@@ -27,6 +27,7 @@ import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2InitiateOauthLoginForAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { CaretDown } from "@phosphor-icons/react";
 import { openOAuthPopup } from "@/lib/oauth-popup";
@@ -115,6 +116,25 @@ export function MCPToolDialog({
         auth_token: authToken || null,
       });
       if (response.status !== 200) throw response.data;
+
+      // When the user authenticated with a static API key / bearer token,
+      // persist it so the block can authenticate at runtime — discovery only
+      // uses the token transiently and would otherwise be discarded, leaving
+      // the placed block with no credentials and failing on the next run.
+      if (authToken) {
+        const tokenRes = await postV2StoreABearerTokenForAnMcpServer({
+          server_url: url,
+          token: authToken,
+        });
+        if (tokenRes.status !== 200) throw tokenRes.data;
+        setCredentials({
+          id: tokenRes.data.id,
+          provider: tokenRes.data.provider,
+          type: tokenRes.data.type,
+          title: tokenRes.data.title,
+        });
+      }
+
       setTools(response.data.tools);
       setServerName(response.data.server_name ?? null);
       setAuthRequired(false);
@@ -304,26 +324,39 @@ export function MCPToolDialog({
               />
             </div>
 
-            {/* Auth required: show manual token option */}
-            {authRequired && !showManualToken && (
+            {/* Manual token option — available up front for servers that
+                authenticate with a static API key / bearer token rather than
+                OAuth (e.g. a token issued in the vendor's own dashboard). */}
+            {!showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                className="self-start text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
               >
-                or enter a token manually
+                Use an API key / bearer token instead
               </button>
             )}
 
             {/* Manual token entry — only visible when expanded */}
             {showManualToken && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="mcp-auth-token" className="text-sm">
-                  Bearer Token
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mcp-auth-token" className="text-sm">
+                    API Key / Bearer Token
+                  </Label>
+                  <button
+                    onClick={() => {
+                      setShowManualToken(false);
+                      setManualToken("");
+                    }}
+                    className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  >
+                    Use OAuth sign-in instead
+                  </button>
+                </div>
                 <Input
                   id="mcp-auth-token"
                   type="password"
-                  placeholder="Paste your auth token here"
+                  placeholder="Paste your API key or bearer token here"
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
@@ -373,14 +406,21 @@ export function MCPToolDialog({
                   ? handleOAuthSignIn
                   : handleDiscoverTools
               }
-              disabled={!serverUrl.trim() || loading || oauthLoading}
+              disabled={
+                !serverUrl.trim() ||
+                loading ||
+                oauthLoading ||
+                (showManualToken && !manualToken.trim())
+              }
             >
               {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
                   <LoadingSpinner className="size-4" />
                   {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
                 </span>
-              ) : authRequired && !showManualToken ? (
+              ) : showManualToken ? (
+                "Connect with Token"
+              ) : authRequired ? (
                 "Sign in & Connect"
               ) : (
                 "Discover Tools"
