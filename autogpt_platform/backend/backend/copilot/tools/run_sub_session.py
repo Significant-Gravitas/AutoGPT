@@ -247,12 +247,14 @@ def _followup_poll_nudge(inner_session_id: str) -> str:
         "session_id=<the session_id from <session_context>>, message='Poll "
         f"attempt 1 of {FOLLOWUP_POLL_MAX_ATTEMPTS}: call "
         f'get_sub_session_result(sub_session_id="{inner_session_id}") and '
-        "report the outcome to the user. If it is still running and this was "
-        f"attempt N of {FOLLOWUP_POLL_MAX_ATTEMPTS}, schedule the next poll as "
-        f"attempt N+1; once attempt {FOLLOWUP_POLL_MAX_ATTEMPTS} is reached, "
-        "just tell the user it is still running instead of rescheduling "
-        "again.'). Without it get_sub_session_result never runs again and the "
-        "result never reaches the user."
+        "report the outcome to the user. If it is still running, schedule the "
+        "next poll the same way and raise the attempt number by one in that "
+        f"message (then 2 of {FOLLOWUP_POLL_MAX_ATTEMPTS}, 3 of "
+        f"{FOLLOWUP_POLL_MAX_ATTEMPTS}, and so on); when the message would read "
+        f"attempt {FOLLOWUP_POLL_MAX_ATTEMPTS} of {FOLLOWUP_POLL_MAX_ATTEMPTS} "
+        "and it is still running, stop rescheduling and just tell the user it "
+        "is still running.'). Without it get_sub_session_result never runs "
+        "again and the result never reaches the user."
     )
 
 
