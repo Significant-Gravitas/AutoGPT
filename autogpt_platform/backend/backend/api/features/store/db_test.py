@@ -189,6 +189,7 @@ async def test_create_store_submission(mocker):
         notifyOnMonthlySummary=True,
         notifyOnAgentApproved=True,
         notifyOnAgentRejected=True,
+        notifyOnAutomationsPaused=True,
         timezone="Europe/Delft",
         subscriptionTier=prisma.enums.SubscriptionTier.BASIC,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
     )

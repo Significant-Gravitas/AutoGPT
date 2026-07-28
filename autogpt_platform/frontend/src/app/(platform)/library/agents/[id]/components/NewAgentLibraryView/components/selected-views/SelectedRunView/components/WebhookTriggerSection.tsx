@@ -63,7 +63,9 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             This trigger is not attached to a webhook. Use &quot;Set up
             trigger&quot; to fix this.
           </Text>
-        ) : !triggerSetupInfo.credentials_input_name && webhook ? (
+        ) : status === "active" &&
+          !triggerSetupInfo.credentials_input_name &&
+          webhook ? (
           <div className="flex flex-col gap-2">
             <Text variant="body">
               This trigger is ready to be used. Use the Webhook URL below to set

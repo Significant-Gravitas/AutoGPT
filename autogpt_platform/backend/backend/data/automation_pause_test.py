@@ -149,3 +149,37 @@ async def test_resume_with_nothing_to_resume_sends_no_notification():
 
     assert summary.total == 0
     notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pause_deactivates_presets_even_when_scheduler_fails():
+    client = MagicMock()
+    client.pause_user_graph_schedules = AsyncMock(side_effect=RuntimeError("down"))
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=2)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
+        with pytest.raises(RuntimeError):
+            await pause_automations_for_payment_lapse("user-1")
+
+    preset_prisma.return_value.update_many.assert_awaited_once()
+    event = notify.await_args.args[0]
+    assert event.data.paused_triggers == 2
+
+
+@pytest.mark.asyncio
+async def test_resume_reactivates_presets_even_when_scheduler_fails():
+    client = MagicMock()
+    client.resume_user_graph_schedules = AsyncMock(side_effect=RuntimeError("down"))
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=1)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
+        with pytest.raises(RuntimeError):
+            await resume_automations_after_payment_restored("user-1")
+
+    preset_prisma.return_value.update_many.assert_awaited_once()
+    event = notify.await_args.args[0]
+    assert event.data.resumed_triggers == 1

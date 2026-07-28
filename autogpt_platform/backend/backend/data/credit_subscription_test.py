@@ -48,28 +48,45 @@ def _clear_cache(fn: _CacheClearable) -> None:
 async def test_set_subscription_tier_updates_db():
     with (
         patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(update=AsyncMock()),
-        ) as mock_prisma,
+            "backend.data.credit.query_raw_with_schema",
+            new=AsyncMock(return_value=[{"previous_tier": "PRO"}]),
+        ) as mock_query,
         patch("backend.data.credit.get_user_by_id"),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        update_call = mock_prisma.return_value.update.await_args
-        assert update_call.kwargs["where"] == {"id": "user-1"}
-        assert update_call.kwargs["data"]["subscriptionTier"] == SubscriptionTier.PRO
+        query_args = mock_query.await_args.args
+        assert query_args[1] == "user-1"
+        assert query_args[2] == SubscriptionTier.PRO.value
 
 
 @pytest.mark.asyncio
 async def test_set_subscription_tier_downgrade():
     with (
         patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(update=AsyncMock()),
+            "backend.data.credit.query_raw_with_schema",
+            new=AsyncMock(return_value=[{"previous_tier": "PRO"}]),
         ),
         patch("backend.data.credit.get_user_by_id"),
     ):
         # Downgrade to BASIC should not raise
         await set_subscription_tier("user-1", SubscriptionTier.BASIC)
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_pauses_automations_on_lapse():
+    with (
+        patch(
+            "backend.data.credit.query_raw_with_schema",
+            new=AsyncMock(return_value=[{"previous_tier": "PRO"}]),
+        ),
+        patch("backend.data.credit.get_user_by_id"),
+        patch(
+            "backend.data.credit.pause_automations_for_payment_lapse",
+            new=AsyncMock(),
+        ) as mock_pause,
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.NO_TIER)
+        mock_pause.assert_awaited_once_with("user-1")
 
 
 def _make_user(

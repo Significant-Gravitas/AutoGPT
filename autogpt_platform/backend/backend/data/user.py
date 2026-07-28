@@ -560,9 +560,14 @@ async def update_user_notification_preference(
             update_data["notifyOnAgentRejected"] = data.preferences[
                 NotificationType.AGENT_REJECTED
             ]
+        # PAUSED and RESUMED share one column; PAUSED wins if both are sent.
         if NotificationType.AUTOMATIONS_PAUSED in data.preferences:
             update_data["notifyOnAutomationsPaused"] = data.preferences[
                 NotificationType.AUTOMATIONS_PAUSED
+            ]
+        elif NotificationType.AUTOMATIONS_RESUMED in data.preferences:
+            update_data["notifyOnAutomationsPaused"] = data.preferences[
+                NotificationType.AUTOMATIONS_RESUMED
             ]
         if data.daily_limit:
             update_data["maxEmailsPerDay"] = data.daily_limit

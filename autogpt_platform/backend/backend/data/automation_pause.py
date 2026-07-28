@@ -40,11 +40,19 @@ class AutomationPauseSummary(BaseModel):
 
 async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSummary:
     personal_org_id = await _get_personal_org_id(user_id)
-    schedules = await get_scheduler_client().pause_user_graph_schedules(
-        user_id=user_id,
-        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
-        personal_org_id=personal_org_id,
-    )
+    # A scheduler outage must not skip trigger deactivation; the error is
+    # re-raised after the preset update so the caller still alerts/retries.
+    schedules = 0
+    scheduler_error: Exception | None = None
+    try:
+        schedules = await get_scheduler_client().pause_user_graph_schedules(
+            user_id=user_id,
+            reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+            personal_org_id=personal_org_id,
+        )
+    except Exception as e:
+        scheduler_error = e
+        logger.error(f"Failed to pause schedules for user {user_id}: {e}")
     # deactivationReason=None keeps user-deactivated presets untouched, so a
     # repeated webhook can't overwrite a user's own deactivation.
     where: AgentPresetWhereInput = {
@@ -71,6 +79,8 @@ async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSu
             f"trigger(s) for user {user_id} after payment lapse"
         )
         await _notify_paused(user_id, summary)
+    if scheduler_error is not None:
+        raise scheduler_error
     return summary
 
 
@@ -78,11 +88,17 @@ async def resume_automations_after_payment_restored(
     user_id: str,
 ) -> AutomationPauseSummary:
     personal_org_id = await _get_personal_org_id(user_id)
-    schedules = await get_scheduler_client().resume_user_graph_schedules(
-        user_id=user_id,
-        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
-        personal_org_id=personal_org_id,
-    )
+    schedules = 0
+    scheduler_error: Exception | None = None
+    try:
+        schedules = await get_scheduler_client().resume_user_graph_schedules(
+            user_id=user_id,
+            reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+            personal_org_id=personal_org_id,
+        )
+    except Exception as e:
+        scheduler_error = e
+        logger.error(f"Failed to resume schedules for user {user_id}: {e}")
     triggers = await AgentPreset.prisma().update_many(
         where={
             "userId": user_id,
@@ -99,6 +115,8 @@ async def resume_automations_after_payment_restored(
             f"trigger(s) for user {user_id} after payment restored"
         )
         await _notify_resumed(user_id, summary)
+    if scheduler_error is not None:
+        raise scheduler_error
     return summary
 
 
