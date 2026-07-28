@@ -2096,8 +2096,7 @@ async def update_preset(
             update_data["description"] = description
         if is_active is not None:
             update_data["isActive"] = is_active
-            # Explicitly setting the active state is a user decision; drop any
-            # system deactivation reason so auto-resume won't override it.
+            # User decision overrides any system deactivation reason
             update_data["deactivationReason"] = None
         if inputs or credentials:
             if not (inputs and credentials):
