@@ -207,10 +207,9 @@ class TestListUserCredentialsTool:
     async def test_skips_managed_sweep_for_non_managed_provider(
         self, tool, mock_session, stub_managed_credentials_sweep
     ):
-        with patch(
-            "backend.copilot.tools.list_credentials.get_managed_provider",
-            return_value=None,
-        ), patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_github_oauth()]):
+        # github is never a managed provider, so the real registry lookup
+        # returns None and the sweep is skipped — no patching of it needed.
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_github_oauth()]):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, provider="github"
             )
