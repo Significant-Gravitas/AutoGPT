@@ -28,18 +28,22 @@ interface Props {
   sectionTitle?: string;
   eyebrow?: string;
   eyebrowIcon?: ReactNode;
+  titleIcon?: ReactNode;
   subtitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
+  children?: ReactNode;
 }
 
 export function AgentsSection({
   sectionTitle,
   eyebrow,
   eyebrowIcon,
+  titleIcon,
   subtitle,
   agents: allAgents,
   hideAvatars = false,
+  children,
 }: Props) {
   const displayedAgents = allAgents;
   const { handleCardClick } = useAgentsSection();
@@ -47,11 +51,12 @@ export function AgentsSection({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        {sectionTitle && eyebrow ? (
+        {sectionTitle && (eyebrow || titleIcon || subtitle) ? (
           <SectionHeader
             eyebrow={eyebrow}
             eyebrowIcon={eyebrowIcon}
             title={sectionTitle}
+            titleIcon={titleIcon}
             subtitle={subtitle}
           />
         ) : sectionTitle ? (
@@ -59,6 +64,7 @@ export function AgentsSection({
             {sectionTitle}
           </h2>
         ) : null}
+        {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
           <Text variant="body" className="ml-4 mt-8 text-gray-500">
             No workflows found

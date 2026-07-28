@@ -1,7 +1,7 @@
 "use client";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { DotsNineIcon } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
@@ -44,18 +44,18 @@ export const MainMarkeplacePage = () => {
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
         {isHireExpertsEnabled ? <ExpertsSection /> : null}
-        {featuredAgents && (
-          <FeaturedSection featuredAgents={featuredAgents.agents} />
-        )}
         {topAgents && (
           <div className="mb-20">
             <AgentsSection
-              sectionTitle="All Workflows"
-              eyebrow="The catalog"
-              eyebrowIcon={<DotsNineIcon size={16} weight="bold" />}
+              sectionTitle="All AI Workflows"
+              titleIcon={<AICatalogIcon size={30} />}
               subtitle="Install one on an Expert, or run it standalone."
               agents={topAgents.agents}
-            />
+            >
+              {featuredAgents && featuredAgents.agents.length > 0 && (
+                <FeaturedSection featuredAgents={featuredAgents.agents} />
+              )}
+            </AgentsSection>
           </div>
         )}
         {featuredCreators && (

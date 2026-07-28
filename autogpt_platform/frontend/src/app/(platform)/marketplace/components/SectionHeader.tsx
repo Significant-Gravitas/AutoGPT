@@ -3,9 +3,10 @@ import Link from "next/link";
 import { ReactNode } from "react";
 
 interface Props {
-  eyebrow: string;
+  eyebrow?: string;
   eyebrowIcon?: ReactNode;
   title: string;
+  titleIcon?: ReactNode;
   subtitle?: string;
   action?: { label: string; href: string };
 }
@@ -14,17 +15,21 @@ export function SectionHeader({
   eyebrow,
   eyebrowIcon,
   title,
+  titleIcon,
   subtitle,
   action,
 }: Props) {
   return (
     <div className="mb-7 flex items-end justify-between gap-4">
       <div>
-        <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
-          {eyebrowIcon}
-          {eyebrow}
-        </div>
-        <h2 className="text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
+        {eyebrow ? (
+          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
+            {eyebrowIcon}
+            {eyebrow}
+          </div>
+        ) : null}
+        <h2 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
+          {titleIcon}
           {title}
         </h2>
         {subtitle ? (

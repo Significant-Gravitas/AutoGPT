@@ -156,14 +156,14 @@ export function MainAgentPage({ params }: Props) {
         {otherAgents && (
           <AgentsSection
             agents={otherAgents.agents}
-            sectionTitle={`Other workflows by ${agentData.creator ?? ""}`}
+            sectionTitle={`Other AI workflows by ${agentData.creator ?? ""}`}
           />
         )}
         <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {similarAgents && similarAgents.agents.length > 0 ? (
           <AgentsSection
             agents={similarAgents.agents}
-            sectionTitle="Similar workflows"
+            sectionTitle="Similar AI workflows"
           />
         ) : null}
         <BecomeACreator />

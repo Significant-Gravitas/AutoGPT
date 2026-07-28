@@ -2,7 +2,6 @@ import {
   getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
-  useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { HireResult } from "@/app/api/__generated__/models/hireResult";
@@ -12,32 +11,29 @@ import { useRouter } from "next/navigation";
 import { createElement } from "react";
 
 export function useExpertProfileSheet(
-  templateId: string | null,
+  expert: Expert | null,
   onClose: () => void,
 ) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[] },
-  });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
   });
 
-  const template = (templatesQuery.data ?? []).find((t) => t.id === templateId);
   const isHired =
-    templateId !== null &&
-    (expertsQuery.data ?? []).some(
-      (expert) => expert.source_template_id === templateId,
-    );
+    expert !== null &&
+    (!expert.is_template ||
+      (expertsQuery.data ?? []).some(
+        (hired) => hired.source_template_id === expert.id,
+      ));
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
 
   async function hire() {
-    if (!templateId || !template) return;
+    if (!expert || !expert.is_template) return;
     try {
-      const response = await hireExpert({ data: { template_id: templateId } });
+      const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
@@ -75,12 +71,12 @@ export function useExpertProfileSheet(
       onClose();
     } catch {
       toast({
-        title: `Couldn't hire ${template.name}`,
+        title: `Couldn't hire ${expert.name}`,
         description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
     }
   }
 
-  return { template, isHired, isHiring, hire };
+  return { isHired, isHiring, hire };
 }

@@ -43,10 +43,11 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           </Avatar>
           <span
             className={cn(
-              "rounded-full px-3 py-1 text-sm font-medium",
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
               accent.pill,
             )}
           >
+            <accent.roleIcon size={14} weight="bold" />
             {expert.role}
           </span>
         </div>
@@ -61,6 +62,29 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
             </p>
           ) : null}
         </div>
+
+        {expert.skills && expert.skills.length > 0 ? (
+          <div>
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
+              Skills
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {expert.skills.slice(0, 3).map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
+                >
+                  {skill}
+                </span>
+              ))}
+              {expert.skills.length > 3 ? (
+                <span className="px-1 py-1 text-xs font-medium text-zinc-400">
+                  +{expert.skills.length - 3}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-2">
           <span className="flex items-center gap-2 text-base text-zinc-500">

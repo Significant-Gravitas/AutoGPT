@@ -4,6 +4,7 @@ import { useState } from "react";
 
 export function useTeamPage() {
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
+  const [profileExpertId, setProfileExpertId] = useState<string | null>(null);
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
@@ -29,5 +30,9 @@ export function useTeamPage() {
     installWorkflow,
     pickerExpertId,
     closeWorkflowPicker,
+    profileExpert:
+      hiredExperts.find((expert) => expert.id === profileExpertId) ?? null,
+    openProfile: setProfileExpertId,
+    closeProfile: () => setProfileExpertId(null),
   };
 }

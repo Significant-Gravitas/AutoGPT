@@ -91,6 +91,6 @@ describe("MainAgentPage", () => {
       "AutoGPT",
     );
     expect(screen.getByText("Other agents by AutoGPT")).toBeDefined();
-    expect(screen.getByText("Similar workflows")).toBeDefined();
+    expect(screen.getByText("Similar AI workflows")).toBeDefined();
   });
 });

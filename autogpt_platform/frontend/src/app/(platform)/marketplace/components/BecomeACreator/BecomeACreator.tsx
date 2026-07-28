@@ -16,7 +16,7 @@ export function BecomeACreator({
     <div className="relative mx-auto w-full max-w-[1360px] py-24">
       <div className="mx-auto w-full max-w-2xl px-4 text-center">
         <h2 className="mb-4 text-3xl font-semibold tracking-[-0.02em] text-zinc-900 md:text-4xl">
-          Build workflows and share{" "}
+          Build AI workflows and share{" "}
           <span className="text-violet-600">your</span> vision
         </h2>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { UsersThreeIcon } from "@phosphor-icons/react";
+import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
@@ -25,9 +25,8 @@ export function ExpertsSection() {
   return (
     <section className="mb-20">
       <SectionHeader
-        eyebrow="Your AI team"
-        eyebrowIcon={<UsersThreeIcon size={16} weight="bold" />}
-        title="Meet the Experts"
+        titleIcon={<AITeamIcon size={30} />}
+        title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         action={{ label: "View your team", href: "/team" }}
       />
@@ -50,7 +49,7 @@ export function ExpertsSection() {
         </div>
       )}
       <ExpertProfileSheet
-        templateId={selectedTemplateId}
+        expert={templates.find((t) => t.id === selectedTemplateId) ?? null}
         onClose={closeSheet}
       />
     </section>

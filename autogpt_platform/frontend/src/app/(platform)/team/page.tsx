@@ -1,5 +1,7 @@
 "use client";
 
+import { ExpertProfileSheet } from "@/app/(platform)/marketplace/components/ExpertsSection/components/ExpertProfileSheet/ExpertProfileSheet";
+import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -25,6 +27,9 @@ export default function TeamPage() {
     installWorkflow,
     pickerExpertId,
     closeWorkflowPicker,
+    profileExpert,
+    openProfile,
+    closeProfile,
   } = useTeamPage();
 
   if (!ready) {
@@ -46,7 +51,10 @@ export default function TeamPage() {
   return (
     <main className={MAIN_CLASS}>
       <div className="flex flex-col gap-1">
-        <Text variant="h3">Your Team</Text>
+        <div className="flex items-center gap-2.5">
+          <AITeamIcon size={36} className="shrink-0 text-black" />
+          <Text variant="h3">Your Team</Text>
+        </div>
         <Text variant="body" className="max-w-prose text-zinc-600">
           Autopilot and your hired experts, ready to work.
         </Text>
@@ -62,6 +70,7 @@ export default function TeamPage() {
                 key={expert.id}
                 expert={expert}
                 onInstallWorkflow={installWorkflow}
+                onOpenProfile={openProfile}
               />
             ))}
       </div>
@@ -80,6 +89,11 @@ export default function TeamPage() {
         expertId={pickerExpertId ?? undefined}
         open={pickerExpertId !== null}
         onClose={closeWorkflowPicker}
+      />
+      <ExpertProfileSheet
+        expert={profileExpert}
+        onClose={closeProfile}
+        presentation="drawer"
       />
     </main>
   );

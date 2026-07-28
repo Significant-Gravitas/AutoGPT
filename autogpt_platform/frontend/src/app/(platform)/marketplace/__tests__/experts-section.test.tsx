@@ -62,7 +62,7 @@ describe("Marketplace ExpertsSection", () => {
 
     renderMarketplace();
 
-    expect(await screen.findByText("Meet the Experts")).toBeDefined();
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     await userEvent.click(await screen.findByText("Maria"));
     await userEvent.click(await screen.findByRole("button", { name: "Hire" }));
 
@@ -78,7 +78,7 @@ describe("Marketplace ExpertsSection", () => {
 
     renderMarketplace();
 
-    expect(await screen.findByText("Meet the Experts")).toBeDefined();
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(await screen.findByText("Hired")).toBeDefined();
   });
 });

@@ -149,7 +149,7 @@ export function MainCreatorPage({ params }: Props) {
           <AgentsSection
             agents={creatorAgents.agents}
             hideAvatars
-            sectionTitle={`Workflows by ${creator.name}`}
+            sectionTitle={`AI Workflows by ${creator.name}`}
           />
         )}
       </main>

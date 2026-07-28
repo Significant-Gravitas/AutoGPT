@@ -378,7 +378,11 @@ describe("ChatMessagesContainer — expert identity", () => {
         status="ready"
         error={undefined}
         isLoading={false}
-        expertIdentity={{ name: "Maria", avatarUrl: mariaExpert.avatar_url }}
+        expertIdentity={{
+          name: "Maria",
+          avatarUrl: mariaExpert.avatar_url,
+          role: mariaExpert.role,
+        }}
       />,
     );
 

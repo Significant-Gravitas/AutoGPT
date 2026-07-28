@@ -7,11 +7,13 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { cn } from "@/lib/utils";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
@@ -89,6 +91,9 @@ export function RecentChats() {
         avatarUrl: group.expertId
           ? (expertMap.get(group.expertId)?.avatarUrl ?? null)
           : null,
+        role: group.expertId
+          ? (expertMap.get(group.expertId)?.role ?? null)
+          : null,
         showAvatar: true,
         sessions: group.sessions,
       }))
@@ -96,6 +101,7 @@ export function RecentChats() {
         key: group.label,
         label: group.label,
         avatarUrl: null,
+        role: null,
         showAvatar: false,
         sessions: group.sessions,
       }));
@@ -105,20 +111,43 @@ export function RecentChats() {
       <div className="mt-2 flex flex-col gap-4">
         {groups.map((group) => (
           <div key={group.key}>
-            <div className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-zinc-500">
+            <div
+              className={cn(
+                "flex items-center px-2 pb-1.5",
+                group.showAvatar
+                  ? "gap-2 text-[13px] font-medium text-zinc-900"
+                  : "gap-1.5 text-xs font-medium text-zinc-500",
+              )}
+            >
               {group.showAvatar && (
-                <Avatar className="h-4 w-4">
+                <Avatar className="h-5 w-5">
                   {group.avatarUrl ? (
                     <AvatarImage src={group.avatarUrl} alt={group.label} />
                   ) : null}
-                  <AvatarFallback className="text-[8px]">
+                  <AvatarFallback className="text-[9px]">
                     {group.label.slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
               )}
-              {group.label}
+              <span className="truncate">{group.label}</span>
+              {group.role ? (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
+                    getExpertAccent(group.role).pill,
+                  )}
+                >
+                  {group.role}
+                </span>
+              ) : null}
             </div>
-            <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+            {group.showAvatar ? (
+              <div className="ml-[17px] border-l border-zinc-200 pl-1.5">
+                <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+              </div>
+            ) : (
+              <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+            )}
           </div>
         ))}
       </div>

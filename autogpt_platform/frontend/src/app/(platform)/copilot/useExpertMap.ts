@@ -5,6 +5,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 export interface ExpertIdentity {
   name: string;
   avatarUrl: string | null;
+  role: string | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -23,7 +24,11 @@ export function useExpertMap(): ExpertIdentityMap {
   return new Map(
     expertsQuery.data.map((expert) => [
       expert.id,
-      { name: expert.name, avatarUrl: expert.avatar_url ?? null },
+      {
+        name: expert.name,
+        avatarUrl: expert.avatar_url ?? null,
+        role: expert.role ?? null,
+      },
     ]),
   );
 }
