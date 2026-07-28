@@ -25,26 +25,6 @@ logger = logging.getLogger(__name__)
 _MANAGED_PROVISION_TIMEOUT_S = 10.0
 
 
-async def _ensure_managed_credentials_bounded(user_id: str) -> None:
-    try:
-        await asyncio.wait_for(
-            ensure_managed_credentials(user_id, IntegrationCredentialsManager().store),
-            timeout=_MANAGED_PROVISION_TIMEOUT_S,
-        )
-    except asyncio.TimeoutError:
-        logger.warning(
-            "Managed credential sweep exceeded %.1fs for user=%s; "
-            "listing without it",
-            _MANAGED_PROVISION_TIMEOUT_S,
-            user_id,
-        )
-    except Exception:
-        logger.exception(
-            "Managed credential provisioning failed for user %s; listing without it",
-            user_id,
-        )
-
-
 class CredentialListResponse(ToolResponseBase):
     """Response listing the user's connected credentials."""
 
@@ -52,6 +32,9 @@ class CredentialListResponse(ToolResponseBase):
     credentials: list[CredentialsMetaResponse] = []
     providers: list[str] = []
     count: int = 0
+    # False when the managed-credential provisioning sweep timed out or
+    # failed, meaning platform-managed integrations may be missing below.
+    provisioning_complete: bool = True
 
 
 class ListUserCredentialsTool(BaseTool):
@@ -106,7 +89,7 @@ class ListUserCredentialsTool(BaseTool):
                 session_id=session_id,
             )
 
-        await _ensure_managed_credentials_bounded(user_id)
+        provisioning_complete = await _ensure_managed_credentials_bounded(user_id)
 
         try:
             all_creds = await get_user_credentials(user_id)
@@ -126,8 +109,8 @@ class ListUserCredentialsTool(BaseTool):
             if not is_sdk_default(cred.id) and cred.id not in SYSTEM_CREDENTIAL_IDS
         ]
 
-        if provider:
-            wanted = provider.strip().lower()
+        wanted = provider.strip().lower() if provider else ""
+        if wanted:
             metas = [m for m in metas if m.provider.lower() == wanted]
 
         providers = sorted({m.provider for m in metas})
@@ -137,10 +120,10 @@ class ListUserCredentialsTool(BaseTool):
                 f"The user has {len(metas)} connected credential(s) across "
                 f"{len(providers)} provider(s): {', '.join(providers)}."
             )
-        elif provider:
+        elif wanted:
             message = (
                 f"The user has no connected credentials for provider "
-                f"'{provider}'. Use connect_integration to surface a "
+                f"'{wanted}'. Use connect_integration to surface a "
                 "sign-in card if this integration is needed."
             )
         else:
@@ -149,10 +132,42 @@ class ListUserCredentialsTool(BaseTool):
                 "connect_integration to surface a sign-in card if one is needed."
             )
 
+        if not provisioning_complete:
+            message += (
+                " Note: platform-managed credential provisioning did not "
+                "complete, so managed integrations may be missing from this "
+                "list — do not treat their absence as authoritative."
+            )
+
         return CredentialListResponse(
             message=message,
             credentials=metas,
             providers=providers,
             count=len(metas),
+            provisioning_complete=provisioning_complete,
             session_id=session_id,
         )
+
+
+async def _ensure_managed_credentials_bounded(user_id: str) -> bool:
+    """Run the managed-credential sweep; return False on timeout or failure."""
+    try:
+        await asyncio.wait_for(
+            ensure_managed_credentials(user_id, IntegrationCredentialsManager().store),
+            timeout=_MANAGED_PROVISION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Managed credential sweep exceeded %.1fs for user=%s; "
+            "listing without it",
+            _MANAGED_PROVISION_TIMEOUT_S,
+            user_id,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "Managed credential provisioning failed for user %s; listing without it",
+            user_id,
+        )
+        return False
+    return True

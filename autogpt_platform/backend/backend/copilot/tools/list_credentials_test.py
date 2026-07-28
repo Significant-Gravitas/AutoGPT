@@ -25,7 +25,7 @@ _MANAGED_PATH = (
 
 @pytest.fixture(autouse=True)
 def stub_managed_credentials_sweep():
-    with patch(_MANAGED_PATH, new_callable=AsyncMock) as mock_sweep:
+    with patch(_MANAGED_PATH, new_callable=AsyncMock, return_value=True) as mock_sweep:
         yield mock_sweep
 
 
@@ -200,6 +200,31 @@ class TestListUserCredentialsTool:
         assert result.count == 0
         assert result.credentials == []
         assert "google" in result.message
+
+    @pytest.mark.asyncio
+    async def test_whitespace_provider_treated_as_absent(self, tool, mock_session):
+        creds = [_github_oauth(), _notion_api_key()]
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="   "
+            )
+
+        assert isinstance(result, CredentialListResponse)
+        assert result.count == 2
+        assert result.providers == ["github", "notion"]
+
+    @pytest.mark.asyncio
+    async def test_provisioning_failure_marks_list_incomplete(
+        self, tool, mock_session, stub_managed_credentials_sweep
+    ):
+        stub_managed_credentials_sweep.return_value = False
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_github_oauth()]):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert isinstance(result, CredentialListResponse)
+        assert result.provisioning_complete is False
+        assert "do not treat their absence as authoritative" in result.message
+        stub_managed_credentials_sweep.assert_awaited_once_with("user-1")
 
     @pytest.mark.asyncio
     async def test_empty_credentials(self, tool, mock_session):

@@ -44,7 +44,7 @@ function makeListOutput() {
 describe("ListCredentialsTool", () => {
   it("shows a loading label while streaming", () => {
     const { container } = render(<ListCredentialsTool part={makePart()} />);
-    const normalized = (container.textContent ?? "").replace(/ /g, " ");
+    const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
     expect(normalized).toContain("Checking connected integrations");
   });
 
@@ -131,7 +131,7 @@ describe("ListCredentialsTool", () => {
         })}
       />,
     );
-    const normalized = (container.textContent ?? "").replace(/ /g, " ");
+    const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
     expect(normalized).toContain("Could not check connected integrations");
   });
 
@@ -144,7 +144,7 @@ describe("ListCredentialsTool", () => {
         })}
       />,
     );
-    const normalized = (container.textContent ?? "").replace(/ /g, " ");
+    const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
     expect(normalized).toContain("Done");
   });
 
@@ -157,7 +157,7 @@ describe("ListCredentialsTool", () => {
         })}
       />,
     );
-    const normalized = (container.textContent ?? "").replace(/ /g, " ");
+    const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
     expect(normalized).toContain("Could not check connected integrations");
   });
 });
