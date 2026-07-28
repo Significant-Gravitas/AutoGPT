@@ -22,6 +22,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from .get_sub_session_result import GetSubSessionResultTool
 from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
 from .run_sub_session import (
+    FOLLOWUP_POLL_DELAY_SECONDS,
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
     response_from_outcome,
@@ -265,6 +266,79 @@ class TestRunSubSession:
         assert r.sub_autopilot_session_link == "/copilot?sessionId=inner-1"
         mock_waiter.assert_awaited_once()
         assert mock_waiter.await_args.kwargs["timeout"] == 0
+
+    @pytest.mark.asyncio
+    async def test_fire_and_forget_instructs_scheduling_a_followup_poll(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A fire-and-forget launch ends the turn, and get_sub_session_result
+        cannot run after that — so the launch response must tell the model to
+        schedule the poll that surfaces the result (SECRT-2471). Without this
+        the sub finishes and nobody ever reports back."""
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="investigate the thing",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        message = r.message or ""
+        assert "schedule_followup" in message
+        assert f"delay_seconds={FOLLOWUP_POLL_DELAY_SECONDS}" in message
+        # The scheduled prompt has to name the sub, or the follow-up turn has
+        # nothing to poll.
+        assert "inner-1" in message
+
+    @pytest.mark.asyncio
+    async def test_queued_launch_instructs_scheduling_a_followup_poll(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A queued launch drains on someone else's turn, so the same
+        surfacing gap applies — nudge the follow-up poll there too."""
+        mock_waiter.return_value = (
+            "queued",
+            SessionResult(queued=True, pending_buffer_length=2),
+        )
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="another thing",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert "schedule_followup" in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_completed_launch_omits_followup_nudge(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A sub that already finished inline needs no follow-up — the model
+        has the result in hand and scheduling one would be pure noise."""
+        res = SessionResult()
+        res.response_text = "done"
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="quick thing",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert "schedule_followup" not in (r.message or "")
+
+    def test_poll_responses_omit_followup_nudge_by_default(self):
+        """``response_from_outcome`` is shared with get_sub_session_result,
+        whose 'running' replies are read mid-turn while the model is already
+        polling. The nudge is opt-in so those stay unchanged."""
+        running = response_from_outcome(
+            outcome="running",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="s1",
+            elapsed=30.0,
+        )
+        assert "schedule_followup" not in (running.message or "")
 
     @pytest.mark.asyncio
     async def test_wait_for_result_completed_returns_final_response(
