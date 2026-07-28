@@ -317,6 +317,19 @@ _SKILLS_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{SKILLS_CONTEXT_TAG}>.*?</{SKILLS_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+# Expert-session blocks injected by expert_context.py. <expert_workflows> /
+# <team_context> are prepended in front of every other block, so the display
+# strip loop must know them or it stops before reaching the standard tags.
+_EXPERT_IDENTITY_PREFIX_RE = re.compile(
+    r"^<expert_identity>.*?</expert_identity>\n\n", re.DOTALL
+)
+_EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
+    r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
+)
+_TEAM_CONTEXT_PREFIX_RE = re.compile(
+    r"^<team_context>.*?</team_context>\n\n", re.DOTALL
+)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -440,6 +453,9 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
         result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
         result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)
+        result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
+        result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
+        result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
     return result
 
 
