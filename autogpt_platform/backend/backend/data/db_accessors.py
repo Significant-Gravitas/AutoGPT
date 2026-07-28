@@ -131,6 +131,19 @@ def workspace_db():
     return workspace_db
 
 
+def workspace_folder_db():
+    if db.is_connected():
+        from backend.data import workspace_folder as _workspace_folder_db
+
+        workspace_folder_db = _workspace_folder_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        workspace_folder_db = get_database_manager_async_client()
+
+    return workspace_folder_db
+
+
 def review_db():
     if db.is_connected():
         from backend.data import human_review as _review_db

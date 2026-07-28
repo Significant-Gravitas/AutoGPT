@@ -100,7 +100,7 @@ async def _get_folder_record(
     return folder
 
 
-async def list_folders(workspace_id: str) -> list[WorkspaceFolder]:
+async def list_workspace_folders(workspace_id: str) -> list[WorkspaceFolder]:
     """List non-deleted folders for a workspace (flat; v1 has no nesting)."""
     folders = await UserWorkspaceFolder.prisma().find_many(
         where={"workspaceId": workspace_id, "isDeleted": False},
@@ -110,7 +110,7 @@ async def list_folders(workspace_id: str) -> list[WorkspaceFolder]:
     return [WorkspaceFolder.from_db(f, file_count=counts.get(f.id, 0)) for f in folders]
 
 
-async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
+async def get_workspace_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
     """Get a single folder by ID, scoped to the workspace."""
     folder = await _get_folder_record(folder_id, workspace_id)
     count = await _file_count(workspace_id, folder_id)
@@ -140,7 +140,7 @@ async def _root_name_taken(
     return await UserWorkspaceFolder.prisma().find_first(where=where) is not None
 
 
-async def create_folder(
+async def create_workspace_folder(
     workspace_id: str,
     name: str,
     icon: Optional[str] = None,
@@ -165,7 +165,7 @@ async def create_folder(
     return WorkspaceFolder.from_db(folder)
 
 
-async def update_folder(
+async def update_workspace_folder(
     folder_id: str,
     workspace_id: str,
     name: Optional[str] = None,
@@ -187,7 +187,7 @@ async def update_folder(
         update_data["icon"] = icon
 
     if not update_data:
-        return await get_folder(folder_id, workspace_id)
+        return await get_workspace_folder(folder_id, workspace_id)
 
     # update_many (not update) so the write itself is guarded by isDeleted: a
     # folder soft-deleted concurrently after the ownership check above must not
@@ -214,7 +214,7 @@ async def update_folder(
     return WorkspaceFolder.from_db(refreshed, file_count=count)
 
 
-async def delete_folder(folder_id: str, workspace_id: str) -> None:
+async def delete_workspace_folder(folder_id: str, workspace_id: str) -> None:
     """
     Soft-delete a folder and return its files to root.
 

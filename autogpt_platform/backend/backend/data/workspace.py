@@ -132,6 +132,7 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
+    folder_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -153,6 +154,7 @@ async def create_workspace_file(
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
+        folder_id: Optional folder membership (None = root)
 
     Returns:
         Created WorkspaceFile instance
@@ -172,6 +174,7 @@ async def create_workspace_file(
             "sizeBytes": size_bytes,
             "checksum": checksum,
             "metadata": SafeJson(metadata or {}),
+            "folderId": folder_id,
         }
     )
 
@@ -362,6 +365,55 @@ async def count_workspace_files(
         where_clause["path"] = {"startswith": path_prefix}
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
+
+
+async def update_workspace_file_location(
+    file_id: str,
+    workspace_id: str,
+    name: str,
+    path: str,
+    folder_id: Optional[str] = None,
+) -> Optional[WorkspaceFile]:
+    """
+    Relocate a workspace file by rewriting its ``name``/``path`` metadata.
+
+    Only the virtual location changes — ``storagePath`` is deliberately left
+    alone so no bytes are moved. Nothing reads the filename back out of
+    ``storagePath`` (the download URL parses out the file ID only), so the
+    stale filename segment in the blob path is harmless.
+
+    Args:
+        file_id: The file ID
+        workspace_id: Workspace ID for scoping (required)
+        name: New user-visible filename
+        path: New virtual path
+        folder_id: New folder membership (``None`` = root)
+
+    Returns:
+        Updated WorkspaceFile instance, or None if the file was not found
+
+    Raises:
+        UniqueViolationError: If another live file already occupies ``path``.
+    """
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    # update_many (not update) so the write itself is guarded by workspaceId
+    # and isDeleted — update() matches on the primary key alone, which would
+    # let a cross-workspace ID or a concurrently-deleted row through.
+    updated_count = await UserWorkspaceFile.prisma().update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={"name": name, "path": path, "folderId": folder_id},
+    )
+    if updated_count == 0:
+        return None
+
+    file = await UserWorkspaceFile.prisma().find_first(where={"id": file_id})
+    if file is None:
+        return None
+
+    logger.info(f"Moved workspace file {file_id} to path {path}")
+    return WorkspaceFile.from_db(file)
 
 
 async def soft_delete_workspace_file(
