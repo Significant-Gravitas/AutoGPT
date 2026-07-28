@@ -24,8 +24,6 @@ export function useWallet() {
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
-  // Total completed task count across all groups
-  const [completedCount, setCompletedCount] = useState<number | null>(null);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
@@ -34,18 +32,18 @@ export function useWallet() {
     [groups],
   );
 
-  useEffect(() => {
+  // Total completed task count across all groups
+  const completedCount = useMemo(() => {
     if (!state) {
-      return;
+      return null;
     }
-    const completed = groups.reduce(
+    return groups.reduce(
       (acc, group) =>
         acc +
-        group.tasks.filter((task) => state?.completedSteps?.includes(task.id))
+        group.tasks.filter((task) => state.completedSteps?.includes(task.id))
           .length,
       0,
     );
-    setCompletedCount(completed);
   }, [groups, state]);
 
   const onWalletOpen = useCallback(async () => {
@@ -107,11 +105,20 @@ export function useWallet() {
     [fetchCredits, groups],
   );
 
+  // `handleNotification` changes on every onboarding state update. Route the
+  // listener through a ref so the subscription below stays mounted for the
+  // lifetime of the hook instead of tearing down and reconnecting each time.
+  const notificationRef = useRef(handleNotification);
+
+  useEffect(() => {
+    notificationRef.current = handleNotification;
+  }, [handleNotification]);
+
   // WebSocket setup for onboarding notifications
   useEffect(() => {
     const detachMessage = api.onWebSocketMessage(
       "notification",
-      handleNotification,
+      (notification) => notificationRef.current(notification),
     );
 
     api.connectWebSocket();
@@ -119,7 +126,7 @@ export function useWallet() {
     return () => {
       detachMessage();
     };
-  }, [api, handleNotification]);
+  }, [api]);
 
   // Wallet flash on credits change
   useEffect(() => {
