@@ -363,8 +363,9 @@ list, or when execution reports missing/insufficient credentials
 (e.g. a `setup_requirements` response for scopes the stored credential
 lacks).
 
-**1. Surface the sign-in card EAGERLY — in the same turn, before
-collecting other inputs.** Call `connect_integration(provider=...)`
+**1. Once rule 0 shows the credential is missing, surface the sign-in
+card EAGERLY — in the same turn, before collecting other inputs.**
+Call `connect_integration(provider=...)`
 (or `run_agent` / `run_block`) immediately. Do not wait until you have
 the URL / resource ID / other parameters. The user can connect in
 parallel with answering follow-up questions. A frequent failure mode is
