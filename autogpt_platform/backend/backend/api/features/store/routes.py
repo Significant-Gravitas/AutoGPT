@@ -263,12 +263,35 @@ async def get_graph_meta_by_store_listing_version_id(
 async def download_agent_file(
     store_listing_version_id: str,
 ) -> fastapi.responses.Response:
-    """Download agent graph file for a specific marketplace listing version"""
-    graph_data = await store_db.get_agent(store_listing_version_id)
+    """Download agent graph file for a specific marketplace listing version.
+
+    The downloaded file includes both the agent graph data and the marketplace
+    metadata (name, images, description, etc.) so that the agent appears in
+    the user's library just as it does in the marketplace.
+    """
+    graph_data, marketplace_details = (
+        await store_db.get_agent_with_marketplace_data(store_listing_version_id)
+    )
+
+    # Update graph name and description with marketplace values
+    graph_data.name = marketplace_details.agent_name
+    graph_data.description = marketplace_details.description
+
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
+    # Build response matching DownloadedAgentData model
+    download_data = store_model.DownloadedAgentData(
+        marketplace_name=marketplace_details.agent_name,
+        marketplace_description=marketplace_details.description,
+        marketplace_sub_heading=marketplace_details.sub_heading,
+        marketplace_image_urls=marketplace_details.agent_image or [],
+        marketplace_categories=marketplace_details.categories or [],
+        marketplace_instructions=marketplace_details.instructions,
+        graph_data=graph_data.model_dump(),
+    )
+
     return fastapi.responses.Response(
-        content=backend.util.json.dumps(graph_data),
+        content=backend.util.json.dumps(download_data.model_dump()),
         media_type="application/json",
         headers={
             "Content-Disposition": f'attachment; filename="{file_name}"',
