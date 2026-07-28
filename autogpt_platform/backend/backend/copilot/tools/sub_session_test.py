@@ -285,9 +285,12 @@ class TestRunSubSession:
         message = r.message or ""
         assert "schedule_followup" in message
         assert f"delay_seconds={FOLLOWUP_POLL_DELAY_SECONDS}" in message
-        # The scheduled prompt has to name the sub, or the follow-up turn has
-        # nothing to poll.
-        assert "inner-1" in message
+        # The scheduled prompt must name the sub using the argument
+        # get_sub_session_result actually binds. `sub_autopilot_session_id` is
+        # only a *response* field name — passed as an argument it lands in
+        # **kwargs and the tool errors with "sub_session_id is required",
+        # which would silently defeat the whole follow-up.
+        assert 'get_sub_session_result(sub_session_id="inner-1")' in message
 
     @pytest.mark.asyncio
     async def test_queued_launch_instructs_scheduling_a_followup_poll(

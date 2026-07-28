@@ -82,7 +82,9 @@ class GetSubSessionResultTool(BaseTool):
                     "type": "string",
                     "description": (
                         "The sub's session_id returned by run_sub_session "
-                        "(also accepted: sub_autopilot_session_id — same value)."
+                        "(its sub_session_id / sub_autopilot_session_id field — "
+                        "both carry the same value, but this argument must be "
+                        "named sub_session_id)."
                     ),
                 },
                 "wait_if_running": {

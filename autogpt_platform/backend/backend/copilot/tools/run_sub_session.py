@@ -230,7 +230,7 @@ def _followup_poll_nudge(inner_session_id: str) -> str:
         "report back), you MUST schedule the poll before your closing message: "
         f"schedule_followup(delay_seconds={FOLLOWUP_POLL_DELAY_SECONDS}, "
         "session_id=<the session_id from <session_context>>, message='Call "
-        f'get_sub_session_result(sub_autopilot_session_id="{inner_session_id}") '
+        f'get_sub_session_result(sub_session_id="{inner_session_id}") '
         "and report the outcome to the user; if it is still running, schedule "
         "another follow-up.'). Without it get_sub_session_result never runs "
         "again and the result never reaches the user."
