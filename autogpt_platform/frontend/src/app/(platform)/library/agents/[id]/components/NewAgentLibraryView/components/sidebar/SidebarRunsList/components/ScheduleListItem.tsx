@@ -25,13 +25,26 @@ export function ScheduleListItem({
   onDeleted,
   onRunCreated,
 }: Props) {
+  const isPaused = Boolean(schedule.is_paused);
   return (
     <SidebarItemCard
       title={schedule.name}
-      description={formatDistanceToNow(schedule.next_run_time, {
-        addSuffix: true,
-      })}
-      descriptionTitle={new Date(schedule.next_run_time).toString()}
+      description={
+        isPaused
+          ? "Paused — payment required"
+          : schedule.next_run_time
+            ? formatDistanceToNow(schedule.next_run_time, {
+                addSuffix: true,
+              })
+            : "Pending"
+      }
+      descriptionTitle={
+        isPaused
+          ? "Paused — payment required"
+          : schedule.next_run_time
+            ? new Date(schedule.next_run_time).toString()
+            : "Pending"
+      }
       onClick={onClick}
       selected={selected}
       icon={

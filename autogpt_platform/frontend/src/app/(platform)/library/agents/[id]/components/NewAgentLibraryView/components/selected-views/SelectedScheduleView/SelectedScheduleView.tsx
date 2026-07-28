@@ -126,26 +126,37 @@ export function SelectedScheduleView({
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Text variant="large-medium">Next run</Text>
-                      <Text variant="body" className="flex items-center gap-3">
-                        {formatInTimezone(
-                          schedule.next_run_time,
-                          userTimezone || "UTC",
-                          {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          },
-                        )}{" "}
-                        <span className="text-zinc-500">•</span>{" "}
-                        <span className="text-zinc-500">
-                          {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
-                          )}
-                        </span>
-                      </Text>
+                      {schedule.is_paused || !schedule.next_run_time ? (
+                        <Text variant="body" className="text-amber-700">
+                          {schedule.is_paused
+                            ? "Paused — payment required"
+                            : "Pending"}
+                        </Text>
+                      ) : (
+                        <Text
+                          variant="body"
+                          className="flex items-center gap-3"
+                        >
+                          {formatInTimezone(
+                            schedule.next_run_time,
+                            userTimezone || "UTC",
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            },
+                          )}{" "}
+                          <span className="text-zinc-500">•</span>{" "}
+                          <span className="text-zinc-500">
+                            {getTimezoneDisplayName(
+                              schedule.timezone || userTimezone || "UTC",
+                            )}
+                          </span>
+                        </Text>
+                      )}
                     </div>
                   </div>
                 )}
