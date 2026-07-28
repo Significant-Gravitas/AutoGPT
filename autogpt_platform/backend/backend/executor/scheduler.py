@@ -1778,32 +1778,16 @@ class Scheduler(AppService):
     ) -> int:
         """Pause the user's graph schedules with *reason*; returns count paused.
 
-        Schedules already carrying a ``paused_reason`` are left untouched.
+        Schedules paused for a different reason are left untouched.
         """
         paused = 0
         for job, args in self._user_graph_schedule_jobs(user_id, personal_org_id):
-            if args.paused_reason is not None:
+            if args.paused_reason is not None and args.paused_reason != reason:
                 continue
-            args.paused_reason = reason
-            self.scheduler.modify_job(
-                job.id,
-                jobstore=Jobstores.EXECUTION.value,
-                kwargs=args.model_dump(mode="json"),
-            )
-            try:
-                self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
-            except Exception:
-                # Roll back the reason stamp so a retry still matches this job;
-                # otherwise it would run forever while looking paused.
-                args.paused_reason = None
-                self.scheduler.modify_job(
-                    job.id,
-                    jobstore=Jobstores.EXECUTION.value,
-                    kwargs=args.model_dump(mode="json"),
-                )
-                logger.exception(f"Failed to pause schedule {job.id}")
-                continue
-            paused += 1
+            if args.paused_reason == reason and job.next_run_time is None:
+                continue  # already fully paused
+            if self._pause_one_graph_schedule(job, args, reason):
+                paused += 1
         if paused:
             logger.info(
                 f"Paused {paused} graph schedule(s) for user {user_id} "
@@ -1811,6 +1795,36 @@ class Scheduler(AppService):
             )
             self._invalidate_jobs_cache()
         return paused
+
+    def _pause_one_graph_schedule(
+        self, job: JobObj, args: GraphExecutionJobArgs, reason: str
+    ) -> bool:
+        already_stamped = args.paused_reason == reason
+        if not already_stamped:
+            args.paused_reason = reason
+            self.scheduler.modify_job(
+                job.id,
+                jobstore=Jobstores.EXECUTION.value,
+                kwargs=args.model_dump(mode="json"),
+            )
+        try:
+            self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
+        except Exception:
+            logger.exception(f"Failed to pause schedule {job.id}")
+            if not already_stamped:
+                # Roll back the reason stamp so a retry still matches this job;
+                # otherwise it would run forever while looking paused.
+                try:
+                    args.paused_reason = None
+                    self.scheduler.modify_job(
+                        job.id,
+                        jobstore=Jobstores.EXECUTION.value,
+                        kwargs=args.model_dump(mode="json"),
+                    )
+                except Exception:
+                    logger.exception(f"Failed to roll back pause stamp on {job.id}")
+            return False
+        return True
 
     @expose
     def resume_user_graph_schedules(
@@ -1826,15 +1840,15 @@ class Scheduler(AppService):
             # the reverse order could strand an invisible paused job.
             try:
                 self.scheduler.resume_job(job.id, jobstore=Jobstores.EXECUTION.value)
+                args.paused_reason = None
+                self.scheduler.modify_job(
+                    job.id,
+                    jobstore=Jobstores.EXECUTION.value,
+                    kwargs=args.model_dump(mode="json"),
+                )
             except Exception:
                 logger.exception(f"Failed to resume schedule {job.id}")
                 continue
-            args.paused_reason = None
-            self.scheduler.modify_job(
-                job.id,
-                jobstore=Jobstores.EXECUTION.value,
-                kwargs=args.model_dump(mode="json"),
-            )
             resumed += 1
         if resumed:
             logger.info(

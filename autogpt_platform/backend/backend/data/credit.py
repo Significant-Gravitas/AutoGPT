@@ -1527,7 +1527,8 @@ async def set_subscription_tier(
     rows = await query_raw_with_schema(
         """
         UPDATE {schema_prefix}"User" u
-        SET "subscriptionTier" = $2::text::{schema_prefix}"SubscriptionTier"
+        SET "subscriptionTier" = $2::text::{schema_prefix}"SubscriptionTier",
+            "updatedAt" = now()
         FROM (
             SELECT id, "subscriptionTier" AS previous_tier
             FROM {schema_prefix}"User" WHERE id = $1 FOR UPDATE

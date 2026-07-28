@@ -681,18 +681,36 @@ class TestPauseResumeUserGraphSchedules:
         aps.pause_job.assert_called_once()
 
     def test_pause_skips_other_users_org_jobs_and_already_paused(self):
+        already_paused = _mock_job(
+            _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s4")
+        )
+        already_paused.next_run_time = None
         jobs = [
             _mock_job(_graph_job_kwargs(user_id="other", schedule_id="s2")),
             _mock_job(_graph_job_kwargs(organization_id="org-1", schedule_id="s3")),
             _mock_job(
-                _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s4")
+                _graph_job_kwargs(paused_reason="other_reason", schedule_id="s5")
             ),
+            already_paused,
         ]
         sched, aps = self._scheduler(jobs)
         with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
             count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
         assert count == 0
         aps.pause_job.assert_not_called()
+
+    def test_pause_heals_stamped_but_still_running_job(self):
+        """A crash between the reason stamp and pause_job leaves a running job
+        that already carries the reason; a retry must still pause it."""
+        job = _mock_job(
+            _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s1")
+        )
+        sched, aps = self._scheduler([job])
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 1
+        aps.pause_job.assert_called_once()
+        aps.modify_job.assert_not_called()
 
     def test_pause_includes_personal_org_tagged_jobs(self):
         jobs = [
