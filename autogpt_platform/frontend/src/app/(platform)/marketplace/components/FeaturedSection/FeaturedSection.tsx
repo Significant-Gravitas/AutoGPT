@@ -35,7 +35,7 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
     <section className="mb-20 w-full">
       <SectionHeader
         eyebrow="Hand-picked"
-        eyebrowIcon={<SparkleIcon size={14} weight="bold" />}
+        eyebrowIcon={<SparkleIcon size={16} weight="bold" />}
         title="Featured Workflows"
         subtitle="Standout automations from the community, ready to install."
       />

@@ -35,7 +35,7 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <Avatar className="h-16 w-16 bg-white shadow-sm ring-1 ring-black/5">
+          <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
             {expert.avatar_url ? (
               <AvatarImage src={expert.avatar_url} alt={expert.name} />
             ) : null}
@@ -43,7 +43,7 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
           </Avatar>
           <span
             className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium",
+              "rounded-full px-3 py-1 text-sm font-medium",
               accent.pill,
             )}
           >
@@ -52,32 +52,32 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
         </div>
 
         <div>
-          <div className="text-lg font-semibold tracking-[-0.01em] text-zinc-900">
+          <div className="text-xl font-semibold tracking-[-0.01em] text-zinc-900">
             {expert.name}
           </div>
           {expert.tagline ? (
-            <p className="mt-1.5 line-clamp-2 text-[15px] leading-relaxed text-zinc-600">
+            <p className="mt-1.5 line-clamp-2 text-base leading-relaxed text-zinc-600">
               {expert.tagline}
             </p>
           ) : null}
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-1.5 text-[13px] text-zinc-500">
-            <LightningIcon size={15} weight="fill" className={accent.icon} />
+          <span className="flex items-center gap-2 text-base text-zinc-500">
+            <LightningIcon size={18} weight="fill" className={accent.icon} />
             {expert.workflows.length}{" "}
             {expert.workflows.length === 1 ? "workflow" : "workflows"}
           </span>
           {isHired ? (
-            <span className="flex items-center gap-1 text-[13px] font-medium text-emerald-600">
-              <CheckCircleIcon size={15} weight="fill" />
+            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+              <CheckCircleIcon size={18} weight="fill" />
               Hired
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[13px] font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               Hire
               <ArrowRightIcon
-                size={14}
+                size={16}
                 weight="bold"
                 className="transition-transform duration-200 group-hover:translate-x-0.5"
               />

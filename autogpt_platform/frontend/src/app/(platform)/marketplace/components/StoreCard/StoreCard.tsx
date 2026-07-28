@@ -108,7 +108,7 @@ export function StoreCard({
         </p>
       </div>
 
-      <div className="mt-auto flex w-full items-center justify-between pt-3">
+      <div className="mt-auto flex w-full items-center pt-3">
         <span className="flex items-center gap-2 text-xs text-zinc-500">
           {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
           {rating >= 1 && (
@@ -124,15 +124,17 @@ export function StoreCard({
             </span>
           )}
         </span>
-        {creatorSlug && agentSlug && agentGraphID && (
+      </div>
+      {creatorSlug && agentSlug && agentGraphID && (
+        <div className="absolute bottom-4 right-4">
           <AddToLibraryButton
             creatorSlug={creatorSlug}
             agentSlug={agentSlug}
             agentName={agentName}
             agentGraphID={agentGraphID}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,7 +23,7 @@ export const FeaturedCreators = ({
       <div className="w-full max-w-[1360px]">
         <SectionHeader
           eyebrow="The community"
-          eyebrowIcon={<UserCircleDashedIcon size={14} weight="bold" />}
+          eyebrowIcon={<UserCircleDashedIcon size={16} weight="bold" />}
           title={title}
           subtitle="The people behind the workflows you install."
         />

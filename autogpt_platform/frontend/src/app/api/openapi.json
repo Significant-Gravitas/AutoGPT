@@ -16653,6 +16653,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
           },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
           "identity": { "type": "string", "title": "Identity" },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {

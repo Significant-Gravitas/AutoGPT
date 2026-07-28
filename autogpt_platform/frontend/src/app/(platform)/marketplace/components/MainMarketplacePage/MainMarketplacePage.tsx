@@ -52,7 +52,7 @@ export const MainMarkeplacePage = () => {
             <AgentsSection
               sectionTitle="All Workflows"
               eyebrow="The catalog"
-              eyebrowIcon={<DotsNineIcon size={14} weight="bold" />}
+              eyebrowIcon={<DotsNineIcon size={16} weight="bold" />}
               subtitle="Install one on an Expert, or run it standalone."
               agents={topAgents.agents}
             />

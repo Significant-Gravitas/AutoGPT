@@ -123,21 +123,23 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
         </p>
       </div>
 
-      <div className="relative mt-auto flex w-full items-center justify-between pt-3">
+      <div className="relative mt-auto flex w-full items-center pt-3">
         <span className="text-xs text-zinc-500">
           {agent.runs === 0
             ? "No runs"
             : `${(agent.runs ?? 0).toLocaleString()} runs`}
         </span>
-        {agent.creator && agent.slug && agent.agent_graph_id && (
+      </div>
+      {agent.creator && agent.slug && agent.agent_graph_id && (
+        <div className="absolute bottom-4 right-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}
             agentName={agent.agent_name}
             agentGraphID={agent.agent_graph_id}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ export function ExpertsSection() {
     <section className="mb-20">
       <SectionHeader
         eyebrow="Your AI team"
-        eyebrowIcon={<UsersThreeIcon size={14} weight="bold" />}
+        eyebrowIcon={<UsersThreeIcon size={16} weight="bold" />}
         title="Meet the Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         action={{ label: "View your team", href: "/team" }}

@@ -20,15 +20,15 @@ export function SectionHeader({
   return (
     <div className="mb-7 flex items-end justify-between gap-4">
       <div>
-        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-violet-600">
+        <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
           {eyebrowIcon}
           {eyebrow}
         </div>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+        <h2 className="text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
           {title}
         </h2>
         {subtitle ? (
-          <p className="mt-1.5 text-[15px] text-zinc-500">{subtitle}</p>
+          <p className="mt-2 text-base text-zinc-500">{subtitle}</p>
         ) : null}
       </div>
       {action ? (
