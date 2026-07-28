@@ -54,7 +54,7 @@ describe("MainMarketplacePage", () => {
 
     expect(screen.getByText(/Featured agents/i)).toBeDefined();
     expect(screen.getByText("Featured Agent")).toBeDefined();
-    expect(screen.getByText("All Agents")).toBeDefined();
+    expect(screen.getByText("All Workflows")).toBeDefined();
     expect(screen.getAllByText("Top Agent").length).toBeGreaterThan(0);
     expect(screen.getByText("Creator One")).toBeDefined();
     expect(

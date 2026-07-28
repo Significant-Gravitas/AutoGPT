@@ -1,6 +1,6 @@
 "use client";
-import { Separator } from "@/components/__legacy__/ui/separator";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { DotsNineIcon } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
@@ -41,23 +41,28 @@ export const MainMarkeplacePage = () => {
   return (
     // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
     <div className="mx-auto w-full max-w-[1360px]">
-      <main className="px-4 pb-12">
+      <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
+        {isHireExpertsEnabled ? <ExpertsSection /> : null}
         {featuredAgents && (
           <FeaturedSection featuredAgents={featuredAgents.agents} />
         )}
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24 bg-transparent" />
-
-        {isHireExpertsEnabled ? <ExpertsSection /> : null}
         {topAgents && (
-          <AgentsSection sectionTitle="All Agents" agents={topAgents.agents} />
+          <div className="mb-20">
+            <AgentsSection
+              sectionTitle="All Workflows"
+              eyebrow="The catalog"
+              eyebrowIcon={<DotsNineIcon size={14} weight="bold" />}
+              subtitle="Install one on an Expert, or run it standalone."
+              agents={topAgents.agents}
+            />
+          </div>
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {featuredCreators && (
-          <FeaturedCreators featuredCreators={featuredCreators.creators} />
+          <div className="mb-4">
+            <FeaturedCreators featuredCreators={featuredCreators.creators} />
+          </div>
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"

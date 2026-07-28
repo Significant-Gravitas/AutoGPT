@@ -4,8 +4,13 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Badge } from "@/components/atoms/Badge/Badge";
-import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  LightningIcon,
+} from "@phosphor-icons/react";
+import { getExpertAccent } from "../helpers";
 
 interface Props {
   expert: Expert;
@@ -14,31 +19,72 @@ interface Props {
 }
 
 export function ExpertCard({ expert, isHired, onClick }: Props) {
+  const accent = getExpertAccent(expert.role);
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 text-left transition-shadow hover:shadow-md"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
     >
-      <div className="flex items-center gap-3">
-        <Avatar className="h-12 w-12">
-          {expert.avatar_url ? (
-            <AvatarImage src={expert.avatar_url} alt={expert.name} />
-          ) : null}
-          <AvatarFallback>{expert.name}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <Text variant="large-medium">{expert.name}</Text>
-          <Text variant="small" className="text-zinc-500">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-0 h-28 opacity-60 transition-opacity duration-200 group-hover:opacity-100",
+          accent.wash,
+        )}
+      />
+      <div className="relative flex flex-1 flex-col gap-4 p-6">
+        <div className="flex items-start justify-between gap-3">
+          <Avatar className="h-16 w-16 bg-white shadow-sm ring-1 ring-black/5">
+            {expert.avatar_url ? (
+              <AvatarImage src={expert.avatar_url} alt={expert.name} />
+            ) : null}
+            <AvatarFallback>{expert.name.slice(0, 2)}</AvatarFallback>
+          </Avatar>
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-xs font-medium",
+              accent.pill,
+            )}
+          >
             {expert.role}
-          </Text>
+          </span>
         </div>
-        {isHired ? <Badge variant="success">Hired</Badge> : null}
+
+        <div>
+          <div className="text-lg font-semibold tracking-[-0.01em] text-zinc-900">
+            {expert.name}
+          </div>
+          {expert.tagline ? (
+            <p className="mt-1.5 line-clamp-2 text-[15px] leading-relaxed text-zinc-600">
+              {expert.tagline}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-auto flex items-center justify-between pt-2">
+          <span className="flex items-center gap-1.5 text-[13px] text-zinc-500">
+            <LightningIcon size={15} weight="fill" className={accent.icon} />
+            {expert.workflows.length}{" "}
+            {expert.workflows.length === 1 ? "workflow" : "workflows"}
+          </span>
+          {isHired ? (
+            <span className="flex items-center gap-1 text-[13px] font-medium text-emerald-600">
+              <CheckCircleIcon size={15} weight="fill" />
+              Hired
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[13px] font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+              Hire
+              <ArrowRightIcon
+                size={14}
+                weight="bold"
+                className="transition-transform duration-200 group-hover:translate-x-0.5"
+              />
+            </span>
+          )}
+        </div>
       </div>
-      {expert.tagline ? <Text variant="body">{expert.tagline}</Text> : null}
-      <Text variant="small" className="text-zinc-500">
-        {expert.workflows.length} preloaded workflows
-      </Text>
     </button>
   );
 }

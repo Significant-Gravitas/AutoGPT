@@ -1,8 +1,8 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
 import { UsersThreeIcon } from "@phosphor-icons/react";
+import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
 import { useExpertsSection } from "./useExpertsSection";
@@ -23,19 +23,22 @@ export function ExpertsSection() {
   }
 
   return (
-    <section className="mb-12">
-      <div className="mb-8 flex flex-row items-center gap-2">
-        <UsersThreeIcon size={24} />
-        <Text variant="h4">Meet the Experts</Text>
-      </div>
+    <section className="mb-20">
+      <SectionHeader
+        eyebrow="Your AI team"
+        eyebrowIcon={<UsersThreeIcon size={14} weight="bold" />}
+        title="Meet the Experts"
+        subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
+        action={{ label: "View your team", href: "/team" }}
+      />
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-40 w-full rounded-2xl" />
+            <Skeleton key={i} className="h-52 w-full rounded-2xl" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((template) => (
             <ExpertCard
               key={template.id}

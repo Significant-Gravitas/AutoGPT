@@ -9,11 +9,11 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/__legacy__/ui/carousel";
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { SparkleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
+import { SectionHeader } from "../SectionHeader";
 import { useFeaturedSection } from "./useFeaturedSection";
 
 const FEATURED_COLORS = [
@@ -32,11 +32,13 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
   });
 
   return (
-    <section className="w-full">
-      <div className="mb-8 flex flex-row items-center gap-2">
-        <SparkleIcon size={24} />
-        <Text variant="h4">Featured Agents</Text>
-      </div>
+    <section className="mb-20 w-full">
+      <SectionHeader
+        eyebrow="Hand-picked"
+        eyebrowIcon={<SparkleIcon size={14} weight="bold" />}
+        title="Featured Workflows"
+        subtitle="Standout automations from the community, ready to install."
+      />
 
       <Carousel
         opts={{
