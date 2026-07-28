@@ -59,6 +59,12 @@ MAX_SUB_SESSION_WAIT_SECONDS = MAX_TOOL_WAIT_SECONDS
 # manifest. Bounds context size; a sub producing more than this is pathological.
 _WORKSPACE_FILE_MANIFEST_LIMIT = 50
 
+# Delay suggested for the poll follow-up after a non-terminal launch. Long
+# enough that a typical sub has finished by then (so the follow-up turn reports
+# a real result instead of immediately re-scheduling), short enough that the
+# user is still in the conversation. ``schedule_followup`` enforces a 60s floor.
+FOLLOWUP_POLL_DELAY_SECONDS = 300
+
 
 class RunSubSessionTool(BaseTool):
     """Delegate a task to a fresh sub-AutoPilot via the copilot_executor queue."""
@@ -189,6 +195,7 @@ class RunSubSessionTool(BaseTool):
             parent_session_id=session.session_id,
             elapsed=elapsed,
             workspace_files=workspace_files,
+            suggest_followup_poll=True,
         )
 
 
@@ -202,6 +209,32 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     if not inner_session_id:
         return None
     return f"/copilot?sessionId={inner_session_id}"
+
+
+def _followup_poll_nudge(inner_session_id: str) -> str:
+    """Instruction appended to a non-terminal *launch* response telling the
+    model to schedule the poll that will surface the sub's result.
+
+    ``get_sub_session_result`` only runs *inside* a turn. When the model
+    launches a sub and then ends its turn — always the case for
+    ``wait_for_result=0``, and the common case once a wait times out —
+    nothing ever polls the sub, so a promised "I'll ping you with the
+    results" is silently never kept and the user has to ask manually
+    (SECRT-2471). This response is the last thing the model reads before it
+    composes that promise, so the reminder has to live here and not only in
+    the system prompt.
+    """
+    return (
+        " IMPORTANT — if you are ending your turn here (always the case when "
+        "you passed wait_for_result=0, and whenever you tell the user you will "
+        "report back), you MUST schedule the poll before your closing message: "
+        f"schedule_followup(delay_seconds={FOLLOWUP_POLL_DELAY_SECONDS}, "
+        "session_id=<the session_id from <session_context>>, message='Call "
+        f'get_sub_session_result(sub_session_id="{inner_session_id}") '
+        "and report the outcome to the user; if it is still running, schedule "
+        "another follow-up.'). Without it get_sub_session_result never runs "
+        "again and the result never reaches the user."
+    )
 
 
 async def list_sub_workspace_files(
@@ -321,6 +354,7 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
+    suggest_followup_poll: bool = False,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -335,8 +369,15 @@ def response_from_outcome(
     ``queued`` means the target session already had a turn in flight; the
     message was appended to its pending buffer and will be processed by
     the existing turn on its next drain.
+
+    ``suggest_followup_poll`` appends the "schedule the poll before you end
+    the turn" instruction to the two non-terminal outcomes. Callers that are
+    *launching* a sub set it; ``get_sub_session_result`` leaves it off,
+    because its ``running`` replies are read mid-poll by a model that is
+    already in the polling loop (SECRT-2471).
     """
     link = _sub_session_link(inner_session_id)
+    followup = _followup_poll_nudge(inner_session_id) if suggest_followup_poll else ""
     if outcome == "queued":
         return SubSessionStatusResponse(
             message=(
@@ -345,6 +386,7 @@ def response_from_outcome(
                 "will be processed by the existing turn on its next drain. "
                 f"Call get_sub_session_result to poll progress"
                 f"{f' or watch live at {link}' if link else ''}."
+                f"{followup}"
             ),
             session_id=parent_session_id,
             status="queued",
@@ -361,6 +403,7 @@ def response_from_outcome(
                 f"{f' Watch live at {link}.' if link else ''} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
+                f"{followup}"
             ),
             session_id=parent_session_id,
             status="running",

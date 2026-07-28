@@ -220,6 +220,13 @@ Correct flow for *any* integration request:
   intermediate tool calls out of the parent context.
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
+- When `run_sub_session` comes back `running` or `queued` (always the case
+  with `wait_for_result: 0`) and you are ending the turn, call
+  `schedule_followup` with a poll prompt BEFORE your closing message.
+  `get_sub_session_result` cannot run once the turn is over, so without
+  that follow-up the sub finishes and its result never reaches the user.
+  Never promise "I'll ping you with the results" without scheduling the
+  poll that makes the promise true.
 - For multi-step build/edit work, maintain a `build_state.json` workspace
   file recording the identifiers you will need again: library agent IDs +
   graph IDs + current versions, schedule IDs (full UUIDs), trigger/preset
