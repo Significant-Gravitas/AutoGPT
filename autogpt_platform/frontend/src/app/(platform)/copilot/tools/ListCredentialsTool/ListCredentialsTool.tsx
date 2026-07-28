@@ -70,6 +70,7 @@ function CredentialCard({ credential }: { credential: CredentialMeta }) {
       <ContentHint>
         {getCredentialTypeLabel(credential.type)}
         {credential.title ? ` · ${credential.title}` : ""}
+        {credential.host ? ` · ${credential.host}` : ""}
         {credential.is_managed ? " · Managed by AutoGPT" : ""}
       </ContentHint>
       {credential.username && (

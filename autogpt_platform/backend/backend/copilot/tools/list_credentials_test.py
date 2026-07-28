@@ -10,10 +10,23 @@ from backend.copilot.tools.list_credentials import (
     ListUserCredentialsTool,
 )
 from backend.copilot.tools.models import ErrorResponse, ResponseType
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    HostScopedCredentials,
+    OAuth2Credentials,
+)
 
-# Shorthand patch target
+# Shorthand patch targets
 _CREDS_PATH = "backend.copilot.tools.list_credentials.get_user_credentials"
+_MANAGED_PATH = (
+    "backend.copilot.tools.list_credentials._ensure_managed_credentials_bounded"
+)
+
+
+@pytest.fixture(autouse=True)
+def stub_managed_credentials_sweep():
+    with patch(_MANAGED_PATH, new_callable=AsyncMock) as mock_sweep:
+        yield mock_sweep
 
 
 def _github_oauth() -> OAuth2Credentials:
@@ -37,6 +50,27 @@ def _notion_api_key() -> APIKeyCredentials:
         title="My Notion key",
         api_key=SecretStr("secret_notion"),
         expires_at=None,
+    )
+
+
+def _host_scoped() -> HostScopedCredentials:
+    return HostScopedCredentials(
+        id="33333333-3333-3333-3333-333333333333",
+        provider="http",
+        title="Internal API",
+        host="api.example.com",
+        headers={"Authorization": SecretStr("Bearer host_scoped_secret")},
+    )
+
+
+def _mcp_oauth() -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id="44444444-4444-4444-4444-444444444444",
+        provider="mcp",
+        title="Linear MCP",
+        access_token=SecretStr("mcp_access_secret"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.linear.app/mcp"},
     )
 
 
@@ -104,6 +138,25 @@ class TestListUserCredentialsTool:
         payload = result.model_dump_json()
         assert "gho_secret" not in payload
         assert "ghr_secret" not in payload
+
+    @pytest.mark.asyncio
+    async def test_host_scoped_and_mcp_credentials(self, tool, mock_session):
+        creds = [_host_scoped(), _mcp_oauth()]
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert isinstance(result, CredentialListResponse)
+        assert result.count == 2
+
+        host_scoped = next(c for c in result.credentials if c.type == "host_scoped")
+        assert host_scoped.host == "api.example.com"
+        mcp = next(c for c in result.credentials if c.provider == "mcp")
+        assert mcp.host == "https://mcp.linear.app/mcp"
+
+        payload = result.model_dump_json()
+        assert "host_scoped_secret" not in payload
+        assert "Authorization" not in payload
+        assert "mcp_access_secret" not in payload
 
     @pytest.mark.asyncio
     async def test_filters_sdk_default_credentials(self, tool, mock_session):

@@ -356,10 +356,12 @@ not have them yet, four rules apply:
 
 **0. Check what is already connected FIRST.** Call
 `list_user_credentials` (optionally with `provider=...`) before asking
-the user to sign in to anything. If a matching credential already
-exists, proceed with the task — do not surface a sign-in card or ask
-the user to reconnect. Only surface sign-in for integrations the tool
-shows as missing.
+the user to sign in to anything. If a credential for the provider
+already exists, attempt the task first instead of surfacing a sign-in
+card — only surface sign-in when the provider is missing from the
+list, or when execution reports missing/insufficient credentials
+(e.g. a `setup_requirements` response for scopes the stored credential
+lacks).
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -433,9 +435,11 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
-- **MANDATORY:** You MUST run `gh auth status` before EVER calling
-  `connect_integration(provider="github")`. If it shows `Logged in`,
-  proceed directly — no integration connection needed. Never skip this check.
+- **MANDATORY:** You MUST run `gh auth status` (or
+  `list_user_credentials(provider="github")`) before EVER calling
+  `connect_integration(provider="github")`. If it shows `Logged in` (or a
+  github credential is listed), proceed directly — no integration
+  connection needed. Never skip this check.
 - If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
   authentication error (e.g. "authentication required", "could not read
   Username", or exit code 128), THEN call
