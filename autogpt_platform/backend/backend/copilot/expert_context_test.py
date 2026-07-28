@@ -219,3 +219,22 @@ class TestInjectUserContextExpertWiring:
             )
 
         assert result == "hello"
+
+
+class TestStripInjectedContextForDisplay:
+    def test_strips_expert_workflows_before_standard_blocks(self):
+        from backend.copilot.service import strip_injected_context_for_display
+
+        message = (
+            "<expert_workflows>\nSEO Audit\n</expert_workflows>\n\n"
+            "<session_context> session_id: abc </session_context>\n\n"
+            "<user_context>\nName: Luis\n</user_context>\n\n"
+            "Hey how are you?"
+        )
+        assert strip_injected_context_for_display(message) == "Hey how are you?"
+
+    def test_strips_team_context_prefix(self):
+        from backend.copilot.service import strip_injected_context_for_display
+
+        message = "<team_context>\nMaria — Marketing\n</team_context>\n\nhello"
+        assert strip_injected_context_for_display(message) == "hello"
