@@ -97,7 +97,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
 # Merged registry measures 50915 chars (incl. find_library_agent's
 # write_graph_to); ~580 headroom for wording tweaks.
-_CHAR_BUDGET = 51_500
+# Bumped 51500 -> 52000 for REQ-112: the list_user_credentials tool (~500
+# chars: name + "check what's connected before surfacing sign-in" copy +
+# optional provider filter) lets the model discover connected integrations
+# instead of blindly re-prompting sign-in. Registry measures 51291 chars;
+# ~700 headroom for wording tweaks.
+_CHAR_BUDGET = 52_000
 
 
 @pytest.fixture(scope="module")

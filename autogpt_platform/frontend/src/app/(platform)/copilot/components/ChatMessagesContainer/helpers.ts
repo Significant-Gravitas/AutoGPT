@@ -40,6 +40,7 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-search_docs",
   "tool-get_doc_page",
   "tool-connect_integration",
+  "tool-list_user_credentials",
   "tool-run_block",
   "tool-continue_run_block",
   "tool-connect_integration",

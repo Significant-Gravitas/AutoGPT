@@ -34,6 +34,7 @@ from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
 from .list_agent_triggers import ListAgentTriggersTool
+from .list_credentials import ListUserCredentialsTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -137,6 +138,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     "connect_integration": ConnectIntegrationTool(),
+    # Connected-credential discovery (metadata only, never secrets)
+    "list_user_credentials": ListUserCredentialsTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
