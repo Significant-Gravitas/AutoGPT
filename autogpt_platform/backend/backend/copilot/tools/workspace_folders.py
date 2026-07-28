@@ -102,9 +102,8 @@ class CreateWorkspaceFolderTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a folder for organising workspace FILES (shown on the "
-            "Artifacts page). Folder names are unique. For folders that hold "
-            "agents, use create_folder instead."
+            "Create a folder for workspace FILES (shown on the Artifacts page). "
+            "Names are unique. For agent folders, use create_folder."
         )
 
     @property
@@ -118,11 +117,11 @@ class CreateWorkspaceFolderTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Folder name (e.g. 'Invoices'). Max 100 characters.",
+                    "description": "Folder name (e.g. 'Invoices'). Max 100 chars.",
                 },
                 "icon": {
                     "type": "string",
-                    "description": "Optional icon identifier for the folder.",
+                    "description": "Optional icon identifier.",
                 },
             },
             "required": ["name"],
@@ -194,10 +193,9 @@ class DeleteWorkspaceFolderTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delete a workspace FILE folder. Files inside are kept and moved "
-            "back to the workspace root — nothing is deleted. Specify "
-            "folder_id or name. For folders that hold agents, use "
-            "delete_folder instead."
+            "Delete a workspace FILE folder. Files inside are kept and moved to "
+            "the workspace root. Specify folder_id or name. For agent folders, "
+            "use delete_folder."
         )
 
     @property
@@ -289,8 +287,8 @@ class ListWorkspaceFoldersTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List folders that organise workspace FILES, with each folder's "
-            "file count. For folders that hold agents, use list_folders."
+            "List workspace FILE folders with their file counts. "
+            "For agent folders, use list_folders."
         )
 
     @property
@@ -346,10 +344,9 @@ class MoveWorkspaceFilesToFolderTool(BaseTool):
     def description(self) -> str:
         return (
             "Move workspace files into a folder, or back to the root. Specify "
-            "folder_id or folder_name; omit both (or set to_root) to move the "
-            "files out of whatever folder they are in. This changes folder "
-            "membership only — file paths and content are untouched. To change "
-            "a file's path, use move_workspace_file."
+            "folder_id or folder_name, or set to_root. Changes folder "
+            "membership only — paths and content are untouched. To change a "
+            "file's path, use move_workspace_file."
         )
 
     @property
@@ -376,7 +373,7 @@ class MoveWorkspaceFilesToFolderTool(BaseTool):
                 },
                 "to_root": {
                     "type": "boolean",
-                    "description": "Move the files out of their folder, to the workspace root.",
+                    "description": "Move the files to the workspace root instead.",
                 },
             },
             "required": ["file_ids"],

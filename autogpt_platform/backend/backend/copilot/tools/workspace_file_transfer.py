@@ -57,20 +57,16 @@ _TARGET_PARAMS: dict[str, Any] = {
     },
     "path": {
         "type": "string",
-        "description": "Virtual path of the file to act on (alternative to file_id).",
+        "description": "Path of the file to act on (alternative to file_id).",
     },
     "new_path": {
         "type": "string",
-        "description": (
-            "Destination virtual path, including the filename "
-            "(e.g. '/reports/2024/summary.pdf')."
-        ),
+        "description": "Destination path incl. filename (e.g. '/reports/q1.pdf').",
     },
     "folder_id": {
         "type": "string",
         "description": (
-            "Optional workspace folder to place the result in "
-            "(from list_workspace_folders). Defaults to the source file's folder."
+            "Workspace folder for the result. Defaults to the source's folder."
         ),
     },
     "overwrite": {
@@ -136,7 +132,7 @@ class _WorkspaceTransferTool(BaseTool):
         source_file_id, file_info = resolved
 
         # A file_id target only reveals its path after lookup, so re-check.
-        if _path_under_skills_registry(getattr(file_info, "path", None)):
+        if _path_under_skills_registry(file_info.path):
             return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
 
         return manager, source_file_id, file_info
@@ -152,13 +148,11 @@ class MoveWorkspaceFileTool(_WorkspaceTransferTool):
     @property
     def description(self) -> str:
         return (
-            "Move or rename a file in the persistent workspace in one step. "
-            "Specify file_id or path, plus new_path. Server-side metadata "
-            "update — the file content is never read, so this is free "
-            "regardless of file size. Use this instead of "
+            "Move or rename a workspace file in one call. Specify file_id or "
+            "path, plus new_path. Server-side: content is never read, so cost "
+            "is independent of file size. Use this instead of "
             "read_workspace_file + write_workspace_file + delete_workspace_file. "
-            "Paths scoped to current session; use /sessions/<id>/... for "
-            "cross-session moves."
+            "Paths are session-scoped; use /sessions/<id>/... to cross sessions."
         )
 
     async def _execute(
@@ -230,11 +224,10 @@ class CopyWorkspaceFileTool(_WorkspaceTransferTool):
     @property
     def description(self) -> str:
         return (
-            "Copy a file to a new path in the persistent workspace in one step. "
-            "Specify file_id or path, plus new_path. Server-side byte copy — "
-            "the file content is never read into context. Counts against your "
-            "storage quota. Paths scoped to current session; use "
-            "/sessions/<id>/... for cross-session copies."
+            "Copy a workspace file to a new path in one call. Specify file_id "
+            "or path, plus new_path. Server-side byte copy — content is never "
+            "read into context. Counts against your storage quota. Paths are "
+            "session-scoped; use /sessions/<id>/... to cross sessions."
         )
 
     async def _execute(
