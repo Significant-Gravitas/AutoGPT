@@ -37,6 +37,7 @@ model User {
   notifyOnMonthlySummary       Boolean @default(true)
   notifyOnAgentApproved        Boolean @default(true)
   notifyOnAgentRejected        Boolean @default(true)
+  notifyOnAutomationsPaused    Boolean @default(true)
 
   timezone String @default("not-set")
 
@@ -497,6 +498,9 @@ model AgentPreset {
   // This bool allows us to disable a configured agent without deleting it
   isActive Boolean @default(true)
 
+  // Why the system deactivated this preset (null when the user did it themselves)
+  deactivationReason PresetDeactivationReason?
+
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -539,6 +543,12 @@ enum NotificationType {
   REFUND_PROCESSED
   AGENT_APPROVED
   AGENT_REJECTED
+  AUTOMATIONS_PAUSED
+  AUTOMATIONS_RESUMED
+}
+
+enum PresetDeactivationReason {
+  PAYMENT_LAPSED
 }
 
 model NotificationEvent {

@@ -1100,6 +1100,9 @@ class GraphExecutionJobArgs(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str = ""
     team_id: str | None = None
+    # Why the system paused this schedule (e.g. "payment_lapsed"); None when
+    # running. Only schedules paused for a given reason are resumed by it.
+    paused_reason: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1162,13 +1165,17 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     name: str
     next_run_time: str
     timezone: str = Field(default="UTC", description="Timezone used for scheduling")
+    is_paused: bool = False
 
     @staticmethod
     def from_db(
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
         return GraphExecutionJobInfo(
-            **_job_info_fields(job_obj), **job_args.model_dump()
+            **_job_info_fields(job_obj),
+            **job_args.model_dump(),
+            # Cron jobs only lack a next fire time when APScheduler paused them.
+            is_paused=job_obj.next_run_time is None,
         )
 
 
@@ -1744,6 +1751,72 @@ class Scheduler(AppService):
         self._invalidate_jobs_cache()
         return info
 
+    def _user_graph_schedule_jobs(
+        self, user_id: str
+    ) -> list[tuple[JobObj, GraphExecutionJobArgs]]:
+        """Personal graph-kind jobs of *user_id* (org-tagged jobs excluded)."""
+        jobs: list[tuple[JobObj, GraphExecutionJobArgs]] = []
+        for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
+            if job.kwargs.get("kind", "graph") != "graph":
+                continue
+            try:
+                args = GraphExecutionJobArgs.model_validate(job.kwargs)
+            except ValidationError:
+                continue
+            if args.user_id != user_id or args.organization_id:
+                continue
+            jobs.append((job, args))
+        return jobs
+
+    @expose
+    def pause_user_graph_schedules(self, user_id: str, reason: str) -> int:
+        """Pause the user's graph schedules with *reason*; returns count paused.
+
+        Schedules already carrying a ``paused_reason`` are left untouched.
+        """
+        paused = 0
+        for job, args in self._user_graph_schedule_jobs(user_id):
+            if args.paused_reason is not None:
+                continue
+            args.paused_reason = reason
+            self.scheduler.modify_job(
+                job.id,
+                jobstore=Jobstores.EXECUTION.value,
+                kwargs=args.model_dump(mode="json"),
+            )
+            self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
+            paused += 1
+        if paused:
+            logger.info(
+                f"Paused {paused} graph schedule(s) for user {user_id} "
+                f"(reason={reason})"
+            )
+            self._invalidate_jobs_cache()
+        return paused
+
+    @expose
+    def resume_user_graph_schedules(self, user_id: str, reason: str) -> int:
+        """Resume schedules paused for *reason* only; returns count resumed."""
+        resumed = 0
+        for job, args in self._user_graph_schedule_jobs(user_id):
+            if args.paused_reason != reason:
+                continue
+            args.paused_reason = None
+            self.scheduler.modify_job(
+                job.id,
+                jobstore=Jobstores.EXECUTION.value,
+                kwargs=args.model_dump(mode="json"),
+            )
+            self.scheduler.resume_job(job.id, jobstore=Jobstores.EXECUTION.value)
+            resumed += 1
+        if resumed:
+            logger.info(
+                f"Resumed {resumed} graph schedule(s) for user {user_id} "
+                f"(reason={reason})"
+            )
+            self._invalidate_jobs_cache()
+        return resumed
+
     @expose
     def get_graph_execution_schedules(
         self,
@@ -1846,8 +1919,14 @@ class Scheduler(AppService):
         jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            info = _job_to_info(job) if job.next_run_time is not None else None
+            info = _job_to_info(job)
             if info is None:
+                continue
+            if job.next_run_time is None and not (
+                isinstance(info, GraphExecutionJobInfo) and info.paused_reason
+            ):
+                # Skip already-fired one-shot jobs, but keep system-paused
+                # schedules visible so they don't look deleted to the user.
                 continue
             if kind is not None and info.kind != kind:
                 continue
@@ -2201,6 +2280,10 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    pause_user_graph_schedules = endpoint_to_async(Scheduler.pause_user_graph_schedules)
+    resume_user_graph_schedules = endpoint_to_async(
+        Scheduler.resume_user_graph_schedules
+    )
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules

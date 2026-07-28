@@ -1,0 +1,68 @@
+{# Automations Resumed Notification Email Template #}
+{# Template variables:
+data.resumed_schedules: number of scheduled runs resumed
+data.resumed_triggers: number of triggers resumed
+#}
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 165%;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+  <strong>Your automations are running again</strong>
+</p>
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 165%;
+    margin-top: 0;
+    margin-bottom: 20px;
+  ">
+  Thanks for updating your subscription! The scheduled agent runs and triggers
+  that were paused while your payment lapsed have been resumed automatically.
+</p>
+
+<div style="
+    margin-left: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-left: 4px solid #5D23BB;
+    background-color: #f8f8ff;
+  ">
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Resumed schedules:</strong> {{ data.resumed_schedules }}
+  </p>
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Resumed triggers:</strong> {{ data.resumed_triggers }}
+  </p>
+</div>
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 150%;
+    margin-top: 30px;
+    margin-bottom: 10px;
+    font-style: italic;
+  ">
+  This is an automated notification. Automations you paused yourself were left
+  untouched.
+</p>

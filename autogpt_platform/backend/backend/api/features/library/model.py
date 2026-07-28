@@ -514,6 +514,10 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     webhook_id: Optional[str] = None
     webhook: "Webhook | None"
 
+    # Set when the system deactivated the preset (e.g. payment lapse);
+    # None when active or user-deactivated.
+    deactivation_reason: Optional[prisma.enums.PresetDeactivationReason] = None
+
     @pydantic.field_serializer("webhook")
     def _redact_webhook_signing_material(
         self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
@@ -558,6 +562,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             name=preset.name,
             description=preset.description,
             is_active=preset.isActive,
+            deactivation_reason=preset.deactivationReason,
             inputs=input_data,
             credentials=input_credentials,
             organization_id=preset.organizationId,

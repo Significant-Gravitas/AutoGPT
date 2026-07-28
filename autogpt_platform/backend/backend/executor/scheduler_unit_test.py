@@ -638,3 +638,100 @@ class TestScheduleOrgVisibility:
         ]
         result = self._run(infos, user_id="me")
         assert [r.schedule_id for r in result] == ["mine"]
+
+
+# ---------------------------------------------------------------------------
+# pause/resume_user_graph_schedules
+# ---------------------------------------------------------------------------
+
+
+def _graph_job_kwargs(
+    user_id="u1", organization_id="", paused_reason=None, schedule_id="s1"
+):
+    return {
+        "kind": "graph",
+        "schedule_id": schedule_id,
+        "user_id": user_id,
+        "graph_id": "g1",
+        "graph_version": 1,
+        "cron": "* * * * *",
+        "input_data": {},
+        "input_credentials": {},
+        "organization_id": organization_id,
+        "paused_reason": paused_reason,
+    }
+
+
+class TestPauseResumeUserGraphSchedules:
+    def _scheduler(self, jobs):
+        sched = Scheduler.__new__(Scheduler)
+        aps = MagicMock()
+        aps.get_jobs.return_value = jobs
+        object.__setattr__(sched, "scheduler", aps)
+        return sched, aps
+
+    def test_pause_stamps_reason_and_pauses_jobs(self):
+        job = _mock_job(_graph_job_kwargs())
+        sched, aps = self._scheduler([job])
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 1
+        modify_kwargs = aps.modify_job.call_args.kwargs["kwargs"]
+        assert modify_kwargs["paused_reason"] == "payment_lapsed"
+        aps.pause_job.assert_called_once()
+
+    def test_pause_skips_other_users_org_jobs_and_already_paused(self):
+        jobs = [
+            _mock_job(_graph_job_kwargs(user_id="other", schedule_id="s2")),
+            _mock_job(_graph_job_kwargs(organization_id="org-1", schedule_id="s3")),
+            _mock_job(
+                _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s4")
+            ),
+        ]
+        sched, aps = self._scheduler(jobs)
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 0
+        aps.pause_job.assert_not_called()
+
+    def test_resume_only_matching_reason(self):
+        jobs = [
+            _mock_job(
+                _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s1")
+            ),
+            _mock_job(_graph_job_kwargs(schedule_id="s2")),
+            _mock_job(
+                _graph_job_kwargs(paused_reason="other_reason", schedule_id="s3")
+            ),
+        ]
+        sched, aps = self._scheduler(jobs)
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.resume_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 1
+        modify_kwargs = aps.modify_job.call_args.kwargs["kwargs"]
+        assert modify_kwargs["paused_reason"] is None
+        aps.resume_job.assert_called_once()
+
+    def test_paused_schedule_still_listed_with_is_paused(self):
+        job = _mock_job(_graph_job_kwargs(paused_reason="payment_lapsed"))
+        job.next_run_time = None
+        fired_one_shot = _mock_job(
+            {
+                "kind": "copilot_turn",
+                "schedule_id": "c1",
+                "user_id": "u1",
+                "session_id": "sess",
+                "message": "m",
+                "run_at": "2026-05-22T10:00:00+00:00",
+            }
+        )
+        fired_one_shot.next_run_time = None
+        sched = Scheduler.__new__(Scheduler)
+        with patch.object(
+            Scheduler, "_get_jobs_cached", lambda self: [job, fired_one_shot]
+        ):
+            result = sched.get_execution_schedules(user_id="u1")
+        assert [r.schedule_id for r in result] == ["s1"]
+        assert isinstance(result[0], GraphExecutionJobInfo)
+        assert result[0].is_paused is True
+        assert result[0].paused_reason == "payment_lapsed"
