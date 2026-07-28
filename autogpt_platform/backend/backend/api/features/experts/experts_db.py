@@ -44,6 +44,7 @@ def _to_model(row: prisma.models.Expert) -> Expert:
         avatar_url=row.avatarUrl,
         role=row.role,
         tagline=row.tagline,
+        bio=row.bio,
         identity=row.identity,
         is_template=row.isTemplate,
         source_template_id=row.sourceTemplateId,
@@ -101,6 +102,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "avatarUrl": template.avatarUrl,
         "role": template.role,
         "tagline": template.tagline,
+        "bio": template.bio,
         "identity": template.identity,
         "sourceTemplateId": template.id,
     }

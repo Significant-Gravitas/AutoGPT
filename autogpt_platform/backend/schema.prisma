@@ -698,6 +698,7 @@ model Expert {
   role      String
   tagline   String?
   identity  String
+  bio       String?
 
   toolProfile Json?
 

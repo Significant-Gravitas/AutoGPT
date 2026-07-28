@@ -16,6 +16,7 @@ class Expert(BaseModel):
     avatar_url: str | None
     role: str
     tagline: str | None
+    bio: str | None = None
     identity: str
     is_template: bool
     source_template_id: str | None
