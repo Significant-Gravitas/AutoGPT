@@ -88,7 +88,7 @@ def test_list_folders_returns_folders(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.list_folders",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.list_workspace_folders",
         AsyncMock(return_value=[_make_folder(file_count=3)]),
     )
 
@@ -106,7 +106,7 @@ def test_create_folder_success(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     create = mocker.patch(
-        "backend.api.features.workspace.folder_routes.create_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.create_workspace_folder",
         AsyncMock(return_value=_make_folder(name="Invoices")),
     )
 
@@ -122,7 +122,7 @@ def test_create_folder_name_conflict_returns_409(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.create_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.create_workspace_folder",
         AsyncMock(side_effect=FolderAlreadyExistsError("exists")),
     )
 
@@ -136,7 +136,7 @@ def test_update_folder_success(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     update = mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.update_workspace_folder",
         AsyncMock(return_value=_make_folder(name="Renamed")),
     )
 
@@ -154,7 +154,7 @@ def test_update_folder_not_found_returns_404(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.update_workspace_folder",
         AsyncMock(side_effect=NotFoundError("nope")),
     )
 
@@ -168,7 +168,7 @@ def test_delete_folder_returns_204(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     delete = mocker.patch(
-        "backend.api.features.workspace.folder_routes.delete_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.delete_workspace_folder",
         AsyncMock(return_value=None),
     )
 
@@ -183,7 +183,7 @@ def test_bulk_move_files_returns_updated_files(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     move = mocker.patch(
-        "backend.api.features.workspace.folder_routes.bulk_move_files_to_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.bulk_move_files_to_folder",
         AsyncMock(return_value=[_make_file(id="f1", folder_id="fld-1")]),
     )
 
@@ -217,7 +217,7 @@ def test_bulk_move_files_to_root(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     move = mocker.patch(
-        "backend.api.features.workspace.folder_routes.bulk_move_files_to_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.bulk_move_files_to_folder",
         AsyncMock(return_value=[]),
     )
 

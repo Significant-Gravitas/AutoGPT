@@ -97,7 +97,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
 # Merged registry measures 50915 chars (incl. find_library_agent's
 # write_graph_to); ~580 headroom for wording tweaks.
-_CHAR_BUDGET = 51_500
+# Bumped 51500 -> 55500 for SECRT-2441: the six workspace organisation tools
+# (move/copy_workspace_file plus create/delete/list_workspace_folder and
+# move_workspace_files_to_folder). ~3.7k chars total, already trimmed — the
+# move/copy pair carries the load-bearing "server-side, content is never read,
+# use this instead of read+write+delete" copy that stops the model burning a
+# whole file through its context just to relocate it, and the folder tools each
+# spend ~40 chars disambiguating workspace FILE folders from the identically
+# shaped library folder tools that hold agents. CI measures ~54.8k
+# (env-flagged tool registrations push CI above local); ~670 headroom.
+_CHAR_BUDGET = 55_500
 
 
 @pytest.fixture(scope="module")

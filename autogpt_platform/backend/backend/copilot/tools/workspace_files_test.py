@@ -3,11 +3,14 @@
 import base64
 import os
 import shutil
+import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.model import ChatSession
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workspace_files import (
@@ -919,3 +922,65 @@ class TestSkillsRegistryACL:
         )
         assert isinstance(result, ErrorResponse)
         assert "skills registry" in result.message
+
+
+def _fake_session() -> ChatSession:
+    """A ChatSession that needs no database, for pure argument-validation tests."""
+    now = datetime.now(timezone.utc)
+    return ChatSession(
+        session_id=str(uuid.uuid4()),
+        user_id="user-123",
+        messages=[],
+        usage=[],
+        started_at=now,
+        updated_at=now,
+        successful_agent_runs={},
+        successful_agent_schedules={},
+    )
+
+
+class TestWriteWorkspaceFileMissingFilename:
+    """SECRT-2441 #5: omitting only `filename` gave a misleading error.
+
+    `content`/`content_base64`/`source_path` are named parameters, so probing
+    `**kwargs` for them always came up empty and every missing-filename call
+    was reported as a truncated tool call.
+    """
+
+    @pytest.mark.asyncio
+    async def test_content_supplied_reports_the_real_cause(self):
+        session = _fake_session()
+        resp = await WriteWorkspaceFileTool()._execute(
+            user_id="user-123",
+            session=session,
+            content="hello world",
+        )
+        assert isinstance(resp, ErrorResponse)
+        assert "filename" in resp.message
+        assert "truncated" not in resp.message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"content": "hello"},
+            {"content_base64": "aGVsbG8="},
+            {"source_path": "/home/user/file.md"},
+        ],
+    )
+    async def test_every_content_source_reports_the_real_cause(self, kwargs):
+        resp = await WriteWorkspaceFileTool()._execute(
+            user_id="user-123", session=_fake_session(), **kwargs
+        )
+        assert isinstance(resp, ErrorResponse)
+        assert "truncated" not in resp.message
+
+    @pytest.mark.asyncio
+    async def test_no_arguments_at_all_still_reports_truncation(self):
+        """The genuine truncation case must keep its actionable guidance."""
+        resp = await WriteWorkspaceFileTool()._execute(
+            user_id="user-123", session=_fake_session()
+        )
+        assert isinstance(resp, ErrorResponse)
+        assert "truncated" in resp.message
+        assert "source_path" in resp.message

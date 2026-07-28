@@ -492,6 +492,27 @@ def _build_storage_supplement(
 - **{file_move_name_1_to_2}**: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
 - **{file_move_name_2_to_1}**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
 
+### Reorganising files *within* the workspace
+- **Move or rename**: `move_workspace_file(file_id="...", new_path="/reports/summary.pdf")`
+- **Duplicate**: `copy_workspace_file(file_id="...", new_path="/archive/summary.pdf")`
+- Both run server-side in a single call and never load the file's content. Do
+  NOT move a workspace file by reading it and writing it back to a new path:
+  that burns the whole file (base64-encoded, if binary) through your context
+  and leaves two copies behind if the session dies mid-way.
+- Add `overwrite=true` only when you intend to replace a file already at the
+  destination; otherwise the call fails and tells you what is in the way.
+
+### Workspace folders
+Folders group workspace files for the user (shown on the Artifacts page). They
+are independent of a file's path — moving a file into a folder does not change
+its path, and vice versa.
+- `list_workspace_folders()`, `create_workspace_folder(name="Invoices")`
+- `move_workspace_files_to_folder(file_ids=[...], folder_name="Invoices")`
+- `delete_workspace_folder(name="Invoices")` keeps the files, returning them to
+  the workspace root.
+- These are for FILES. `create_folder`/`delete_folder` manage *library* folders,
+  which hold agents.
+
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
 

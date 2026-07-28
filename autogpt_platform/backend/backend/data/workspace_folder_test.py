@@ -58,7 +58,7 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
-    await wf.delete_folder("fld-1", "ws-001")
+    await wf.delete_workspace_folder("fld-1", "ws-001")
 
     assert calls == ["reparent_files", "soft_delete_folder"]
     # Files reparented to root (folderId=None) scoped to the workspace.
@@ -83,7 +83,7 @@ async def test_create_folder_rejects_duplicate_root_name(mocker):
     )
 
     with pytest.raises(FolderAlreadyExistsError):
-        await wf.create_folder("ws-001", "Reports")
+        await wf.create_workspace_folder("ws-001", "Reports")
 
     folder_prisma.create.assert_not_awaited()
     _, kwargs = folder_prisma.find_first.call_args
@@ -109,7 +109,7 @@ async def test_update_folder_rejects_duplicate_root_name(mocker):
     )
 
     with pytest.raises(FolderAlreadyExistsError):
-        await wf.update_folder("fld-1", "ws-001", name="Reports")
+        await wf.update_workspace_folder("fld-1", "ws-001", name="Reports")
 
     folder_prisma.update.assert_not_awaited()
     _, kwargs = folder_prisma.find_first.call_args
@@ -131,7 +131,7 @@ async def test_update_folder_raises_when_concurrently_deleted(mocker):
     )
 
     with pytest.raises(NotFoundError):
-        await wf.update_folder("fld-1", "ws-001", name="Renamed")
+        await wf.update_workspace_folder("fld-1", "ws-001", name="Renamed")
 
     _, kwargs = folder_prisma.update_many.call_args
     assert kwargs["where"] == {"id": "fld-1", "isDeleted": False}
