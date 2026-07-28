@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.api.features.library.model import NODE_INPUT_MASK_PREFIX
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
@@ -271,7 +272,23 @@ class UpdatePresetTool(BaseTool):
                     error="preset_not_found",
                     session_id=session_id,
                 )
-            merged_inputs = {**current.inputs, **new_inputs}
+            # The trigger config is stored nested under a per-node
+            # `_node_input_mask_{node_id}` key. The model supplies flat trigger
+            # fields (repo/events/...), so merge them into that sub-dict rather
+            # than at the top level — otherwise update_triggered_preset reads the
+            # stale config and the reconfiguration is silently dropped.
+            mask_key = next(
+                (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
+                None,
+            )
+            if mask_key:
+                current_config = current.inputs.get(mask_key) or {}
+                merged_inputs = {
+                    **current.inputs,
+                    mask_key: {**current_config, **new_inputs},
+                }
+            else:
+                merged_inputs = {**current.inputs, **new_inputs}
             credentials = current.credentials
 
         try:

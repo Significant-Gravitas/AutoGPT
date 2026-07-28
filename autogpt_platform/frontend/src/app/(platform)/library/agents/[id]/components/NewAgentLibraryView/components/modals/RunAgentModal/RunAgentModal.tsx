@@ -28,6 +28,7 @@ interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
@@ -38,6 +39,7 @@ export function RunAgentModal({
   triggerSlot,
   agent,
   initialInputValues,
+  initialTriggerConfigValues,
   initialInputCredentials,
   onRunCreated,
   onTriggerSetup,
@@ -55,6 +57,11 @@ export function RunAgentModal({
     inputValues,
     setInputValues,
 
+    // Form: trigger config (the trigger node's config on a triggered agent)
+    triggerConfigValues,
+    setTriggerConfigValues,
+    triggerConfigFields,
+
     // Form: credentials
     inputCredentials,
     setInputCredentials,
@@ -71,6 +78,7 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    hasInputFields,
 
     // Async states
     isExecuting,
@@ -83,6 +91,7 @@ export function RunAgentModal({
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
     initialInputValues,
+    initialTriggerConfigValues,
     initialInputCredentials,
   });
 
@@ -101,8 +110,7 @@ export function RunAgentModal({
   );
 
   const hasAnySetupFields =
-    Object.keys(agentInputFields || {}).length > 0 ||
-    Object.keys(agentCredentialsInputFields || {}).length > 0;
+    hasInputFields || Object.keys(agentCredentialsInputFields || {}).length > 0;
 
   const isTriggerRunType = defaultRunType.includes("trigger");
 
@@ -145,6 +153,13 @@ export function RunAgentModal({
 
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
+  function handleTriggerConfigChange(key: string, value: string) {
+    setTriggerConfigValues((prev) => ({
       ...prev,
       [key]: value,
     }));
@@ -226,6 +241,9 @@ export function RunAgentModal({
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
+                      triggerConfigValues,
+                      setTriggerConfigValue: handleTriggerConfigChange,
+                      triggerConfigFields,
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,

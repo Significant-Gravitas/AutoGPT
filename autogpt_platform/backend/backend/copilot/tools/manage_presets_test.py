@@ -160,9 +160,14 @@ async def test_update_pause(session):
 
 
 @pytest.mark.asyncio
-async def test_update_reconfigure_merges_and_reuses_credentials(session):
+async def test_update_reconfigure_merges_into_trigger_mask(session):
+    """The model's flat trigger fields are merged into the nested
+    `_node_input_mask_` sub-dict, not at the top level, so the reconfiguration
+    actually reaches update_triggered_preset."""
     current = _preset()
-    current.inputs = {"repo": "owner/repo", "events": ["push"]}
+    current.inputs = {
+        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}
+    }
     current.credentials = {"github": MagicMock()}
     ldb = MagicMock()
     ldb.get_preset = AsyncMock(return_value=current)
@@ -179,8 +184,10 @@ async def test_update_reconfigure_merges_and_reuses_credentials(session):
         )
     kwargs = tdb.update_triggered_preset.await_args.kwargs
     assert kwargs["inputs"] == {
-        "repo": "owner/repo",
-        "events": ["push", "pull_request"],
+        "_node_input_mask_abc": {
+            "repo": "owner/repo",
+            "events": ["push", "pull_request"],
+        },
     }
     assert kwargs["credentials"] == current.credentials
 

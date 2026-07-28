@@ -2264,6 +2264,22 @@ async def migrate_webhook_presets_to_new_version(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
+
+    # reassign_ids() gives every node a new UUID when an agent is edited, so a
+    # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
+    # the new version's trigger node at execution (the mask would be dropped and
+    # the trigger would silently stop firing). Re-key the mask to the new node's
+    # prefix. Scoped to presets now pinned to this version so a preset that a
+    # concurrent activation already bumped past it isn't re-keyed to the wrong
+    # node.
+    await prisma.models.AgentNodeExecutionInputOutput.prisma().update_many(
+        where={
+            "agentPresetId": {"in": ids_to_migrate},
+            "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
+            "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
+        },
+        data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
+    )
     return count
 
 

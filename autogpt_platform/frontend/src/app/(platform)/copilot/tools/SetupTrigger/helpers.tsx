@@ -29,6 +29,10 @@ export interface TriggerConfigRequiredOutput {
   message: string;
   missing_config: string[];
   config_schema: Record<string, unknown>;
+  // Required regular graph inputs (for agents with input nodes alongside the
+  // trigger). The LLM collects these and re-calls with `constant_inputs`.
+  missing_inputs?: string[];
+  input_schema?: Record<string, unknown> | null;
 }
 
 export type SetupTriggerToolOutput =
