@@ -1,9 +1,9 @@
 "use client";
 
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { XIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
-import { X } from "lucide-react";
 
 import { TaskGroup } from "../helpers";
 import { WalletRefill } from "./WalletRefill";
@@ -36,7 +36,7 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
             <span className="font-semibold">{formattedCredits}</span>
           </div>
           <PopoverClose aria-label="Close wallet">
-            <X className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
+            <XIcon className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
           </PopoverClose>
         </div>
       </div>
