@@ -24,7 +24,9 @@ import {
   NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
+  UsersThreeIcon,
 } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -201,6 +203,14 @@ export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const mainLinks = isHireExpertsEnabled
+    ? MAIN_LINKS.map((link) =>
+        link.href === "/library"
+          ? { name: "Team", href: "/team", icon: UsersThreeIcon }
+          : link,
+      )
+    : MAIN_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
@@ -237,7 +247,7 @@ export function AppSidebar(props: Props) {
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
                 <NavMenu
-                  links={MAIN_LINKS}
+                  links={mainLinks}
                   leading={
                     <>
                       <NewTaskItem />
