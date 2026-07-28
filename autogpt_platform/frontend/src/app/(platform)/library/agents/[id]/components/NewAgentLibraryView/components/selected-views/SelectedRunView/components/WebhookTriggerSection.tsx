@@ -14,9 +14,12 @@ interface Props {
 
 function getTriggerStatus(
   preset: LibraryAgentPreset,
-): "active" | "inactive" | "broken" {
+): "active" | "inactive" | "paused" | "broken" {
   if (!preset.webhook_id || !preset.webhook) return "broken";
-  return preset.is_active ? "active" : "inactive";
+  if (preset.is_active) return "active";
+  return preset.deactivation_reason === "PAYMENT_LAPSED"
+    ? "paused"
+    : "inactive";
 }
 
 export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
@@ -38,16 +41,20 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               status === "active"
                 ? "bg-green-100 text-green-800"
-                : status === "inactive"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : "bg-red-100 text-red-800"
+                : status === "paused"
+                  ? "bg-amber-100 text-amber-800"
+                  : status === "inactive"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : "bg-red-100 text-red-800"
             }`}
           >
             {status === "active"
               ? "Active"
-              : status === "inactive"
-                ? "Inactive"
-                : "Broken"}
+              : status === "paused"
+                ? "Paused — payment required"
+                : status === "inactive"
+                  ? "Inactive"
+                  : "Broken"}
           </span>
         </div>
 
@@ -83,7 +90,9 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             This agent trigger is{" "}
             {preset.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."
-              : "disabled. It will not respond to triggers until you enable it."}
+              : status === "paused"
+                ? "paused because your payment lapsed. It will resume automatically once your subscription is active again."
+                : "disabled. It will not respond to triggers until you enable it."}
           </Text>
         )}
       </div>

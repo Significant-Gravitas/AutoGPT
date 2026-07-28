@@ -14,6 +14,7 @@ interface Props {
 
 export function GraphScheduleListItem({ schedule }: Props) {
   const {
+    isPaused,
     nextRunLabel,
     nextRunTitle,
     recurrenceLabel,
@@ -74,6 +75,14 @@ export function GraphScheduleListItem({ schedule }: Props) {
             >
               Agent run
             </span>
+            {isPaused && (
+              <span
+                className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700"
+                data-testid="schedule-paused-badge"
+              >
+                Paused — payment required
+              </span>
+            )}
           </div>
         </div>
       </Link>

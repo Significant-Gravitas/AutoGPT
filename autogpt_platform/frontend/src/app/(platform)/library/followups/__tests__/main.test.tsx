@@ -494,4 +494,26 @@ describe("FollowupsPage", () => {
     expect(screen.queryByTestId("followups-list")).toBeNull();
     expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
   });
+
+  test("graph row: paused schedule shows paused badge instead of next-run time", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({
+          id: "paused-sched",
+          next_run_time: "",
+          is_paused: true,
+          paused_reason: "payment_lapsed",
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("schedule-row");
+    expect(
+      within(row).getByTestId("schedule-paused-badge").textContent,
+    ).toContain("Paused — payment required");
+    expect(within(row).getByText("Paused")).toBeDefined();
+  });
 });

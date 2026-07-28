@@ -20,11 +20,13 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
     useDeleteV1DeleteExecutionSchedule();
 
+  const isPaused = Boolean(schedule.is_paused);
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;
-  const nextRunLabel =
-    nextRunDate && !Number.isNaN(nextRunDate.valueOf())
+  const nextRunLabel = isPaused
+    ? "Paused"
+    : nextRunDate && !Number.isNaN(nextRunDate.valueOf())
       ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
       : "Pending";
   const nextRunTitle = nextRunDate ? nextRunDate.toString() : undefined;
@@ -68,6 +70,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   }
 
   return {
+    isPaused,
     nextRunLabel,
     nextRunTitle,
     recurrenceLabel,

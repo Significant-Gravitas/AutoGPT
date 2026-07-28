@@ -16883,6 +16883,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "paused_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Paused Reason"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -16891,6 +16895,11 @@
             "title": "Timezone",
             "description": "Timezone used for scheduling",
             "default": "UTC"
+          },
+          "is_paused": {
+            "type": "boolean",
+            "title": "Is Paused",
+            "default": false
           }
         },
         "type": "object",
@@ -17961,6 +17970,12 @@
           "webhook": {
             "anyOf": [
               { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
+          },
+          "deactivation_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PresetDeactivationReason" },
               { "type": "null" }
             ]
           }
@@ -19091,7 +19106,9 @@
           "REFUND_REQUEST",
           "REFUND_PROCESSED",
           "AGENT_APPROVED",
-          "AGENT_REJECTED"
+          "AGENT_REJECTED",
+          "AUTOMATIONS_PAUSED",
+          "AUTOMATIONS_RESUMED"
         ],
         "title": "NotificationType"
       },
@@ -20121,6 +20138,11 @@
           "Metadata"
         ],
         "title": "PostmarkSubscriptionChangeWebhook"
+      },
+      "PresetDeactivationReason": {
+        "type": "string",
+        "enum": ["PAYMENT_LAPSED"],
+        "title": "PresetDeactivationReason"
       },
       "PresetDeletedResponse": {
         "properties": {
