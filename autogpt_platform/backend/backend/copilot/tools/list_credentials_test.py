@@ -1,5 +1,6 @@
 """Tests for the list_user_credentials tool."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from pydantic import SecretStr
 from backend.copilot.tools.list_credentials import (
     CredentialListResponse,
     ListUserCredentialsTool,
+    _ensure_managed_credentials_bounded,
 )
 from backend.copilot.tools.models import ErrorResponse, ResponseType
 from backend.data.model import (
@@ -258,3 +260,42 @@ class TestListUserCredentialsTool:
 
         assert result.toolName == "list_user_credentials"
         assert '"need_login"' in result.output
+
+
+_MGR_PATH = "backend.copilot.tools.list_credentials.IntegrationCredentialsManager"
+_ENSURE_PATH = "backend.copilot.tools.list_credentials.ensure_managed_credentials"
+
+
+class TestEnsureManagedCredentialsBounded:
+    """Exercises the real bounded provisioning sweep (not the autouse stub)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_true_on_success(self):
+        with patch(_MGR_PATH), patch(
+            _ENSURE_PATH, new_callable=AsyncMock
+        ) as mock_ensure:
+            result = await _ensure_managed_credentials_bounded("user-1")
+
+        assert result is True
+        mock_ensure.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_on_timeout(self):
+        async def _hang(*_args, **_kwargs):
+            await asyncio.sleep(1)
+
+        with patch(_MGR_PATH), patch(_ENSURE_PATH, _hang), patch(
+            "backend.copilot.tools.list_credentials._MANAGED_PROVISION_TIMEOUT_S", 0.01
+        ):
+            result = await _ensure_managed_credentials_bounded("user-1")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_on_error(self):
+        with patch(_MGR_PATH), patch(
+            _ENSURE_PATH, new_callable=AsyncMock, side_effect=RuntimeError("boom")
+        ):
+            result = await _ensure_managed_credentials_bounded("user-1")
+
+        assert result is False
