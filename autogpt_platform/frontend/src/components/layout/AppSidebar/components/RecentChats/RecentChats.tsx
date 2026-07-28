@@ -2,6 +2,13 @@
 
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
+import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
+import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -11,6 +18,8 @@ import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const expertMap = useExpertMap();
   const {
     sessions,
     isLoading,
@@ -71,12 +80,42 @@ export function RecentChats() {
     );
   }
 
+  const groups = isExpertsEnabled
+    ? groupSessionsByExpert(sessions).map((group) => ({
+        key: group.expertId ?? "autopilot",
+        label: group.expertId
+          ? (expertMap.get(group.expertId)?.name ?? "Expert")
+          : "Autopilot",
+        avatarUrl: group.expertId
+          ? (expertMap.get(group.expertId)?.avatarUrl ?? null)
+          : null,
+        showAvatar: true,
+        sessions: group.sessions,
+      }))
+    : groupSessionsByDate(sessions).map((group) => ({
+        key: group.label,
+        label: group.label,
+        avatarUrl: null,
+        showAvatar: false,
+        sessions: group.sessions,
+      }));
+
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
-        {groupSessionsByDate(sessions).map((group) => (
-          <div key={group.label}>
-            <div className="px-2 pb-1 text-xs font-medium text-zinc-500">
+        {groups.map((group) => (
+          <div key={group.key}>
+            <div className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-zinc-500">
+              {group.showAvatar && (
+                <Avatar className="h-4 w-4">
+                  {group.avatarUrl ? (
+                    <AvatarImage src={group.avatarUrl} alt={group.label} />
+                  ) : null}
+                  <AvatarFallback className="text-[8px]">
+                    {group.label.slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+              )}
               {group.label}
             </div>
             <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
