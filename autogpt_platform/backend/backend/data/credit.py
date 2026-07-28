@@ -26,6 +26,10 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
+from backend.data.automation_pause import (
+    pause_automations_for_payment_lapse,
+    resume_automations_after_payment_restored,
+)
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -1521,11 +1525,16 @@ async def set_subscription_tier(
     tier: SubscriptionTier,
 ) -> None:
     """Set the user's subscription tier."""
+    previous_user = await User.prisma().find_unique(where={"id": user_id})
+    previous_tier = (
+        SubscriptionTier(previous_user.subscriptionTier) if previous_user else None
+    )
     data: UserUpdateInput = {
         "subscriptionTier": tier,
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     get_user_by_id.cache_delete(user_id)
+    await _handle_tier_transition_automations(user_id, previous_tier, tier)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
     # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
@@ -1537,6 +1546,30 @@ async def set_subscription_tier(
     # billing page can show a pending change for up to 30s after the tier
     # has already flipped.
     get_pending_subscription_change.cache_delete(user_id)
+
+
+async def _handle_tier_transition_automations(
+    user_id: str,
+    previous_tier: SubscriptionTier | None,
+    new_tier: SubscriptionTier,
+) -> None:
+    """Pause automations on paid→NO_TIER, resume on NO_TIER→paid.
+
+    Never raises: a failure here must not fail the Stripe webhook whose tier
+    update triggered it (a 500 would make Stripe retry the billing event).
+    """
+    if previous_tier is None or previous_tier == new_tier:
+        return
+    try:
+        if new_tier == SubscriptionTier.NO_TIER:
+            await pause_automations_for_payment_lapse(user_id)
+        elif previous_tier == SubscriptionTier.NO_TIER:
+            await resume_automations_after_payment_restored(user_id)
+    except Exception as e:
+        logger.error(
+            f"Failed to update automations for user {user_id} on tier "
+            f"transition {previous_tier}->{new_tier}: {e}"
+        )
 
 
 async def _cancel_customer_subscriptions(

@@ -1441,3 +1441,33 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+@pytest.mark.asyncio
+async def test_update_preset_is_active_clears_deactivation_reason():
+    """A user explicitly setting is_active must clear any system
+    deactivationReason so auto-resume can't override their choice."""
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    with (
+        patch(
+            "backend.api.features.library.db.get_preset",
+            new=AsyncMock(return_value=MagicMock(name="ExistingPreset")),
+        ),
+        patch("backend.api.features.library.db.transaction", fake_tx),
+        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
+        patch(
+            "backend.api.features.library.model.LibraryAgentPreset.from_db",
+            return_value=MagicMock(),
+        ),
+    ):
+        mock_prisma.return_value.update = AsyncMock(return_value=MagicMock())
+
+        await db.update_preset("user-1", "preset-1", is_active=False)
+
+    update_data = mock_prisma.return_value.update.call_args.kwargs["data"]
+    assert update_data["isActive"] is False
+    assert update_data["deactivationReason"] is None

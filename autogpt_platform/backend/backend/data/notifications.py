@@ -77,6 +77,17 @@ class LowBalanceData(BaseNotificationData):
     billing_page_link: str = Field(..., description="Link to billing page")
 
 
+class AutomationsPausedData(BaseNotificationData):
+    paused_schedules: int = Field(..., description="Number of schedules paused")
+    paused_triggers: int = Field(..., description="Number of triggers paused")
+    billing_page_link: str = Field(..., description="Link to billing page")
+
+
+class AutomationsResumedData(BaseNotificationData):
+    resumed_schedules: int = Field(..., description="Number of schedules resumed")
+    resumed_triggers: int = Field(..., description="Number of triggers resumed")
+
+
 class BlockExecutionFailedData(BaseNotificationData):
     block_name: str
     block_id: str
@@ -297,6 +308,8 @@ def get_notif_data_type(
         NotificationType.REFUND_PROCESSED: RefundRequestData,
         NotificationType.AGENT_APPROVED: AgentApprovalData,
         NotificationType.AGENT_REJECTED: AgentRejectionData,
+        NotificationType.AUTOMATIONS_PAUSED: AutomationsPausedData,
+        NotificationType.AUTOMATIONS_RESUMED: AutomationsResumedData,
     }[notification_type]
 
 
@@ -342,6 +355,8 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
             NotificationType.AGENT_APPROVED: QueueType.IMMEDIATE,
             NotificationType.AGENT_REJECTED: QueueType.IMMEDIATE,
+            NotificationType.AUTOMATIONS_PAUSED: QueueType.IMMEDIATE,
+            NotificationType.AUTOMATIONS_RESUMED: QueueType.IMMEDIATE,
         }
         return BATCHING_RULES.get(self.notification_type, QueueType.IMMEDIATE)
 
@@ -361,6 +376,8 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: "refund_processed.html",
             NotificationType.AGENT_APPROVED: "agent_approved.html",
             NotificationType.AGENT_REJECTED: "agent_rejected.html",
+            NotificationType.AUTOMATIONS_PAUSED: "automations_paused.html",
+            NotificationType.AUTOMATIONS_RESUMED: "automations_resumed.html",
         }[self.notification_type]
 
     @property
@@ -378,6 +395,8 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: "Refund for ${{data.amount / 100}} to {{data.user_name}} has been processed",
             NotificationType.AGENT_APPROVED: "🎉 Your agent '{{data.agent_name}}' has been approved!",
             NotificationType.AGENT_REJECTED: "Your agent '{{data.agent_name}}' needs some updates",
+            NotificationType.AUTOMATIONS_PAUSED: "Your automations have been paused",
+            NotificationType.AUTOMATIONS_RESUMED: "Your automations are running again",
         }[self.notification_type]
 
 
