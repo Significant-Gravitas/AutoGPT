@@ -64,15 +64,19 @@ def _expert(
     )
 
 
-class TestBuildExpertContextExpertSession:
+class TestBuildExpertIdentitySuffix:
+    """Identity lives in the per-session system-prompt suffix (same
+    mechanism as building mode) so it outranks the first-message context.
+    """
+
     @pytest.mark.asyncio
-    async def test_renders_identity_and_workflows_blocks(self):
-        from backend.copilot.expert_context import build_expert_context
+    async def test_expert_session_renders_identity_with_precedence(self):
+        from backend.copilot.expert_context import build_expert_identity_suffix
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
-        with patch(f"{_EC}.experts_db", mock_db):
-            result = await build_expert_context("user-1", "exp-1")
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_identity_suffix("user-1", "exp-1")
 
         mock_db.get_expert.assert_awaited_once_with("user-1", "exp-1")
         assert "<expert_identity>" in result
@@ -80,6 +84,50 @@ class TestBuildExpertContextExpertSession:
         assert "Maria" in result
         assert "SEO Specialist" in result
         assert "You are Maria, a meticulous SEO specialist." in result
+        assert "never present yourself as AutoPilot" in result
+
+    @pytest.mark.asyncio
+    async def test_plain_session_returns_empty(self):
+        from backend.copilot.expert_context import build_expert_identity_suffix
+
+        result = await build_expert_identity_suffix("user-1", None)
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_archived_expert_returns_empty(self):
+        from backend.copilot.expert_context import build_expert_identity_suffix
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_identity_suffix("user-1", "exp-1")
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_lookup_error_returns_empty(self):
+        from backend.copilot.expert_context import build_expert_identity_suffix
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_identity_suffix("user-1", "exp-1")
+
+        assert result == ""
+
+
+class TestBuildExpertContextExpertSession:
+    @pytest.mark.asyncio
+    async def test_renders_workflows_block_without_identity(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        mock_db.get_expert.assert_awaited_once_with("user-1", "exp-1")
+        assert "<expert_identity>" not in result
         assert "<expert_workflows>" in result
         assert "</expert_workflows>" in result
         assert "SEO Audit" in result
@@ -94,7 +142,7 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -105,7 +153,7 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=None)
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -116,7 +164,7 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -138,7 +186,7 @@ class TestBuildExpertContextPlainSession:
         ]
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=experts)
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
         mock_db.list_experts.assert_awaited_once_with("user-1")
@@ -161,7 +209,7 @@ class TestBuildExpertContextPlainSession:
 
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
         assert result == ""
@@ -172,7 +220,7 @@ class TestBuildExpertContextPlainSession:
 
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
         assert result == ""
@@ -195,13 +243,14 @@ class TestInjectUserContextExpertWiring:
         msg = ChatMessage(role="user", content="hello", sequence=None)
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], user_id="user-1", expert_id="exp-1"
             )
 
         assert result is not None
-        assert "<expert_identity>" in result
+        # Identity lives in the system-prompt suffix, never in the message.
+        assert "<expert_identity>" not in result
         assert "<expert_workflows>" in result
         assert result.endswith("hello")
 
@@ -213,7 +262,7 @@ class TestInjectUserContextExpertWiring:
         msg = ChatMessage(role="user", content="hello", sequence=None)
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
-        with patch(f"{_EC}.experts_db", mock_db):
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], user_id="user-1"
             )
