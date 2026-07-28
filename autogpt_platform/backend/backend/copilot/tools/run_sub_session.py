@@ -38,6 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.tools.session_context import is_followups_feature_enabled
 
 from .base import BaseTool
 from .models import (
@@ -64,6 +65,12 @@ _WORKSPACE_FILE_MANIFEST_LIMIT = 50
 # a real result instead of immediately re-scheduling), short enough that the
 # user is still in the conversation. ``schedule_followup`` enforces a 60s floor.
 FOLLOWUP_POLL_DELAY_SECONDS = 300
+
+# Upper bound on how many times the poll chain may re-schedule itself. Baked
+# into the nudge prompt so a wedged or very long-running sub self-terminates
+# (reports "still running" and stops) instead of spawning a turn every
+# FOLLOWUP_POLL_DELAY_SECONDS forever. ~6 * 300s ≈ 30 min of polling.
+FOLLOWUP_POLL_MAX_ATTEMPTS = 6
 
 
 class RunSubSessionTool(BaseTool):
@@ -195,7 +202,10 @@ class RunSubSessionTool(BaseTool):
             parent_session_id=session.session_id,
             elapsed=elapsed,
             workspace_files=workspace_files,
-            suggest_followup_poll=True,
+            # Only nudge toward schedule_followup when it is actually usable for
+            # this user; otherwise the tool returns feature_disabled and we'd be
+            # pointing the model at a dead end (SECRT-2471).
+            suggest_followup_poll=await is_followups_feature_enabled(user_id),
         )
 
 
@@ -223,17 +233,26 @@ def _followup_poll_nudge(inner_session_id: str) -> str:
     (SECRT-2471). This response is the last thing the model reads before it
     composes that promise, so the reminder has to live here and not only in
     the system prompt.
+
+    The scheduled prompt carries an attempt counter and a hard cap
+    (``FOLLOWUP_POLL_MAX_ATTEMPTS``) so a wedged or very long-running sub
+    self-terminates the poll chain — reports "still running" and stops —
+    rather than spawning a fresh turn every delay window forever.
     """
     return (
         " IMPORTANT — if you are ending your turn here (always the case when "
         "you passed wait_for_result=0, and whenever you tell the user you will "
         "report back), you MUST schedule the poll before your closing message: "
         f"schedule_followup(delay_seconds={FOLLOWUP_POLL_DELAY_SECONDS}, "
-        "session_id=<the session_id from <session_context>>, message='Call "
-        f'get_sub_session_result(sub_session_id="{inner_session_id}") '
-        "and report the outcome to the user; if it is still running, schedule "
-        "another follow-up.'). Without it get_sub_session_result never runs "
-        "again and the result never reaches the user."
+        "session_id=<the session_id from <session_context>>, message='Poll "
+        f"attempt 1 of {FOLLOWUP_POLL_MAX_ATTEMPTS}: call "
+        f'get_sub_session_result(sub_session_id="{inner_session_id}") and '
+        "report the outcome to the user. If it is still running and this was "
+        f"attempt N of {FOLLOWUP_POLL_MAX_ATTEMPTS}, schedule the next poll as "
+        f"attempt N+1; once attempt {FOLLOWUP_POLL_MAX_ATTEMPTS} is reached, "
+        "just tell the user it is still running instead of rescheduling "
+        "again.'). Without it get_sub_session_result never runs again and the "
+        "result never reaches the user."
     )
 
 

@@ -23,6 +23,7 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
 from .run_sub_session import (
     FOLLOWUP_POLL_DELAY_SECONDS,
+    FOLLOWUP_POLL_MAX_ATTEMPTS,
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
     response_from_outcome,
@@ -166,6 +167,19 @@ def mock_model(monkeypatch):
     return {"created": created, "get": fake_get}
 
 
+@pytest.fixture(autouse=True)
+def mock_followups_flag(monkeypatch):
+    """The launch nudge is gated on the ``COPILOT_SCHEDULED_FOLLOWUPS`` LD flag
+    so the model is never pointed at a disabled ``schedule_followup``. Patch the
+    check to enabled by default (deterministic, no LD round-trip); tests that
+    need the flag off flip ``.return_value``."""
+    flag = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.is_followups_feature_enabled", flag
+    )
+    return flag
+
+
 # ---------------------------------------------------------------------------
 # RunSubSessionTool
 # ---------------------------------------------------------------------------
@@ -291,6 +305,27 @@ class TestRunSubSession:
         # **kwargs and the tool errors with "sub_session_id is required",
         # which would silently defeat the whole follow-up.
         assert 'get_sub_session_result(sub_session_id="inner-1")' in message
+        # The scheduled prompt must cap its own re-scheduling so a wedged sub
+        # doesn't spawn a poll turn forever — the attempt ceiling has to appear
+        # in the prompt the follow-up turn will read.
+        assert str(FOLLOWUP_POLL_MAX_ATTEMPTS) in message
+
+    @pytest.mark.asyncio
+    async def test_fire_and_forget_omits_nudge_when_followups_disabled(
+        self, mock_queue, mock_waiter, mock_model, mock_followups_flag
+    ):
+        """When the COPILOT_SCHEDULED_FOLLOWUPS flag is off, schedule_followup
+        returns feature_disabled — so nudging toward it would just point the
+        model at a dead end. The launch response must stay silent about it."""
+        mock_followups_flag.return_value = False
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="investigate the thing",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert "schedule_followup" not in (r.message or "")
 
     @pytest.mark.asyncio
     async def test_queued_launch_instructs_scheduling_a_followup_poll(
@@ -342,6 +377,25 @@ class TestRunSubSession:
             elapsed=30.0,
         )
         assert "schedule_followup" not in (running.message or "")
+
+    def test_nudge_names_get_sub_session_result_real_required_param(self):
+        """The nudge hard-codes get_sub_session_result(sub_session_id=...) as
+        prose. If that tool's required arg is ever renamed, the scheduled poll
+        would silently bind into **kwargs and error — reopening SECRT-2471. Guard
+        the stringly-typed coupling against the real schema."""
+        required = GetSubSessionResultTool().parameters["required"]
+        assert "sub_session_id" in required
+        nudge = response_from_outcome(
+            outcome="running",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="s1",
+            elapsed=30.0,
+            suggest_followup_poll=True,
+        )
+        assert 'get_sub_session_result(sub_session_id="inner-1")' in (
+            nudge.message or ""
+        )
 
     @pytest.mark.asyncio
     async def test_wait_for_result_completed_returns_final_response(
