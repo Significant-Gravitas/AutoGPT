@@ -20797,7 +20797,8 @@
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
-          "skill_list"
+          "skill_list",
+          "credential_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

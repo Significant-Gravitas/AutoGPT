@@ -17,6 +17,7 @@ import { FindAgentsTool } from "../../../tools/FindAgents/FindAgents";
 import { FolderTool } from "../../../tools/FolderTool/FolderTool";
 import { FindBlocksTool } from "../../../tools/FindBlocks/FindBlocks";
 import { GenericTool } from "../../../tools/GenericTool/GenericTool";
+import { ListCredentialsTool } from "../../../tools/ListCredentialsTool/ListCredentialsTool";
 import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
@@ -210,6 +211,8 @@ export function MessagePartRenderer({
       return <SearchDocsTool key={key} part={part as ToolUIPart} />;
     case "tool-connect_integration":
       return <ConnectIntegrationTool key={key} part={part as ToolUIPart} />;
+    case "tool-list_user_credentials":
+      return <ListCredentialsTool key={key} part={part as ToolUIPart} />;
     case "tool-run_block":
     case "tool-continue_run_block":
       return <RunBlockTool key={key} part={part as ToolUIPart} />;

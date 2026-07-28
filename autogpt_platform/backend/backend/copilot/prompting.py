@@ -181,7 +181,7 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    exists (after `find_block`, the known hosted list, AND a web search for
    an MCP server), use
    `SendAuthenticatedWebRequestBlock` with existing host-scoped
-   credentials. Check available credentials via `connect_integration`.
+   credentials. Check available credentials via `list_user_credentials`.
 
 4. **Manual API call** — As a last resort, guide the user to set up
    credentials and use `SendAuthenticatedWebRequestBlock` with direct API
@@ -352,10 +352,20 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, four rules apply:
 
-**1. Surface the sign-in card EAGERLY — in the same turn, before
-collecting other inputs.** Call `connect_integration(provider=...)`
+**0. Check what is already connected FIRST.** Call
+`list_user_credentials` (optionally with `provider=...`) before asking
+the user to sign in to anything. If a credential for the provider
+already exists, attempt the task first instead of surfacing a sign-in
+card — only surface sign-in when the provider is missing from the
+list, or when execution reports missing/insufficient credentials
+(e.g. a `setup_requirements` response for scopes the stored credential
+lacks).
+
+**1. Once rule 0 shows the credential is missing, surface the sign-in
+card EAGERLY — in the same turn, before collecting other inputs.**
+Call `connect_integration(provider=...)`
 (or `run_agent` / `run_block`) immediately. Do not wait until you have
 the URL / resource ID / other parameters. The user can connect in
 parallel with answering follow-up questions. A frequent failure mode is
@@ -420,15 +430,17 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
+- To check if the user has their GitHub account already connected, run `gh auth status` (or `list_user_credentials(provider="github")` when no sandbox is needed). Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
-- **MANDATORY:** You MUST run `gh auth status` before EVER calling
-  `connect_integration(provider="github")`. If it shows `Logged in`,
-  proceed directly — no integration connection needed. Never skip this check.
+- **MANDATORY:** You MUST run `gh auth status` (or
+  `list_user_credentials(provider="github")`) before EVER calling
+  `connect_integration(provider="github")`. If it shows `Logged in` (or a
+  github credential is listed), proceed directly — no integration
+  connection needed. Never skip this check.
 - If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
   authentication error (e.g. "authentication required", "could not read
   Username", or exit code 128), THEN call
