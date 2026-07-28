@@ -1752,9 +1752,11 @@ class Scheduler(AppService):
         return info
 
     def _user_graph_schedule_jobs(
-        self, user_id: str
+        self, user_id: str, personal_org_id: str | None
     ) -> list[tuple[JobObj, GraphExecutionJobArgs]]:
-        """Personal graph-kind jobs of *user_id* (org-tagged jobs excluded)."""
+        """The user's graph-kind jobs that are personally funded: untagged or
+        tagged with the user's own personal org. Team/external-org jobs are
+        excluded — those are funded by the org, not this user's subscription."""
         jobs: list[tuple[JobObj, GraphExecutionJobArgs]] = []
         for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
             if job.kwargs.get("kind", "graph") != "graph":
@@ -1763,19 +1765,23 @@ class Scheduler(AppService):
                 args = GraphExecutionJobArgs.model_validate(job.kwargs)
             except ValidationError:
                 continue
-            if args.user_id != user_id or args.organization_id:
+            if args.user_id != user_id:
+                continue
+            if args.organization_id and args.organization_id != personal_org_id:
                 continue
             jobs.append((job, args))
         return jobs
 
     @expose
-    def pause_user_graph_schedules(self, user_id: str, reason: str) -> int:
+    def pause_user_graph_schedules(
+        self, user_id: str, reason: str, personal_org_id: str | None = None
+    ) -> int:
         """Pause the user's graph schedules with *reason*; returns count paused.
 
         Schedules already carrying a ``paused_reason`` are left untouched.
         """
         paused = 0
-        for job, args in self._user_graph_schedule_jobs(user_id):
+        for job, args in self._user_graph_schedule_jobs(user_id, personal_org_id):
             if args.paused_reason is not None:
                 continue
             args.paused_reason = reason
@@ -1784,7 +1790,19 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
                 kwargs=args.model_dump(mode="json"),
             )
-            self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
+            try:
+                self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                # Roll back the reason stamp so a retry still matches this job;
+                # otherwise it would run forever while looking paused.
+                args.paused_reason = None
+                self.scheduler.modify_job(
+                    job.id,
+                    jobstore=Jobstores.EXECUTION.value,
+                    kwargs=args.model_dump(mode="json"),
+                )
+                logger.exception(f"Failed to pause schedule {job.id}")
+                continue
             paused += 1
         if paused:
             logger.info(
@@ -1795,11 +1813,21 @@ class Scheduler(AppService):
         return paused
 
     @expose
-    def resume_user_graph_schedules(self, user_id: str, reason: str) -> int:
+    def resume_user_graph_schedules(
+        self, user_id: str, reason: str, personal_org_id: str | None = None
+    ) -> int:
         """Resume schedules paused for *reason* only; returns count resumed."""
         resumed = 0
-        for job, args in self._user_graph_schedule_jobs(user_id):
+        for job, args in self._user_graph_schedule_jobs(user_id, personal_org_id):
             if args.paused_reason != reason:
+                continue
+            # Resume before clearing the reason: if the clear fails the job is
+            # running but still marked, and a retry resumes+clears it again;
+            # the reverse order could strand an invisible paused job.
+            try:
+                self.scheduler.resume_job(job.id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                logger.exception(f"Failed to resume schedule {job.id}")
                 continue
             args.paused_reason = None
             self.scheduler.modify_job(
@@ -1807,7 +1835,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
                 kwargs=args.model_dump(mode="json"),
             )
-            self.scheduler.resume_job(job.id, jobstore=Jobstores.EXECUTION.value)
             resumed += 1
         if resumed:
             logger.info(

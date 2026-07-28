@@ -1,14 +1,17 @@
 """Pause/resume a user's automations (cron schedules + webhook-trigger presets)
 when their payment lapses / is restored. Resumption only touches automations
 carrying the payment-lapse marker, so anything the user paused themselves stays
-off. Org/team-tagged automations are excluded — they are funded by the org, not
-the member's personal subscription.
+off. Automations tagged with a team/external org are excluded — those are funded
+by the org, not the member's personal subscription — but the user's own personal
+org (which every schedule/preset is tagged with since org dual-write) counts as
+personally funded.
 """
 
 import logging
 
 from prisma.enums import NotificationType, PresetDeactivationReason
-from prisma.models import AgentPreset
+from prisma.models import AgentPreset, OrgMember
+from prisma.types import AgentPresetWhereInput
 from pydantic import BaseModel
 
 from backend.data.notifications import (
@@ -36,19 +39,26 @@ class AutomationPauseSummary(BaseModel):
 
 
 async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSummary:
+    personal_org_id = await _get_personal_org_id(user_id)
     schedules = await get_scheduler_client().pause_user_graph_schedules(
-        user_id=user_id, reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED
+        user_id=user_id,
+        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+        personal_org_id=personal_org_id,
     )
     # deactivationReason=None keeps user-deactivated presets untouched, so a
     # repeated webhook can't overwrite a user's own deactivation.
+    where: AgentPresetWhereInput = {
+        "userId": user_id,
+        "isActive": True,
+        "isDeleted": False,
+        "deactivationReason": None,
+        "OR": [
+            {"organizationId": None},
+            {"organizationId": personal_org_id},
+        ],
+    }
     triggers = await AgentPreset.prisma().update_many(
-        where={
-            "userId": user_id,
-            "isActive": True,
-            "isDeleted": False,
-            "organizationId": None,
-            "deactivationReason": None,
-        },
+        where=where,
         data={
             "isActive": False,
             "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
@@ -67,8 +77,11 @@ async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSu
 async def resume_automations_after_payment_restored(
     user_id: str,
 ) -> AutomationPauseSummary:
+    personal_org_id = await _get_personal_org_id(user_id)
     schedules = await get_scheduler_client().resume_user_graph_schedules(
-        user_id=user_id, reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED
+        user_id=user_id,
+        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+        personal_org_id=personal_org_id,
     )
     triggers = await AgentPreset.prisma().update_many(
         where={
@@ -87,6 +100,20 @@ async def resume_automations_after_payment_restored(
         )
         await _notify_resumed(user_id, summary)
     return summary
+
+
+async def _get_personal_org_id(user_id: str) -> str | None:
+    # Mirrors orgs.db._find_personal_org_member without the bootstrap side
+    # effect — a billing event must not create orgs.
+    member = await OrgMember.prisma().find_first(
+        where={
+            "userId": user_id,
+            "isOwner": True,
+            "Org": {"is": {"isPersonal": True, "deletedAt": None}},
+        },
+        order={"createdAt": "asc"},
+    )
+    return member.orgId if member else None
 
 
 async def _notify_paused(user_id: str, summary: AutomationPauseSummary) -> None:

@@ -18,11 +18,7 @@ from prisma.enums import (
 )
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-from prisma.types import (
-    CreditRefundRequestCreateInput,
-    CreditTransactionWhereInput,
-    UserUpdateInput,
-)
+from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
@@ -1525,14 +1521,24 @@ async def set_subscription_tier(
     tier: SubscriptionTier,
 ) -> None:
     """Set the user's subscription tier."""
-    previous_user = await User.prisma().find_unique(where={"id": user_id})
-    previous_tier = (
-        SubscriptionTier(previous_user.subscriptionTier) if previous_user else None
+    # Single UPDATE ... RETURNING the pre-update tier: concurrent callers
+    # (webhook retry + reconciliation sweep) each observe a distinct
+    # transition, so a paid<->NO_TIER edge can't be lost to interleaving.
+    rows = await query_raw_with_schema(
+        """
+        UPDATE {schema_prefix}"User" u
+        SET "subscriptionTier" = $2::text::{schema_prefix}"SubscriptionTier"
+        FROM (
+            SELECT id, "subscriptionTier" AS previous_tier
+            FROM {schema_prefix}"User" WHERE id = $1 FOR UPDATE
+        ) prev
+        WHERE u.id = prev.id
+        RETURNING prev.previous_tier
+        """,
+        user_id,
+        tier.value,
     )
-    data: UserUpdateInput = {
-        "subscriptionTier": tier,
-    }
-    await User.prisma().update(where={"id": user_id}, data=data)
+    previous_tier = SubscriptionTier(rows[0]["previous_tier"]) if rows else None
     get_user_by_id.cache_delete(user_id)
     await _handle_tier_transition_automations(user_id, previous_tier, tier)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
@@ -1566,10 +1572,17 @@ async def _handle_tier_transition_automations(
         elif previous_tier == SubscriptionTier.NO_TIER:
             await resume_automations_after_payment_restored(user_id)
     except Exception as e:
-        logger.error(
-            f"Failed to update automations for user {user_id} on tier "
+        # Edge-triggered: a missed pause/resume won't retry on its own, so page
+        # ops loudly instead of just logging.
+        message = (
+            f"Automation pause/resume FAILED for user {user_id} on tier "
             f"transition {previous_tier}->{new_tier}: {e}"
         )
+        logger.error(message)
+        try:
+            await discord_send_alert(message, DiscordChannel.PLATFORM)
+        except Exception:
+            logger.error(f"Discord alert delivery failed for: {message}")
 
 
 async def _cancel_customer_subscriptions(

@@ -128,9 +128,11 @@ export function SelectedScheduleView({
                       <Text variant="large-medium">Next run</Text>
                       {schedule.is_paused || !schedule.next_run_time ? (
                         <Text variant="body" className="text-amber-700">
-                          {schedule.is_paused
-                            ? "Paused — payment required"
-                            : "Pending"}
+                          {!schedule.is_paused
+                            ? "Pending"
+                            : schedule.paused_reason === "payment_lapsed"
+                              ? "Paused — payment required"
+                              : "Paused"}
                         </Text>
                       ) : (
                         <Text

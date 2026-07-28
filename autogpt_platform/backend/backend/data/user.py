@@ -590,9 +590,8 @@ async def update_user_notification_preference(
             NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
             NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or True,
             NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or True,
-            NotificationType.AUTOMATIONS_PAUSED: user.notifyOnAutomationsPaused or True,
-            NotificationType.AUTOMATIONS_RESUMED: user.notifyOnAutomationsPaused
-            or True,
+            NotificationType.AUTOMATIONS_PAUSED: user.notifyOnAutomationsPaused,
+            NotificationType.AUTOMATIONS_RESUMED: user.notifyOnAutomationsPaused,
         }
         notification_preference = NotificationPreference(
             user_id=user.id,

@@ -12,6 +12,7 @@ from backend.data.automation_pause import (
 )
 
 _MODULE = "backend.data.automation_pause"
+_PERSONAL_ORG = "personal-org-1"
 
 
 def _mock_scheduler_client(paused: int = 0, resumed: int = 0) -> MagicMock:
@@ -21,55 +22,69 @@ def _mock_scheduler_client(paused: int = 0, resumed: int = 0) -> MagicMock:
     return client
 
 
+def _patches(client, preset_prisma, notify):
+    return (
+        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
+        patch("prisma.models.AgentPreset.prisma", preset_prisma),
+        patch(f"{_MODULE}.queue_notification_async", new=notify),
+        patch(
+            f"{_MODULE}._get_personal_org_id",
+            new=AsyncMock(return_value=_PERSONAL_ORG),
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_pause_marks_schedules_and_triggers_with_reason():
     client = _mock_scheduler_client(paused=2)
-    with (
-        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
-        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
-        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()) as mock_notify,
-    ):
-        mock_prisma.return_value.update_many = AsyncMock(return_value=3)
-
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=3)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
         summary = await pause_automations_for_payment_lapse("user-1")
 
     assert summary.schedules == 2
     assert summary.triggers == 3
     client.pause_user_graph_schedules.assert_awaited_once_with(
-        user_id="user-1", reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED
+        user_id="user-1",
+        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+        personal_org_id=_PERSONAL_ORG,
     )
-    update_call = mock_prisma.return_value.update_many.call_args
+    update_call = preset_prisma.return_value.update_many.call_args
     assert update_call.kwargs["where"] == {
         "userId": "user-1",
         "isActive": True,
         "isDeleted": False,
-        "organizationId": None,
         "deactivationReason": None,
+        "OR": [
+            {"organizationId": None},
+            {"organizationId": _PERSONAL_ORG},
+        ],
     }
     assert update_call.kwargs["data"] == {
         "isActive": False,
         "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
     }
-    event = mock_notify.await_args.args[0]
+    event = notify.await_args.args[0]
     assert event.type == NotificationType.AUTOMATIONS_PAUSED
     assert event.data.paused_schedules == 2
     assert event.data.paused_triggers == 3
 
 
 @pytest.mark.asyncio
-async def test_pause_skips_user_deactivated_presets_via_where_clause():
-    """The where clause must require deactivationReason=None so presets the
-    user deactivated themselves are never stamped with PAYMENT_LAPSED."""
+async def test_pause_covers_personal_org_tagged_presets():
+    """Presets carry the user's personal org id since org dual-write; the
+    where-clause must match those, not only untagged legacy rows."""
     client = _mock_scheduler_client()
-    with (
-        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
-        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
-        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()),
-    ):
-        mock_prisma.return_value.update_many = AsyncMock(return_value=0)
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=0)
+    p1, p2, p3, p4 = _patches(client, preset_prisma, AsyncMock())
+    with p1, p2, p3, p4:
         await pause_automations_for_payment_lapse("user-1")
 
-    where = mock_prisma.return_value.update_many.call_args.kwargs["where"]
+    where = preset_prisma.return_value.update_many.call_args.kwargs["where"]
+    assert {"organizationId": _PERSONAL_ORG} in where["OR"]
     assert where["deactivationReason"] is None
     assert where["isActive"] is True
 
@@ -77,37 +92,35 @@ async def test_pause_skips_user_deactivated_presets_via_where_clause():
 @pytest.mark.asyncio
 async def test_pause_with_nothing_to_pause_sends_no_notification():
     client = _mock_scheduler_client(paused=0)
-    with (
-        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
-        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
-        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()) as mock_notify,
-    ):
-        mock_prisma.return_value.update_many = AsyncMock(return_value=0)
-
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=0)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
         summary = await pause_automations_for_payment_lapse("user-1")
 
     assert summary.total == 0
-    mock_notify.assert_not_awaited()
+    notify.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_resume_only_touches_payment_lapsed_automations():
     client = _mock_scheduler_client(resumed=1)
-    with (
-        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
-        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
-        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()) as mock_notify,
-    ):
-        mock_prisma.return_value.update_many = AsyncMock(return_value=2)
-
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=2)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
         summary = await resume_automations_after_payment_restored("user-1")
 
     assert summary.schedules == 1
     assert summary.triggers == 2
     client.resume_user_graph_schedules.assert_awaited_once_with(
-        user_id="user-1", reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED
+        user_id="user-1",
+        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+        personal_org_id=_PERSONAL_ORG,
     )
-    update_call = mock_prisma.return_value.update_many.call_args
+    update_call = preset_prisma.return_value.update_many.call_args
     assert update_call.kwargs["where"] == {
         "userId": "user-1",
         "isActive": False,
@@ -118,7 +131,7 @@ async def test_resume_only_touches_payment_lapsed_automations():
         "isActive": True,
         "deactivationReason": None,
     }
-    event = mock_notify.await_args.args[0]
+    event = notify.await_args.args[0]
     assert event.type == NotificationType.AUTOMATIONS_RESUMED
     assert event.data.resumed_schedules == 1
     assert event.data.resumed_triggers == 2
@@ -127,14 +140,12 @@ async def test_resume_only_touches_payment_lapsed_automations():
 @pytest.mark.asyncio
 async def test_resume_with_nothing_to_resume_sends_no_notification():
     client = _mock_scheduler_client(resumed=0)
-    with (
-        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
-        patch("prisma.models.AgentPreset.prisma") as mock_prisma,
-        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()) as mock_notify,
-    ):
-        mock_prisma.return_value.update_many = AsyncMock(return_value=0)
-
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=0)
+    notify = AsyncMock()
+    p1, p2, p3, p4 = _patches(client, preset_prisma, notify)
+    with p1, p2, p3, p4:
         summary = await resume_automations_after_payment_restored("user-1")
 
     assert summary.total == 0
-    mock_notify.assert_not_awaited()
+    notify.assert_not_awaited()

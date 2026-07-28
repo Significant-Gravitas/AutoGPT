@@ -694,6 +694,53 @@ class TestPauseResumeUserGraphSchedules:
         assert count == 0
         aps.pause_job.assert_not_called()
 
+    def test_pause_includes_personal_org_tagged_jobs(self):
+        jobs = [
+            _mock_job(
+                _graph_job_kwargs(organization_id="personal-org", schedule_id="s1")
+            ),
+            _mock_job(_graph_job_kwargs(organization_id="team-org", schedule_id="s2")),
+        ]
+        sched, aps = self._scheduler(jobs)
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules(
+                "u1", "payment_lapsed", personal_org_id="personal-org"
+            )
+        assert count == 1
+        assert aps.pause_job.call_count == 1
+
+    def test_pause_rolls_back_reason_stamp_when_pause_job_fails(self):
+        job = _mock_job(_graph_job_kwargs())
+        sched, aps = self._scheduler([job])
+        aps.pause_job.side_effect = RuntimeError("jobstore down")
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 0
+        assert aps.modify_job.call_count == 2
+        rollback_kwargs = aps.modify_job.call_args.kwargs["kwargs"]
+        assert rollback_kwargs["paused_reason"] is None
+
+    def test_resume_resumes_before_clearing_reason(self):
+        job = _mock_job(
+            _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s1")
+        )
+        sched, aps = self._scheduler([job])
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            sched.resume_user_graph_schedules("u1", "payment_lapsed")
+        calls = [c[0] for c in aps.method_calls]
+        assert calls.index("resume_job") < calls.index("modify_job")
+
+    def test_resume_failure_keeps_reason_for_retry(self):
+        job = _mock_job(
+            _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s1")
+        )
+        sched, aps = self._scheduler([job])
+        aps.resume_job.side_effect = RuntimeError("jobstore down")
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.resume_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 0
+        aps.modify_job.assert_not_called()
+
     def test_resume_only_matching_reason(self):
         jobs = [
             _mock_job(

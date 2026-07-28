@@ -21,6 +21,10 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     useDeleteV1DeleteExecutionSchedule();
 
   const isPaused = Boolean(schedule.is_paused);
+  const pausedLabel =
+    schedule.paused_reason === "payment_lapsed"
+      ? "Paused — payment required"
+      : "Paused";
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;
@@ -71,6 +75,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
 
   return {
     isPaused,
+    pausedLabel,
     nextRunLabel,
     nextRunTitle,
     recurrenceLabel,
