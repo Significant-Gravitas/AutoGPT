@@ -253,10 +253,9 @@ export function ChatSidebar() {
     }
   }
 
-  const sessionGroups =
-    isExpertsEnabled && sessions.some((session) => session.expert_id)
-      ? groupSessionsByExpert(sessions)
-      : null;
+  const sessionGroups = isExpertsEnabled
+    ? groupSessionsByExpert(sessions)
+    : null;
 
   function renderSessionRow(
     session: SessionSummaryResponse,

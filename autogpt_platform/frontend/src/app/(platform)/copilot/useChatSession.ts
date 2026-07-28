@@ -85,10 +85,14 @@ export function useChatSession({
 
   // Deep link /copilot?expertId=<id>: adopt the expert's latest thread once
   // per expert. The latch lets "New Chat" stay on a fresh expert session
-  // instead of bouncing back to the latest thread.
+  // instead of bouncing back to the latest thread. Only the mount-time
+  // expertId adopts — a recipient picked in the UI after mount must keep
+  // the fresh new-task state, not jump to the expert's old thread.
+  const mountExpertIdRef = useRef(expertId);
   const redirectedExpertRef = useRef<string | null>(null);
   useEffect(() => {
     if (!expertId || sessionId) return;
+    if (expertId !== mountExpertIdRef.current) return;
     if (redirectedExpertRef.current === expertId) return;
     if (latestExpertSessionQuery.data?.status !== 200) return;
     const latest = latestExpertSessionQuery.data.data.sessions[0];

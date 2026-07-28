@@ -11,10 +11,12 @@ import {
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
@@ -278,7 +280,7 @@ describe("useChatSession — expert sessions", () => {
 });
 
 describe("groupSessionsByExpert", () => {
-  it("partitions sessions by expert_id with the Autopilot group last", () => {
+  it("partitions sessions by expert_id with the Autopilot group first", () => {
     const groups = groupSessionsByExpert([
       makeSession({ id: "s1" }),
       makeSession({ id: "s2", expert_id: "expert-maria" }),
@@ -288,15 +290,15 @@ describe("groupSessionsByExpert", () => {
     ] as any);
 
     expect(groups.map((group) => group.expertId)).toEqual([
+      null,
       "expert-maria",
       "expert-juan",
-      null,
     ]);
     expect(
-      groups[0].sessions.map((session: { id: string }) => session.id),
+      groups[1].sessions.map((session: { id: string }) => session.id),
     ).toEqual(["s2", "s4"]);
     expect(
-      groups[2].sessions.map((session: { id: string }) => session.id),
+      groups[0].sessions.map((session: { id: string }) => session.id),
     ).toEqual(["s1"]);
   });
 });
@@ -335,7 +337,7 @@ describe("ChatSidebar — expert groups", () => {
     expect(screen.getByText("Campaign ideas")).toBeDefined();
   });
 
-  it("renders a flat list without group headers when no session belongs to an expert", async () => {
+  it("groups plain sessions under an Autopilot header even without expert threads", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
         sessions: [
@@ -355,10 +357,9 @@ describe("ChatSidebar — expert groups", () => {
 
     await screen.findByText("Plain chat");
     expect(screen.getByText("Another plain chat")).toBeDefined();
-    expect(screen.queryByText("Autopilot")).toBeNull();
     expect(
-      document.querySelectorAll('[data-testid^="expert-group-header"]').length,
-    ).toBe(0);
+      screen.getByTestId("expert-group-header-autopilot").textContent,
+    ).toBe("Autopilot");
   });
 });
 
@@ -400,5 +401,73 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     expect(screen.queryByTestId("expert-thread-header")).toBeNull();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+});
+
+describe("recipient picker", () => {
+  it("does not adopt the expert's latest thread when the recipient is picked after mount", async () => {
+    let expertListRequested = false;
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("expert_id") === "expert-maria") {
+          expertListRequested = true;
+          return HttpResponse.json({
+            sessions: [
+              makeSession({ id: "old-thread", expert_id: "expert-maria" }),
+            ],
+            total: 1,
+          });
+        }
+        return HttpResponse.json({ sessions: [], total: 0 });
+      }),
+    );
+
+    function RecipientSwitchHarness() {
+      const [expertId, setExpertId] = useQueryState("expertId", parseAsString);
+      const { sessionId } = useChatSession({ expertId });
+      return (
+        <div>
+          <div data-testid="session-id">{sessionId ?? "none"}</div>
+          <button onClick={() => void setExpertId("expert-maria")}>
+            pick maria
+          </button>
+        </div>
+      );
+    }
+
+    const FreshMountWrapper = withNuqsTestingAdapter({
+      searchParams: "?",
+      hasMemory: true,
+    });
+    render(
+      <FreshMountWrapper>
+        <RecipientSwitchHarness />
+      </FreshMountWrapper>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "pick maria" }));
+    await waitFor(() => expect(expertListRequested).toBe(true));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+  });
+
+  it("RecipientChip lists the team and reports the selection", async () => {
+    const onSelect = vi.fn();
+    render(
+      <RecipientChip
+        recipient={{ id: null, name: "Autopilot", avatarUrl: null }}
+        options={[
+          { id: null, name: "Autopilot", avatarUrl: null },
+          { id: "expert-maria", name: "Maria", avatarUrl: null },
+        ]}
+        onSelect={onSelect}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /change recipient/i }),
+    );
+    await userEvent.click(await screen.findByText("Maria"));
+    expect(onSelect).toHaveBeenCalledWith("expert-maria");
   });
 });

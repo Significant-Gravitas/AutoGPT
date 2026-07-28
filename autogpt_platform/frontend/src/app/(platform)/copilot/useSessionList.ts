@@ -77,7 +77,7 @@ export function groupSessionsByExpert(
   }
   return [...byExpert.entries()]
     .map(([expertId, grouped]) => ({ expertId, sessions: grouped }))
-    .sort((a, b) => (a.expertId === null ? 1 : b.expertId === null ? -1 : 0));
+    .sort((a, b) => (a.expertId === null ? -1 : b.expertId === null ? 1 : 0));
 }
 
 function countLoadedSessions(pages: SessionListPage[]) {
