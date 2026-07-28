@@ -160,4 +160,37 @@ describe("ListCredentialsTool", () => {
     const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
     expect(normalized).toContain("Could not check connected integrations");
   });
+
+  it("surfaces the returned message in an error card", () => {
+    render(
+      <ListCredentialsTool
+        part={makePart({
+          state: "output-available",
+          output: JSON.stringify({
+            type: "error",
+            message: "Could not retrieve the user's connected credentials.",
+            error: "credential_lookup_failed",
+          }),
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Could not retrieve the user's connected credentials."),
+    ).not.toBeNull();
+  });
+
+  it("does not crash on a credential_list payload missing its credentials array", () => {
+    const { container } = render(
+      <ListCredentialsTool
+        part={makePart({
+          state: "output-available",
+          output: '{"type":"credential_list","count":3}',
+        })}
+      />,
+    );
+    const normalized = (container.textContent ?? "").replace(/\u00a0/g, " ");
+    expect(normalized).toContain("Done");
+    expect(screen.queryByText(/connected integration/)).toBeNull();
+  });
 });

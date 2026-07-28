@@ -101,52 +101,72 @@ class ListUserCredentialsTool(BaseTool):
                 session_id=session_id,
             )
 
-        # System credentials (platform-provided API keys) and SDK defaults are
-        # not user-connected integrations, so they'd mislead the model here.
-        metas = [
-            to_meta_response(cred)
-            for cred in all_creds
-            if not is_sdk_default(cred.id) and cred.id not in SYSTEM_CREDENTIAL_IDS
-        ]
-
-        wanted = provider.strip().lower() if provider else ""
-        if wanted:
-            metas = [m for m in metas if m.provider.lower() == wanted]
-
+        metas, wanted = _serialize_connected_credentials(all_creds, provider)
         providers = sorted({m.provider for m in metas})
 
-        if metas:
-            message = (
-                f"The user has {len(metas)} connected credential(s) across "
-                f"{len(providers)} provider(s): {', '.join(providers)}."
-            )
-        elif wanted:
-            message = (
-                f"The user has no connected credentials for provider "
-                f"'{wanted}'. Use connect_integration to surface a "
-                "sign-in card if this integration is needed."
-            )
-        else:
-            message = (
-                "The user has not connected any integrations yet. Use "
-                "connect_integration to surface a sign-in card if one is needed."
-            )
-
-        if not provisioning_complete:
-            message += (
-                " Note: platform-managed credential provisioning did not "
-                "complete, so managed integrations may be missing from this "
-                "list — do not treat their absence as authoritative."
-            )
-
         return CredentialListResponse(
-            message=message,
+            message=_build_inventory_message(
+                metas, providers, wanted, provisioning_complete
+            ),
             credentials=metas,
             providers=providers,
             count=len(metas),
             provisioning_complete=provisioning_complete,
             session_id=session_id,
         )
+
+
+def _serialize_connected_credentials(
+    all_creds: list[Any], provider: str | None
+) -> tuple[list[CredentialsMetaResponse], str]:
+    """Strip secrets and drop non-user credentials, then apply the provider filter."""
+    # System credentials (platform-provided API keys) and SDK defaults are
+    # not user-connected integrations, so they'd mislead the model here.
+    metas = [
+        to_meta_response(cred)
+        for cred in all_creds
+        if not is_sdk_default(cred.id) and cred.id not in SYSTEM_CREDENTIAL_IDS
+    ]
+
+    wanted = provider.strip().lower() if provider else ""
+    if wanted:
+        metas = [m for m in metas if m.provider.lower() == wanted]
+
+    return metas, wanted
+
+
+def _build_inventory_message(
+    metas: list[CredentialsMetaResponse],
+    providers: list[str],
+    wanted: str,
+    provisioning_complete: bool,
+) -> str:
+    """Compose the model-facing summary of the connected-credential inventory."""
+    if metas:
+        message = (
+            f"The user has {len(metas)} connected credential(s) across "
+            f"{len(providers)} provider(s): {', '.join(providers)}."
+        )
+    elif wanted:
+        message = (
+            f"The user has no connected credentials for provider "
+            f"'{wanted}'. Use connect_integration to surface a "
+            "sign-in card if this integration is needed."
+        )
+    else:
+        message = (
+            "The user has not connected any integrations yet. Use "
+            "connect_integration to surface a sign-in card if one is needed."
+        )
+
+    if not provisioning_complete:
+        message += (
+            " Note: platform-managed credential provisioning did not "
+            "complete, so managed integrations may be missing from this "
+            "list — do not treat their absence as authoritative."
+        )
+
+    return message
 
 
 async def _ensure_managed_credentials_bounded(user_id: str) -> bool:

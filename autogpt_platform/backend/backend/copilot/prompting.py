@@ -361,7 +361,9 @@ already exists, attempt the task first instead of surfacing a sign-in
 card — only surface sign-in when the provider is missing from the
 list, or when execution reports missing/insufficient credentials
 (e.g. a `setup_requirements` response for scopes the stored credential
-lacks).
+lacks). If the response reports `provisioning_complete=false`, treat the
+list as partial — do NOT conclude a managed integration is missing from
+it; prefer attempting the task (or re-checking) over prompting sign-in.
 
 **1. Surface the sign-in card EAGERLY once rule 0 shows the credential
 is missing — in the same turn, before collecting other inputs.**

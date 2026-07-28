@@ -17,6 +17,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
 )
+from backend.integrations.credentials_store import DEFAULT_CREDENTIALS
 
 # Shorthand patch targets
 _CREDS_PATH = "backend.copilot.tools.list_credentials.get_user_credentials"
@@ -171,8 +172,6 @@ class TestListUserCredentialsTool:
 
     @pytest.mark.asyncio
     async def test_filters_system_credentials(self, tool, mock_session):
-        from backend.integrations.credentials_store import DEFAULT_CREDENTIALS
-
         creds = [_notion_api_key(), *DEFAULT_CREDENTIALS]
         with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
             result = await tool._execute(user_id="user-1", session=mock_session)

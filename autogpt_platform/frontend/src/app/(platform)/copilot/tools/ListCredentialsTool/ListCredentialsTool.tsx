@@ -10,6 +10,7 @@ import {
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import {
   ContentCard,
   ContentCardHeader,
@@ -102,6 +103,8 @@ export function ListCredentialsTool({ part }: Props) {
   const hasContent =
     part.state === "output-available" && !!output && isCredentialList(output);
 
+  const errorOutput = output && isErrorOutput(output) ? output : null;
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -111,6 +114,17 @@ export function ListCredentialsTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+
+      {isError && (
+        <div className="mt-2">
+          <ToolErrorCard
+            message={errorOutput?.message}
+            fallbackMessage="Could not check connected integrations."
+            error={errorOutput?.error}
+            actions={[]}
+          />
+        </div>
+      )}
 
       {hasContent && output && isCredentialList(output) && (
         <ToolAccordion

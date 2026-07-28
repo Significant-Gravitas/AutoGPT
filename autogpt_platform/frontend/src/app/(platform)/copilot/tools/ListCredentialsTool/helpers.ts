@@ -29,6 +29,16 @@ export type ListCredentialsOutput = CredentialListOutput | ErrorOutput;
 
 export type { CredentialMeta };
 
+function isCredentialMeta(value: unknown): value is CredentialMeta {
+  if (!value || typeof value !== "object") return false;
+  const c = value as Record<string, unknown>;
+  return (
+    typeof c.id === "string" &&
+    typeof c.provider === "string" &&
+    typeof c.type === "string"
+  );
+}
+
 function parseOutput(output: unknown): ListCredentialsOutput | null {
   if (!output) return null;
   if (typeof output === "string") {
@@ -40,12 +50,33 @@ function parseOutput(output: unknown): ListCredentialsOutput | null {
       return null;
     }
   }
-  if (typeof output === "object") {
-    const obj = output as Record<string, unknown>;
-    if (typeof obj.type === "string") {
-      return output as ListCredentialsOutput;
-    }
+  if (typeof output !== "object") return null;
+
+  const obj = output as Record<string, unknown>;
+
+  if (obj.type === "credential_list") {
+    if (!Array.isArray(obj.credentials)) return null;
+    const credentials = obj.credentials.filter(isCredentialMeta);
+    const providers = Array.isArray(obj.providers)
+      ? obj.providers.filter((p): p is string => typeof p === "string")
+      : credentials.map((c) => c.provider);
+    return {
+      type: "credential_list",
+      message: typeof obj.message === "string" ? obj.message : "",
+      credentials,
+      providers,
+      count: typeof obj.count === "number" ? obj.count : credentials.length,
+    };
   }
+
+  if (obj.type === "error" || obj.type === "need_login") {
+    return {
+      type: obj.type,
+      message: typeof obj.message === "string" ? obj.message : "",
+      error: typeof obj.error === "string" ? obj.error : undefined,
+    };
+  }
+
   return null;
 }
 
