@@ -96,6 +96,18 @@ describe("getEarnRows", () => {
     expect(rows.find((row) => row.key === "SCHEDULE_AGENT")?.done).toBe(true);
   });
 
+  it("treats a missing completedSteps list as nothing claimed", () => {
+    const rows = getEarnRows(groups, undefined);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "VISIT_COPILOT",
+      "MARKETPLACE_ADD_AGENT",
+      "SCHEDULE_AGENT",
+      "RUN_3_DAYS",
+    ]);
+    expect(rows.every((row) => !row.done)).toBe(true);
+  });
+
   it("keeps every real onboarding task reachable", () => {
     const realGroups = getTaskGroups(null);
     const rows = getEarnRows(realGroups, []);

@@ -122,12 +122,16 @@ export interface EarnRow {
  */
 export function getEarnRows(
   groups: TaskGroup[],
-  completedSteps: OnboardingStep[],
+  // The onboarding payload is typed as always carrying `completedSteps`, but
+  // the rest of the wallet already guards against it being absent — do the same
+  // here so a thin backend response degrades to "nothing claimed" and not a
+  // TypeError.
+  completedSteps: OnboardingStep[] | undefined,
 ): EarnRow[] {
+  const claimed = completedSteps ?? [];
+
   return groups.flatMap((group): EarnRow[] => {
-    const completed = group.tasks.filter((task) =>
-      completedSteps.includes(task.id),
-    );
+    const completed = group.tasks.filter((task) => claimed.includes(task.id));
 
     if (completed.length === group.tasks.length) {
       return [
@@ -143,7 +147,7 @@ export function getEarnRows(
     return group.tasks.map((task) => ({
       key: task.id,
       label: task.name,
-      done: completedSteps.includes(task.id),
+      done: claimed.includes(task.id),
       amount: task.amount,
     }));
   });

@@ -14,7 +14,7 @@ import { getEarnRows, TaskGroup } from "../helpers";
 
 interface Props {
   groups: TaskGroup[];
-  completedSteps: OnboardingStep[];
+  completedSteps: OnboardingStep[] | undefined;
   formattedCredits: string;
   onAddCredits: () => void;
 }
