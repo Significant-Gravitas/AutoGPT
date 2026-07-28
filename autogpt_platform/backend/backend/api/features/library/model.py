@@ -582,6 +582,23 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
     pagination: Pagination
 
 
+class SkippedWebhookPreset(pydantic.BaseModel):
+    """A webhook preset that was left pinned to its old version because the
+    newly activated version swaps or reconfigures the trigger block. The user
+    needs to reconfigure the trigger on the new version for it to fire."""
+
+    id: str
+    name: str
+    pinned_version: int
+
+
+class WebhookPresetMigrationResult(pydantic.BaseModel):
+    """Outcome of migrating webhook-attached presets to a new graph version."""
+
+    migrated_count: int = 0
+    skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
+
+
 class LibraryAgentFilter(str, Enum):
     """Possible filters for searching library agents."""
 
