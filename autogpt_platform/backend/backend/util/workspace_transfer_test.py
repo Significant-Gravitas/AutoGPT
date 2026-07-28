@@ -10,6 +10,7 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 from backend.data.workspace import WorkspaceFile
+from backend.util.exceptions import NotFoundError
 from backend.util.workspace import WorkspaceManager
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -84,11 +85,24 @@ def mock_db():
 
 
 @contextmanager
-def _patched(mock_db, mock_storage=None, storage_limit: int = 0):
+def _patched(mock_db, mock_storage=None, storage_limit: int = 0, folder_valid=True):
     """Patch the transfer module's collaborators (mocked where used)."""
+    folder_db = MagicMock()
+    if folder_valid:
+        folder_db.get_workspace_folder = AsyncMock(return_value=MagicMock())
+    else:
+        folder_db.get_workspace_folder = AsyncMock(
+            side_effect=NotFoundError("Folder not found")
+        )
     with ExitStack() as stack:
         stack.enter_context(
             patch("backend.util.workspace_transfer.workspace_db", return_value=mock_db)
+        )
+        stack.enter_context(
+            patch(
+                "backend.util.workspace_transfer.workspace_folder_db",
+                return_value=folder_db,
+            )
         )
         stack.enter_context(
             patch(
@@ -204,6 +218,27 @@ async def test_move_file_preserves_folder_unless_overridden(manager, mock_db):
         assert mock_db.update_workspace_file_location.call_args.kwargs["folder_id"] == (
             "fld-2"
         )
+
+
+@pytest.mark.asyncio
+async def test_move_file_rejects_unknown_folder(manager, mock_db):
+    """A folder_id outside this workspace is rejected before any write."""
+    with _patched(mock_db, folder_valid=False):
+        with pytest.raises(ValueError, match="Workspace folder not found"):
+            await manager.move_file("file-1", "/b.pdf", folder_id="foreign-folder")
+
+    mock_db.update_workspace_file_location.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_copy_file_rejects_unknown_folder(manager, mock_db, mock_storage):
+    """A folder_id outside this workspace is rejected before any bytes are copied."""
+    with _patched(mock_db, mock_storage, folder_valid=False):
+        with pytest.raises(ValueError, match="Workspace folder not found"):
+            await manager.copy_file("file-1", "/copy.pdf", folder_id="foreign-folder")
+
+    mock_storage.copy.assert_not_called()
+    mock_db.create_workspace_file.assert_not_called()
 
 
 @pytest.mark.asyncio

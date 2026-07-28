@@ -17,8 +17,9 @@ from typing import TYPE_CHECKING, Optional
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import workspace_db, workspace_folder_db
 from backend.data.workspace import WorkspaceFile
+from backend.util.exceptions import NotFoundError
 from backend.util.workspace_storage import get_workspace_storage
 
 if TYPE_CHECKING:
@@ -56,6 +57,8 @@ async def move_file(
     source = await db.get_workspace_file(file_id, manager.workspace_id)
     if source is None:
         raise FileNotFoundError(f"File not found: {file_id}")
+
+    await _validate_folder(manager, folder_id)
 
     resolved_path = manager._resolve_path(new_path)
     target_folder_id = folder_id if folder_id is not None else source.folder_id
@@ -124,6 +127,8 @@ async def copy_file(
     if source is None:
         raise FileNotFoundError(f"File not found: {file_id}")
 
+    await _validate_folder(manager, folder_id)
+
     resolved_path = manager._resolve_path(new_path)
     if resolved_path == source.path:
         raise ValueError(
@@ -177,6 +182,28 @@ async def copy_file(
 def _basename(path: str) -> str:
     """Filename component of a virtual path, falling back to the whole path."""
     return os.path.basename(path.rstrip("/")) or path
+
+
+async def _validate_folder(
+    manager: "WorkspaceManager", folder_id: Optional[str]
+) -> None:
+    """Reject a caller-supplied ``folder_id`` that isn't in this workspace.
+
+    Mirrors the ownership check the folder tools already do, so a foreign or
+    stale folder id can't silently mis-file the transferred file (and surfaces
+    a clean message instead of a raw foreign-key error).
+    """
+    if folder_id is None:
+        return
+    try:
+        await workspace_folder_db().get_workspace_folder(
+            folder_id, manager.workspace_id
+        )
+    except NotFoundError:
+        raise ValueError(
+            f"Workspace folder not found: {folder_id}. "
+            f"Use create_workspace_folder to create it first, or omit folder_id."
+        ) from None
 
 
 async def _clear_destination(
