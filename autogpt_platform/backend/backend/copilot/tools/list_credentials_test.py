@@ -77,6 +77,17 @@ def _mcp_oauth() -> OAuth2Credentials:
     )
 
 
+def _managed_cred() -> APIKeyCredentials:
+    return APIKeyCredentials(
+        id="55555555-5555-5555-5555-555555555555",
+        provider="agentmail",
+        title="AgentMail (managed)",
+        api_key=SecretStr("managed_secret"),
+        expires_at=None,
+        is_managed=True,
+    )
+
+
 def _sdk_default_cred() -> APIKeyCredentials:
     return APIKeyCredentials(
         id="firecrawl-default",
@@ -178,6 +189,34 @@ class TestListUserCredentialsTool:
 
         assert result.count == 1
         assert result.providers == ["notion"]
+
+    @pytest.mark.asyncio
+    async def test_managed_credentials_are_included_and_flagged(
+        self, tool, mock_session
+    ):
+        creds = [_managed_cred()]
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert isinstance(result, CredentialListResponse)
+        assert result.count == 1
+        assert result.providers == ["agentmail"]
+        assert result.credentials[0].is_managed is True
+
+    @pytest.mark.asyncio
+    async def test_skips_managed_sweep_for_non_managed_provider(
+        self, tool, mock_session, stub_managed_credentials_sweep
+    ):
+        with patch(
+            "backend.copilot.tools.list_credentials.get_managed_provider",
+            return_value=None,
+        ), patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_github_oauth()]):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="github"
+            )
+
+        assert result.provisioning_complete is True
+        stub_managed_credentials_sweep.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_provider_filter(self, tool, mock_session):

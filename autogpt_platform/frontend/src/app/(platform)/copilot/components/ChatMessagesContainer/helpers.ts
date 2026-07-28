@@ -43,7 +43,6 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-list_user_credentials",
   "tool-run_block",
   "tool-continue_run_block",
-  "tool-connect_integration",
   "tool-run_mcp_tool",
   "tool-run_agent",
   "tool-schedule_agent",

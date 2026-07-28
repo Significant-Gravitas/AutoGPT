@@ -1,5 +1,7 @@
 import type { ToolUIPart } from "ai";
 
+// These mirror the backend `CredentialsMetaResponse` / `CredentialListResponse`
+// (backend/copilot/tools/list_credentials.py) — keep them in sync.
 interface CredentialMeta {
   id: string;
   provider: string;
@@ -17,6 +19,7 @@ interface CredentialListOutput {
   credentials: CredentialMeta[];
   providers: string[];
   count: number;
+  provisioning_complete: boolean;
 }
 
 interface ErrorOutput {
@@ -66,6 +69,7 @@ function parseOutput(output: unknown): ListCredentialsOutput | null {
       credentials,
       providers,
       count: typeof obj.count === "number" ? obj.count : credentials.length,
+      provisioning_complete: obj.provisioning_complete !== false,
     };
   }
 

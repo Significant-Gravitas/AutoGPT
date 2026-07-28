@@ -12,7 +12,10 @@ from backend.copilot.model import ChatSession
 from backend.data.model import is_sdk_default
 from backend.integrations.credentials_store import SYSTEM_CREDENTIAL_IDS
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.managed_credentials import ensure_managed_credentials
+from backend.integrations.managed_credentials import (
+    ensure_managed_credentials,
+    get_managed_provider,
+)
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -89,7 +92,14 @@ class ListUserCredentialsTool(BaseTool):
                 session_id=session_id,
             )
 
-        provisioning_complete = await _ensure_managed_credentials_bounded(user_id)
+        # The managed-credential sweep only affects managed providers, and it
+        # sits on the hot path (the model calls this before every sign-in
+        # prompt). Skip it when filtering to a provider that is never managed.
+        wanted_provider = provider.strip().lower() if provider else ""
+        if wanted_provider and get_managed_provider(wanted_provider) is None:
+            provisioning_complete = True
+        else:
+            provisioning_complete = await _ensure_managed_credentials_bounded(user_id)
 
         try:
             all_creds = await get_user_credentials(user_id)
@@ -120,17 +130,19 @@ def _serialize_connected_credentials(
     all_creds: list[Any], provider: str | None
 ) -> tuple[list[CredentialsMetaResponse], str]:
     """Strip secrets and drop non-user credentials, then apply the provider filter."""
+    wanted = provider.strip().lower() if provider else ""
+
     # System credentials (platform-provided API keys) and SDK defaults are
-    # not user-connected integrations, so they'd mislead the model here.
+    # not user-connected integrations, so they'd mislead the model here. Filter
+    # on the raw credentials (including the provider filter) before serializing,
+    # so to_meta_response only runs on the retained set.
     metas = [
         to_meta_response(cred)
         for cred in all_creds
-        if not is_sdk_default(cred.id) and cred.id not in SYSTEM_CREDENTIAL_IDS
+        if not is_sdk_default(cred.id)
+        and cred.id not in SYSTEM_CREDENTIAL_IDS
+        and (not wanted or cred.provider.lower() == wanted)
     ]
-
-    wanted = provider.strip().lower() if provider else ""
-    if wanted:
-        metas = [m for m in metas if m.provider.lower() == wanted]
 
     return metas, wanted
 

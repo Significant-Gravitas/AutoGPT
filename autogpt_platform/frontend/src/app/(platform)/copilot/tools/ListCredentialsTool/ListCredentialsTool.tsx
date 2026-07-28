@@ -100,8 +100,10 @@ export function ListCredentialsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const hasContent =
-    part.state === "output-available" && !!output && isCredentialList(output);
+  const list =
+    part.state === "output-available" && output && isCredentialList(output)
+      ? output
+      : null;
 
   const errorOutput = output && isErrorOutput(output) ? output : null;
 
@@ -126,24 +128,30 @@ export function ListCredentialsTool({ part }: Props) {
         </div>
       )}
 
-      {hasContent && output && isCredentialList(output) && (
+      {list && (
         <ToolAccordion
           icon={<PlugsConnectedIcon size={32} weight="light" />}
           title={
-            output.count > 0
-              ? `${output.count} connected integration${output.count !== 1 ? "s" : ""}`
+            list.count > 0
+              ? `${list.count} connected integration${list.count !== 1 ? "s" : ""}`
               : "No connected integrations"
           }
           defaultExpanded
         >
-          {output.credentials.length > 0 ? (
+          {!list.provisioning_complete && (
+            <ContentHint>
+              This list may be incomplete — some managed integrations could not
+              be checked.
+            </ContentHint>
+          )}
+          {list.credentials.length > 0 ? (
             <ContentGrid className="sm:grid-cols-2">
-              {output.credentials.map((credential) => (
+              {list.credentials.map((credential) => (
                 <CredentialCard key={credential.id} credential={credential} />
               ))}
             </ContentGrid>
           ) : (
-            <ContentMessage>{output.message}</ContentMessage>
+            <ContentMessage>{list.message}</ContentMessage>
           )}
         </ToolAccordion>
       )}

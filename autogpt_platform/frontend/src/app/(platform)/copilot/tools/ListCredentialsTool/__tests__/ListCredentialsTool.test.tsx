@@ -180,6 +180,46 @@ describe("ListCredentialsTool", () => {
     ).not.toBeNull();
   });
 
+  it("accepts an already-parsed object payload (not just JSON strings)", () => {
+    render(
+      <ListCredentialsTool
+        part={makePart({
+          state: "output-available",
+          output: {
+            type: "credential_list",
+            message: "The user has 1 connected credential(s).",
+            credentials: [{ id: "cred-1", provider: "github", type: "oauth2" }],
+            providers: ["github"],
+            count: 1,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("1 connected integration")).not.toBeNull();
+    expect(screen.getByText("Github")).not.toBeNull();
+  });
+
+  it("shows an incomplete hint when provisioning did not complete", () => {
+    render(
+      <ListCredentialsTool
+        part={makePart({
+          state: "output-available",
+          output: JSON.stringify({
+            type: "credential_list",
+            message: "The user has 1 connected credential(s).",
+            credentials: [{ id: "cred-1", provider: "github", type: "oauth2" }],
+            providers: ["github"],
+            count: 1,
+            provisioning_complete: false,
+          }),
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/list may be incomplete/i)).not.toBeNull();
+  });
+
   it("does not crash on a credential_list payload missing its credentials array", () => {
     const { container } = render(
       <ListCredentialsTool
