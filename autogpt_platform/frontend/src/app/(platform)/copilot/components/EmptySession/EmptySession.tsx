@@ -13,6 +13,9 @@ import { PersonaAvatar } from "./components/PersonaAvatar";
 import { PersonaDial } from "./components/PersonaDial/PersonaDial";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
   inputLayoutId: string;
@@ -26,6 +29,7 @@ interface Props {
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  isAdoptingExpertSession?: boolean;
 }
 
 export function EmptySession({
@@ -35,10 +39,15 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
+  isAdoptingExpertSession,
 }: Props) {
   const [personaIndex, setPersonaIndex] = useState(0);
   const [isDialOpen, setIsDialOpen] = useState(false);
   const persona = PERSONAS[personaIndex];
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const { options, recipient, isLoadingRecipient, selectRecipient } =
+    useRecipientPicker();
+  const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   // Persona is mirrored in the URL (?persona=id) so it survives reloads and
   // can be shared. Read after mount to avoid SSR/client hydration mismatch.
@@ -113,13 +122,23 @@ export function EmptySession({
               <ChatInput
                 inputId="chat-input-empty"
                 onSend={onSend}
-                disabled={isCreatingSession}
+                disabled={isComposerDisabled}
                 hideSubmitWhenEmpty
                 isUploadingFiles={isUploadingFiles}
                 placeholder={INPUT_PLACEHOLDER}
                 className="w-full [&_textarea]:min-h-[4.5rem]"
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}
+                recipientPicker={
+                  isExpertsEnabled ? (
+                    <RecipientChip
+                      recipient={recipient}
+                      options={options}
+                      isLoading={isLoadingRecipient}
+                      onSelect={selectRecipient}
+                    />
+                  ) : undefined
+                }
               />
             </motion.div>
           </div>
@@ -135,7 +154,7 @@ export function EmptySession({
           <SuggestionThemes
             themes={themes}
             onSend={onSend}
-            disabled={isCreatingSession}
+            disabled={isComposerDisabled}
           />
         )}
       </motion.div>

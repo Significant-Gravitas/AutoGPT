@@ -21,6 +21,7 @@ import {
   ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
+  ReactNode,
   useEffect,
   useState,
 } from "react";
@@ -70,6 +71,8 @@ interface Props {
   hasSession?: boolean;
   /** When true, the submit button is hidden until there is something to send. */
   hideSubmitWhenEmpty?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
 }
 
 export function ChatInput({
@@ -86,6 +89,7 @@ export function ChatInput({
   onDroppedFilesConsumed,
   hasSession = false,
   hideSubmitWhenEmpty = false,
+  recipientPicker,
 }: Props) {
   const {
     copilotChatMode,
@@ -341,6 +345,7 @@ export function ChatInput({
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
+{recipientPicker}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">

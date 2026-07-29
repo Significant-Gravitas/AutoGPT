@@ -704,6 +704,8 @@ model Expert {
   role      String
   tagline   String?
   identity  String
+  bio       String?
+  skills    String[] @default([])
 
   toolProfile Json?
 

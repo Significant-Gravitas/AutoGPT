@@ -1,12 +1,14 @@
 [
   {
     "avatar_url": null,
+    "bio": null,
     "id": "template-1",
     "identity": "You are Maria, a pragmatic marketing specialist.",
     "is_archived": false,
     "is_template": true,
     "name": "Maria",
     "role": "Marketing Specialist",
+    "skills": [],
     "source_template_id": null,
     "tagline": "Grows your audience",
     "workflows": [
