@@ -845,8 +845,11 @@ class WriteWorkspaceFileTool(BaseTool):
             # Read the bound parameters, not **kwargs: these three are named
             # parameters, so they are never present in kwargs and checking
             # there made every missing-filename call look like a truncation.
-            has_any_content = any((content, content_base64, source_path))
-            if not has_any_content:
+            has_any_argument = any(
+                v is not None
+                for v in (content, content_base64, source_path, path, mime_type)
+            )
+            if not has_any_argument:
                 return ErrorResponse(
                     message=(
                         "Tool call appears truncated (no arguments received). "

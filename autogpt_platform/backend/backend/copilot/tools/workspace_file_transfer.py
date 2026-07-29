@@ -175,6 +175,7 @@ class MoveWorkspaceFileTool(_WorkspaceTransferTool):
         manager, source_file_id, file_info = target
         assert new_path is not None
         previous_path = file_info.path
+        previous_folder_id = file_info.folder_id
 
         try:
             moved = await manager.move_file(
@@ -195,13 +196,17 @@ class MoveWorkspaceFileTool(_WorkspaceTransferTool):
                 session_id=session_id,
             )
 
-        if moved.path == previous_path:
+        path_changed = moved.path != previous_path
+        folder_changed = moved.folder_id != previous_folder_id
+        if not path_changed and not folder_changed:
             msg = f"{moved.name} is already at workspace:{moved.path} — nothing to do"
-        else:
+        elif path_changed:
             msg = (
                 f"Moved {moved.name} from workspace:{previous_path} to "
                 f"workspace:{moved.path} ({moved.size_bytes:,} bytes)"
             )
+        else:
+            msg = f"Moved {moved.name} to a different folder"
         return WorkspaceFileMovedResponse(
             file_id=moved.id,
             name=moved.name,

@@ -323,6 +323,37 @@ async def test_copy_file_enforces_storage_quota(manager, mock_db, mock_storage):
 
 
 @pytest.mark.asyncio
+async def test_copy_file_overwrite_frees_the_occupant_from_the_quota(
+    manager, mock_db, mock_storage
+):
+    """Overwrite subtracts the destination's current size before the limit check."""
+    source = _make_workspace_file(size_bytes=1000)
+    occupant = _make_workspace_file(
+        id="occupant", path="/reports/summary.pdf", size_bytes=1000
+    )
+    mock_db.get_workspace_file.return_value = source
+    mock_db.get_workspace_file_by_path.return_value = occupant
+    mock_db.get_workspace_total_size.return_value = 2500
+    mock_db.create_workspace_file.return_value = _make_workspace_file(
+        id="new-copy", path="/reports/summary.pdf"
+    )
+
+    # 2500 + 1000 = 3500 > 3000 would fail; freeing the 1000-byte occupant
+    # drops usage to 1500, so 1500 + 1000 = 2500 fits.
+    with _patched(mock_db, mock_storage, storage_limit=3000):
+        with patch.object(
+            WorkspaceManager, "delete_file", AsyncMock(return_value=True)
+        ):
+            copied = await manager.copy_file(
+                "file-1", "/reports/summary.pdf", overwrite=True
+            )
+
+    assert copied.id == "new-copy"
+    mock_storage.copy.assert_awaited_once()
+    mock_db.create_workspace_file.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_copy_file_rejects_occupied_destination(manager, mock_db, mock_storage):
     mock_db.get_workspace_file_by_path.return_value = _make_workspace_file(
         id="other-file", path="/reports/summary.pdf"

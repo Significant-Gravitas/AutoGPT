@@ -406,6 +406,14 @@ class MoveWorkspaceFilesToFolderTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        if not to_root and not folder_id and not folder_name:
+            return ErrorResponse(
+                message=(
+                    "Provide a destination: a folder (folder_id/folder_name) "
+                    "or to_root=true to move the files to the workspace root"
+                ),
+                session_id=session_id,
+            )
 
         try:
             workspace_id = await _workspace_id(user_id)
@@ -441,6 +449,14 @@ class MoveWorkspaceFilesToFolderTool(BaseTool):
         moved_ids = [f.id for f in moved]
         # bulk_move_files_to_folder silently drops IDs outside this workspace.
         skipped = len(file_ids) - len(moved_ids)
+        if not moved_ids:
+            return ErrorResponse(
+                message=(
+                    f"No files were moved: none of the {len(file_ids)} file ID(s) "
+                    f"were found in your workspace"
+                ),
+                session_id=session_id,
+            )
         msg = f"Moved {len(moved_ids)} file(s) to {destination}"
         if skipped > 0:
             msg += f"; {skipped} file ID(s) were not found in your workspace"
