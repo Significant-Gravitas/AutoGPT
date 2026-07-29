@@ -8,9 +8,8 @@ from backend.api.features.library import db as library_db
 
 logger = logging.getLogger(__name__)
 
-_WORKFLOW_INCLUDE = {
-    "Workflows": {"include": {"LibraryAgent": True, "StoreListingVersion": True}}
-}
+_WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
+_WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -94,7 +93,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         include=_WORKFLOW_INCLUDE,
     )
     if existing is not None:
-        return HireResult(expert=_to_model(existing), failed_preloads=[])
+        return await _existing_hire_result(existing)
 
     create_data: dict = {
         "ownerUserId": user_id,
@@ -117,34 +116,9 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         )
         if raced is None:
             raise
-        return HireResult(expert=_to_model(raced), failed_preloads=[])
+        return await _existing_hire_result(raced)
 
-    failed: list[str] = []
-    for preload in template.Workflows or []:
-        if preload.storeListingVersionId is None:
-            continue
-        try:
-            library_agent = await library_db.add_store_agent_to_library(
-                preload.storeListingVersionId, user_id
-            )
-            await prisma.models.ExpertWorkflow.prisma().create(
-                data={
-                    "expertId": expert.id,
-                    "storeListingVersionId": preload.storeListingVersionId,
-                    "libraryAgentId": library_agent.id,
-                }
-            )
-        except Exception:
-            # Honest partial hire: a failed preload must not sink the hire.
-            logger.exception(
-                f"Failed to install preload {preload.storeListingVersionId} "
-                f"on expert #{expert.id} for user #{user_id}"
-            )
-            failed.append(
-                preload.StoreListingVersion.name
-                if preload.StoreListingVersion
-                else preload.storeListingVersionId
-            )
+    failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
 
     hydrated = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert.id}, include=_WORKFLOW_INCLUDE
@@ -154,11 +128,71 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
 
 
+async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
+    """Idempotent-hire result for an already-existing hired copy.
+
+    Re-hiring an archived expert revives it — the unique
+    (ownerUserId, sourceTemplateId) constraint means a fresh row cannot be
+    created, and returning the archived row as-is would hand back a
+    "successful" hire that stays invisible to list_experts/get_expert.
+    """
+    if row.isArchived:
+        revived = await prisma.models.Expert.prisma().update(
+            where={"id": row.id},
+            data={"isArchived": False},
+            include=_WORKFLOW_INCLUDE,
+        )
+        if revived is not None:
+            row = revived
+    return HireResult(expert=_to_model(row), failed_preloads=[])
+
+
+async def _install_preloads(
+    expert_id: str, user_id: str, preloads: list[prisma.models.ExpertWorkflow]
+) -> list[str]:
+    """Install template preloads into the hiring user's library.
+
+    Honest partial hire: a failed preload is logged and reported, never
+    fatal to the hire itself.
+    """
+    failed: list[str] = []
+    for preload in preloads:
+        if preload.storeListingVersionId is None:
+            continue
+        try:
+            library_agent = await library_db.add_store_agent_to_library(
+                preload.storeListingVersionId, user_id
+            )
+            await prisma.models.ExpertWorkflow.prisma().create(
+                data={
+                    "expertId": expert_id,
+                    "storeListingVersionId": preload.storeListingVersionId,
+                    "libraryAgentId": library_agent.id,
+                }
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to install preload {preload.storeListingVersionId} "
+                f"on expert #{expert_id} for user #{user_id}"
+            )
+            failed.append(
+                preload.StoreListingVersion.name
+                if preload.StoreListingVersion
+                else preload.storeListingVersionId
+            )
+    return failed
+
+
 async def install_workflow(
     user_id: str, expert_id: str, store_listing_version_id: str
 ) -> ExpertWorkflowRef:
     expert = await prisma.models.Expert.prisma().find_first(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
     )
     if expert is None:
         raise ExpertNotFoundError(expert_id)
@@ -168,7 +202,7 @@ async def install_workflow(
             "expertId": expert_id,
             "storeListingVersionId": store_listing_version_id,
         },
-        include={"LibraryAgent": True, "StoreListingVersion": True},
+        include=_WORKFLOW_ROW_INCLUDE,
     )
     if existing is not None:
         return _to_workflow_ref(existing)
@@ -183,7 +217,7 @@ async def install_workflow(
                 "storeListingVersionId": store_listing_version_id,
                 "libraryAgentId": library_agent.id,
             },
-            include={"LibraryAgent": True, "StoreListingVersion": True},
+            include=_WORKFLOW_ROW_INCLUDE,
         )
     except prisma.errors.UniqueViolationError:
         # Lost a concurrent duplicate-install race; return the winner's row.
@@ -192,7 +226,7 @@ async def install_workflow(
                 "expertId": expert_id,
                 "storeListingVersionId": store_listing_version_id,
             },
-            include={"LibraryAgent": True, "StoreListingVersion": True},
+            include=_WORKFLOW_ROW_INCLUDE,
         )
         if raced is None:
             raise

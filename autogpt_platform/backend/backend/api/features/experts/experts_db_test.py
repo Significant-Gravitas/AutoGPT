@@ -105,10 +105,16 @@ async def _seed_store_listing(server: SpinTestServer) -> str:
 async def _seed_template(
     name: str, preload_listings: list[str]
 ) -> prisma.models.Expert:
-    """Create an Expert roster template plus ExpertWorkflow preload rows."""
+    """Create an Expert roster template plus ExpertWorkflow preload rows.
+
+    The stored name gets a unique suffix so ad-hoc test templates never
+    collide with seed.ROSTER's real roster names — seed._upsert_template
+    resolves templates by name, and a bare "Maria" here would be silently
+    adopted and overwritten by test_seed_roster_round_trip.
+    """
     template = await prisma.models.Expert.prisma().create(
         data={
-            "name": name,
+            "name": f"{name} {uuid.uuid4().hex[:8]}",
             "role": f"{name}'s role",
             "identity": f"You are {name}, an expert.",
             "isTemplate": True,
@@ -129,6 +135,34 @@ async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
     assert first.expert.id == second.expert.id
     assert not first.expert.is_template
     assert first.expert.source_template_id == template.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_after_archive_revives_expert(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    revived = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert revived.expert.id == hired.expert.id
+    assert not revived.expert.is_archived
+    assert hired.expert.id in {
+        e.id for e in await experts_db.list_experts(test_user.id)
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_on_archived_expert_raises(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
