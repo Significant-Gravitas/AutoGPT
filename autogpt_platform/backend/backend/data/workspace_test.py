@@ -39,7 +39,9 @@ async def test_update_location_is_scoped_to_the_workspace(mocker):
     prisma = mocker.MagicMock()
     prisma.update_many = mocker.AsyncMock(return_value=1)
     prisma.find_first = mocker.AsyncMock(
-        return_value=_file_record(name="summary.pdf", path="/reports/summary.pdf")
+        return_value=_file_record(
+            name="summary.pdf", path="/reports/summary.pdf", folderId="fld-9"
+        )
     )
     mocker.patch.object(
         ws.UserWorkspaceFile, "prisma", mocker.MagicMock(return_value=prisma)
@@ -61,7 +63,9 @@ async def test_update_location_is_scoped_to_the_workspace(mocker):
     # A bare path is normalized with a leading slash before it is stored.
     assert data["path"] == "/reports/summary.pdf"
     assert data["folderId"] == "fld-9"
-    assert result is not None and result.path == "/reports/summary.pdf"
+    assert result is not None
+    assert result.path == "/reports/summary.pdf"
+    assert result.folder_id == "fld-9"
 
 
 @pytest.mark.asyncio
