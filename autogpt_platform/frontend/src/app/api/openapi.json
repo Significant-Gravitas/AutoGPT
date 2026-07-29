@@ -21733,6 +21733,10 @@
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
             "default": { "dry_run": false, "kind": "normal" }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
