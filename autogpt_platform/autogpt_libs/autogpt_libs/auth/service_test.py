@@ -136,7 +136,7 @@ def test_garbage_token_is_401(jwks_config):
     assert _post("not-a-jwt").status_code == 401
 
 
-# Note: the "503 when JWT_JWKS_URL is unset" path is unreachable via a valid
-# Settings() — JWT_JWKS_URL is now mandatory (config.validate raises without
-# it), so that guard in requires_frontend_service is dead code. Config-level
-# enforcement is covered by config_test.py.
+# requires_frontend_service's "503 when JWT_JWKS_URL is unset" guard has no
+# test here: a valid Settings() cannot exist without JWT_JWKS_URL (its
+# validate() raises), so the guard is unreachable. config_test.py covers that
+# enforcement.

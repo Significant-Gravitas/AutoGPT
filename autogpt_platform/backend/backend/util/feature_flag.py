@@ -249,21 +249,15 @@ async def _fetch_user_context(user_id: str) -> Context:
     # Local import to avoid a util <-> data import cycle.
     from backend.data.db_accessors import user_db
 
-    # Only REST/WS/DatabaseManager processes hold a locally-connected Prisma
-    # client; user_db() falls back to the DatabaseManager RPC client elsewhere.
-    # Prisma-less workers (scheduler, copilot-executor, ...) must go through it —
-    # a direct Prisma call there raises ClientNotConnectedError, silently
-    # degrading this context to anonymous and breaking email/role-targeted flags
-    # (e.g. the domain-cohorted DREAM_PASS_ENABLED, evaluated in the scheduler).
+    # user_db() falls back to the DatabaseManager RPC client in processes
+    # without a locally-connected Prisma client (scheduler, executors, ...).
     fields = await user_db().get_auth_user_flag_fields(user_id)
 
     if fields is None:
-        # Do NOT cache a not-found as anonymous. During the auth-migration
-        # bridge window a user's row may not exist yet (or is mid-copy); a
-        # 24h-cached anonymous context would keep them out of email/role-
-        # targeted flags long after their row lands. Raising keeps @cached
-        # from storing it — the caller falls back to an uncached anonymous
-        # context and retries on the next evaluation.
+        # Raise instead of returning an anonymous context: @cached would pin
+        # the anonymous result for 24h even after the user's row appears
+        # (possible during the auth-migration copy window). The caller falls
+        # back to an uncached anonymous context.
         raise LookupError(f"No auth user row for {user_id}")
 
     builder = Context.builder(user_id).kind("user").anonymous(False)
