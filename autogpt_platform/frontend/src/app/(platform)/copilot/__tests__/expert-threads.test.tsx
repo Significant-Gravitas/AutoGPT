@@ -20,6 +20,7 @@ import { RecipientChip } from "../components/ChatInput/components/RecipientChip"
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
+import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
 
 const flagState = vi.hoisted(() => ({
@@ -185,6 +186,7 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   flagState.values = { "hire-experts": true };
+  useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
 });
 
 function ExpertSessionHarness() {

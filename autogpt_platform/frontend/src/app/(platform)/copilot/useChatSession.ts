@@ -5,6 +5,7 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
+import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,16 +77,25 @@ export function useChatSession({
   // Deep link /copilot?expertId=<id>: adopt the expert's latest thread. Only
   // the mount-time expertId adopts — a recipient picked in the UI after mount
   // must keep the fresh new-task state, not jump to the expert's old thread.
-  // "New Chat" clears the expertId param, so it lands on a genuinely new
-  // session rather than bouncing back here.
+  // The once-per-expert latch lives in the UI store, NOT in a ref: the chat
+  // host remounts on every sessionId change (CopilotPage keys the subtree),
+  // and "New Chat" clears the expertId param asynchronously via nuqs — a
+  // ref-based latch is wiped by the remount before the param clears, which
+  // bounced New Chat straight back into the adopted thread.
   const mountExpertIdRef = useRef(expertId);
-  const redirectedExpertRef = useRef<string | null>(null);
+  const adoptedExpertThreads = useCopilotUIStore((s) => s.adoptedExpertThreads);
+  const markExpertThreadAdopted = useCopilotUIStore(
+    (s) => s.markExpertThreadAdopted,
+  );
   // Once the user commits to a new thread by hitting send, adoption must stop:
   // `useSendMessage` flushes its pending first message on *any* sessionId
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
   const canAdoptExpertSession =
-    !!expertId && !sessionId && expertId === mountExpertIdRef.current;
+    !!expertId &&
+    !sessionId &&
+    expertId === mountExpertIdRef.current &&
+    !adoptedExpertThreads.has(expertId);
 
   const latestExpertSessionQuery = useGetV2ListSessions(
     { expert_id: expertId ?? undefined, limit: 1 },
@@ -100,16 +110,16 @@ export function useChatSession({
   useEffect(() => {
     if (!canAdoptExpertSession || !expertId) return;
     if (sendStartedRef.current) return;
-    if (redirectedExpertRef.current === expertId) return;
     if (latestExpertSessionQuery.data?.status !== 200) return;
     const latest = latestExpertSessionQuery.data.data.sessions[0];
     if (!latest) return;
-    redirectedExpertRef.current = expertId;
+    markExpertThreadAdopted(expertId);
     setSessionId(latest.id);
   }, [
     canAdoptExpertSession,
     expertId,
     latestExpertSessionQuery.data,
+    markExpertThreadAdopted,
     setSessionId,
   ]);
 
