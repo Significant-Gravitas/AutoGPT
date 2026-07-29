@@ -6,7 +6,9 @@ import pytest
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
+    _MAX_FAILURE_DETAIL,
     MemoryForgetConfirmTool,
+    _build_confirm_message,
     _hard_delete_edges,
     _retract_edges,
     _soft_delete_edges,
@@ -15,6 +17,7 @@ from backend.copilot.tools.graphiti_forget import (
 )
 from backend.copilot.tools.models import (
     MemoryForgetConfirmResponse,
+    MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
 
@@ -231,6 +234,77 @@ class TestForgetFailuresAreActionable:
         # The reason must reach the model-visible message, not just the count.
         assert response.failures[0].reason in response.message
         assert "missing-uuid" in response.message
+
+    @pytest.mark.asyncio
+    async def test_confirm_tool_mixed_batch_reports_both(self, monkeypatch) -> None:
+        """A batch where some UUIDs delete and some fail must co-populate
+        `deleted_uuids` and `failures`, and the message must carry BOTH the
+        success count and the per-UUID failure detail."""
+
+        async def _enabled(_user_id: str) -> bool:
+            return True
+
+        driver = AsyncMock()
+        # _retract_edges runs one query per UUID: first matches, second doesn't.
+        driver.execute_query.side_effect = [
+            ([{"uuid": "kept"}], None, None),
+            ([], None, None),
+        ]
+        client = type("Client", (), {"graph_driver": driver})()
+
+        async def _get_client(_group_id: str):
+            return client
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
+        )
+
+        session = ChatSession.new("user-abc", dry_run=False)
+        response = await MemoryForgetConfirmTool()._execute(
+            "user-abc", session, uuids=["kept", "gone"]
+        )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.deleted_uuids == ["kept"]
+        assert [f.uuid for f in response.failures] == ["gone"]
+        # Two-part message: success half + failure detail half.
+        assert "1 memory edge(s) retracted from memory." in response.message
+        assert "1 failed" in response.message
+        assert "gone" in response.message
+
+
+class TestBuildConfirmMessage:
+    """`_build_confirm_message` formatting: the no-failure early return, the
+    two-part success+failure string, and the bounded detail (thread: a driver
+    outage failing every UUID must not blow the tool output past its size
+    threshold and lose all detail)."""
+
+    def test_no_failures_returns_summary_only(self) -> None:
+        message = _build_confirm_message(3, "retracted from memory", [])
+        assert message == "3 memory edge(s) retracted from memory."
+
+    def test_caps_inlined_detail_and_notes_remainder(self) -> None:
+        overflow = _MAX_FAILURE_DETAIL + 4
+        failures = [
+            MemoryForgetFailure(
+                uuid=f"uuid-{i}",
+                code=MemoryForgetFailureCode.NO_MATCH,
+                reason="x" * 120,
+            )
+            for i in range(overflow)
+        ]
+
+        message = _build_confirm_message(0, "retracted from memory", failures)
+
+        # Full count is reported, but only the first N reasons are inlined.
+        assert f"{overflow} failed" in message
+        assert f"…and {overflow - _MAX_FAILURE_DETAIL} more" in message
+        assert message.count("uuid-") == _MAX_FAILURE_DETAIL
+        # Bounded regardless of batch size — cannot grow with the input.
+        assert len(message) < _MAX_FAILURE_DETAIL * 300
 
 
 class TestSoftDeleteContradictionPath:

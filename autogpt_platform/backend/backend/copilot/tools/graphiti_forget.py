@@ -30,6 +30,11 @@ _NO_MATCH_REASON = (
     "forgettable edge (RELATES_TO, MENTIONS, HAS_MEMBER)."
 )
 
+# Cap on how many per-UUID failure reasons are inlined into the confirm
+# message. Keeps a wholesale-failure batch from blowing past the tool-output
+# size threshold (base.py) and losing all detail to truncation.
+_MAX_FAILURE_DETAIL = 5
+
 
 def _now_iso() -> str:
     """Current UTC time as an ISO-8601 string for Cypher parameter binding.
@@ -48,13 +53,16 @@ logger = logging.getLogger(__name__)
 
 
 def _delete_error_reason(exc: Exception) -> str:
-    """Actionable reason string for a delete query that raised.
+    """Sanitized, actionable reason for a delete query that raised.
 
-    Keeps the exception type + message (e.g. FalkorDB's
-    ``Unknown function 'datetime'``) so the model can distinguish a real
-    query error from a plain no-match and react accordingly.
+    Surfaces the exception type plus its first message arg (e.g. FalkorDB's
+    ``Unknown function 'datetime'``) so the model can tell a real query error
+    from a plain no-match — but never the full ``repr(exc)``, which can carry
+    connection/host details. The complete exception is logged server-side with
+    ``exc_info=True`` at each call site for debugging.
     """
-    return f"Deletion query failed: {type(exc).__name__}: {exc}"
+    detail = exc.args[0] if exc.args else type(exc).__name__
+    return f"Deletion query failed: {type(exc).__name__}: {detail}"
 
 
 class MemoryForgetSearchTool(BaseTool):
@@ -294,11 +302,20 @@ def _build_confirm_message(
 
     A bare "N failed" gives the model nothing to act on (SECRT-2371); listing
     each UUID with its reason lets it retry, hard-delete, or tell the user.
+
+    Only the first ``_MAX_FAILURE_DETAIL`` reasons are inlined: a large batch
+    failing wholesale (e.g. a driver outage) would otherwise push the tool
+    output past the persist-and-summarize threshold and lose *all* detail. The
+    full per-UUID list stays available in the structured ``failures`` field.
     """
     summary = f"{deleted_count} memory edge(s) {mode}."
     if not failures:
         return summary
-    detail = "; ".join(f"{f.uuid}: {f.reason}" for f in failures)
+    shown = failures[:_MAX_FAILURE_DETAIL]
+    detail = "; ".join(f"{f.uuid}: {f.reason}" for f in shown)
+    remaining = len(failures) - len(shown)
+    if remaining > 0:
+        detail += f"; …and {remaining} more"
     return f"{summary} {len(failures)} failed — {detail}"
 
 
