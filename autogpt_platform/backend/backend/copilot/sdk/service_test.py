@@ -19,6 +19,7 @@ from .service import (
     _IDLE_TIMEOUT_SECONDS,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
+    _append_follow_up_warm_context,
     _build_system_prompt_value,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
@@ -30,6 +31,7 @@ from .service import (
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
+    _strip_ephemeral_memory_from_cli_jsonl,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
 
@@ -2247,3 +2249,112 @@ class TestHiddenShortNamesForPermissions:
         assert hidden == frozenset()
         # Sanity: all real tools remain visible.
         assert all_known_tool_names() - hidden == all_known_tool_names()
+
+
+# SECRT-2378: warm context must not accumulate in the CLI --resume transcript.
+class TestStripEphemeralMemoryFromCliJsonl:
+    def test_strips_appended_temporal_context_block(self):
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"deploy staging now'
+            b"\\n\\n<temporal_context>\\n<FACTS>\\n  - stale fact\\n</FACTS>"
+            b'\\n</temporal_context>"}]}}\n'
+        )
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_strips_prepended_memory_context_block(self):
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'"<memory_context>\\n<temporal_context>x</temporal_context>'
+            b'\\n</memory_context>\\n\\nwhat did I schedule?"}}\n'
+        )
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"memory_context" not in result
+        assert b"temporal_context" not in result
+        assert b"what did I schedule?" in result
+
+    def test_preserves_ordinary_user_message(self):
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hello there"}]}}\n'
+        )
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_non_text_blocks_and_malformed_lines(self):
+        image = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"image","source":{"data":"AAA"}}]}}\n'
+        )
+        garbage = b"not-json\n"
+        assert _strip_ephemeral_memory_from_cli_jsonl(image) == image
+        assert _strip_ephemeral_memory_from_cli_jsonl(garbage) == garbage
+        assert _strip_ephemeral_memory_from_cli_jsonl(b"") == b""
+
+
+# SECRT-2378: the follow-up-turn wiring — the branch where the bug lived.
+class TestAppendFollowUpWarmContext:
+    @pytest.mark.asyncio
+    async def test_appends_on_follow_up_user_turn(self):
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_follow_up_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out.endswith("<temporal_context>fresh</temporal_context>")
+        assert out.startswith("the query")
+        assert mock_refresh.await_args.kwargs["force"] is False
+
+    @pytest.mark.asyncio
+    async def test_forces_refresh_after_compaction(self):
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_follow_up_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="continue",
+                was_compacted=True,
+            )
+        assert mock_refresh.await_args.kwargs["force"] is True
+
+    @pytest.mark.asyncio
+    async def test_noop_on_first_turn_or_non_user_or_disabled(self):
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for kwargs in (
+                dict(has_history=False),  # first turn
+                dict(is_user_message=False),  # tool-result submission
+                dict(graphiti_enabled=False),  # memory off
+                dict(user_id=None),  # anonymous
+            ):
+                base = dict(
+                    graphiti_enabled=True,
+                    has_history=True,
+                    is_user_message=True,
+                    user_id="u1",
+                    current_message="a substantive follow-up request here",
+                    was_compacted=False,
+                )
+                base.update(kwargs)
+                out = await _append_follow_up_warm_context("q", **base)
+                assert out == "q"
+            mock_refresh.assert_not_awaited()

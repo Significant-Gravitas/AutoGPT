@@ -963,6 +963,91 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
     )
 
 
+# Server-injected memory blocks: ``<memory_context>`` (first-turn, via
+# inject_user_context) and ``<temporal_context>`` (per-turn refresh, SECRT-2378).
+# Both are ephemeral, keyed on a single turn's message — they must not persist
+# into --resume history.
+_MEMORY_BLOCK_RE = re.compile(
+    r"<(memory_context|temporal_context)\b[^>]*>.*?</\1>",
+    re.DOTALL,
+)
+
+
+def _strip_ephemeral_memory_text(text: str) -> str:
+    """Remove ``<memory_context>``/``<temporal_context>`` blocks from *text*."""
+    without = _MEMORY_BLOCK_RE.sub("", text)
+    # Collapse the blank lines the removed block(s) left behind.
+    without = re.sub(r"\n{3,}", "\n\n", without)
+    return without.strip()
+
+
+def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
+    """Scrub server-injected warm-context blocks from the CLI session JSONL.
+
+    The CLI persists every ``client.query(...)`` call — including the per-turn
+    ``<temporal_context>`` block appended for SECRT-2378 recall and the
+    first-turn ``<memory_context>`` block. Left in the uploaded JSONL these
+    accumulate across turns and replay stale facts on ``--resume`` (a fact the
+    user later retracted keeps re-appearing). Warm context is per-turn
+    ephemeral by design, so strip it from the persisted transcript; the next
+    turn re-injects a fresh block keyed on that turn's message.
+    """
+    if not content:
+        return content
+    out: list[bytes] = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        try:
+            entry = json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            out.append(line)
+            continue
+        rewritten = _rewrite_user_entry_memory(entry)
+        if rewritten is None:
+            out.append(line)
+            continue
+        suffix = b"\n" if line.endswith(b"\n") else b""
+        out.append(json.dumps(rewritten, ensure_ascii=False).encode() + suffix)
+    return b"".join(out)
+
+
+def _rewrite_user_entry_memory(entry: object) -> dict | None:
+    """Return *entry* with memory blocks stripped from its user text, or None.
+
+    None means "no change" — the caller keeps the original line verbatim so
+    only user messages that actually carried a memory block are re-serialised.
+    """
+    if not isinstance(entry, dict) or entry.get("type") != "user":
+        return None
+    msg = entry.get("message")
+    if not isinstance(msg, dict) or msg.get("role") != "user":
+        return None
+    content = msg.get("content")
+    if isinstance(content, str):
+        cleaned = _strip_ephemeral_memory_text(content)
+        if cleaned == content:
+            return None
+        msg["content"] = cleaned
+        return entry
+    if isinstance(content, list):
+        changed = False
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if not isinstance(text, str):
+                continue
+            cleaned = _strip_ephemeral_memory_text(text)
+            if cleaned != text:
+                block["text"] = cleaned
+                changed = True
+        return entry if changed else None
+    return None
+
+
 def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:
     if not entry or entry.get("type") != "user":
         return False
@@ -3904,6 +3989,39 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _append_follow_up_warm_context(
+    query_message: str,
+    *,
+    graphiti_enabled: bool,
+    has_history: bool,
+    is_user_message: bool,
+    user_id: str | None,
+    current_message: str,
+    was_compacted: bool,
+) -> str:
+    """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
+
+    The first turn pre-loads memory via ``inject_user_context(warm_ctx=...)``;
+    later turns (a new task mid-session, or the turn right after a compaction)
+    otherwise get no deterministic recall and depend on the model choosing to
+    call the memory tool, which it often skips. Keyed on the CURRENT user
+    message; forced after a compaction so a short "continue"-style turn still
+    re-injects memory. No-op on the first turn, non-user turns, and when
+    Graphiti is disabled. Called after every ``_build_query_message`` (initial
+    and retry) so the recovery path keeps recall too.
+    """
+    if not (graphiti_enabled and has_history and is_user_message and user_id):
+        return query_message
+    from ..graphiti.context import refresh_warm_context
+
+    refreshed = await refresh_warm_context(
+        user_id, current_message, force=was_compacted
+    )
+    if refreshed:
+        return f"{query_message}\n\n{refreshed}"
+    return query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -4640,24 +4758,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, user_id, is_user_message, query_message
         )
 
-        # SECRT-2378: refresh warm context on FOLLOW-UP user turns. The first
-        # turn pre-loads memory via inject_user_context(warm_ctx=...) above;
-        # later turns (a new task started mid-session, or the turn right after
-        # a compaction) otherwise get no deterministic recall and depend on the
-        # model choosing to call the memory tool, which it often skips. Keyed
-        # on the CURRENT user message and appended to the per-turn query — not
-        # persisted to the transcript (append_user records current_message), so
-        # stale temporal context never leaks into a future turn's --resume,
-        # matching the builder/attachment blocks appended above. Forced after a
-        # compaction so a short "continue"-style turn still re-injects memory.
-        if graphiti_enabled and has_history and is_user_message and user_id:
-            from ..graphiti.context import refresh_warm_context
-
-            refreshed_ctx = await refresh_warm_context(
-                user_id, current_message, force=was_compacted
-            )
-            if refreshed_ctx:
-                query_message = f"{query_message}\n\n{refreshed_ctx}"
+        # SECRT-2378: refresh warm context on FOLLOW-UP user turns (see
+        # ``_append_follow_up_warm_context``). Runs after both the initial
+        # query build here and the retry-time rebuild below, so a follow-up
+        # turn that trips prompt-too-long and re-compacts still re-injects
+        # memory on its recovery attempt.
+        query_message = await _append_follow_up_warm_context(
+            query_message,
+            graphiti_enabled=graphiti_enabled,
+            has_history=has_history,
+            is_user_message=is_user_message,
+            user_id=user_id,
+            current_message=current_message,
+            was_compacted=was_compacted,
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -4815,8 +4929,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
-                # warm_ctx is already baked into current_message via
-                # inject_user_context — no separate injection needed.
+                # First-turn warm_ctx is baked into current_message via
+                # inject_user_context. Follow-up turns get NO warm context in
+                # current_message, so re-run the SECRT-2378 refresh here too —
+                # otherwise a follow-up turn that recovers via retry-time
+                # compaction (``state.was_compacted``) would drop deterministic
+                # recall on exactly the path where it matters most.
+                state.query_message = await _append_follow_up_warm_context(
+                    state.query_message,
+                    graphiti_enabled=graphiti_enabled,
+                    has_history=has_history,
+                    is_user_message=is_user_message,
+                    user_id=user_id,
+                    current_message=current_message,
+                    was_compacted=state.was_compacted,
+                )
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
@@ -5431,6 +5558,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
                         _cli_content
                     )
+                    # Scrub server-injected memory blocks so per-turn warm
+                    # context (SECRT-2378) doesn't accumulate + replay stale
+                    # facts across --resume turns.
+                    _cli_content = _strip_ephemeral_memory_from_cli_jsonl(_cli_content)
                     # Watermark = number of DB messages this transcript covers.
                     # len(session.messages) is accurate: the CLI session file
                     # was just written after the turn completed, so it covers

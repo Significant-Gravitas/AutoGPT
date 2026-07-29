@@ -1781,23 +1781,14 @@ async def stream_chat_completion_baseline(
     # Stored here but injected into the user message (not the system prompt)
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
-    if graphiti_enabled and user_id:
-        if _pre_drain_msg_count <= 1:
-            from backend.copilot.graphiti.context import fetch_warm_context
+    if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
+        from backend.copilot.graphiti.context import fetch_warm_context
 
-            warm_ctx = await fetch_warm_context(user_id, message or "")
-        elif is_user_message:
-            # SECRT-2378: refresh warm context on follow-up user turns so a new
-            # task started mid-session gets deterministic recall instead of
-            # depending on the model to call the memory tool. Cheap RRF recipe,
-            # gated on message substance (see graphiti/context.py). Injected
-            # into the current user message below (line ~"if warm_ctx"), not
-            # persisted to the transcript. The baseline compactor doesn't
-            # surface a was_compacted flag here, so the length gate alone
-            # decides — a substantive post-compaction turn still refreshes.
-            from backend.copilot.graphiti.context import refresh_warm_context
-
-            warm_ctx = await refresh_warm_context(user_id, message)
+        warm_ctx = await fetch_warm_context(user_id, message or "")
+    # NOTE: follow-up-turn warm-context refresh (SECRT-2378) is fetched later,
+    # AFTER pending messages are folded into ``message`` — so a queued
+    # substantive request paired with a short current send still drives
+    # retrieval. See the ``refresh_warm_context`` call below the pending drain.
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
@@ -1930,6 +1921,20 @@ async def stream_chat_completion_baseline(
             )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    # SECRT-2378 follow-up-turn refresh: fetch AFTER the pending fold so the
+    # retrieval query is the COMBINED message. A queued substantive request
+    # paired with a short current send ("ok") must still drive recall, and the
+    # gate runs on the full folded text. First turn already loaded warm_ctx
+    # above (cross-encoder); this only fills it in for follow-up user turns.
+    # Cheap RRF+BFS recipe, gated on message substance (see graphiti/context.py).
+    # The baseline compactor doesn't surface a was_compacted flag, so the
+    # substance gate alone decides — a substantive post-compaction turn still
+    # refreshes.
+    if graphiti_enabled and user_id and is_user_message and _pre_drain_msg_count > 1:
+        from backend.copilot.graphiti.context import refresh_warm_context
+
+        warm_ctx = await refresh_warm_context(user_id, message)
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.

@@ -24,24 +24,55 @@ from .config import graphiti_config
 
 logger = logging.getLogger(__name__)
 
-# Minimum word count for a follow-up user message to trigger a warm-context
-# refresh.  Short acknowledgements ("ok", "thanks", "yes go ahead") carry no
-# new retrieval signal, so refreshing on them would waste a graph search +
-# embedding call every turn.  A post-compaction turn bypasses this gate via
-# ``refresh_warm_context(..., force=True)``.
+# Minimum "signal unit" count for a follow-up user message to trigger a
+# warm-context refresh.  Short acknowledgements ("ok", "thanks", "yes go
+# ahead") carry no new retrieval signal, so refreshing on them would waste a
+# graph search + embedding call every turn.  A post-compaction turn bypasses
+# this gate via ``refresh_warm_context(..., force=True)``.
 WARM_CONTEXT_REFRESH_MIN_WORDS = 4
+
+
+def _signal_units(message: str) -> int:
+    """Count retrieval "signal units" in *message* for the substance gate.
+
+    A plain ``str.split()`` word count under-counts languages that don't
+    separate words with whitespace (Japanese, Chinese, Thai) — a long CJK
+    message would score 1 "word" and never pass the gate, silently disabling
+    the refresh for those users.  So each CJK/ideographic character counts as
+    its own unit and is added to the whitespace-word count of the rest.
+    """
+    cjk = sum(1 for ch in message if _is_ideographic(ch))
+    # Words made of non-CJK runs; CJK chars are counted individually above, so
+    # exclude them from the whitespace-split count to avoid double counting.
+    non_cjk = "".join(" " if _is_ideographic(ch) else ch for ch in message)
+    return cjk + len(non_cjk.split())
+
+
+def _is_ideographic(ch: str) -> bool:
+    # CJK Unified Ideographs, Hiragana, Katakana, Hangul, Thai — scripts whose
+    # tokens are not whitespace-delimited.  Range checks only, no deps.
+    code = ord(ch)
+    return (
+        0x3040 <= code <= 0x30FF  # Hiragana + Katakana
+        or 0x3400 <= code <= 0x4DBF  # CJK Ext A
+        or 0x4E00 <= code <= 0x9FFF  # CJK Unified
+        or 0xAC00 <= code <= 0xD7A3  # Hangul syllables
+        or 0x0E00 <= code <= 0x0E7F  # Thai
+    )
 
 
 def should_refresh_warm_context(message: str | None) -> bool:
     """Whether a follow-up user message carries enough signal to re-fetch.
 
     Pure, deterministic cost gate: only messages with at least
-    ``WARM_CONTEXT_REFRESH_MIN_WORDS`` words re-run retrieval, keeping the
-    added per-turn graph-search cost off trivial acknowledgement turns.
+    ``WARM_CONTEXT_REFRESH_MIN_WORDS`` signal units (whitespace words plus
+    individually-counted CJK characters) re-run retrieval, keeping the added
+    per-turn graph-search cost off trivial acknowledgement turns while still
+    firing for whitespace-less languages.
     """
     if not message:
         return False
-    return len(message.split()) >= WARM_CONTEXT_REFRESH_MIN_WORDS
+    return _signal_units(message) >= WARM_CONTEXT_REFRESH_MIN_WORDS
 
 
 async def refresh_warm_context(
@@ -58,11 +89,15 @@ async def refresh_warm_context(
     depend on the model choosing to call the memory tool, which it often skips
     (SECRT-2378).  This refresh closes that gap.
 
-    Cost is bounded two ways: ``should_refresh_warm_context`` skips trivial
+    Cost is bounded three ways: ``should_refresh_warm_context`` skips trivial
     turns (unless ``force`` — e.g. just after a compaction, where the current
-    message may be short), and the fetch runs the RRF recipe
+    message may be short); the fetch runs the RRF recipe
     (``use_cross_encoder=False``) — graph search + embeddings only, no
-    per-candidate cross-encoder LLM prompts.
+    per-candidate cross-encoder LLM prompts; and it uses the shorter
+    ``context_refresh_timeout`` budget. Unlike the first-turn fetch (which runs
+    concurrently inside a gather), this refresh is a serial ``await`` on the
+    pre-stream hot path, so the tighter budget caps its worst-case
+    time-to-first-token hit on a cold graph.
 
     Returns the ``<temporal_context>`` block, or ``None`` when skipped/empty.
     """
@@ -70,11 +105,20 @@ async def refresh_warm_context(
         return None
     if not force and not should_refresh_warm_context(message):
         return None
-    return await fetch_warm_context(user_id, message or "", use_cross_encoder=False)
+    return await fetch_warm_context(
+        user_id,
+        message or "",
+        use_cross_encoder=False,
+        timeout=graphiti_config.context_refresh_timeout,
+    )
 
 
 async def fetch_warm_context(
-    user_id: str, message: str, *, use_cross_encoder: bool = True
+    user_id: str,
+    message: str,
+    *,
+    use_cross_encoder: bool = True,
+    timeout: float | None = None,
 ) -> str | None:
     """Fetch relevant temporal context for the current user and message.
 
@@ -92,15 +136,18 @@ async def fetch_warm_context(
     if not user_id:
         return None
 
+    effective_timeout = (
+        timeout if timeout is not None else graphiti_config.context_timeout
+    )
     try:
         return await asyncio.wait_for(
             _fetch(user_id, message, use_cross_encoder=use_cross_encoder),
-            timeout=graphiti_config.context_timeout,
+            timeout=effective_timeout,
         )
     except asyncio.TimeoutError:
         logger.warning(
             "Graphiti warm context timed out after %.1fs",
-            graphiti_config.context_timeout,
+            effective_timeout,
         )
         return None
     except Exception:
@@ -108,36 +155,55 @@ async def fetch_warm_context(
         return None
 
 
+def _build_search_config(use_cross_encoder: bool):
+    """Edge-search recipe for a warm-context fetch.
+
+    Both variants use the SAME search methods as graphiti's
+    ``EDGE_HYBRID_SEARCH_CROSS_ENCODER`` recipe — BM25 + cosine + BFS graph
+    traversal — so recall *breadth* is identical on the first turn and on
+    follow-up refreshes. They differ only in the reranker:
+
+    - ``use_cross_encoder=True`` (first turn): the cross-encoder recipe as-is —
+      a per-candidate classifier LLM rerank for the ~10–15% precision lift the
+      audit measured on the single most-impactful retrieval per session.
+    - ``use_cross_encoder=False`` (SECRT-2378 follow-up refresh): the same
+      recipe with the reranker swapped to reciprocal-rank-fusion. No LLM calls,
+      so re-running recall every substantive turn stays cheap — but it keeps
+      the BFS method, so a fact reachable only by graph expansion from an
+      entity named in the message is still surfaced on follow-up turns.
+
+    The recipe defaults ``limit=10``; both are overridden to the configured
+    ``context_max_facts`` so existing operator tuning still applies.
+    """
+    # Imported lazily so the module can be imported without graphiti-core
+    # installed (matches the pattern in client.py).
+    from graphiti_core.search.search_config import EdgeReranker
+    from graphiti_core.search.search_config_recipes import (
+        EDGE_HYBRID_SEARCH_CROSS_ENCODER,
+    )
+
+    limit = graphiti_config.context_max_facts
+    if use_cross_encoder:
+        return EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(update={"limit": limit})
+    base_edge_config = EDGE_HYBRID_SEARCH_CROSS_ENCODER.edge_config
+    if base_edge_config is None:
+        # The recipe always carries an edge_config; this satisfies the type
+        # checker and fails loudly if graphiti ever ships a broken recipe.
+        raise RuntimeError("EDGE_HYBRID_SEARCH_CROSS_ENCODER has no edge_config")
+    edge_config = base_edge_config.model_copy(update={"reranker": EdgeReranker.rrf})
+    return EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(
+        update={"limit": limit, "edge_config": edge_config}
+    )
+
+
 async def _fetch(
     user_id: str, message: str, *, use_cross_encoder: bool = True
 ) -> str | None:
-    # Imported lazily so the module can be imported without graphiti-core
-    # installed (matches the pattern in client.py).
-    from graphiti_core.search.search_config_recipes import (
-        EDGE_HYBRID_SEARCH_CROSS_ENCODER,
-        EDGE_HYBRID_SEARCH_RRF,
-    )
+    search_config = _build_search_config(use_cross_encoder)
 
     group_id = derive_group_id(user_id)
     client = await get_graphiti_client(group_id)
 
-    # P-1.4: the first-turn warm context is the single most-impactful
-    # retrieval per session — the one place where the cross-encoder rerank
-    # earns its ~10–15% precision lift (per the audit) at the cost of one
-    # extra batch of boolean-classifier prompts. Follow-up refreshes
-    # (SECRT-2378) drop to the RRF recipe (no LLM rerank) so re-running
-    # recall every substantive turn stays cheap. Both recipes combine BM25 +
-    # cosine + BFS edge search; each defaults ``limit=10``, overridden to our
-    # configured ``context_max_facts`` so existing operator tuning still
-    # applies.
-    recipe = (
-        EDGE_HYBRID_SEARCH_CROSS_ENCODER
-        if use_cross_encoder
-        else EDGE_HYBRID_SEARCH_RRF
-    )
-    search_config = recipe.model_copy(
-        update={"limit": graphiti_config.context_max_facts}
-    )
     edge_results, episodes = await asyncio.gather(
         client.search_(
             query=message,
@@ -152,12 +218,18 @@ async def _fetch(
     )
     edges = edge_results.edges if edge_results is not None else []
 
-    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
-    # that's currently ``status='tentative'`` gets promoted to
-    # ``active`` inline, and every retrieved edge bumps its
-    # warm-context hit counter. Fire-and-forget so the chat turn
-    # never blocks on Redis or FalkorDB writes.
-    if edges:
+    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge that's
+    # currently ``status='tentative'`` gets promoted to ``active`` inline, and
+    # every retrieved edge bumps its warm-context hit counter. Fire-and-forget
+    # so the chat turn never blocks on Redis or FalkorDB writes.
+    #
+    # Gated to the cross-encoder (first-turn) path ONLY: those results passed a
+    # per-candidate classifier, so promoting a tentative edge on a hit is
+    # earned. RRF follow-up refreshes have no classifier and default
+    # ``reranker_min_score=0``, so a weak BM25/cosine match could auto-promote
+    # an unratified memory — and would do so once per substantive turn rather
+    # than once per session. Refreshes still retrieve; they just don't ratify.
+    if edges and use_cross_encoder:
         _spawn_ratification_hits(user_id, edges)
 
     if not edges and not episodes:

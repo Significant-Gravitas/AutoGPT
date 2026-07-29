@@ -30,7 +30,9 @@ class TestFetchWarmContextTimeout:
     async def test_returns_none_on_timeout(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def _slow_fetch(user_id: str, message: str) -> str:
+        async def _slow_fetch(
+            user_id: str, message: str, *, use_cross_encoder: bool = True
+        ) -> str:
             await asyncio.sleep(10)
             return "<temporal_context>data</temporal_context>"
 
@@ -397,8 +399,21 @@ class TestShouldRefreshWarmContext:
         assert should_refresh_warm_context("ok") is False
         assert should_refresh_warm_context("yes thanks") is False
 
+    def test_word_count_boundary(self) -> None:
+        # Pin the exact threshold so an accidental off-by-one (3 or 5) fails.
+        assert should_refresh_warm_context("one two three") is False
+        assert should_refresh_warm_context("one two three four") is True
+
     def test_substantive_message_triggers_refresh(self) -> None:
         assert should_refresh_warm_context("deploy the staging environment now") is True
+
+    def test_cjk_message_without_whitespace_triggers_refresh(self) -> None:
+        # Japanese/Chinese don't separate words with spaces — str.split() would
+        # score 1 and never pass. Each ideograph counts as a signal unit.
+        assert should_refresh_warm_context("会議の予定を教えて") is True  # >= 4 chars
+        assert should_refresh_warm_context("明日の東京の天気") is True
+        # A one-ideograph reply still reads as trivial.
+        assert should_refresh_warm_context("はい") is False
 
 
 class TestRefreshWarmContext:
@@ -436,6 +451,11 @@ class TestRefreshWarmContext:
         assert result == "<temporal_context>x</temporal_context>"
         mock_fetch.assert_awaited_once()
         assert mock_fetch.await_args.kwargs["use_cross_encoder"] is False
+        # Refresh must use the tighter budget, not the 8s first-turn timeout.
+        assert (
+            mock_fetch.await_args.kwargs["timeout"]
+            == context.graphiti_config.context_refresh_timeout
+        )
 
     @pytest.mark.asyncio
     async def test_force_bypasses_gate_for_trivial_message(self) -> None:
@@ -453,11 +473,11 @@ class TestRefreshWarmContext:
 
 
 class TestFetchRecipeSelection:
-    """``use_cross_encoder`` toggles the search recipe passed to graphiti."""
+    """``use_cross_encoder`` toggles the reranker but NOT the search methods."""
 
     @pytest.mark.asyncio
     async def test_rrf_recipe_used_when_cross_encoder_disabled(self) -> None:
-        from graphiti_core.search.search_config import EdgeReranker
+        from graphiti_core.search.search_config import EdgeReranker, EdgeSearchMethod
 
         mock_client = AsyncMock()
         mock_client.search_.return_value = _search_results([])
@@ -478,3 +498,47 @@ class TestFetchRecipeSelection:
         assert cfg.edge_config is not None
         assert cfg.edge_config.reranker == EdgeReranker.rrf
         assert cfg.limit == context.graphiti_config.context_max_facts
+        # BFS graph traversal must be preserved on the refresh path — dropping
+        # it would narrow recall breadth on exactly the path added to fix
+        # recall (SECRT-2378). RRF recipe alone lacks BFS; the builder must
+        # keep the cross-encoder recipe's search methods.
+        assert EdgeSearchMethod.bfs in cfg.edge_config.search_methods
+
+    def test_build_search_config_keeps_bfs_and_swaps_reranker(self) -> None:
+        from graphiti_core.search.search_config import EdgeReranker, EdgeSearchMethod
+
+        ce = context._build_search_config(True)
+        rrf = context._build_search_config(False)
+        assert ce.edge_config.reranker == EdgeReranker.cross_encoder
+        assert rrf.edge_config.reranker == EdgeReranker.rrf
+        # Identical search methods (incl. BFS) — only the reranker differs.
+        assert EdgeSearchMethod.bfs in ce.edge_config.search_methods
+        assert rrf.edge_config.search_methods == ce.edge_config.search_methods
+
+
+class TestRatificationGatedToCrossEncoder:
+    """RRF refresh retrieves but must NOT auto-promote tentative edges."""
+
+    @pytest.mark.asyncio
+    async def test_rrf_path_does_not_spawn_ratification(self) -> None:
+        edge = SimpleNamespace(uuid="edge-a", fact="f", valid_at=None, invalid_at=None)
+        mock_client = AsyncMock()
+        mock_client.search_.return_value = _search_results([edge])
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ),
+            patch.object(context, "_spawn_ratification_hits") as mock_spawn,
+        ):
+            await context._fetch("test-user", "hello world", use_cross_encoder=False)
+            assert mock_spawn.call_count == 0
+
+            mock_spawn.reset_mock()
+            await context._fetch("test-user", "hello world", use_cross_encoder=True)
+            assert mock_spawn.call_count == 1
