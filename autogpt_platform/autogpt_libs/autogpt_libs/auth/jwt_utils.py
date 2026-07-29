@@ -108,9 +108,23 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
             raise ValueError("Invalid token: asymmetric tokens are not accepted")
         try:
             key = _get_jwks_client().get_signing_key_from_jwt(token).key
+            algorithms = settings.JWT_JWKS_ALGORITHMS
         except jwt.PyJWKClientError as e:
-            raise ValueError(f"Invalid token: {str(e)}") from e
-        algorithms = settings.JWT_JWKS_ALGORITHMS
+            # The legacy verifier supported — and its config text recommended —
+            # asymmetric algorithms, with the public key in JWT_VERIFY_KEY. A
+            # token whose kid isn't in the Better Auth JWK set can therefore
+            # still be a live legacy session from that configuration, so the
+            # migration-window grace extends here too: fall back to the shared
+            # legacy key when it's configured for a matching asymmetric alg.
+            if (
+                settings.JWT_VERIFY_KEY
+                and not settings.JWT_ALGORITHM.startswith("HS")
+                and algorithm == settings.JWT_ALGORITHM
+            ):
+                key = settings.JWT_VERIFY_KEY
+                algorithms = [settings.JWT_ALGORITHM]
+            else:
+                raise ValueError(f"Invalid token: {str(e)}") from e
 
     try:
         payload = jwt.decode(

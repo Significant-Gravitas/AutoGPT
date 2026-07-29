@@ -454,3 +454,65 @@ def test_verify_user_missing_role_is_not_a_server_error():
 
     assert user.user_id == "user-id"
     assert user.role == "user"
+
+
+def _public_pem(private_key) -> str:
+    from cryptography.hazmat.primitives import serialization
+
+    return (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+
+
+def test_parse_jwt_token_legacy_asymmetric_token_falls_back_to_verify_key(
+    mocker: MockerFixture,
+):
+    """Migration grace must cover the RECOMMENDED legacy config, not just HS256.
+
+    The legacy verifier was jwt.decode(token, JWT_VERIFY_KEY,
+    algorithms=[JWT_ALGORITHM]) and its config text recommended ES256 — so
+    JWT_VERIFY_KEY can hold an asymmetric public key. A legacy ES256 token's
+    kid is not in the Better Auth JWK set; on that miss the parser must fall
+    back to the legacy key instead of rejecting every live session from that
+    configuration.
+    """
+    legacy_private, _ = make_es256_keypair(kid="legacy-key")
+    mocker.patch.dict(
+        os.environ,
+        {
+            "JWT_VERIFY_KEY": _public_pem(legacy_private),
+            "JWT_SIGN_ALGORITHM": "ES256",
+            "JWT_JWKS_URL": MOCK_JWKS_URL,
+        },
+        clear=True,
+    )
+    mocker.patch.object(config, "_settings", Settings())
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+
+    # The JWKS endpoint serves a DIFFERENT (Better Auth) key set, so the
+    # legacy token's kid misses.
+    _, better_auth_jwks = make_es256_keypair(kid="better-auth-key")
+    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value=better_auth_jwks)
+
+    token = create_es256_token(TEST_USER_PAYLOAD, legacy_private, kid="legacy-key")
+    result = jwt_utils.parse_jwt_token(token)
+
+    assert result["sub"] == "test-user-id"
+
+
+def test_parse_jwt_token_unknown_kid_still_rejected_without_asymmetric_legacy_key(
+    jwks_config,
+):
+    """The fallback must not weaken the default config: with an HS-configured
+    JWT_ALGORITHM, an unknown-kid asymmetric token stays rejected."""
+    other_private_key, _ = make_es256_keypair(kid="unknown-key")
+    token = create_es256_token(TEST_USER_PAYLOAD, other_private_key, kid="unknown-key")
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)

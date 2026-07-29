@@ -127,6 +127,18 @@ class Settings:
                     "JWKS verification only supports asymmetric algorithms."
                 )
 
+        if "ES256" not in self.JWT_JWKS_ALGORITHMS:
+            # Advisory, not fatal: a modified auth service could sign with
+            # something else, but the stock platform frontend signs ES256 —
+            # excluding it here silently rejects every token it issues.
+            logger.warning(
+                "⚠️ JWT_JWKS_ALGORITHMS does not include ES256, which is the "
+                "algorithm the platform auth service signs with. With this "
+                "setting, every token it issues will be rejected. Add ES256 "
+                "unless a customized auth service signs with a different "
+                "algorithm."
+            )
+
         if self.JWT_VERIFY_KEY and self.JWT_ALGORITHM.startswith("HS"):
             logger.warning(
                 f"⚠️ JWT_SIGN_ALGORITHM is set to '{self.JWT_ALGORITHM}', "

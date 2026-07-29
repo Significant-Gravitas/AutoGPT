@@ -563,3 +563,35 @@ def test_jwks_url_cleartext_warning_can_be_silenced(
     with caplog.at_level(logging.WARNING):
         Settings()
         assert "cleartext" not in caplog.text
+
+
+def test_warns_when_es256_missing_from_jwks_algorithms(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    """The platform frontend signs ES256; excluding it rejects every token."""
+    mocker.patch.dict(
+        os.environ,
+        {
+            "JWT_JWKS_URL": "https://app.example/api/auth/jwks",
+            "JWT_JWKS_ALGORITHMS": "ES384,ES512",
+        },
+        clear=True,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        Settings()
+        assert "does not include ES256" in caplog.text
+
+
+def test_no_warning_when_es256_present(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "https://app.example/api/auth/jwks"},
+        clear=True,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        Settings()
+        assert "does not include ES256" not in caplog.text
