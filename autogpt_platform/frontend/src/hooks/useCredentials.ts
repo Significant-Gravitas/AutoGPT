@@ -10,7 +10,7 @@ import {
   CredentialsMetaResponse,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api";
-import { getHostFromUrl } from "@/lib/utils/url";
+import { getHostFromUrl, normalizeMCPUrl } from "@/lib/utils/url";
 
 export function classifyCredentials(
   allSaved: readonly CredentialsMetaResponse[],
@@ -30,7 +30,14 @@ export function classifyCredentials(
     // MCP credentials (OAuth2 tokens and static API-key / bearer tokens)
     // filter by server URL — not upgradeable.
     if ((c.type === "oauth2" || c.type === "api_key") && c.provider === "mcp") {
-      if (discriminatorValue != null && c.host === discriminatorValue) {
+      // The backend stores MCP credentials under the *normalized* server URL,
+      // so a raw discriminator (e.g. with a trailing slash) must be normalized
+      // too — otherwise the credential exists but never shows up in the picker.
+      if (
+        discriminatorValue != null &&
+        c.host != null &&
+        normalizeMCPUrl(c.host) === normalizeMCPUrl(discriminatorValue)
+      ) {
         savedCredentials.push(c);
       }
       continue;

@@ -3,6 +3,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
@@ -52,6 +53,11 @@ export function useAPIKeyCredentialsModal({
     },
   });
 
+  const mcpServerUrl =
+    credentials && !credentials.isLoading && credentials.provider === "mcp"
+      ? normalizeMCPUrl(credentials.discriminatorValue ?? "")
+      : "";
+
   async function onSubmit(values: APIKeyFormValues) {
     if (!credentials || credentials.isLoading) return;
     setIsSubmitting(true);
@@ -63,6 +69,11 @@ export function useAPIKeyCredentialsModal({
         api_key: values.apiKey,
         title: values.title,
         expires_at: expiresAt,
+        // MCP credentials are matched to a node by the server URL held in
+        // `metadata.mcp_server_url`. Without it the new credential comes back
+        // with `host: null`, gets filtered out of the picker, and the
+        // selection made here is immediately cleared again.
+        ...(mcpServerUrl && { metadata: { mcp_server_url: mcpServerUrl } }),
       });
       onCredentialsCreate({
         provider: credentials.provider,

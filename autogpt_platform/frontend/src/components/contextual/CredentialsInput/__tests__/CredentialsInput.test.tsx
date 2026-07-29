@@ -387,3 +387,75 @@ describe("CredentialsInput – OAuth flow", () => {
     expect(abortB).toHaveBeenCalled();
   });
 });
+
+describe("CredentialsInput – MCP API key creation", () => {
+  const mcpSchema: BlockIOCredentialsSubSchema = {
+    credentials_provider: ["mcp"],
+    credentials_types: ["oauth2", "api_key"],
+    discriminator: "server_url",
+  } as BlockIOCredentialsSubSchema;
+
+  function renderMCPApiKeyTab(
+    createAPIKeyCredentials: ReturnType<typeof vi.fn>,
+  ) {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "mcp",
+        providerName: "MCP",
+        schema: mcpSchema,
+        supportsApiKey: true,
+        supportsOAuth2: true,
+        discriminatorValue: "https://mcp.datafa.st/mcp/",
+        createAPIKeyCredentials,
+      } as unknown as Partial<CredentialsReturn>) as unknown as CredentialsReturn,
+    );
+
+    render(
+      <CredentialsInput
+        schema={mcpSchema}
+        onSelectCredentials={vi.fn()}
+        siblingInputs={{ server_url: "https://mcp.datafa.st/mcp/" }}
+        showTitle={false}
+      />,
+    );
+  }
+
+  it("tags a new API key with the normalized MCP server URL", async () => {
+    // Without `metadata.mcp_server_url` the backend returns `host: null`, the
+    // picker filters the credential out, and the selection made on create is
+    // wiped again — the user sees "adding a credential does nothing".
+    const createAPIKeyCredentials = vi.fn().mockResolvedValue({
+      id: "new-mcp-cred",
+      title: "My token",
+      provider: "mcp",
+      type: "api_key",
+    });
+    renderMCPApiKeyTab(createAPIKeyCredentials);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add .*credential/i }),
+    );
+    // Radix Tabs activate on mousedown, not click.
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /api key/i }));
+
+    fireEvent.change(await screen.findByLabelText(/^name$/i), {
+      target: { value: "My token" },
+    });
+    fireEvent.change(
+      screen.getByLabelText(/^api key$/i, { selector: "input" }),
+      {
+        target: { value: "wrong-token" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /add api key/i }));
+
+    await waitFor(() => {
+      expect(createAPIKeyCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({
+          api_key: "wrong-token",
+          metadata: { mcp_server_url: "https://mcp.datafa.st/mcp" },
+        }),
+      );
+    });
+  });
+});

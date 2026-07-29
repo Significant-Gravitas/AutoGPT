@@ -111,6 +111,22 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     expect(result.selectedTool).toBe("get_analytics");
   });
 
+  it("normalizes the server URL so it matches the one credentials are stored under", async () => {
+    mockDiscover.mockResolvedValue(discoverOk());
+    const onConfirm = vi.fn();
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: `  ${SERVER_URL}/  ` },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+    fireEvent.click(await screen.findByText("get_analytics"));
+    fireEvent.click(screen.getByRole("button", { name: /add block/i }));
+
+    expect(onConfirm.mock.calls[0][0].serverUrl).toBe(SERVER_URL);
+  });
+
   it("does not attach credentials for a public server (no token)", async () => {
     mockDiscover.mockResolvedValue(discoverOk());
     const onConfirm = vi.fn();
@@ -200,5 +216,66 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     expect(
       screen.getByRole("button", { name: /discover tools/i }),
     ).toBeDefined();
+  });
+});
+
+describe("MCPToolDialog — tool cards", () => {
+  afterEach(() => {
+    cleanup();
+    mockDiscover.mockReset();
+  });
+
+  function discoverWithParams() {
+    return {
+      status: 200,
+      data: {
+        tools: [
+          {
+            name: "ask_question",
+            description: "Ask a question about the data",
+            input_schema: {
+              type: "object",
+              properties: { question: { type: "string" } },
+              required: ["question"],
+            },
+          },
+        ],
+        server_name: "datafa.st",
+      },
+    };
+  }
+
+  async function discoverAndGetToggle() {
+    mockDiscover.mockResolvedValue(discoverWithParams());
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+
+    // Exact name: the card's own accessible name also *contains* "Show
+    // details" because it is computed from its descendants.
+    return await screen.findByRole("button", { name: "Show details" });
+  }
+
+  it("renders the details toggle outside of any button ancestor", async () => {
+    const toggle = await discoverAndGetToggle();
+
+    // A <button> nested inside a <button> is invalid HTML and breaks
+    // hydration, so the card itself must not be a native button.
+    expect(toggle.parentElement?.closest("button")).toBeNull();
+  });
+
+  it("expands parameter details without selecting the tool", async () => {
+    const toggle = await discoverAndGetToggle();
+
+    fireEvent.click(toggle);
+
+    expect(await screen.findByText("Parameter")).toBeDefined();
+    expect(screen.getByRole("button", { name: /add block/i })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 });

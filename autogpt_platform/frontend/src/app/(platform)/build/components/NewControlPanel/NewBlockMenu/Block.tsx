@@ -87,13 +87,14 @@ export const Block: BlockComponent = ({
         const title = result.selectedTool
           ? `${serverLabel}: ${beautifyString(result.selectedTool)}`
           : undefined;
-        updateNodeData(customNode.id, {
-          metadata: {
-            ...customNode.data.metadata,
-            credentials_optional: true,
-            ...(title && { customized_name: title }),
-          },
-        });
+        if (title) {
+          updateNodeData(customNode.id, {
+            metadata: {
+              ...customNode.data.metadata,
+              customized_name: title,
+            },
+          });
+        }
       }
       setMcpDialogOpen(false);
     },

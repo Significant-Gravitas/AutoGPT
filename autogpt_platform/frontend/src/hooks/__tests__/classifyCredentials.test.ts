@@ -149,6 +149,42 @@ describe("classifyCredentials", () => {
     expect(result.upgradeableCredentials).toEqual([]);
   });
 
+  it("matches MCP credentials when the discriminator differs only by a trailing slash", () => {
+    // The backend stores MCP creds under the normalized URL. A node whose
+    // `server_url` still carries a trailing slash would otherwise find no
+    // credential — the picker shows an empty "Add credential" state even
+    // though the block runs fine (the backend re-normalizes at run time).
+    const schema = makeSchema({
+      credentials_provider: ["mcp"],
+      credentials_types: ["oauth2", "api_key"],
+    });
+    const creds = [
+      makeCred({
+        id: "stored",
+        type: "api_key",
+        provider: "mcp",
+        host: "https://mcp.datafa.st/mcp",
+      }),
+    ];
+
+    const withTrailingSlash = classifyCredentials(
+      creds,
+      schema,
+      "https://mcp.datafa.st/mcp/",
+    );
+    expect(withTrailingSlash.savedCredentials.map((c) => c.id)).toEqual([
+      "stored",
+    ]);
+
+    // A genuinely different server must still not match.
+    const otherServer = classifyCredentials(
+      creds,
+      schema,
+      "https://other.example/mcp",
+    );
+    expect(otherServer.savedCredentials).toEqual([]);
+  });
+
   it("host_scoped credentials: discriminator URL is hostname-compared to c.host", () => {
     const schema = makeSchema({ credentials_types: ["host_scoped"] });
     const { savedCredentials, upgradeableCredentials } = classifyCredentials(
