@@ -143,6 +143,24 @@ async def test_hire_installs_preloads_into_library(server: SpinTestServer, test_
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_hire_reports_failed_preload_without_sinking_hire(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert not result.expert.is_template
+    assert result.expert.workflows == []
+    assert len(result.failed_preloads) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_expert_scopes_by_owner(
     server: SpinTestServer, test_user, other_user
 ):

@@ -29,6 +29,15 @@ from backend.data.db_accessors import experts_db
 logger = logging.getLogger(__name__)
 
 
+def _escape(value: str) -> str:
+    """Escape angle brackets so user-supplied (expert name) or marketplace
+    (workflow name/description) text cannot terminate the surrounding trusted
+    block. Mirrors ``service._sanitize_user_context_field``; duplicated here
+    because ``service`` imports this module.
+    """
+    return value.replace("<", "&lt;").replace(">", "&gt;")
+
+
 async def build_expert_identity_suffix(
     user_id: str | None, expert_id: str | None
 ) -> str:
@@ -48,16 +57,17 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         return ""
 
+    name = _escape(expert.name)
     return (
         f"\n\n<expert_identity>\n"
-        f"For this session you are {expert.name} — {expert.role}, a hired "
+        f"For this session you are {name} — {expert.role}, a hired "
         f"expert on the user's team.\n"
         f"{expert.identity}\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "
-        f"available to you, but you always speak and act as {expert.name}: "
+        f"available to you, but you always speak and act as {name}: "
         f"never present yourself as AutoPilot, and if asked who you are, "
-        f"you are {expert.name}.\n"
+        f"you are {name}.\n"
         f"</expert_identity>"
     )
 
@@ -87,9 +97,9 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
 
     if expert.workflows:
         workflow_lines = "\n".join(
-            f"- {w.name or 'Unnamed workflow'} "
+            f"- {_escape(w.name or 'Unnamed workflow')} "
             f"(library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id})"
-            f": {w.description or 'No description'}"
+            f": {_escape(w.description or 'No description')}"
             for w in expert.workflows
         )
     else:
@@ -123,10 +133,12 @@ async def _team_context(user_id: str) -> str:
 
 
 def _team_line(expert: Expert) -> str:
-    workflow_names = ", ".join(w.name or "Unnamed workflow" for w in expert.workflows)
+    workflow_names = ", ".join(
+        _escape(w.name or "Unnamed workflow") for w in expert.workflows
+    )
     if not workflow_names:
         workflow_names = "none installed"
     return (
-        f"- {expert.name} — {expert.role} (expert id: {expert.id}); "
+        f"- {_escape(expert.name)} — {expert.role} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
     )
