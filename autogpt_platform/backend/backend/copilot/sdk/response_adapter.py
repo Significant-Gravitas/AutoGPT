@@ -603,12 +603,14 @@ class SDKResponseAdapter:
                 # SDK signalled the per-turn USD budget was exhausted.
                 # Surface a specific message instead of the generic empty-
                 # completion overlay (which would shadow the real reason).
+                # This error is retryable — a follow-up may succeed if the
+                # per-query cap tripped (daily/weekly cap requires a reset).
                 responses.append(
                     StreamError(
                         errorText=(
                             "The turn ended because it exceeded the budget. "
-                            "Try a smaller scope, or wait for the next "
-                            "billing window."
+                            "Send a follow-up to continue, or try a smaller "
+                            "scope."
                         ),
                         code="max_budget_exhausted",
                     )

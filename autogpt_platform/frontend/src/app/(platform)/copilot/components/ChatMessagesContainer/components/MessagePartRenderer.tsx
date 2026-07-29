@@ -171,7 +171,7 @@ export function MessagePartRenderer({
           <ErrorCard
             key={key}
             responseError={{ message: markerText }}
-            context="execution"
+            context="your request"
             onRetry={markerType === "retryable_error" ? onRetry : undefined}
           />
         );
