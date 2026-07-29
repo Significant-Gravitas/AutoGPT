@@ -83,11 +83,13 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
           <div className="flex flex-col gap-1.5">
             <Text variant="body" className="text-muted-foreground">
               This agent trigger is{" "}
-              {template.is_active
+              {status === "active"
                 ? "ready. When a trigger is received, it will run with the provided settings."
                 : status === "paused"
                   ? "paused because your payment lapsed. It will resume automatically once your subscription is active again."
-                  : "disabled. It will not respond to triggers until you enable it."}
+                  : status === "broken"
+                    ? 'missing its webhook connection. Re-run "Set up trigger" to reconnect it.'
+                    : "disabled. It will not respond to triggers until you enable it."}
             </Text>
             {status === "paused" && (
               <Link

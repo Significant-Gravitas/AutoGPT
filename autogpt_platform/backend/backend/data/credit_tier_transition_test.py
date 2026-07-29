@@ -52,12 +52,14 @@ async def test_no_tier_to_paid_resumes_automations():
 async def test_same_tier_paid_self_heals_when_automations_still_lapsed():
     """A same-tier paid webhook retry re-attempts resume while payment-lapsed
     automations remain, repairing a resume that partially failed earlier."""
-    with _mock_automation_ops(has_lapsed=True) as (p, r, _):
+    with _mock_automation_ops(has_lapsed=True) as (p, r, h):
         await _handle_tier_transition_automations(
             "user-1", SubscriptionTier.PRO, SubscriptionTier.PRO
         )
     r.assert_awaited_once_with("user-1")
     p.assert_not_awaited()
+    # The self-heal must consult the lapse gate, not resume unconditionally.
+    h.assert_awaited_once_with("user-1")
 
 
 @pytest.mark.asyncio
