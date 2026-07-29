@@ -816,6 +816,24 @@ def test_create_session_with_archived_expert_returns_404(
     mock_create.assert_not_called()
 
 
+def test_create_session_rejects_builder_graph_id_with_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The builder branch ignores expert_id, so the combo is rejected upfront
+    instead of silently dropping the expert scoping."""
+    mock_create = _mock_create_chat_session(mocker)
+    mock_get = _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions",
+        json={"builder_graph_id": "graph-1", "expert_id": "expert-1"},
+    )
+
+    assert response.status_code == 422
+    mock_get.assert_not_called()
+    mock_create.assert_not_called()
+
+
 class TestStreamChatRequestModeValidation:
     """Pydantic-level validation of the ``mode`` field on StreamChatRequest."""
 
