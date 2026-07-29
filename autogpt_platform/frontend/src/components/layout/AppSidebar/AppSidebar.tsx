@@ -206,7 +206,7 @@ export function AppSidebar(props: Props) {
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
-      if (event.key.toLocaleLowerCase() !== "o") return;
+      if (event.key?.toLocaleLowerCase() !== "o") return;
       if (!event.metaKey && !event.ctrlKey) return;
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
