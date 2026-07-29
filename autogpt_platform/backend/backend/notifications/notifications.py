@@ -441,15 +441,17 @@ class NotificationManager(AppService):
             logger.warning(f"Failed to send Discord system alert: {e}")
 
     @expose
-    async def send_transactional_email(self, to: str, subject: str, body: str):
+    async def send_email_or_raise(self, to: str, subject: str, body: str):
         """Send a one-off transactional email (e.g. Better Auth password-reset
         links forwarded by the REST API) through this service's Postmark
         credential. Deliberately not wrapped in try/except: a delivery failure
         must propagate to the RPC caller so it can surface the error instead
         of reporting "email sent" for an undeliverable message."""
-        # send_transactional wraps a blocking Postmark HTTP call; run it off
+        # send_email_or_raise wraps a blocking Postmark HTTP call; run it off
         # the event loop so it can't stall the notification service.
-        await asyncio.to_thread(self.email_sender.send_transactional, to, subject, body)
+        await asyncio.to_thread(
+            self.email_sender.send_email_or_raise, to, subject, body
+        )
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
@@ -1200,6 +1202,4 @@ class NotificationManagerClient(AppServiceClient):
     )
     queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
-    send_transactional_email = endpoint_to_sync(
-        NotificationManager.send_transactional_email
-    )
+    send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)

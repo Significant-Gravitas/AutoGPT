@@ -134,7 +134,7 @@ class EmailSender:
             base_template=base_template,
         )
 
-    def send_transactional(self, user_email: str, subject: str, body: str) -> None:
+    def send_email_or_raise(self, user_email: str, subject: str, body: str) -> None:
         """Send a one-off transactional email (e.g. Better Auth password-reset
         and verification links) with no notification templating or preference
         gating. Raises if the Postmark client is not configured so callers can

@@ -43,7 +43,7 @@ def send_mock(monkeypatch):
     monkeypatch.setattr(
         auth_email_routes,
         "get_notification_manager_client",
-        lambda: MagicMock(send_transactional_email=mock),
+        lambda: MagicMock(send_email_or_raise=mock),
     )
     yield mock
     app.dependency_overrides.clear()
@@ -146,7 +146,7 @@ def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
     monkeypatch.setattr(
         auth_email_routes,
         "get_notification_manager_client",
-        lambda: MagicMock(send_transactional_email=send),
+        lambda: MagicMock(send_email_or_raise=send),
     )
 
     res = _post()

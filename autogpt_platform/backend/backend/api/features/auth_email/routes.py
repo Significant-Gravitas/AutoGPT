@@ -60,7 +60,7 @@ class AuthEmailRequest(BaseModel):
     summary="Send a Better Auth transactional email via the backend mailer",
     # Without an explicit id the generated client name is derived from the
     # summary, which produces an unreadable mouthful.
-    operation_id="sendAuthTransactionEmail",
+    operation_id="sendAuthTransactionalEmail",
     responses={
         400: {"description": "url does not point at a trusted frontend origin"},
         403: {"description": "Service token is missing the required scope"},
@@ -91,7 +91,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
     # loudly instead of dropping the auth email.
     await asyncio.to_thread(
-        get_notification_manager_client().send_transactional_email,
+        get_notification_manager_client().send_email_or_raise,
         request.to,
         subject,
         body,
@@ -99,6 +99,37 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
     logger.info(f"Sent {request.type} auth email")
+
+
+def _url_origin_allowed(url: str) -> bool:
+    """Only send links pointing at a trusted frontend origin (frontend_base_url
+    or an entry in trusted_frontend_origins). Blocks a token-holder from
+    sending phishing links to arbitrary domains. Self-hosting works with just
+    frontend_base_url; there is no hardcoded provider wildcard."""
+    origin = _origin_of(url)
+    if origin is None:
+        return False
+    exact, patterns = _trusted_frontend_origins()
+    if origin in exact:
+        return True
+    return any(re.fullmatch(pattern, origin) for pattern in patterns)
+
+
+def _trusted_frontend_origins() -> tuple[set[str], list[str]]:
+    """The set of frontend origins auth-email links may target: the configured
+    frontend_base_url plus any trusted_frontend_origins. Returns (exact origins,
+    regex patterns)."""
+    entries: list[str] = []
+    frontend_origin = _origin_of(settings.config.frontend_base_url)
+    if frontend_origin:
+        entries.append(frontend_origin)
+    entries.extend(settings.config.trusted_frontend_origins)
+
+    # Normalize configured origins through the same parser as the incoming URL,
+    # so an explicit default port on either side can't cause a false mismatch.
+    exact = {_origin_of(e) or e for e in entries if not e.startswith("regex:")}
+    patterns = [e[len("regex:") :] for e in entries if e.startswith("regex:")]
+    return exact, patterns
 
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -119,34 +150,3 @@ def _origin_of(url: str) -> str | None:
     port = parsed.port
     suffix = "" if port is None or port == _DEFAULT_PORTS[parsed.scheme] else f":{port}"
     return f"{parsed.scheme}://{parsed.hostname}{suffix}"
-
-
-def _trusted_frontend_origins() -> tuple[set[str], list[str]]:
-    """The set of frontend origins auth-email links may target: the configured
-    frontend_base_url plus any trusted_frontend_origins. Returns (exact origins,
-    regex patterns)."""
-    entries: list[str] = []
-    frontend_origin = _origin_of(settings.config.frontend_base_url)
-    if frontend_origin:
-        entries.append(frontend_origin)
-    entries.extend(settings.config.trusted_frontend_origins)
-
-    # Normalize configured origins through the same parser as the incoming URL,
-    # so an explicit default port on either side can't cause a false mismatch.
-    exact = {_origin_of(e) or e for e in entries if not e.startswith("regex:")}
-    patterns = [e[len("regex:") :] for e in entries if e.startswith("regex:")]
-    return exact, patterns
-
-
-def _url_origin_allowed(url: str) -> bool:
-    """Only send links pointing at a trusted frontend origin (frontend_base_url
-    or an entry in trusted_frontend_origins). Blocks a token-holder from
-    sending phishing links to arbitrary domains. Self-hosting works with just
-    frontend_base_url; there is no hardcoded provider wildcard."""
-    origin = _origin_of(url)
-    if origin is None:
-        return False
-    exact, patterns = _trusted_frontend_origins()
-    if origin in exact:
-        return True
-    return any(re.fullmatch(pattern, origin) for pattern in patterns)
