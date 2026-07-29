@@ -280,7 +280,9 @@ class CreateSessionRequest(BaseModel):
 
     ``expert_id`` scopes the session to a hired expert. It must reference
     an expert owned by the caller that is neither a template nor archived,
-    otherwise the request is rejected with 404.
+    otherwise the request is rejected with 404. It is mutually exclusive
+    with ``builder_graph_id`` (422) — builder-bound sessions are never
+    expert-scoped.
 
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
@@ -492,6 +494,14 @@ async def create_session(
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
+
+    # The builder branch below ignores expert_id, so accepting both would
+    # validate the expert and then silently drop the scoping. Reject upfront.
+    if builder_graph_id and expert_id:
+        raise HTTPException(
+            status_code=422,
+            detail="builder_graph_id and expert_id are mutually exclusive",
+        )
 
     if expert_id is not None:
         expert = await experts_db.get_expert(user_id, expert_id)
