@@ -16666,6 +16666,15 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
           },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Skills"
+          },
           "identity": { "type": "string", "title": "Identity" },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {
@@ -16686,6 +16695,8 @@
           "avatar_url",
           "role",
           "tagline",
+          "bio",
+          "skills",
           "identity",
           "is_template",
           "source_template_id",

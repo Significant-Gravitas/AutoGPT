@@ -120,6 +120,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..expert_context import build_expert_identity_suffix
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -1562,11 +1563,15 @@ async def _apply_building_mode_restart(
             f"{log_prefix} Building-mode restart: guide suffix "
             f"empty — continuing without prompt upgrade"
         )
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id, session.expert_id
+    )
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + graphiti_supplement
         + building_suffix
+        + expert_session_suffix
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -4200,11 +4205,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
         session.guide_in_system_prompt = bool(builder_session_suffix)
+        expert_session_suffix = await build_expert_identity_suffix(
+            session.user_id, session.expert_id
+        )
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
             + builder_session_suffix
+            + expert_session_suffix
         )
 
         transcript_content = _restore.transcript_content

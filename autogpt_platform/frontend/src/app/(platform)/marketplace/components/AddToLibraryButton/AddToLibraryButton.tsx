@@ -183,12 +183,12 @@ export function AddToLibraryButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="secondary"
       size="small"
       loading={isPending}
       leftIcon={<PlusIcon size={14} weight="bold" />}
       onClick={handleClick}
-      className={`z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`}
+      className={`z-10 ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}
     >
       {isPending ? "Adding..." : "Add"}
